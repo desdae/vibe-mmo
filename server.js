@@ -2,64 +2,111 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { WebSocketServer } = require("ws");
+const PROTOCOL = require("./public/shared/protocol");
+const { executeAbilityByKind } = require("./server/ability-handlers");
 
 const PORT = process.env.PORT || 3000;
-const MAP_WIDTH = 1000;
-const MAP_HEIGHT = 1000;
-const VISIBILITY_RANGE = 20;
-const TICK_MS = 50;
-const BASE_PLAYER_SPEED = 6;
-
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
 const ITEM_CONFIG_PATH = path.join(__dirname, "data", "items.json");
 const GLOBAL_DROP_TABLE_PATH = path.join(__dirname, "data", "drop-tables.json");
 const SERVER_CONFIG_PATH = path.join(__dirname, "config", "server.json");
+const GAMEPLAY_CONFIG_PATH = path.join(__dirname, "config", "gameplay.json");
 const CLASS_CONFIG_PATH = path.join(__dirname, "data", "classes.json");
 const ABILITY_CONFIG_PATH = path.join(__dirname, "data", "abilities.json");
-const TARGET_MOB_CLUSTERS = 16;
-const CLUSTER_AREA_SIZE = 10;
-const MAX_CLUSTERS_PER_AREA = 2;
-const MOB_WANDER_RADIUS = 10;
-const MOB_PROVOKED_LEASH_RADIUS = 50;
-const MOB_PROVOKED_CHASE_MS = 60000;
-const MOB_AGGRO_RANGE = 5;
-const MOB_ATTACK_RANGE = 1.25;
-const MOB_ATTACK_COOLDOWN_MS = 900;
-const MOB_MIN_SEPARATION = 0.85;
-const MOB_SEPARATION_ITERATIONS = 2;
-const PLAYER_MOB_MIN_SEPARATION = 0.9;
-const PLAYER_MOB_SEPARATION_ITERATIONS = 2;
+
+const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
+  map: {
+    width: 1000,
+    height: 1000,
+    visibilityRange: 20
+  },
+  tickMs: 50,
+  player: {
+    baseSpeed: 6,
+    baseExpToNext: 20,
+    expGrowthFactor: 1.25,
+    mobMinSeparation: 0.9,
+    mobSeparationIterations: 2
+  },
+  projectile: {
+    defaultHitRadius: 0.6
+  },
+  clusterSpawning: {
+    targetClusters: 16,
+    clusterAreaSize: 10,
+    maxClustersPerArea: 2
+  },
+  mob: {
+    wanderRadius: 10,
+    provokedLeashRadius: 50,
+    provokedChaseMs: 60000,
+    aggroRange: 5,
+    attackRange: 1.25,
+    attackCooldownMs: 900,
+    minSeparation: 0.85,
+    separationIterations: 2
+  },
+  loot: {
+    bagPickupRange: 2.25,
+    bagClickRange: 1.8,
+    copperItemId: "copperCoin"
+  },
+  inventory: {
+    cols: 5,
+    rows: 2
+  }
+});
+
+const GAMEPLAY_CONFIG = loadGameplayConfigFromDisk();
+const MAP_WIDTH = GAMEPLAY_CONFIG.map.width;
+const MAP_HEIGHT = GAMEPLAY_CONFIG.map.height;
+const VISIBILITY_RANGE = GAMEPLAY_CONFIG.map.visibilityRange;
+const TICK_MS = GAMEPLAY_CONFIG.tickMs;
+const BASE_PLAYER_SPEED = GAMEPLAY_CONFIG.player.baseSpeed;
+const TARGET_MOB_CLUSTERS = GAMEPLAY_CONFIG.clusterSpawning.targetClusters;
+const CLUSTER_AREA_SIZE = GAMEPLAY_CONFIG.clusterSpawning.clusterAreaSize;
+const MAX_CLUSTERS_PER_AREA = GAMEPLAY_CONFIG.clusterSpawning.maxClustersPerArea;
+const MOB_WANDER_RADIUS = GAMEPLAY_CONFIG.mob.wanderRadius;
+const MOB_PROVOKED_LEASH_RADIUS = GAMEPLAY_CONFIG.mob.provokedLeashRadius;
+const MOB_PROVOKED_CHASE_MS = GAMEPLAY_CONFIG.mob.provokedChaseMs;
+const MOB_AGGRO_RANGE = GAMEPLAY_CONFIG.mob.aggroRange;
+const MOB_ATTACK_RANGE = GAMEPLAY_CONFIG.mob.attackRange;
+const MOB_ATTACK_COOLDOWN_MS = GAMEPLAY_CONFIG.mob.attackCooldownMs;
+const MOB_MIN_SEPARATION = GAMEPLAY_CONFIG.mob.minSeparation;
+const MOB_SEPARATION_ITERATIONS = GAMEPLAY_CONFIG.mob.separationIterations;
+const PLAYER_MOB_MIN_SEPARATION = GAMEPLAY_CONFIG.player.mobMinSeparation;
+const PLAYER_MOB_SEPARATION_ITERATIONS = GAMEPLAY_CONFIG.player.mobSeparationIterations;
 
 const DEFAULT_ABILITY_KIND = "meleeCone";
-const BASE_EXP_TO_NEXT = 20;
-const EXP_GROWTH_FACTOR = 1.25;
-const DEFAULT_PROJECTILE_HIT_RADIUS = 0.6;
-const BAG_PICKUP_RANGE = 2.25;
-const BAG_CLICK_RANGE = 1.8;
-const INVENTORY_COLS = 5;
-const INVENTORY_ROWS = 2;
+const BASE_EXP_TO_NEXT = GAMEPLAY_CONFIG.player.baseExpToNext;
+const EXP_GROWTH_FACTOR = GAMEPLAY_CONFIG.player.expGrowthFactor;
+const DEFAULT_PROJECTILE_HIT_RADIUS = GAMEPLAY_CONFIG.projectile.defaultHitRadius;
+const BAG_PICKUP_RANGE = GAMEPLAY_CONFIG.loot.bagPickupRange;
+const BAG_CLICK_RANGE = GAMEPLAY_CONFIG.loot.bagClickRange;
+const INVENTORY_COLS = GAMEPLAY_CONFIG.inventory.cols;
+const INVENTORY_ROWS = GAMEPLAY_CONFIG.inventory.rows;
 const INVENTORY_SLOT_COUNT = INVENTORY_COLS * INVENTORY_ROWS;
-const ITEM_COPPER_ID = "copperCoin";
+const ITEM_COPPER_ID = GAMEPLAY_CONFIG.loot.copperItemId;
 
-const ENTITY_PROTO_TYPE = 1;
-const ENTITY_PROTO_VERSION = 7;
-const POS_SCALE = 64;
-const MANA_SCALE = 10;
-const HEAL_SCALE = 10;
-
-const DELTA_FLAG_HP_CHANGED = 1 << 0;
-const DELTA_FLAG_MAX_HP_CHANGED = 1 << 1;
-const DELTA_FLAG_REMOVED = 1 << 2;
-const DELTA_FLAG_COPPER_CHANGED = 1 << 3;
-const DELTA_FLAG_PROGRESS_CHANGED = 1 << 4;
-const DELTA_FLAG_MANA_CHANGED = 1 << 5;
-const DELTA_FLAG_MAX_MANA_CHANGED = 1 << 6;
-const DELTA_FLAG_PENDING_HEAL_CHANGED = 1 << 7;
-const SELF_FLAG_PENDING_MANA_CHANGED = 1 << 2;
-
-const SELF_MODE_NONE = 0;
-const SELF_MODE_FULL = 1;
-const SELF_MODE_DELTA = 2;
+const {
+  ENTITY_PROTO_TYPE,
+  ENTITY_PROTO_VERSION,
+  POS_SCALE,
+  MANA_SCALE,
+  HEAL_SCALE,
+  DELTA_FLAG_HP_CHANGED,
+  DELTA_FLAG_MAX_HP_CHANGED,
+  DELTA_FLAG_REMOVED,
+  DELTA_FLAG_COPPER_CHANGED,
+  DELTA_FLAG_PROGRESS_CHANGED,
+  DELTA_FLAG_MANA_CHANGED,
+  DELTA_FLAG_MAX_MANA_CHANGED,
+  DELTA_FLAG_PENDING_HEAL_CHANGED,
+  SELF_FLAG_PENDING_MANA_CHANGED,
+  SELF_MODE_NONE,
+  SELF_MODE_FULL,
+  SELF_MODE_DELTA
+} = PROTOCOL;
 
 const publicDir = path.join(__dirname, "public");
 
@@ -129,6 +176,152 @@ function parseMultiplier(value, fallback = 1) {
     return fallback;
   }
   return clamp(n, 0, 1000);
+}
+
+function parseGameplayInt(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return clamp(Math.round(n), min, max);
+}
+
+function parseGameplayNumber(value, fallback, min, max) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return clamp(n, min, max);
+}
+
+function buildGameplayConfig(parsed) {
+  const src = parsed && typeof parsed === "object" ? parsed : {};
+  const map = src.map && typeof src.map === "object" ? src.map : {};
+  const player = src.player && typeof src.player === "object" ? src.player : {};
+  const projectile = src.projectile && typeof src.projectile === "object" ? src.projectile : {};
+  const clusterSpawning =
+    src.clusterSpawning && typeof src.clusterSpawning === "object" ? src.clusterSpawning : {};
+  const mob = src.mob && typeof src.mob === "object" ? src.mob : {};
+  const loot = src.loot && typeof src.loot === "object" ? src.loot : {};
+  const inventory = src.inventory && typeof src.inventory === "object" ? src.inventory : {};
+
+  return {
+    map: {
+      width: parseGameplayInt(map.width, DEFAULT_GAMEPLAY_CONFIG.map.width, 10, 10000),
+      height: parseGameplayInt(map.height, DEFAULT_GAMEPLAY_CONFIG.map.height, 10, 10000),
+      visibilityRange: parseGameplayNumber(
+        map.visibilityRange,
+        DEFAULT_GAMEPLAY_CONFIG.map.visibilityRange,
+        1,
+        100
+      )
+    },
+    tickMs: parseGameplayInt(src.tickMs, DEFAULT_GAMEPLAY_CONFIG.tickMs, 10, 1000),
+    player: {
+      baseSpeed: parseGameplayNumber(player.baseSpeed, DEFAULT_GAMEPLAY_CONFIG.player.baseSpeed, 0.1, 50),
+      baseExpToNext: parseGameplayInt(
+        player.baseExpToNext,
+        DEFAULT_GAMEPLAY_CONFIG.player.baseExpToNext,
+        1,
+        1000000
+      ),
+      expGrowthFactor: parseGameplayNumber(
+        player.expGrowthFactor,
+        DEFAULT_GAMEPLAY_CONFIG.player.expGrowthFactor,
+        1,
+        5
+      ),
+      mobMinSeparation: parseGameplayNumber(
+        player.mobMinSeparation,
+        DEFAULT_GAMEPLAY_CONFIG.player.mobMinSeparation,
+        0,
+        10
+      ),
+      mobSeparationIterations: parseGameplayInt(
+        player.mobSeparationIterations,
+        DEFAULT_GAMEPLAY_CONFIG.player.mobSeparationIterations,
+        0,
+        20
+      )
+    },
+    projectile: {
+      defaultHitRadius: parseGameplayNumber(
+        projectile.defaultHitRadius,
+        DEFAULT_GAMEPLAY_CONFIG.projectile.defaultHitRadius,
+        0,
+        20
+      )
+    },
+    clusterSpawning: {
+      targetClusters: parseGameplayInt(
+        clusterSpawning.targetClusters,
+        DEFAULT_GAMEPLAY_CONFIG.clusterSpawning.targetClusters,
+        1,
+        1000
+      ),
+      clusterAreaSize: parseGameplayNumber(
+        clusterSpawning.clusterAreaSize,
+        DEFAULT_GAMEPLAY_CONFIG.clusterSpawning.clusterAreaSize,
+        1,
+        1000
+      ),
+      maxClustersPerArea: parseGameplayInt(
+        clusterSpawning.maxClustersPerArea,
+        DEFAULT_GAMEPLAY_CONFIG.clusterSpawning.maxClustersPerArea,
+        1,
+        100
+      )
+    },
+    mob: {
+      wanderRadius: parseGameplayNumber(mob.wanderRadius, DEFAULT_GAMEPLAY_CONFIG.mob.wanderRadius, 0, 1000),
+      provokedLeashRadius: parseGameplayNumber(
+        mob.provokedLeashRadius,
+        DEFAULT_GAMEPLAY_CONFIG.mob.provokedLeashRadius,
+        1,
+        5000
+      ),
+      provokedChaseMs: parseGameplayInt(
+        mob.provokedChaseMs,
+        DEFAULT_GAMEPLAY_CONFIG.mob.provokedChaseMs,
+        0,
+        3600000
+      ),
+      aggroRange: parseGameplayNumber(mob.aggroRange, DEFAULT_GAMEPLAY_CONFIG.mob.aggroRange, 0, 1000),
+      attackRange: parseGameplayNumber(mob.attackRange, DEFAULT_GAMEPLAY_CONFIG.mob.attackRange, 0, 1000),
+      attackCooldownMs: parseGameplayInt(
+        mob.attackCooldownMs,
+        DEFAULT_GAMEPLAY_CONFIG.mob.attackCooldownMs,
+        50,
+        600000
+      ),
+      minSeparation: parseGameplayNumber(mob.minSeparation, DEFAULT_GAMEPLAY_CONFIG.mob.minSeparation, 0, 10),
+      separationIterations: parseGameplayInt(
+        mob.separationIterations,
+        DEFAULT_GAMEPLAY_CONFIG.mob.separationIterations,
+        0,
+        20
+      )
+    },
+    loot: {
+      bagPickupRange: parseGameplayNumber(loot.bagPickupRange, DEFAULT_GAMEPLAY_CONFIG.loot.bagPickupRange, 0, 50),
+      bagClickRange: parseGameplayNumber(loot.bagClickRange, DEFAULT_GAMEPLAY_CONFIG.loot.bagClickRange, 0, 50),
+      copperItemId: String(loot.copperItemId || DEFAULT_GAMEPLAY_CONFIG.loot.copperItemId).trim() ||
+        DEFAULT_GAMEPLAY_CONFIG.loot.copperItemId
+    },
+    inventory: {
+      cols: parseGameplayInt(inventory.cols, DEFAULT_GAMEPLAY_CONFIG.inventory.cols, 1, 20),
+      rows: parseGameplayInt(inventory.rows, DEFAULT_GAMEPLAY_CONFIG.inventory.rows, 1, 20)
+    }
+  };
+}
+
+function loadGameplayConfigFromDisk() {
+  const raw = fs.readFileSync(GAMEPLAY_CONFIG_PATH, "utf8");
+  const parsed = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("gameplay config root must be an object");
+  }
+  return buildGameplayConfig(parsed);
 }
 
 function buildServerConfig(parsed) {
@@ -601,6 +794,106 @@ function parseDropRulesFromGroups(rawDropGroups, itemDefs) {
   return rules;
 }
 
+function sanitizeCssColor(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^#[0-9a-fA-F]{3,8}$/.test(raw)) {
+    return raw;
+  }
+  if (/^rgba?\(([^)]+)\)$/.test(raw)) {
+    return raw;
+  }
+  if (/^hsla?\(([^)]+)\)$/.test(raw)) {
+    return raw;
+  }
+  return "";
+}
+
+function parseMobRenderStyle(rawStyle) {
+  if (!rawStyle || typeof rawStyle !== "object") {
+    return null;
+  }
+
+  const style = {};
+  const spriteType = String(rawStyle.spriteType || "").trim().toLowerCase();
+  if (spriteType) {
+    style.spriteType = spriteType.slice(0, 32);
+  }
+
+  const sizeScale = Number(rawStyle.sizeScale);
+  if (Number.isFinite(sizeScale) && sizeScale > 0) {
+    style.sizeScale = clamp(sizeScale, 0.5, 3);
+  }
+
+  const walkCycleSpeed = Number(rawStyle.walkCycleSpeed);
+  if (Number.isFinite(walkCycleSpeed) && walkCycleSpeed > 0) {
+    style.walkCycleSpeed = clamp(walkCycleSpeed, 0.1, 10);
+  }
+
+  const idleCycleSpeed = Number(rawStyle.idleCycleSpeed);
+  if (Number.isFinite(idleCycleSpeed) && idleCycleSpeed >= 0) {
+    style.idleCycleSpeed = clamp(idleCycleSpeed, 0, 10);
+  }
+
+  const moveThreshold = Number(rawStyle.moveThreshold);
+  if (Number.isFinite(moveThreshold) && moveThreshold >= 0) {
+    style.moveThreshold = clamp(moveThreshold, 0, 2);
+  }
+
+  const attackAnimSpeed = Number(rawStyle.attackAnimSpeed);
+  if (Number.isFinite(attackAnimSpeed) && attackAnimSpeed > 0) {
+    style.attackAnimSpeed = clamp(attackAnimSpeed, 0.1, 4);
+  }
+
+  const weaponOffsetX = Number(rawStyle.weaponOffsetX);
+  if (Number.isFinite(weaponOffsetX)) {
+    style.weaponOffsetX = clamp(weaponOffsetX, -24, 24);
+  }
+
+  const weaponOffsetY = Number(rawStyle.weaponOffsetY);
+  if (Number.isFinite(weaponOffsetY)) {
+    style.weaponOffsetY = clamp(weaponOffsetY, -24, 24);
+  }
+
+  const weaponAngleOffsetDeg = Number(rawStyle.weaponAngleOffsetDeg);
+  if (Number.isFinite(weaponAngleOffsetDeg)) {
+    style.weaponAngleOffsetDeg = clamp(weaponAngleOffsetDeg, -180, 180);
+  }
+
+  const biteRadius = Number(rawStyle.biteRadius);
+  if (Number.isFinite(biteRadius) && biteRadius > 0) {
+    style.biteRadius = clamp(biteRadius, 4, 40);
+  }
+
+  const attackVisual = String(rawStyle.attackVisual || "").trim().toLowerCase();
+  if (attackVisual) {
+    style.attackVisual = attackVisual.slice(0, 32);
+  }
+
+  const palette = {};
+  const rawPalette = rawStyle.palette && typeof rawStyle.palette === "object" ? rawStyle.palette : null;
+  if (rawPalette) {
+    for (const [key, rawValue] of Object.entries(rawPalette)) {
+      const color = sanitizeCssColor(rawValue);
+      if (!color) {
+        continue;
+      }
+      const normalizedKey = String(key || "").trim().slice(0, 48);
+      if (!normalizedKey) {
+        continue;
+      }
+      palette[normalizedKey] = color;
+    }
+  }
+  if (Object.keys(palette).length > 0) {
+    style.palette = palette;
+  }
+
+  return Object.keys(style).length ? style : null;
+}
+
 function flattenGlobalDropEntries(node, out) {
   if (Array.isArray(node)) {
     for (const item of node) {
@@ -672,6 +965,7 @@ function loadMobConfig(itemDefs) {
     const respawnMinMs = Math.max(1000, Math.round(respawnMinRaw * 1000 * respawnMultiplier));
     const respawnMaxMs = Math.max(respawnMinMs, Math.round(respawnMaxRaw * 1000 * respawnMultiplier));
     const dropRules = parseMobDropRules(mobEntry.drops, itemDefs);
+    const renderStyle = parseMobRenderStyle(mobEntry.renderStyle);
 
     mobDefs.set(name, {
       name,
@@ -683,7 +977,8 @@ function loadMobConfig(itemDefs) {
       baseSpeed,
       respawnMinMs,
       respawnMaxMs,
-      dropRules
+      dropRules,
+      renderStyle
     });
   }
 
@@ -1172,6 +1467,34 @@ const pendingDamageEvents = [];
 const pendingExplosionEvents = [];
 const pendingProjectileHitEvents = [];
 const pendingMobDeathEvents = [];
+
+function allocateProjectileId() {
+  return nextProjectileId++;
+}
+
+const abilityHandlerContext = {
+  mobs,
+  projectiles,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  defaultProjectileHitRadius: DEFAULT_PROJECTILE_HIT_RADIUS,
+  allocateProjectileId,
+  clamp,
+  normalizeDirection,
+  randomInt,
+  rotateDirection,
+  getAbilityRangeForLevel,
+  getAbilityDamageRange,
+  markAbilityUsed,
+  applyDamageToMob,
+  stunMob,
+  queueExplosionEvent,
+  getAreaAbilityTargetPosition,
+  createPersistentAreaEffect,
+  createPersistentBeamEffect,
+  resolvePlayerMobCollisions,
+  getAbilityInvulnerabilityDurationMs
+};
 
 function createEmptyInventorySlots() {
   return Array.from({ length: INVENTORY_SLOT_COUNT }, () => null);
@@ -1786,6 +2109,7 @@ function serializeMob(mob) {
   return {
     id: mob.id,
     name: mob.type || "Mob",
+    renderStyle: mob.renderStyle || null,
     x: mob.x,
     y: mob.y,
     hp: mob.hp,
@@ -1841,6 +2165,7 @@ function createMob(spawner) {
     respawnMinMs: mobDef.respawnMinMs,
     respawnMaxMs: mobDef.respawnMaxMs,
     dropRules: Array.isArray(mobDef.dropRules) ? mobDef.dropRules.map((entry) => ({ ...entry })) : [],
+    renderStyle: mobDef.renderStyle ? { ...mobDef.renderStyle } : null,
     lastBiteDirection: { dx: 0, dy: -1 },
     biteCounter: 0,
     alive: true,
@@ -2486,113 +2811,6 @@ function buildMobEffectsForRecipient(recipient, nearbyMobObjects, now = Date.now
   return effects;
 }
 
-function performMeleeConeAbility(player, abilityDef, abilityLevel, targetDx, targetDy, now) {
-  const attackDir =
-    normalizeDirection(targetDx, targetDy) || normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
-  if (!attackDir) {
-    return false;
-  }
-
-  let closestMob = null;
-  let closestDistance = Infinity;
-  const range = Math.max(0.2, getAbilityRangeForLevel(abilityDef, abilityLevel) || 1.5);
-  const coneCos = clamp(Number(abilityDef.coneCos) || 0, -1, 1);
-
-  for (const mob of mobs.values()) {
-    if (!mob.alive) {
-      continue;
-    }
-
-    const toMobX = mob.x - player.x;
-    const toMobY = mob.y - player.y;
-    const mobDist = Math.hypot(toMobX, toMobY);
-    if (mobDist > range || mobDist <= 0) {
-      continue;
-    }
-
-    const dirToMob = normalizeDirection(toMobX, toMobY);
-    if (!dirToMob) {
-      continue;
-    }
-    const dot = attackDir.dx * dirToMob.dx + attackDir.dy * dirToMob.dy;
-    if (dot < coneCos) {
-      continue;
-    }
-
-    if (mobDist < closestDistance) {
-      closestDistance = mobDist;
-      closestMob = mob;
-    }
-  }
-
-  markAbilityUsed(player, abilityDef, now);
-  player.lastDirection = attackDir;
-  player.lastSwingDirection = attackDir;
-  player.swingCounter = (player.swingCounter + 1) & 0xff;
-
-  if (!closestMob) {
-    return false;
-  }
-
-  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-  applyDamageToMob(closestMob, randomInt(damageMin, damageMax), player.id);
-  return true;
-}
-
-function performProjectileAbility(player, abilityDef, abilityLevel, targetDx, targetDy, now) {
-  const normalized = normalizeDirection(targetDx, targetDy) || normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
-  if (!normalized) {
-    return false;
-  }
-
-  const speed = Math.max(0.1, Number(abilityDef.speed) || 1);
-  const range = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 6);
-  const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
-  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-  const projectileCount = clamp(Math.floor(Number(abilityDef.projectileCount) || 1), 1, 12);
-  const spreadDeg =
-    Number(abilityDef.spreadDeg) > 0
-      ? Number(abilityDef.spreadDeg)
-      : projectileCount > 1
-        ? 16
-        : 0;
-  const spreadTotalRad = (spreadDeg * Math.PI) / 180;
-  const baseHomingRange = Math.max(0, Number(abilityDef.homingRange) || 0);
-  const baseHomingTurnRate = Math.max(0, Number(abilityDef.homingTurnRate) || 0);
-
-  markAbilityUsed(player, abilityDef, now);
-  player.lastDirection = normalized;
-  for (let i = 0; i < projectileCount; i += 1) {
-    const ratio = projectileCount <= 1 ? 0.5 : i / (projectileCount - 1);
-    const angleOffset = projectileCount <= 1 ? 0 : (ratio - 0.5) * spreadTotalRad;
-    const dir = projectileCount <= 1 ? normalized : rotateDirection(normalized, angleOffset);
-    const startOffset = 0.9 + i * 0.04;
-    const projectile = {
-      id: String(nextProjectileId++),
-      ownerId: player.id,
-      x: player.x + dir.dx * startOffset,
-      y: player.y + dir.dy * startOffset,
-      dx: dir.dx,
-      dy: dir.dy,
-      speed,
-      ttlMs,
-      createdAt: now,
-      damageMin,
-      damageMax,
-      hitRadius: clamp(Number(abilityDef.projectileHitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8),
-      explosionRadius: Math.max(0, Number(abilityDef.explosionRadius) || 0),
-      explosionDamageMultiplier: clamp(Number(abilityDef.explosionDamageMultiplier) || 0, 0, 1),
-      slowDurationMs: Math.max(0, Number(abilityDef.slowDurationMs) || 0),
-      slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
-      homingRange: baseHomingRange,
-      homingTurnRate: baseHomingTurnRate,
-      abilityId: abilityDef.id
-    };
-    projectiles.set(projectile.id, projectile);
-  }
-  return true;
-}
-
 function getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance) {
   const targetDir =
     normalizeDirection(targetDx, targetDy) ||
@@ -2727,118 +2945,6 @@ function isMobInsideBeamEffect(mob, effect) {
   return perpendicular <= halfWidth;
 }
 
-function performAreaAbility(player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now) {
-  const areaRadius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.range) || 2);
-  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-  const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
-  const durationMs = Math.max(0, Number(abilityDef.durationMs) || 0);
-  const castRange = getAbilityRangeForLevel(abilityDef, abilityLevel);
-  const target = getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance);
-  markAbilityUsed(player, abilityDef, now);
-  player.lastDirection = target.targetDir;
-
-  if (durationMs > 0) {
-    createPersistentAreaEffect(
-      player.id,
-      abilityDef,
-      target.x,
-      target.y,
-      areaRadius,
-      durationMs,
-      damageMin,
-      damageMax,
-      now
-    );
-    return true;
-  }
-
-  queueExplosionEvent(target.x, target.y, areaRadius, abilityDef.id);
-
-  for (const mob of mobs.values()) {
-    if (!mob.alive) {
-      continue;
-    }
-    const mobDist = Math.hypot(mob.x - target.x, mob.y - target.y);
-    if (mobDist > areaRadius) {
-      continue;
-    }
-    applyDamageToMob(mob, randomInt(damageMin, damageMax), player.id);
-    if (mob.alive && stunDurationMs > 0) {
-      stunMob(mob, stunDurationMs, now);
-    }
-  }
-
-  return true;
-}
-
-function performBeamAbility(player, abilityDef, abilityLevel, targetDx, targetDy, now) {
-  const beamDir =
-    normalizeDirection(targetDx, targetDy) || normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
-  if (!beamDir) {
-    return false;
-  }
-  const beamLength = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
-  const beamDurationMs = Math.max(150, Number(abilityDef.durationMs) || 0);
-  if (beamLength <= 0 || beamDurationMs <= 0) {
-    return false;
-  }
-  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-  const beamWidth = Math.max(0.2, Number(abilityDef.beamWidth) || 0.8);
-
-  markAbilityUsed(player, abilityDef, now);
-  player.lastDirection = beamDir;
-  createPersistentBeamEffect(
-    player.id,
-    abilityDef,
-    player.x,
-    player.y,
-    beamDir,
-    beamLength,
-    beamWidth,
-    beamDurationMs,
-    damageMin,
-    damageMax,
-    now
-  );
-  return true;
-}
-
-function performTeleportAbility(player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now) {
-  const blinkDir =
-    normalizeDirection(targetDx, targetDy) || normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
-  if (!blinkDir) {
-    return false;
-  }
-
-  const castRange = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
-  if (castRange <= 0) {
-    return false;
-  }
-  const requestedDistance = Number.isFinite(Number(targetDistance)) ? Number(targetDistance) : castRange;
-  const blinkDistance = clamp(requestedDistance, 0, castRange);
-  if (blinkDistance <= 0.001) {
-    return false;
-  }
-
-  const originX = player.x;
-  const originY = player.y;
-
-  markAbilityUsed(player, abilityDef, now);
-  player.lastDirection = blinkDir;
-  player.x = clamp(player.x + blinkDir.dx * blinkDistance, 0, MAP_WIDTH - 1);
-  player.y = clamp(player.y + blinkDir.dy * blinkDistance, 0, MAP_HEIGHT - 1);
-  resolvePlayerMobCollisions(player);
-
-  const invulnerabilityMs = getAbilityInvulnerabilityDurationMs(abilityDef);
-  if (invulnerabilityMs > 0) {
-    player.invulnerableUntil = Math.max(Number(player.invulnerableUntil) || 0, now + invulnerabilityMs);
-  }
-
-  queueExplosionEvent(originX, originY, 0.45, abilityDef.id);
-  queueExplosionEvent(player.x, player.y, 0.55, abilityDef.id);
-  return true;
-}
-
 function usePlayerAbility(player, abilityId, targetDx, targetDy, targetDistance = null) {
   if (!player || player.hp <= 0) {
     return false;
@@ -2896,18 +3002,16 @@ function usePlayerAbility(player, abilityId, targetDx, targetDy, targetDistance 
     return true;
   }
 
-  let used = false;
-  if (abilityDef.kind === "projectile") {
-    used = performProjectileAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, now);
-  } else if (abilityDef.kind === "area") {
-    used = performAreaAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, targetDistance, now);
-  } else if (abilityDef.kind === "beam") {
-    used = performBeamAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, now);
-  } else if (abilityDef.kind === "teleport") {
-    used = performTeleportAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, targetDistance, now);
-  } else {
-    used = performMeleeConeAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, now);
-  }
+  const used = executeAbilityByKind({
+    player,
+    abilityDef,
+    abilityLevel,
+    targetDx: aimDirection.dx,
+    targetDy: aimDirection.dy,
+    targetDistance,
+    now,
+    ctx: abilityHandlerContext
+  });
   if (used && manaCost > 0) {
     player.mana = clamp(player.mana - manaCost, 0, player.maxMana);
   }
@@ -2952,18 +3056,16 @@ function tickPlayerCasts(now) {
       continue;
     }
 
-    let used = false;
-    if (abilityDef.kind === "projectile") {
-      used = performProjectileAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
-    } else if (abilityDef.kind === "area") {
-      used = performAreaAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, cast.targetDistance, now);
-    } else if (abilityDef.kind === "beam") {
-      used = performBeamAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
-    } else if (abilityDef.kind === "teleport") {
-      used = performTeleportAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, cast.targetDistance, now);
-    } else {
-      used = performMeleeConeAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
-    }
+    const used = executeAbilityByKind({
+      player,
+      abilityDef,
+      abilityLevel,
+      targetDx: cast.dx,
+      targetDy: cast.dy,
+      targetDistance: cast.targetDistance,
+      now,
+      ctx: abilityHandlerContext
+    });
     if (used && manaCost > 0) {
       player.mana = clamp(player.mana - manaCost, 0, player.maxMana);
     }
@@ -3266,7 +3368,8 @@ function processVisibleEntities(sync, kind, entities) {
       } else if (kind === "mob") {
         meta.push({
           id: slot,
-          name: entity.name || "Mob"
+          name: entity.name || "Mob",
+          renderStyle: entity.renderStyle || null
         });
       }
       continue;

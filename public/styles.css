@@ -340,7 +340,8 @@ body {
   left: 50%;
   bottom: 170px;
   transform: translateX(-50%);
-  width: 292px;
+  width: auto;
+  max-width: calc(100vw - 24px);
   padding: 10px;
   border-radius: 10px;
   background: rgba(1, 11, 19, 0.86);
@@ -376,7 +377,7 @@ body {
 
 #inventory-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(5, 50px);
   gap: 6px;
 }
 

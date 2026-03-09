@@ -36,23 +36,48 @@ const TRAFFIC_WINDOW_MS = 10000;
 const MOB_RENDER_RADIUS = 12;
 const MOB_SPRITE_SIZE = 36;
 const DAMAGE_FLOAT_DURATION_MS = 850;
-const ENTITY_PROTO_TYPE = 1;
-const ENTITY_PROTO_VERSION = 7;
-const POS_SCALE = 64;
-const MANA_SCALE = 10;
-const HEAL_SCALE = 10;
-const DELTA_FLAG_HP_CHANGED = 1 << 0;
-const DELTA_FLAG_MAX_HP_CHANGED = 1 << 1;
-const DELTA_FLAG_REMOVED = 1 << 2;
-const DELTA_FLAG_COPPER_CHANGED = 1 << 3;
-const DELTA_FLAG_PROGRESS_CHANGED = 1 << 4;
-const DELTA_FLAG_MANA_CHANGED = 1 << 5;
-const DELTA_FLAG_MAX_MANA_CHANGED = 1 << 6;
-const DELTA_FLAG_PENDING_HEAL_CHANGED = 1 << 7;
-const SELF_FLAG_PENDING_MANA_CHANGED = 1 << 2;
-const SELF_MODE_NONE = 0;
-const SELF_MODE_FULL = 1;
-const SELF_MODE_DELTA = 2;
+const INVENTORY_SLOT_SIZE_PX = 50;
+const INVENTORY_SLOT_GAP_PX = 6;
+const INVENTORY_PANEL_PADDING_PX = 10;
+const INVENTORY_PANEL_BORDER_PX = 1;
+const protocol = globalThis.VibeProtocol || {
+  ENTITY_PROTO_TYPE: 1,
+  ENTITY_PROTO_VERSION: 7,
+  POS_SCALE: 64,
+  MANA_SCALE: 10,
+  HEAL_SCALE: 10,
+  DELTA_FLAG_HP_CHANGED: 1 << 0,
+  DELTA_FLAG_MAX_HP_CHANGED: 1 << 1,
+  DELTA_FLAG_REMOVED: 1 << 2,
+  DELTA_FLAG_COPPER_CHANGED: 1 << 3,
+  DELTA_FLAG_PROGRESS_CHANGED: 1 << 4,
+  DELTA_FLAG_MANA_CHANGED: 1 << 5,
+  DELTA_FLAG_MAX_MANA_CHANGED: 1 << 6,
+  DELTA_FLAG_PENDING_HEAL_CHANGED: 1 << 7,
+  SELF_FLAG_PENDING_MANA_CHANGED: 1 << 2,
+  SELF_MODE_NONE: 0,
+  SELF_MODE_FULL: 1,
+  SELF_MODE_DELTA: 2
+};
+const {
+  ENTITY_PROTO_TYPE,
+  ENTITY_PROTO_VERSION,
+  POS_SCALE,
+  MANA_SCALE,
+  HEAL_SCALE,
+  DELTA_FLAG_HP_CHANGED,
+  DELTA_FLAG_MAX_HP_CHANGED,
+  DELTA_FLAG_REMOVED,
+  DELTA_FLAG_COPPER_CHANGED,
+  DELTA_FLAG_PROGRESS_CHANGED,
+  DELTA_FLAG_MANA_CHANGED,
+  DELTA_FLAG_MAX_MANA_CHANGED,
+  DELTA_FLAG_PENDING_HEAL_CHANGED,
+  SELF_FLAG_PENDING_MANA_CHANGED,
+  SELF_MODE_NONE,
+  SELF_MODE_FULL,
+  SELF_MODE_DELTA
+} = protocol;
 
 let socket = null;
 let myId = null;
@@ -211,6 +236,175 @@ function isOrcBerserkerMobName(name) {
   return lower.includes("orc") && lower.includes("berserker");
 }
 
+function sanitizeCssColor(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^#[0-9a-fA-F]{3,8}$/.test(raw)) {
+    return raw;
+  }
+  if (/^rgba?\(([^)]+)\)$/.test(raw)) {
+    return raw;
+  }
+  if (/^hsla?\(([^)]+)\)$/.test(raw)) {
+    return raw;
+  }
+  return "";
+}
+
+function normalizeMobRenderStyle(rawStyle) {
+  if (!rawStyle || typeof rawStyle !== "object") {
+    return null;
+  }
+
+  const style = {};
+  const spriteType = String(rawStyle.spriteType || "").trim().toLowerCase();
+  if (spriteType) {
+    style.spriteType = spriteType.slice(0, 32);
+  }
+
+  const numericFields = [
+    ["sizeScale", 0.5, 3],
+    ["walkCycleSpeed", 0.1, 10],
+    ["idleCycleSpeed", 0, 10],
+    ["moveThreshold", 0, 2],
+    ["attackAnimSpeed", 0.1, 4],
+    ["weaponOffsetX", -24, 24],
+    ["weaponOffsetY", -24, 24],
+    ["weaponAngleOffsetDeg", -180, 180],
+    ["biteRadius", 4, 40]
+  ];
+  for (const [field, min, max] of numericFields) {
+    const n = Number(rawStyle[field]);
+    if (Number.isFinite(n)) {
+      style[field] = clamp(n, min, max);
+    }
+  }
+
+  const attackVisual = String(rawStyle.attackVisual || "").trim().toLowerCase();
+  if (attackVisual) {
+    style.attackVisual = attackVisual.slice(0, 32);
+  }
+
+  const rawPalette = rawStyle.palette && typeof rawStyle.palette === "object" ? rawStyle.palette : null;
+  if (rawPalette) {
+    const palette = {};
+    for (const [rawKey, rawValue] of Object.entries(rawPalette)) {
+      const key = String(rawKey || "").trim().slice(0, 48);
+      const color = sanitizeCssColor(rawValue);
+      if (!key || !color) {
+        continue;
+      }
+      palette[key] = color;
+    }
+    if (Object.keys(palette).length > 0) {
+      style.palette = palette;
+    }
+  }
+
+  return Object.keys(style).length > 0 ? style : null;
+}
+
+function detectMobSpriteTypeFromName(name) {
+  const lower = String(name || "").toLowerCase();
+  if (lower.includes("skeleton")) {
+    return "skeleton";
+  }
+  if (lower.includes("creeper")) {
+    return "creeper";
+  }
+  if (lower.includes("spider")) {
+    return "spider";
+  }
+  if (lower.includes("zombie")) {
+    return "zombie";
+  }
+  if (lower.includes("orc") || lower.includes("berserker")) {
+    return "orc";
+  }
+  return "basic";
+}
+
+function getMobRenderStyle(mob) {
+  if (mob && mob.renderStyle && typeof mob.renderStyle === "object") {
+    return mob.renderStyle;
+  }
+  const meta = entityRuntime.mobMeta.get(mob && mob.id);
+  if (meta && meta.renderStyle && typeof meta.renderStyle === "object") {
+    return meta.renderStyle;
+  }
+  return null;
+}
+
+function getMobSpriteType(mob) {
+  const style = getMobRenderStyle(mob);
+  const configured = String((style && style.spriteType) || "").toLowerCase();
+  const normalized =
+    configured === "orcberserker" || configured === "orc_berserker" ? "orc" : configured;
+  if (normalized === "zombie" || normalized === "skeleton" || normalized === "creeper" || normalized === "spider" || normalized === "orc" || normalized === "basic") {
+    return normalized;
+  }
+  return detectMobSpriteTypeFromName(mob && mob.name);
+}
+
+function getMobAttackVisualType(mob) {
+  const style = getMobRenderStyle(mob);
+  const configured = String((style && style.attackVisual) || "").toLowerCase();
+  if (configured === "bite" || configured === "sword" || configured === "dual_axes" || configured === "ignition" || configured === "none") {
+    return configured;
+  }
+  const spriteType = getMobSpriteType(mob);
+  if (spriteType === "skeleton") {
+    return "sword";
+  }
+  if (spriteType === "creeper") {
+    return "ignition";
+  }
+  if (spriteType === "orc") {
+    return "dual_axes";
+  }
+  return "bite";
+}
+
+function getMobStyleNumber(style, key, fallback, min, max) {
+  const n = Number(style && style[key]);
+  if (!Number.isFinite(n)) {
+    return fallback;
+  }
+  return clamp(n, min, max);
+}
+
+function getMobStyleCacheKey(style) {
+  if (!style || typeof style !== "object") {
+    return "";
+  }
+  try {
+    return JSON.stringify(style);
+  } catch {
+    return "";
+  }
+}
+
+function applyMobPaletteOverrides(basePalette, style) {
+  const palette = { ...basePalette };
+  const source = style && style.palette && typeof style.palette === "object" ? style.palette : null;
+  if (!source) {
+    return palette;
+  }
+  for (const [key, value] of Object.entries(source)) {
+    if (!(key in palette)) {
+      continue;
+    }
+    const color = sanitizeCssColor(value);
+    if (!color) {
+      continue;
+    }
+    palette[key] = color;
+  }
+  return palette;
+}
+
 function setStatus(text) {
   statusEl.textContent = text || "";
 }
@@ -255,6 +449,38 @@ const BUILTIN_ACTION_DEFS = {
     castMs: 0
   }
 };
+const abilityVisualRegistry = globalThis.VibeAbilityVisualRegistry || {
+  defaultVisuals: {},
+  byKind: {},
+  byId: {}
+};
+
+function toAbilityVisualKey(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getAbilityVisualHooks(actionId, actionDef = null, kindOverride = "") {
+  const idKey = toAbilityVisualKey(actionId);
+  const def = actionDef || getActionDefById(actionId);
+  const kindKey = toAbilityVisualKey(kindOverride || def?.kind || "");
+  const defaultVisuals = abilityVisualRegistry.defaultVisuals || {};
+  const kindVisuals = (abilityVisualRegistry.byKind && abilityVisualRegistry.byKind[kindKey]) || {};
+  const idVisuals = (abilityVisualRegistry.byId && abilityVisualRegistry.byId[idKey]) || {};
+  return {
+    ...defaultVisuals,
+    ...kindVisuals,
+    ...idVisuals
+  };
+}
+
+function getAbilityVisualHook(actionId, actionDef, hookName, fallback = "", kindOverride = "") {
+  const hooks = getAbilityVisualHooks(actionId, actionDef, kindOverride);
+  const hook = hooks[hookName];
+  if (typeof hook === "string" && hook.trim()) {
+    return hook.trim();
+  }
+  return fallback;
+}
 
 function makeActionBinding(actionId) {
   return `action:${String(actionId || "none")}`;
@@ -589,12 +815,31 @@ function getCastProgress(castState, now) {
   };
 }
 
+function findAbilityDefById(abilityId) {
+  const id = String(abilityId || "");
+  if (!id) {
+    return null;
+  }
+  let ability = abilityDefsById.get(id);
+  if (ability) {
+    return ability;
+  }
+  const lowered = id.toLowerCase();
+  for (const [key, value] of abilityDefsById.entries()) {
+    if (String(key).toLowerCase() === lowered) {
+      ability = value;
+      break;
+    }
+  }
+  return ability || null;
+}
+
 function getActionDefById(actionId) {
   const id = String(actionId || "none");
   if (BUILTIN_ACTION_DEFS[id]) {
     return BUILTIN_ACTION_DEFS[id];
   }
-  const ability = abilityDefsById.get(id);
+  const ability = findAbilityDefById(id);
   if (!ability) {
     return BUILTIN_ACTION_DEFS.none;
   }
@@ -1055,268 +1300,286 @@ function createIconUrl(cacheKey, drawFn) {
   return url;
 }
 
+function drawMeleeSlashActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.strokeStyle = "#d7e4f3";
+  iconCtx.lineWidth = 4;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 10, mid + 9);
+  iconCtx.lineTo(mid + 11, mid - 12);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "#8294ad";
+  iconCtx.lineWidth = 3;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 5, mid + 3);
+  iconCtx.lineTo(mid - 12, mid + 10);
+  iconCtx.stroke();
+}
+
+function drawFrostboltActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.save();
+  iconCtx.translate(mid, mid);
+  iconCtx.rotate(-Math.PI / 4);
+  iconCtx.fillStyle = "#b9f2ff";
+  iconCtx.strokeStyle = "#6bb8e8";
+  iconCtx.lineWidth = 2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-13, 0);
+  iconCtx.lineTo(9, -4.5);
+  iconCtx.lineTo(13, 0);
+  iconCtx.lineTo(9, 4.5);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(189, 236, 255, 0.92)";
+  iconCtx.lineWidth = 1.4;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-14, 0);
+  iconCtx.lineTo(-20, 0);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(141, 214, 255, 0.78)";
+  for (let i = 0; i < 3; i += 1) {
+    const y = -6 + i * 6;
+    iconCtx.beginPath();
+    iconCtx.moveTo(-12 - i * 3, y);
+    iconCtx.lineTo(-17 - i * 3, y);
+    iconCtx.stroke();
+  }
+  iconCtx.restore();
+}
+
+function drawArcaneMissilesActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.save();
+  iconCtx.translate(mid, mid);
+  iconCtx.rotate(-Math.PI / 4.2);
+
+  iconCtx.fillStyle = "#f4ecff";
+  iconCtx.strokeStyle = "#9e84dc";
+  iconCtx.lineWidth = 1.8;
+  iconCtx.beginPath();
+  iconCtx.moveTo(14, 0);
+  iconCtx.lineTo(-7, -5.5);
+  iconCtx.lineTo(-10, 0);
+  iconCtx.lineTo(-7, 5.5);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(208, 182, 255, 0.9)";
+  iconCtx.lineWidth = 2.2;
+  iconCtx.beginPath();
+  iconCtx.arc(2, 0, 8.4, 0.2, Math.PI * 1.7);
+  iconCtx.stroke();
+  iconCtx.beginPath();
+  iconCtx.arc(-4, 0, 10.2, Math.PI * 0.4, Math.PI * 2.1);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(233, 223, 255, 0.92)";
+  for (let i = 0; i < 4; i += 1) {
+    const a = i * ((Math.PI * 2) / 4) + 0.35;
+    iconCtx.beginPath();
+    iconCtx.arc(-9 + Math.cos(a) * 7, Math.sin(a) * 7, 1.2, 0, Math.PI * 2);
+    iconCtx.fill();
+  }
+  iconCtx.restore();
+}
+
+function drawBlizzardActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "rgba(171, 223, 255, 0.2)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid, 12, 0, Math.PI * 2);
+  iconCtx.fill();
+
+  iconCtx.strokeStyle = "#d5f0ff";
+  iconCtx.lineWidth = 1.8;
+  for (let i = 0; i < 6; i += 1) {
+    const a = (Math.PI * 2 * i) / 6;
+    const x0 = mid + Math.cos(a) * 3;
+    const y0 = mid + Math.sin(a) * 3;
+    const x1 = mid + Math.cos(a) * 11;
+    const y1 = mid + Math.sin(a) * 11;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x0, y0);
+    iconCtx.lineTo(x1, y1);
+    iconCtx.stroke();
+  }
+  iconCtx.strokeStyle = "rgba(203, 235, 255, 0.82)";
+  iconCtx.lineWidth = 1.2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 12, mid - 10);
+  iconCtx.lineTo(mid - 6, mid - 2);
+  iconCtx.moveTo(mid - 4, mid - 11);
+  iconCtx.lineTo(mid + 2, mid - 3);
+  iconCtx.moveTo(mid + 4, mid - 10);
+  iconCtx.lineTo(mid + 10, mid - 2);
+  iconCtx.stroke();
+}
+
+function drawArcaneBeamActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.save();
+  iconCtx.translate(mid, mid);
+  iconCtx.rotate(-Math.PI / 3.2);
+
+  iconCtx.strokeStyle = "rgba(191, 170, 255, 0.92)";
+  iconCtx.lineWidth = 8;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(-13, 0);
+  iconCtx.lineTo(13, 0);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(241, 233, 255, 0.98)";
+  iconCtx.lineWidth = 3.2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-13, 0);
+  iconCtx.lineTo(13, 0);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(210, 194, 255, 0.84)";
+  iconCtx.lineWidth = 1.8;
+  for (let i = 0; i <= 24; i += 1) {
+    const t = i / 24;
+    const x = -13 + t * 26;
+    const y = Math.sin(t * Math.PI * 4.2) * 3.5;
+    if (i === 0) {
+      iconCtx.beginPath();
+      iconCtx.moveTo(x, y);
+    } else {
+      iconCtx.lineTo(x, y);
+    }
+  }
+  iconCtx.stroke();
+  iconCtx.restore();
+}
+
+function drawBlinkActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.save();
+  iconCtx.translate(mid, mid);
+  iconCtx.rotate(-Math.PI / 6);
+
+  iconCtx.strokeStyle = "rgba(197, 169, 255, 0.9)";
+  iconCtx.lineWidth = 2.1;
+  iconCtx.beginPath();
+  iconCtx.arc(0, 0, 10.5, 0.35, Math.PI * 1.78);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(128, 99, 232, 0.95)";
+  iconCtx.lineWidth = 2.6;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-12, 0);
+  iconCtx.lineTo(12, 0);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(230, 220, 255, 0.92)";
+  for (let i = 0; i < 5; i += 1) {
+    const a = i * ((Math.PI * 2) / 5) + 0.2;
+    iconCtx.beginPath();
+    iconCtx.arc(Math.cos(a) * 13, Math.sin(a) * 13, 1.3, 0, Math.PI * 2);
+    iconCtx.fill();
+  }
+  iconCtx.restore();
+}
+
+function drawFireballActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "#ff8b42";
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid, 10, 0, Math.PI * 2);
+  iconCtx.fill();
+  iconCtx.fillStyle = "#ffd285";
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 3, mid - 3, 4.2, 0, Math.PI * 2);
+  iconCtx.fill();
+
+  iconCtx.strokeStyle = "rgba(255, 165, 87, 0.8)";
+  iconCtx.lineWidth = 2;
+  for (let i = 0; i < 5; i += 1) {
+    const a = (Math.PI * 2 * i) / 5;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid + Math.cos(a) * 12, mid + Math.sin(a) * 12);
+    iconCtx.lineTo(mid + Math.cos(a) * 16, mid + Math.sin(a) * 16);
+    iconCtx.stroke();
+  }
+}
+
+function drawWarstompActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.strokeStyle = "#d6ecff";
+  iconCtx.lineWidth = 2.4;
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid, 10, 0, Math.PI * 2);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(146, 204, 255, 0.9)";
+  iconCtx.lineWidth = 1.8;
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid, 6.2, 0, Math.PI * 2);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(210, 236, 255, 0.8)";
+  iconCtx.lineWidth = 1.3;
+  for (let i = 0; i < 8; i += 1) {
+    const a = (Math.PI * 2 * i) / 8;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid + Math.cos(a) * 2, mid + Math.sin(a) * 2);
+    iconCtx.lineTo(mid + Math.cos(a) * 13, mid + Math.sin(a) * 13);
+    iconCtx.stroke();
+  }
+}
+
+function drawPickupBagActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "#8e6335";
+  iconCtx.fillRect(mid - 11, mid - 8, 22, 16);
+  iconCtx.strokeStyle = "#deb474";
+  iconCtx.lineWidth = 3;
+  iconCtx.strokeRect(mid - 11, mid - 8, 22, 16);
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 4, mid - 8);
+  iconCtx.lineTo(mid + 4, mid - 8);
+  iconCtx.stroke();
+}
+
+function drawUnknownActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "#88a0b8";
+  iconCtx.font = "700 18px Segoe UI";
+  iconCtx.textAlign = "center";
+  iconCtx.textBaseline = "middle";
+  iconCtx.fillText("?", mid, mid);
+}
+
+const ABILITY_ICON_RENDERERS = Object.freeze({
+  unknown: drawUnknownActionIcon,
+  melee_slash: drawMeleeSlashActionIcon,
+  frostbolt: drawFrostboltActionIcon,
+  arcane_missiles: drawArcaneMissilesActionIcon,
+  blizzard: drawBlizzardActionIcon,
+  arcane_beam: drawArcaneBeamActionIcon,
+  blink: drawBlinkActionIcon,
+  fireball: drawFireballActionIcon,
+  warstomp: drawWarstompActionIcon,
+  pickup_bag: drawPickupBagActionIcon
+});
+
 function getActionIconUrl(actionId) {
   const key = `action_icon:${actionId}`;
   return createIconUrl(key, (iconCtx, size) => {
-    const mid = size / 2;
-    const actionDef = getActionDefById(actionId);
     iconCtx.fillStyle = "rgba(18, 29, 42, 0.95)";
     iconCtx.fillRect(0, 0, size, size);
-
-    if (actionId === "slash" || actionDef.kind === "meleeCone") {
-      iconCtx.strokeStyle = "#d7e4f3";
-      iconCtx.lineWidth = 4;
-      iconCtx.lineCap = "round";
-      iconCtx.beginPath();
-      iconCtx.moveTo(mid - 10, mid + 9);
-      iconCtx.lineTo(mid + 11, mid - 12);
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "#8294ad";
-      iconCtx.lineWidth = 3;
-      iconCtx.beginPath();
-      iconCtx.moveTo(mid - 5, mid + 3);
-      iconCtx.lineTo(mid - 12, mid + 10);
-      iconCtx.stroke();
-      return;
-    }
-
-    if (actionId === "frostbolt") {
-      iconCtx.save();
-      iconCtx.translate(mid, mid);
-      iconCtx.rotate(-Math.PI / 4);
-      iconCtx.fillStyle = "#b9f2ff";
-      iconCtx.strokeStyle = "#6bb8e8";
-      iconCtx.lineWidth = 2;
-      iconCtx.beginPath();
-      iconCtx.moveTo(-13, 0);
-      iconCtx.lineTo(9, -4.5);
-      iconCtx.lineTo(13, 0);
-      iconCtx.lineTo(9, 4.5);
-      iconCtx.closePath();
-      iconCtx.fill();
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(189, 236, 255, 0.92)";
-      iconCtx.lineWidth = 1.4;
-      iconCtx.beginPath();
-      iconCtx.moveTo(-14, 0);
-      iconCtx.lineTo(-20, 0);
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(141, 214, 255, 0.78)";
-      for (let i = 0; i < 3; i += 1) {
-        const y = -6 + i * 6;
-        iconCtx.beginPath();
-        iconCtx.moveTo(-12 - i * 3, y);
-        iconCtx.lineTo(-17 - i * 3, y);
-        iconCtx.stroke();
-      }
-      iconCtx.restore();
-      return;
-    }
-
-    if (actionId === "arcaneMissiles") {
-      iconCtx.save();
-      iconCtx.translate(mid, mid);
-      iconCtx.rotate(-Math.PI / 4.2);
-
-      iconCtx.fillStyle = "#f4ecff";
-      iconCtx.strokeStyle = "#9e84dc";
-      iconCtx.lineWidth = 1.8;
-      iconCtx.beginPath();
-      iconCtx.moveTo(14, 0);
-      iconCtx.lineTo(-7, -5.5);
-      iconCtx.lineTo(-10, 0);
-      iconCtx.lineTo(-7, 5.5);
-      iconCtx.closePath();
-      iconCtx.fill();
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(208, 182, 255, 0.9)";
-      iconCtx.lineWidth = 2.2;
-      iconCtx.beginPath();
-      iconCtx.arc(2, 0, 8.4, 0.2, Math.PI * 1.7);
-      iconCtx.stroke();
-      iconCtx.beginPath();
-      iconCtx.arc(-4, 0, 10.2, Math.PI * 0.4, Math.PI * 2.1);
-      iconCtx.stroke();
-
-      iconCtx.fillStyle = "rgba(233, 223, 255, 0.92)";
-      for (let i = 0; i < 4; i += 1) {
-        const a = i * ((Math.PI * 2) / 4) + 0.35;
-        iconCtx.beginPath();
-        iconCtx.arc(-9 + Math.cos(a) * 7, Math.sin(a) * 7, 1.2, 0, Math.PI * 2);
-        iconCtx.fill();
-      }
-      iconCtx.restore();
-      return;
-    }
-
-    if (actionId === "blizzard") {
-      iconCtx.fillStyle = "rgba(171, 223, 255, 0.2)";
-      iconCtx.beginPath();
-      iconCtx.arc(mid, mid, 12, 0, Math.PI * 2);
-      iconCtx.fill();
-
-      iconCtx.strokeStyle = "#d5f0ff";
-      iconCtx.lineWidth = 1.8;
-      for (let i = 0; i < 6; i += 1) {
-        const a = (Math.PI * 2 * i) / 6;
-        const x0 = mid + Math.cos(a) * 3;
-        const y0 = mid + Math.sin(a) * 3;
-        const x1 = mid + Math.cos(a) * 11;
-        const y1 = mid + Math.sin(a) * 11;
-        iconCtx.beginPath();
-        iconCtx.moveTo(x0, y0);
-        iconCtx.lineTo(x1, y1);
-        iconCtx.stroke();
-      }
-      iconCtx.strokeStyle = "rgba(203, 235, 255, 0.82)";
-      iconCtx.lineWidth = 1.2;
-      iconCtx.beginPath();
-      iconCtx.moveTo(mid - 12, mid - 10);
-      iconCtx.lineTo(mid - 6, mid - 2);
-      iconCtx.moveTo(mid - 4, mid - 11);
-      iconCtx.lineTo(mid + 2, mid - 3);
-      iconCtx.moveTo(mid + 4, mid - 10);
-      iconCtx.lineTo(mid + 10, mid - 2);
-      iconCtx.stroke();
-      return;
-    }
-
-    if (actionId === "arcaneBeam" || actionDef.kind === "beam") {
-      iconCtx.save();
-      iconCtx.translate(mid, mid);
-      iconCtx.rotate(-Math.PI / 3.2);
-
-      iconCtx.strokeStyle = "rgba(191, 170, 255, 0.92)";
-      iconCtx.lineWidth = 8;
-      iconCtx.lineCap = "round";
-      iconCtx.beginPath();
-      iconCtx.moveTo(-13, 0);
-      iconCtx.lineTo(13, 0);
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(241, 233, 255, 0.98)";
-      iconCtx.lineWidth = 3.2;
-      iconCtx.beginPath();
-      iconCtx.moveTo(-13, 0);
-      iconCtx.lineTo(13, 0);
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(210, 194, 255, 0.84)";
-      iconCtx.lineWidth = 1.8;
-      for (let i = 0; i <= 24; i += 1) {
-        const t = i / 24;
-        const x = -13 + t * 26;
-        const y = Math.sin(t * Math.PI * 4.2) * 3.5;
-        if (i === 0) {
-          iconCtx.beginPath();
-          iconCtx.moveTo(x, y);
-        } else {
-          iconCtx.lineTo(x, y);
-        }
-      }
-      iconCtx.stroke();
-      iconCtx.restore();
-      return;
-    }
-
-    if (actionId === "blink" || actionDef.kind === "teleport") {
-      iconCtx.save();
-      iconCtx.translate(mid, mid);
-      iconCtx.rotate(-Math.PI / 6);
-
-      iconCtx.strokeStyle = "rgba(197, 169, 255, 0.9)";
-      iconCtx.lineWidth = 2.1;
-      iconCtx.beginPath();
-      iconCtx.arc(0, 0, 10.5, 0.35, Math.PI * 1.78);
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(128, 99, 232, 0.95)";
-      iconCtx.lineWidth = 2.6;
-      iconCtx.beginPath();
-      iconCtx.moveTo(-12, 0);
-      iconCtx.lineTo(12, 0);
-      iconCtx.stroke();
-
-      iconCtx.fillStyle = "rgba(230, 220, 255, 0.92)";
-      for (let i = 0; i < 5; i += 1) {
-        const a = i * ((Math.PI * 2) / 5) + 0.2;
-        iconCtx.beginPath();
-        iconCtx.arc(Math.cos(a) * 13, Math.sin(a) * 13, 1.3, 0, Math.PI * 2);
-        iconCtx.fill();
-      }
-      iconCtx.restore();
-      return;
-    }
-
-    if (actionId === "fireball" || actionDef.kind === "projectile") {
-      iconCtx.fillStyle = "#ff8b42";
-      iconCtx.beginPath();
-      iconCtx.arc(mid, mid, 10, 0, Math.PI * 2);
-      iconCtx.fill();
-      iconCtx.fillStyle = "#ffd285";
-      iconCtx.beginPath();
-      iconCtx.arc(mid + 3, mid - 3, 4.2, 0, Math.PI * 2);
-      iconCtx.fill();
-
-      iconCtx.strokeStyle = "rgba(255, 165, 87, 0.8)";
-      iconCtx.lineWidth = 2;
-      for (let i = 0; i < 5; i += 1) {
-        const a = (Math.PI * 2 * i) / 5;
-        iconCtx.beginPath();
-        iconCtx.moveTo(mid + Math.cos(a) * 12, mid + Math.sin(a) * 12);
-        iconCtx.lineTo(mid + Math.cos(a) * 16, mid + Math.sin(a) * 16);
-        iconCtx.stroke();
-      }
-      return;
-    }
-
-    if (actionId === "warstomp" || actionDef.kind === "area") {
-      iconCtx.strokeStyle = "#d6ecff";
-      iconCtx.lineWidth = 2.4;
-      iconCtx.beginPath();
-      iconCtx.arc(mid, mid, 10, 0, Math.PI * 2);
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(146, 204, 255, 0.9)";
-      iconCtx.lineWidth = 1.8;
-      iconCtx.beginPath();
-      iconCtx.arc(mid, mid, 6.2, 0, Math.PI * 2);
-      iconCtx.stroke();
-
-      iconCtx.strokeStyle = "rgba(210, 236, 255, 0.8)";
-      iconCtx.lineWidth = 1.3;
-      for (let i = 0; i < 8; i += 1) {
-        const a = (Math.PI * 2 * i) / 8;
-        iconCtx.beginPath();
-        iconCtx.moveTo(mid + Math.cos(a) * 2, mid + Math.sin(a) * 2);
-        iconCtx.lineTo(mid + Math.cos(a) * 13, mid + Math.sin(a) * 13);
-        iconCtx.stroke();
-      }
-      return;
-    }
-
-    if (actionId === "pickup_bag") {
-      iconCtx.fillStyle = "#8e6335";
-      iconCtx.fillRect(mid - 11, mid - 8, 22, 16);
-      iconCtx.strokeStyle = "#deb474";
-      iconCtx.lineWidth = 3;
-      iconCtx.strokeRect(mid - 11, mid - 8, 22, 16);
-      iconCtx.beginPath();
-      iconCtx.moveTo(mid - 4, mid - 8);
-      iconCtx.lineTo(mid + 4, mid - 8);
-      iconCtx.stroke();
-      return;
-    }
-
-    iconCtx.fillStyle = "#88a0b8";
-    iconCtx.font = "700 18px Segoe UI";
-    iconCtx.textAlign = "center";
-    iconCtx.textBaseline = "middle";
-    iconCtx.fillText("?", mid, mid);
+    const actionDef = getActionDefById(actionId);
+    const iconHook = getAbilityVisualHook(actionId, actionDef, "iconRenderer", "unknown");
+    const renderIcon = ABILITY_ICON_RENDERERS[iconHook] || ABILITY_ICON_RENDERERS.unknown;
+    renderIcon(iconCtx, size, { actionId, actionDef });
   });
 }
 
@@ -1423,12 +1686,19 @@ function ensureInventorySlotsLength() {
 }
 
 function updateInventoryUI() {
-  if (!inventoryGrid) {
+  if (!inventoryGrid || !inventoryPanel) {
     return;
   }
 
   ensureInventorySlotsLength();
-  inventoryGrid.style.gridTemplateColumns = `repeat(${inventoryState.cols}, 1fr)`;
+  const gridWidth =
+    inventoryState.cols * INVENTORY_SLOT_SIZE_PX + Math.max(0, inventoryState.cols - 1) * INVENTORY_SLOT_GAP_PX;
+  const requiredPanelWidth = gridWidth + INVENTORY_PANEL_PADDING_PX * 2 + INVENTORY_PANEL_BORDER_PX * 2;
+  const maxPanelWidth = Math.max(180, window.innerWidth - 24);
+  const panelWidth = Math.min(requiredPanelWidth, maxPanelWidth);
+  inventoryPanel.style.width = `${panelWidth}px`;
+  inventoryPanel.style.overflowX = requiredPanelWidth > panelWidth ? "auto" : "visible";
+  inventoryGrid.style.gridTemplateColumns = `repeat(${inventoryState.cols}, ${INVENTORY_SLOT_SIZE_PX}px)`;
   inventoryGrid.innerHTML = "";
 
   for (let i = 0; i < inventoryState.slots.length; i += 1) {
@@ -1912,7 +2182,12 @@ function triggerRemoteMobBite(mobId, dx, dy) {
   const mob = entityRuntime.mobs.get(mobId);
   const meta = entityRuntime.mobMeta.get(mobId);
   const mobName = (mob && mob.name) || (meta && meta.name) || "";
-  if (isOrcBerserkerMobName(mobName)) {
+  const spriteType = getMobSpriteType({
+    id: mobId,
+    name: mobName,
+    renderStyle: (mob && mob.renderStyle) || (meta && meta.renderStyle) || null
+  });
+  if (spriteType === "orc") {
     playOrcBerserkerAttackAudio(mobId);
   }
 }
@@ -2080,11 +2355,13 @@ function applyMobMeta(metaMobs) {
       continue;
     }
     const name = String(meta.name || `Mob ${meta.id}`).slice(0, 32);
-    entityRuntime.mobMeta.set(meta.id, { name });
+    const renderStyle = normalizeMobRenderStyle(meta.renderStyle);
+    entityRuntime.mobMeta.set(meta.id, { name, renderStyle });
 
     const existing = entityRuntime.mobs.get(meta.id);
     if (existing) {
       existing.name = name;
+      existing.renderStyle = renderStyle;
       entityRuntime.mobs.set(meta.id, existing);
     }
   }
@@ -2543,6 +2820,7 @@ function parseEntityBinaryPacket(arrayBuffer) {
     entityRuntime.mobs.set(id, {
       id,
       name: (meta && meta.name) || `Mob ${id}`,
+      renderStyle: (meta && meta.renderStyle) || null,
       x: xq / POS_SCALE,
       y: yq / POS_SCALE,
       hp,
@@ -2568,6 +2846,7 @@ function parseEntityBinaryPacket(arrayBuffer) {
     const entity = entityRuntime.mobs.get(id) || {
       id,
       name: ((entityRuntime.mobMeta.get(id) || {}).name) || `Mob ${id}`,
+      renderStyle: ((entityRuntime.mobMeta.get(id) || {}).renderStyle) || null,
       x: 0,
       y: 0,
       hp: 0,
@@ -2587,6 +2866,10 @@ function parseEntityBinaryPacket(arrayBuffer) {
     }
     entity.x = entity._xq / POS_SCALE;
     entity.y = entity._yq / POS_SCALE;
+    if (!entity.renderStyle) {
+      const meta = entityRuntime.mobMeta.get(id);
+      entity.renderStyle = (meta && meta.renderStyle) || null;
+    }
     entityRuntime.mobs.set(id, entity);
   }
 
@@ -3087,6 +3370,7 @@ function connectAndJoin(name, classType) {
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  updateInventoryUI();
 }
 
 function getCurrentInputVector() {
@@ -3860,16 +4144,23 @@ function drawAreaEffects(cameraX, cameraY, now) {
       activeAreaEffectsById.delete(id);
       continue;
     }
-    if (effect.abilityId === "blizzard") {
-      drawBlizzardAreaEffect(effect, cameraX, cameraY, now);
-    } else if (effect.abilityId === "arcanebeam" || effect.kind === "beam") {
-      drawArcaneBeamAreaEffect(effect, cameraX, cameraY, now);
+    const actionDef = getActionDefById(effect.abilityId);
+    const areaHook = getAbilityVisualHook(
+      effect.abilityId,
+      actionDef,
+      "areaEffectRenderer",
+      "",
+      String(effect.kind || "")
+    );
+    const drawAreaEffect = ABILITY_AREA_EFFECT_RENDERERS[areaHook];
+    if (drawAreaEffect) {
+      drawAreaEffect(effect, cameraX, cameraY, now);
     }
   }
 }
 
 function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
-  if (!self || !abilityChannel.active || String(abilityChannel.abilityId || "").toLowerCase() !== "blizzard") {
+  if (!self || !abilityChannel.active) {
     return;
   }
   const targetX = Number(abilityChannel.targetX);
@@ -3877,8 +4168,9 @@ function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const abilityDef = abilityDefsById.get("blizzard");
-  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf("blizzard", self));
+  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("blizzard");
+  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
   const areaRadius = Math.max(0.2, Number(abilityDef?.areaRadius || abilityDef?.radius || 3));
   const center = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
   const radiusPx = Math.max(8, areaRadius * TILE_SIZE);
@@ -3908,6 +4200,27 @@ function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
   ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
   ctx.stroke();
   ctx.restore();
+}
+
+const ABILITY_AREA_EFFECT_RENDERERS = Object.freeze({
+  blizzard: drawBlizzardAreaEffect,
+  arcane_beam: drawArcaneBeamAreaEffect
+});
+
+const ABILITY_CAST_PREVIEW_RENDERERS = Object.freeze({
+  blizzard: drawBlizzardCastPreview
+});
+
+function drawAbilityCastPreview(self, cameraX, cameraY, now) {
+  if (!self || !abilityChannel.active) {
+    return;
+  }
+  const actionDef = getActionDefById(abilityChannel.abilityId);
+  const castHook = getAbilityVisualHook(abilityChannel.abilityId, actionDef, "castPreviewRenderer", "");
+  const drawCastPreview = ABILITY_CAST_PREVIEW_RENDERERS[castHook];
+  if (drawCastPreview) {
+    drawCastPreview(self, cameraX, cameraY, now);
+  }
 }
 
 function hashString(value) {
@@ -4053,14 +4366,15 @@ function drawZombieSpriteFrame(targetCtx, palette, pose) {
   targetCtx.fill();
 }
 
-function getZombieWalkFrames(typeName) {
-  const key = String(typeName || "Zombie");
+function getZombieWalkFrames(typeName, style = null) {
+  const styleKey = getMobStyleCacheKey(style);
+  const key = `${String(typeName || "Zombie")}|${styleKey}`;
   const cached = zombieWalkFramesCache.get(key);
   if (cached) {
     return cached;
   }
 
-  const seed = hashString(key);
+  const seed = hashString(String(typeName || "Zombie"));
   const palettes = [
     {
       skin: "#7d9f5d",
@@ -4090,7 +4404,7 @@ function getZombieWalkFrames(typeName) {
       eye: "#10130d"
     }
   ];
-  const palette = palettes[(seed >>> 4) % palettes.length];
+  const palette = applyMobPaletteOverrides(palettes[(seed >>> 4) % palettes.length], style);
   const frames = [];
 
   for (let i = 0; i < 4; i += 1) {
@@ -4110,8 +4424,9 @@ function getZombieWalkFrames(typeName) {
 }
 
 function getZombieWalkSprite(mob) {
+  const style = getMobRenderStyle(mob);
   const mobName = String(mob.name || "Zombie");
-  const frames = getZombieWalkFrames(mobName);
+  const frames = getZombieWalkFrames(mobName, style);
   const now = performance.now();
   const existing = zombieWalkRuntime.get(mob.id);
   const state =
@@ -4127,10 +4442,11 @@ function getZombieWalkSprite(mob) {
   const dt = Math.max(0.001, (now - state.lastT) / 1000);
   const moved = Math.hypot(mob.x - state.lastX, mob.y - state.lastY);
   const speed = moved / dt;
-  const moving = speed > 0.025;
+  const moving = speed > getMobStyleNumber(style, "moveThreshold", 0.025, 0, 2);
+  const walkCycleSpeed = getMobStyleNumber(style, "walkCycleSpeed", 2.2, 0.1, 10);
 
   if (moving) {
-    state.phase = (state.phase + dt * 2.2) % (Math.PI * 2);
+    state.phase = (state.phase + dt * walkCycleSpeed) % (Math.PI * 2);
   }
 
   state.lastX = mob.x;
@@ -4258,14 +4574,15 @@ function drawCreeperSpriteFrame(targetCtx, palette, pose) {
   targetCtx.stroke();
 }
 
-function getCreeperWalkFrames(typeName) {
-  const key = String(typeName || "Creeper");
+function getCreeperWalkFrames(typeName, style = null) {
+  const styleKey = getMobStyleCacheKey(style);
+  const key = `${String(typeName || "Creeper")}|${styleKey}`;
   const cached = creeperWalkFramesCache.get(key);
   if (cached) {
     return cached;
   }
 
-  const seed = hashString(key);
+  const seed = hashString(String(typeName || "Creeper"));
   const palettes = [
     {
       body: "#f3f5f8",
@@ -4295,7 +4612,7 @@ function getCreeperWalkFrames(typeName) {
       fuse: "#3d3026"
     }
   ];
-  const palette = palettes[(seed >>> 5) % palettes.length];
+  const palette = applyMobPaletteOverrides(palettes[(seed >>> 5) % palettes.length], style);
   const frames = [];
 
   for (let i = 0; i < 6; i += 1) {
@@ -4315,8 +4632,9 @@ function getCreeperWalkFrames(typeName) {
 }
 
 function getCreeperWalkSprite(mob) {
+  const style = getMobRenderStyle(mob);
   const mobName = String(mob.name || "Creeper");
-  const frames = getCreeperWalkFrames(mobName);
+  const frames = getCreeperWalkFrames(mobName, style);
   const now = performance.now();
   const existing = creeperWalkRuntime.get(mob.id);
   const state =
@@ -4332,10 +4650,11 @@ function getCreeperWalkSprite(mob) {
   const dt = Math.max(0.001, (now - state.lastT) / 1000);
   const moved = Math.hypot(mob.x - state.lastX, mob.y - state.lastY);
   const speed = moved / dt;
-  const moving = speed > 0.025;
+  const moving = speed > getMobStyleNumber(style, "moveThreshold", 0.025, 0, 2);
+  const walkCycleSpeed = getMobStyleNumber(style, "walkCycleSpeed", 2.4, 0.1, 10);
 
   if (moving) {
-    state.phase = (state.phase + dt * 2.4) % (Math.PI * 2);
+    state.phase = (state.phase + dt * walkCycleSpeed) % (Math.PI * 2);
   }
 
   state.lastX = mob.x;
@@ -4464,14 +4783,15 @@ function drawSpiderSpriteFrame(targetCtx, palette, pose) {
   targetCtx.fill();
 }
 
-function getSpiderWalkFrames(typeName) {
-  const key = String(typeName || "Spider");
+function getSpiderWalkFrames(typeName, style = null) {
+  const styleKey = getMobStyleCacheKey(style);
+  const key = `${String(typeName || "Spider")}|${styleKey}`;
   const cached = spiderWalkFramesCache.get(key);
   if (cached) {
     return cached;
   }
 
-  const seed = hashString(key);
+  const seed = hashString(String(typeName || "Spider"));
   const palettes = [
     {
       shell: "#2d4f9e",
@@ -4504,7 +4824,7 @@ function getSpiderWalkFrames(typeName) {
       web: "rgba(154, 168, 209, 0.4)"
     }
   ];
-  const palette = palettes[(seed >>> 5) % palettes.length];
+  const palette = applyMobPaletteOverrides(palettes[(seed >>> 5) % palettes.length], style);
   const frames = [];
 
   for (let i = 0; i < 6; i += 1) {
@@ -4524,8 +4844,9 @@ function getSpiderWalkFrames(typeName) {
 }
 
 function getSpiderWalkSprite(mob) {
+  const style = getMobRenderStyle(mob);
   const mobName = String(mob.name || "Spider");
-  const frames = getSpiderWalkFrames(mobName);
+  const frames = getSpiderWalkFrames(mobName, style);
   const now = performance.now();
   const existing = spiderWalkRuntime.get(mob.id);
   const state =
@@ -4541,10 +4862,11 @@ function getSpiderWalkSprite(mob) {
   const dt = Math.max(0.001, (now - state.lastT) / 1000);
   const moved = Math.hypot(mob.x - state.lastX, mob.y - state.lastY);
   const speed = moved / dt;
-  const moving = speed > 0.025;
+  const moving = speed > getMobStyleNumber(style, "moveThreshold", 0.025, 0, 2);
+  const walkCycleSpeed = getMobStyleNumber(style, "walkCycleSpeed", 3.2, 0.1, 12);
 
   if (moving) {
-    state.phase = (state.phase + dt * 3.2) % (Math.PI * 2);
+    state.phase = (state.phase + dt * walkCycleSpeed) % (Math.PI * 2);
   }
 
   state.lastX = mob.x;
@@ -4744,15 +5066,16 @@ function drawOrcBerserkerSpriteFrame(targetCtx, palette, pose, options = {}) {
   drawAxe(rightHandX, rightHandY, -Math.PI / 2 + 0.23 - shoulderSway * 0.04, palette.axeBladeB);
 }
 
-function getOrcWalkFrames(typeName, includeAxes = true) {
-  const key = String(typeName || "Orc Berserker");
+function getOrcWalkFrames(typeName, style = null, includeAxes = true) {
+  const styleKey = getMobStyleCacheKey(style);
+  const key = `${String(typeName || "Orc Berserker")}|${styleKey}`;
   const cache = includeAxes ? orcWalkFramesCache : orcNoAxesWalkFramesCache;
   const cached = cache.get(key);
   if (cached) {
     return cached;
   }
 
-  const seed = hashString(key);
+  const seed = hashString(String(typeName || "Orc Berserker"));
   const palettes = [
     {
       skin: "#8fbf63",
@@ -4797,7 +5120,7 @@ function getOrcWalkFrames(typeName, includeAxes = true) {
       boot: "#37261f"
     }
   ];
-  const palette = palettes[(seed >>> 7) % palettes.length];
+  const palette = applyMobPaletteOverrides(palettes[(seed >>> 7) % palettes.length], style);
   const frames = [];
 
   for (let i = 0; i < 6; i += 1) {
@@ -4817,8 +5140,9 @@ function getOrcWalkFrames(typeName, includeAxes = true) {
 }
 
 function getOrcWalkSprite(mob, includeAxes = true) {
+  const style = getMobRenderStyle(mob);
   const mobName = String(mob.name || "Orc Berserker");
-  const frames = getOrcWalkFrames(mobName, includeAxes);
+  const frames = getOrcWalkFrames(mobName, style, includeAxes);
   const now = performance.now();
   const existing = orcWalkRuntime.get(mob.id);
   const state =
@@ -4834,12 +5158,14 @@ function getOrcWalkSprite(mob, includeAxes = true) {
   const dt = Math.max(0.001, (now - state.lastT) / 1000);
   const moved = Math.hypot(mob.x - state.lastX, mob.y - state.lastY);
   const speed = moved / dt;
-  const moving = speed > 0.022;
+  const moving = speed > getMobStyleNumber(style, "moveThreshold", 0.022, 0, 2);
+  const walkCycleSpeed = getMobStyleNumber(style, "walkCycleSpeed", 2.5, 0.1, 10);
+  const idleCycleSpeed = getMobStyleNumber(style, "idleCycleSpeed", 0.9, 0, 10);
 
   if (moving) {
-    state.phase = (state.phase + dt * 2.5) % (Math.PI * 2);
+    state.phase = (state.phase + dt * walkCycleSpeed) % (Math.PI * 2);
   } else {
-    state.phase = (state.phase + dt * 0.9) % (Math.PI * 2);
+    state.phase = (state.phase + dt * idleCycleSpeed) % (Math.PI * 2);
   }
 
   state.lastX = mob.x;
@@ -5072,15 +5398,16 @@ function drawSkeletonSpriteFrame(targetCtx, palette, pose, options = {}) {
   }
 }
 
-function getSkeletonWalkFrames(typeName, includeSword = true) {
-  const key = String(typeName || "Skeleton");
+function getSkeletonWalkFrames(typeName, style = null, includeSword = true) {
+  const styleKey = getMobStyleCacheKey(style);
+  const key = `${String(typeName || "Skeleton")}|${styleKey}`;
   const cache = includeSword ? skeletonWalkFramesCache : skeletonNoSwordWalkFramesCache;
   const cached = cache.get(key);
   if (cached) {
     return cached;
   }
 
-  const seed = hashString(key);
+  const seed = hashString(String(typeName || "Skeleton"));
   const palettes = [
     {
       bone: "#f0f2f5",
@@ -5113,7 +5440,7 @@ function getSkeletonWalkFrames(typeName, includeSword = true) {
       shieldCrack: "#aab2bf"
     }
   ];
-  const palette = palettes[(seed >>> 6) % palettes.length];
+  const palette = applyMobPaletteOverrides(palettes[(seed >>> 6) % palettes.length], style);
   const frames = [];
 
   for (let i = 0; i < 6; i += 1) {
@@ -5136,8 +5463,9 @@ function getSkeletonWalkFrames(typeName, includeSword = true) {
 }
 
 function getSkeletonWalkSprite(mob, includeSword = true) {
+  const style = getMobRenderStyle(mob);
   const mobName = String(mob.name || "Skeleton");
-  const frames = getSkeletonWalkFrames(mobName, includeSword);
+  const frames = getSkeletonWalkFrames(mobName, style, includeSword);
   const now = performance.now();
   const existing = skeletonWalkRuntime.get(mob.id);
   const state =
@@ -5153,10 +5481,11 @@ function getSkeletonWalkSprite(mob, includeSword = true) {
   const dt = Math.max(0.001, (now - state.lastT) / 1000);
   const moved = Math.hypot(mob.x - state.lastX, mob.y - state.lastY);
   const speed = moved / dt;
-  const moving = speed > 0.025;
+  const moving = speed > getMobStyleNumber(style, "moveThreshold", 0.025, 0, 2);
+  const walkCycleSpeed = getMobStyleNumber(style, "walkCycleSpeed", 2.8, 0.1, 10);
 
   if (moving) {
-    state.phase = (state.phase + dt * 2.8) % (Math.PI * 2);
+    state.phase = (state.phase + dt * walkCycleSpeed) % (Math.PI * 2);
   }
 
   state.lastX = mob.x;
@@ -5183,8 +5512,9 @@ function pruneSkeletonWalkRuntime() {
   }
 }
 
-function createMobSprite(typeName) {
-  const key = String(typeName || "Mob");
+function createMobSprite(typeName, style = null) {
+  const styleKey = getMobStyleCacheKey(style);
+  const key = `${String(typeName || "Mob")}|${styleKey}`;
   const cached = mobSpriteCache.get(key);
   if (cached) {
     return cached;
@@ -5194,8 +5524,8 @@ function createMobSprite(typeName) {
   sprite.width = MOB_SPRITE_SIZE;
   sprite.height = MOB_SPRITE_SIZE;
   const sctx = sprite.getContext("2d");
-  const keyLower = key.toLowerCase();
-  const seed = hashString(key);
+  const keyLower = String(typeName || "Mob").toLowerCase();
+  const seed = hashString(String(typeName || "Mob"));
   const variant = seed % 4;
   const palettes = [
     { body: "#6ab04a", accent: "#b8e994", outline: "#1a2f16", eye: "#171717" },
@@ -5203,42 +5533,42 @@ function createMobSprite(typeName) {
     { body: "#5577cc", accent: "#a9c3ff", outline: "#1a2442", eye: "#0b1022" },
     { body: "#9b59b6", accent: "#d7b4ec", outline: "#2c1738", eye: "#14091b" }
   ];
-  const palette = palettes[(seed >>> 3) % palettes.length];
+  const palette = applyMobPaletteOverrides(palettes[(seed >>> 3) % palettes.length], style);
   const cx = MOB_SPRITE_SIZE / 2;
   const cy = MOB_SPRITE_SIZE / 2;
 
   sctx.translate(cx, cy);
 
   if (keyLower.includes("skeleton")) {
-    const frames = getSkeletonWalkFrames(key);
+    const frames = getSkeletonWalkFrames(typeName, style);
     const idle = frames[0];
     mobSpriteCache.set(key, idle);
     return idle;
   }
 
   if (keyLower.includes("creeper")) {
-    const frames = getCreeperWalkFrames(key);
+    const frames = getCreeperWalkFrames(typeName, style);
     const idle = frames[0];
     mobSpriteCache.set(key, idle);
     return idle;
   }
 
   if (keyLower.includes("spider")) {
-    const frames = getSpiderWalkFrames(key);
+    const frames = getSpiderWalkFrames(typeName, style);
     const idle = frames[0];
     mobSpriteCache.set(key, idle);
     return idle;
   }
 
   if (keyLower.includes("orc") || keyLower.includes("berserker")) {
-    const frames = getOrcWalkFrames(key);
+    const frames = getOrcWalkFrames(typeName, style);
     const idle = frames[0];
     mobSpriteCache.set(key, idle);
     return idle;
   }
 
   if (keyLower.includes("zombie")) {
-    const frames = getZombieWalkFrames(key);
+    const frames = getZombieWalkFrames(typeName, style);
     const idle = frames[0];
     mobSpriteCache.set(key, idle);
     return idle;
@@ -5513,17 +5843,21 @@ function drawMobBiteAnimation(mob, cameraX, cameraY) {
     return;
   }
   const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
-  const open = 0.25 + attack.progress * 0.35;
+  const style = getMobRenderStyle(mob);
+  const speedMul = getMobStyleNumber(style, "attackAnimSpeed", 1, 0.1, 4);
+  const progress = clamp(attack.progress * speedMul, 0, 1);
+  const open = 0.25 + progress * 0.35;
+  const radius = getMobStyleNumber(style, "biteRadius", 15, 4, 40);
 
   ctx.beginPath();
   ctx.strokeStyle = "rgba(255, 179, 179, 0.84)";
   ctx.lineWidth = 3;
   ctx.lineCap = "round";
-  ctx.arc(p.x, p.y, 15, attack.angle - open, attack.angle - 0.02);
+  ctx.arc(p.x, p.y, radius, attack.angle - open, attack.angle - 0.02);
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(p.x, p.y, 15, attack.angle + 0.02, attack.angle + open);
+  ctx.arc(p.x, p.y, radius, attack.angle + 0.02, attack.angle + open);
   ctx.stroke();
 }
 
@@ -5616,9 +5950,11 @@ function drawCreeperIgnitionAnimation(mob, cameraX, cameraY, attackState = null)
   }
 
   const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
-  const progress = clamp(attack.progress, 0, 1);
-  const baseX = p.x - 8.2;
-  const baseY = p.y - 2.1;
+  const style = getMobRenderStyle(mob);
+  const speedMul = getMobStyleNumber(style, "attackAnimSpeed", 1, 0.1, 4);
+  const progress = clamp(attack.progress * speedMul, 0, 1);
+  const baseX = p.x - 8.2 + getMobStyleNumber(style, "weaponOffsetX", 0, -24, 24);
+  const baseY = p.y - 2.1 + getMobStyleNumber(style, "weaponOffsetY", 0, -24, 24);
   const pulse = 0.6 + Math.sin(progress * Math.PI * 8 + (mob.id % 5)) * 0.4;
   const radius = 2.3 + pulse * 1.2;
   const alpha = 0.65 + pulse * 0.35;
@@ -5676,12 +6012,16 @@ function drawSkeletonSwordSwing(mob, cameraX, cameraY, attackState = null) {
   }
 
   const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
-  const shoulderX = p.x - 4.6;
-  const shoulderY = p.y - 1.2;
+  const style = getMobRenderStyle(mob);
+  const speedMul = getMobStyleNumber(style, "attackAnimSpeed", 1, 0.1, 4);
+  const progress = clamp(attack.progress * speedMul, 0, 1);
+  const shoulderX = p.x - 4.6 + getMobStyleNumber(style, "weaponOffsetX", 0, -24, 24);
+  const shoulderY = p.y - 1.2 + getMobStyleNumber(style, "weaponOffsetY", 0, -24, 24);
+  const angleOffset = (getMobStyleNumber(style, "weaponAngleOffsetDeg", 0, -180, 180) * Math.PI) / 180;
 
-  const startAngle = attack.angle - 1.0;
-  const endAngle = attack.angle + 0.5;
-  const swingAngle = lerp(startAngle, endAngle, attack.progress);
+  const startAngle = attack.angle - 1.0 + angleOffset;
+  const endAngle = attack.angle + 0.5 + angleOffset;
+  const swingAngle = lerp(startAngle, endAngle, progress);
 
   const armLength = 7.8;
   const handX = shoulderX + Math.cos(swingAngle) * armLength;
@@ -5738,14 +6078,19 @@ function drawOrcDualAxeSwing(mob, cameraX, cameraY, attackState = null) {
   }
 
   const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
-  const progress = clamp(attack.progress, 0, 1);
+  const style = getMobRenderStyle(mob);
+  const speedMul = getMobStyleNumber(style, "attackAnimSpeed", 1, 0.1, 4);
+  const progress = clamp(attack.progress * speedMul, 0, 1);
   const leadLeft = ((Number(attack.sequence) || 0) & 1) === 0;
+  const offsetX = getMobStyleNumber(style, "weaponOffsetX", 0, -24, 24);
+  const offsetY = getMobStyleNumber(style, "weaponOffsetY", 0, -24, 24);
+  const angleOffset = (getMobStyleNumber(style, "weaponAngleOffsetDeg", 0, -180, 180) * Math.PI) / 180;
 
   const easing = progress < 0.6
     ? 1 - Math.pow(1 - progress / 0.6, 3)
     : 1 - ((progress - 0.6) / 0.4) * 0.18;
 
-  const base = attack.angle;
+  const base = attack.angle + angleOffset;
   const leftStart = base - (leadLeft ? 1.7 : 1.15);
   const leftEnd = base + (leadLeft ? 0.42 : 0.08);
   const rightStart = base + (leadLeft ? 1.15 : 1.7);
@@ -5803,14 +6148,14 @@ function drawOrcDualAxeSwing(mob, cameraX, cameraY, attackState = null) {
     ctx.stroke();
   };
 
-  drawSwing(p.x - 6.8, p.y - 2.1, leftAngle, {
+  drawSwing(p.x - 6.8 + offsetX, p.y - 2.1 + offsetY, leftAngle, {
     trailSpan: 0.55 + pulse * 0.11,
     trailRadius: 12.4,
     trailWidth: 2.8,
     trailColor: "rgba(232, 126, 104, 0.35)",
     bladeColor: "rgba(228, 128, 108, 0.96)"
   });
-  drawSwing(p.x + 6.8, p.y - 2.1, rightAngle, {
+  drawSwing(p.x + 6.8 + offsetX, p.y - 2.1 + offsetY, rightAngle, {
     trailSpan: 0.55 + pulse * 0.11,
     trailRadius: 12.2,
     trailWidth: 2.6,
@@ -6520,22 +6865,23 @@ function drawArcaneMissileProjectile(p, runtime, now) {
   }
 }
 
+const ABILITY_PROJECTILE_RENDERERS = Object.freeze({
+  fireball: drawFireballProjectile,
+  frostbolt: drawFrostboltProjectile,
+  arcane_missiles: drawArcaneMissileProjectile
+});
+
 function drawProjectile(projectile, cameraX, cameraY, frameNow) {
   const p = worldToScreen(projectile.x + 0.5, projectile.y + 0.5, cameraX, cameraY);
   const now = Number.isFinite(frameNow) ? frameNow : performance.now();
   const runtime = getProjectileVisualState(projectile, now);
-  const abilityId = String(projectile.abilityId || "").toLowerCase();
+  const abilityId = String(projectile.abilityId || "");
+  const actionDef = getActionDefById(abilityId);
+  const projectileHook = getAbilityVisualHook(abilityId, actionDef, "projectileRenderer", "default");
+  const drawProjectileEffect = ABILITY_PROJECTILE_RENDERERS[projectileHook];
 
-  if (abilityId === "arcanemissiles") {
-    drawArcaneMissileProjectile(p, runtime, now);
-    return;
-  }
-  if (abilityId === "frostbolt") {
-    drawFrostboltProjectile(p, runtime, now);
-    return;
-  }
-  if (abilityId === "fireball" || !abilityId) {
-    drawFireballProjectile(p, runtime, now);
+  if (drawProjectileEffect) {
+    drawProjectileEffect(p, runtime, now);
     return;
   }
 
@@ -6547,28 +6893,27 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
 
 function drawMob(mob, cameraX, cameraY, attackState = null) {
   const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
+  const mobStyle = getMobRenderStyle(mob);
   const mobName = String(mob.name || "Mob");
-  const mobNameLower = mobName.toLowerCase();
-  const isSkeleton = mobNameLower.includes("skeleton");
-  const isCreeper = mobNameLower.includes("creeper");
-  const isSpider = mobNameLower.includes("spider");
-  const isZombie = mobNameLower.includes("zombie");
-  const isOrcBerserker = mobNameLower.includes("orc") || mobNameLower.includes("berserker");
+  const spriteType = getMobSpriteType(mob);
   const skeletonIncludeSword = !attackState;
   const orcIncludeAxes = !attackState;
-  const sprite = isSkeleton
+  const sprite = spriteType === "skeleton"
     ? getSkeletonWalkSprite(mob, skeletonIncludeSword)
-    : isCreeper
+    : spriteType === "creeper"
       ? getCreeperWalkSprite(mob)
-    : isSpider
-      ? getSpiderWalkSprite(mob)
-      : isZombie
-        ? getZombieWalkSprite(mob)
-      : isOrcBerserker
-        ? getOrcWalkSprite(mob, orcIncludeAxes)
-        : createMobSprite(mobName);
-  const half = MOB_SPRITE_SIZE / 2;
-  ctx.drawImage(sprite, Math.round(p.x - half), Math.round(p.y - half));
+      : spriteType === "spider"
+        ? getSpiderWalkSprite(mob)
+        : spriteType === "zombie"
+          ? getZombieWalkSprite(mob)
+          : spriteType === "orc"
+            ? getOrcWalkSprite(mob, orcIncludeAxes)
+            : createMobSprite(mobName, mobStyle);
+
+  const sizeScale = getMobStyleNumber(mobStyle, "sizeScale", 1, 0.5, 3);
+  const drawSize = Math.round(MOB_SPRITE_SIZE * sizeScale);
+  const half = drawSize / 2;
+  ctx.drawImage(sprite, Math.round(p.x - half), Math.round(p.y - half), drawSize, drawSize);
   drawMobHpBar(mob, p);
 }
 
@@ -6614,7 +6959,7 @@ function render() {
   const cameraY = interpolatedState.self.y + 0.5;
 
   drawGrid(cameraX, cameraY);
-  drawBlizzardCastPreview(interpolatedState.self, cameraX, cameraY, frameNow);
+  drawAbilityCastPreview(interpolatedState.self, cameraX, cameraY, frameNow);
   const hoveredMob = getHoveredMob(interpolatedState.mobs, cameraX, cameraY);
   const hoveredBag = getHoveredLootBag(interpolatedState.lootBags, cameraX, cameraY);
 
@@ -6629,21 +6974,21 @@ function render() {
   }
 
   for (const mob of interpolatedState.mobs) {
-    const mobName = String(mob.name || "Mob").toLowerCase();
-    if (mobName.includes("skeleton")) {
-      const attackState = getActiveMobAttackState(mob.id);
+    const attackState = getActiveMobAttackState(mob.id);
+    const attackVisual = getMobAttackVisualType(mob);
+    if (attackVisual === "sword") {
       drawMob(mob, cameraX, cameraY, attackState);
       drawSkeletonSwordSwing(mob, cameraX, cameraY, attackState);
-    } else if (mobName.includes("creeper")) {
-      const attackState = getActiveMobAttackState(mob.id);
+    } else if (attackVisual === "ignition") {
       drawMob(mob, cameraX, cameraY, attackState);
       drawCreeperIgnitionAnimation(mob, cameraX, cameraY, attackState);
-    } else if (mobName.includes("orc") || mobName.includes("berserker")) {
-      const attackState = getActiveMobAttackState(mob.id);
+    } else if (attackVisual === "dual_axes") {
       drawMob(mob, cameraX, cameraY, attackState);
       drawOrcDualAxeSwing(mob, cameraX, cameraY, attackState);
+    } else if (attackVisual === "none") {
+      drawMob(mob, cameraX, cameraY, attackState);
     } else {
-      drawMob(mob, cameraX, cameraY);
+      drawMob(mob, cameraX, cameraY, attackState);
       drawMobBiteAnimation(mob, cameraX, cameraY);
     }
     drawMobSlowTint(mob, cameraX, cameraY, frameNow);
