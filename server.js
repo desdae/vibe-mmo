@@ -42,7 +42,7 @@ const INVENTORY_SLOT_COUNT = INVENTORY_COLS * INVENTORY_ROWS;
 const ITEM_COPPER_ID = "copperCoin";
 
 const ENTITY_PROTO_TYPE = 1;
-const ENTITY_PROTO_VERSION = 6;
+const ENTITY_PROTO_VERSION = 7;
 const POS_SCALE = 64;
 const MANA_SCALE = 10;
 const HEAL_SCALE = 10;
@@ -55,6 +55,7 @@ const DELTA_FLAG_PROGRESS_CHANGED = 1 << 4;
 const DELTA_FLAG_MANA_CHANGED = 1 << 5;
 const DELTA_FLAG_MAX_MANA_CHANGED = 1 << 6;
 const DELTA_FLAG_PENDING_HEAL_CHANGED = 1 << 7;
+const SELF_FLAG_PENDING_MANA_CHANGED = 1 << 2;
 
 const SELF_MODE_NONE = 0;
 const SELF_MODE_FULL = 1;
@@ -234,7 +235,8 @@ function loadAbilityConfig() {
       continue;
     }
 
-    const damageRange = parseNumericRange(entry.damageRange, 1, 1);
+    const damageRangeInput = entry.damageRange !== undefined ? entry.damageRange : entry.damagePerSecond;
+    const damageRange = parseNumericRange(damageRangeInput, 1, 1);
     const damagePerLevel = parseNumericRange(entry.damageRangePerLevel, 0, 0);
     const cooldownMs = Math.max(0, Math.round((Number(entry.cooldown) || 0) * 1000));
     const range = Math.max(0, Number(entry.range) || 0);
@@ -272,6 +274,28 @@ function loadAbilityConfig() {
       0,
       1
     );
+    const areaRadius = Math.max(0, Number(entry.radius) || Number(entry.areaRadius) || range);
+    const durationMsRaw = Number(entry.durationMs);
+    const durationSecRaw = Number(entry.duration);
+    const durationMs =
+      Number.isFinite(durationMsRaw) && durationMsRaw > 0
+        ? Math.round(durationMsRaw)
+        : Number.isFinite(durationSecRaw) && durationSecRaw > 0
+          ? Math.round(durationSecRaw * 1000)
+          : 0;
+    const invulnerabilityDurationMs = Math.max(
+      0,
+      Math.round((Number(entry.invulnerabilityDuration) || 0) * 1000)
+    );
+    const rangePerLevel = Math.max(0, Number(entry.rangePerLevel) || 0);
+    const cooldownReductionPerLevelMs = Math.max(
+      0,
+      Math.round((Number(entry.cooldownReductionPerLevel) || 0) * 1000)
+    );
+    const beamWidth =
+      kind === "beam"
+        ? Math.max(0.2, Number(entry.beamWidth) || Number(entry.width) || 0.8)
+        : 0;
     const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000));
     const slowDurationMsRaw = Number(entry.slowDurationMs);
     const slowDurationSecRaw = Number(entry.slowDuration);
@@ -288,6 +312,12 @@ function loadAbilityConfig() {
       const slowAmount = Number(entry.slowAmount);
       slowMultiplier = clamp(1 - clamp(slowAmount, 0, 0.95), 0.1, 1);
     }
+    const projectileCount = clamp(Math.floor(Number(entry.projectileCount) || 1), 1, 12);
+    const spreadDeg = Math.max(0, Number(entry.spreadDeg) || Number(entry.spreadAngle) || 0);
+    const homingRangeDefault = id.toLowerCase() === "arcanemissiles" ? Math.max(6, range) : 0;
+    const homingTurnRateDefault = id.toLowerCase() === "arcanemissiles" ? 6.5 : 0;
+    const homingRange = Math.max(0, Number(entry.homingRange) || homingRangeDefault);
+    const homingTurnRate = Math.max(0, Number(entry.homingTurnRate) || homingTurnRateDefault);
 
     const def = {
       id,
@@ -307,10 +337,20 @@ function loadAbilityConfig() {
       projectileHitRadius,
       explosionRadius,
       explosionDamageMultiplier,
+      areaRadius,
+      durationMs,
       castMs,
+      invulnerabilityDurationMs,
+      rangePerLevel,
+      cooldownReductionPerLevelMs,
+      beamWidth,
       stunDurationMs,
       slowDurationMs,
-      slowMultiplier
+      slowMultiplier,
+      projectileCount,
+      spreadDeg,
+      homingRange,
+      homingTurnRate
     };
 
     const extraClientFields = {};
@@ -333,6 +373,13 @@ function loadAbilityConfig() {
         fieldKey === "projectileHitRadius" ||
         fieldKey === "explosionRadius" ||
         fieldKey === "explosionDamageMultiplier" ||
+        fieldKey === "radius" ||
+        fieldKey === "areaRadius" ||
+        fieldKey === "duration" ||
+        fieldKey === "durationMs" ||
+        fieldKey === "damagePerSecond" ||
+        fieldKey === "beamWidth" ||
+        fieldKey === "width" ||
         fieldKey === "stunDuration" ||
         fieldKey === "slowDuration" ||
         fieldKey === "slowDurationMs" ||
@@ -374,9 +421,16 @@ function loadAbilityConfig() {
       projectileHitRadius: def.projectileHitRadius,
       explosionRadius: def.explosionRadius,
       explosionDamageMultiplier: def.explosionDamageMultiplier,
+      areaRadius: def.areaRadius,
+      beamWidth: def.beamWidth,
+      durationMs: def.durationMs,
       stunDurationMs: def.stunDurationMs,
       slowDurationMs: def.slowDurationMs,
       slowMultiplier: def.slowMultiplier,
+      projectileCount: def.projectileCount,
+      spreadDeg: def.spreadDeg,
+      homingRange: def.homingRange,
+      homingTurnRate: def.homingTurnRate,
       damageRange: [def.damageMin, def.damageMax],
       damageRangePerLevel: [def.damagePerLevelMin, def.damagePerLevelMax],
       ...extraClientFields
@@ -699,6 +753,23 @@ function expNeededForLevel(level) {
   return Math.max(1, Math.ceil(BASE_EXP_TO_NEXT * Math.pow(EXP_GROWTH_FACTOR, level - 1)));
 }
 
+function serializePlayerAbilityLevels(player) {
+  if (!player || !player.abilityLevels || typeof player.abilityLevels.entries !== "function") {
+    return [];
+  }
+  const result = [];
+  for (const [abilityId, rawLevel] of player.abilityLevels.entries()) {
+    const id = String(abilityId || "").trim();
+    const level = clamp(Math.floor(Number(rawLevel) || 0), 1, 255);
+    if (!id || level <= 0) {
+      continue;
+    }
+    result.push({ id, level });
+  }
+  result.sort((a, b) => a.id.localeCompare(b.id));
+  return result;
+}
+
 function sendSelfProgress(player) {
   if (!player) {
     return;
@@ -708,7 +779,9 @@ function sendSelfProgress(player) {
     copper: player.copper,
     level: player.level,
     exp: player.exp,
-    expToNext: player.expToNext
+    expToNext: player.expToNext,
+    skillPoints: clamp(Math.floor(Number(player.skillPoints) || 0), 0, 65535),
+    abilityLevels: serializePlayerAbilityLevels(player)
   });
 }
 
@@ -724,15 +797,26 @@ function grantPlayerExp(player, amount) {
   const beforeLevel = player.level;
   const beforeExp = player.exp;
   const beforeExpToNext = player.expToNext;
+  const beforeSkillPoints = Math.max(0, Math.floor(Number(player.skillPoints) || 0));
+  let levelsGained = 0;
 
   player.exp += scaledAmount;
   while (player.exp >= player.expToNext) {
     player.exp -= player.expToNext;
     player.level += 1;
     player.expToNext = expNeededForLevel(player.level);
+    levelsGained += 1;
+  }
+  if (levelsGained > 0) {
+    player.skillPoints = clamp(beforeSkillPoints + levelsGained, 0, 65535);
   }
 
-  if (player.level !== beforeLevel || player.exp !== beforeExp || player.expToNext !== beforeExpToNext) {
+  if (
+    player.level !== beforeLevel ||
+    player.exp !== beforeExp ||
+    player.expToNext !== beforeExpToNext ||
+    Math.floor(Number(player.skillPoints) || 0) !== beforeSkillPoints
+  ) {
     sendSelfProgress(player);
   }
 }
@@ -743,6 +827,20 @@ function getPendingHealAmount(player) {
   }
   let total = 0;
   for (const effect of player.activeHeals) {
+    if (!effect) {
+      continue;
+    }
+    total += Math.max(0, Number(effect.remainingTotal) || 0);
+  }
+  return Math.max(0, total);
+}
+
+function getPendingManaAmount(player) {
+  if (!player || !Array.isArray(player.activeManaRestores) || !player.activeManaRestores.length) {
+    return 0;
+  }
+  let total = 0;
+  for (const effect of player.activeManaRestores) {
     if (!effect) {
       continue;
     }
@@ -878,6 +976,39 @@ function randomPointInRadius(cx, cy, radius) {
     x: clamp(cx + Math.cos(angle) * r, 0, MAP_WIDTH - 1),
     y: clamp(cy + Math.sin(angle) * r, 0, MAP_HEIGHT - 1)
   };
+}
+
+function rotateDirection(dir, radians) {
+  const c = Math.cos(radians);
+  const s = Math.sin(radians);
+  return {
+    dx: dir.dx * c - dir.dy * s,
+    dy: dir.dx * s + dir.dy * c
+  };
+}
+
+function steerDirectionTowards(currentDir, desiredDir, maxTurnRadians) {
+  const current = normalizeDirection(currentDir.dx, currentDir.dy);
+  const desired = normalizeDirection(desiredDir.dx, desiredDir.dy);
+  if (!current || !desired) {
+    return current || desired || null;
+  }
+  const maxTurn = Math.max(0, Number(maxTurnRadians) || 0);
+  if (maxTurn <= 0) {
+    return current;
+  }
+  const dot = clamp(current.dx * desired.dx + current.dy * desired.dy, -1, 1);
+  const angle = Math.acos(dot);
+  if (!Number.isFinite(angle) || angle <= maxTurn) {
+    return desired;
+  }
+  const t = clamp(maxTurn / Math.max(0.0001, angle), 0, 1);
+  return (
+    normalizeDirection(
+      current.dx + (desired.dx - current.dx) * t,
+      current.dy + (desired.dy - current.dy) * t
+    ) || current
+  );
 }
 
 function clampToSpawnRadius(x, y, spawnX, spawnY, radius) {
@@ -1030,14 +1161,17 @@ let nextProjectileId = 1;
 let nextSpawnerId = 1;
 let nextMobId = 1;
 let nextLootBagId = 1;
+let nextAreaEffectId = 1;
 const players = new Map();
 const projectiles = new Map();
 const mobSpawners = new Map();
 const mobs = new Map();
 const lootBags = new Map();
+const activeAreaEffects = new Map();
 const pendingDamageEvents = [];
 const pendingExplosionEvents = [];
 const pendingProjectileHitEvents = [];
+const pendingMobDeathEvents = [];
 
 function createEmptyInventorySlots() {
   return Array.from({ length: INVENTORY_SLOT_COUNT }, () => null);
@@ -1382,6 +1516,17 @@ function queueProjectileHitEvent(x, y, abilityId = "") {
   });
 }
 
+function queueMobDeathEvent(mob) {
+  if (!mob || !Number.isFinite(mob.x) || !Number.isFinite(mob.y)) {
+    return;
+  }
+  pendingMobDeathEvents.push({
+    x: clamp(mob.x, 0, MAP_WIDTH - 1),
+    y: clamp(mob.y, 0, MAP_HEIGHT - 1),
+    mobType: String(mob.type || "Mob").slice(0, 48)
+  });
+}
+
 function markMobProvokedByPlayer(mob, ownerId, now = Date.now()) {
   if (!mob || !ownerId) {
     return;
@@ -1494,6 +1639,35 @@ function applyDamageToMob(mob, damage, ownerId) {
   return dealt;
 }
 
+function isPlayerInvulnerable(player, now = Date.now()) {
+  if (!player) {
+    return false;
+  }
+  return (Number(player.invulnerableUntil) || 0) > now;
+}
+
+function applyDamageToPlayer(player, damage, now = Date.now()) {
+  if (!player || player.hp <= 0 || isPlayerInvulnerable(player, now)) {
+    return 0;
+  }
+  const dmg = Math.max(0, Math.floor(Number(damage) || 0));
+  if (dmg <= 0) {
+    return 0;
+  }
+
+  const beforeHp = player.hp;
+  player.hp = Math.max(0, player.hp - dmg);
+  const dealt = beforeHp - player.hp;
+  if (dealt > 0) {
+    queueDamageEvent(player, dealt, "player");
+  }
+  if (player.hp <= 0) {
+    player.input = { dx: 0, dy: 0 };
+    clearPlayerCast(player);
+  }
+  return dealt;
+}
+
 function getPlayerClassDef(player) {
   if (!player) {
     return null;
@@ -1520,9 +1694,60 @@ function getAbilityDamageRange(abilityDef, level) {
   return [min, max];
 }
 
-function getAbilityCooldownPassed(player, abilityDef, now) {
+function getAbilityRangeForLevel(abilityDef, level) {
+  if (!abilityDef) {
+    return 0;
+  }
+  const lvl = Math.max(1, Math.floor(Number(level) || 1));
+  const levelOffset = Math.max(0, lvl - 1);
+  const baseRange = Math.max(0, Number(abilityDef.range) || 0);
+  const rangePerLevel = Math.max(0, Number(abilityDef.rangePerLevel) || 0);
+  return Math.max(0, baseRange + rangePerLevel * levelOffset);
+}
+
+function getAbilityCooldownMsForLevel(abilityDef, level) {
+  if (!abilityDef) {
+    return 0;
+  }
+  const lvl = Math.max(1, Math.floor(Number(level) || 1));
+  const levelOffset = Math.max(0, lvl - 1);
+  const baseCooldownMs = Math.max(0, Number(abilityDef.cooldownMs) || 0);
+  const reductionPerLevelMs = Math.max(0, Number(abilityDef.cooldownReductionPerLevelMs) || 0);
+  return Math.max(0, baseCooldownMs - reductionPerLevelMs * levelOffset);
+}
+
+function getAbilityInvulnerabilityDurationMs(abilityDef) {
+  return Math.max(0, Number(abilityDef?.invulnerabilityDurationMs) || 0);
+}
+
+function levelUpPlayerAbility(player, abilityId) {
+  if (!player) {
+    return false;
+  }
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId || !ABILITY_CONFIG.abilityDefs.has(resolvedAbilityId)) {
+    return false;
+  }
+  const classDef = getPlayerClassDef(player);
+  if (!classDef || !classDef.abilityLevels || !classDef.abilityLevels.has(resolvedAbilityId)) {
+    return false;
+  }
+  const skillPoints = Math.max(0, Math.floor(Number(player.skillPoints) || 0));
+  if (skillPoints <= 0) {
+    return false;
+  }
+  const currentLevel = clamp(getPlayerAbilityLevel(player, resolvedAbilityId), 1, 255);
+  if (currentLevel >= 255) {
+    return false;
+  }
+  player.skillPoints = skillPoints - 1;
+  player.abilityLevels.set(resolvedAbilityId, currentLevel + 1);
+  return true;
+}
+
+function getAbilityCooldownPassed(player, abilityDef, level, now) {
   const lastUsed = Number(player.abilityLastUsedAt.get(abilityDef.id) || 0);
-  return now - lastUsed >= abilityDef.cooldownMs;
+  return now - lastUsed >= getAbilityCooldownMsForLevel(abilityDef, level);
 }
 
 function markAbilityUsed(player, abilityDef, now) {
@@ -1706,6 +1931,7 @@ function killMob(mob, killerPlayerId = null) {
   mob.stunnedUntil = 0;
   mob.slowUntil = 0;
   mob.slowMultiplier = 1;
+  queueMobDeathEvent(mob);
   const killer = killerPlayerId ? players.get(String(killerPlayerId)) : null;
   const globalDrops = rollGlobalDropsForPlayer(killer);
   const mobDrops = rollMobDrops(mob);
@@ -1748,12 +1974,49 @@ function applyProjectileHitEffects(mob, projectile, dealtDamage, now = Date.now(
   }
 }
 
+function getNearestProjectileTarget(projectile, maxRange) {
+  if (!projectile || maxRange <= 0) {
+    return null;
+  }
+  let best = null;
+  let bestDistSq = maxRange * maxRange;
+  for (const mob of mobs.values()) {
+    if (!mob.alive) {
+      continue;
+    }
+    const dx = mob.x - projectile.x;
+    const dy = mob.y - projectile.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq > bestDistSq) {
+      continue;
+    }
+    best = mob;
+    bestDistSq = distSq;
+  }
+  return best;
+}
+
 function tickProjectiles() {
   const now = Date.now();
   const toDelete = [];
 
   for (const projectile of projectiles.values()) {
     const dt = TICK_MS / 1000;
+    const homingRange = Math.max(0, Number(projectile.homingRange) || 0);
+    const homingTurnRate = Math.max(0, Number(projectile.homingTurnRate) || 0);
+    if (homingRange > 0 && homingTurnRate > 0) {
+      const target = getNearestProjectileTarget(projectile, homingRange);
+      if (target) {
+        const desiredDir = normalizeDirection(target.x - projectile.x, target.y - projectile.y);
+        const nextDir = desiredDir
+          ? steerDirectionTowards(projectile, desiredDir, homingTurnRate * dt)
+          : null;
+        if (nextDir) {
+          projectile.dx = nextDir.dx;
+          projectile.dy = nextDir.dy;
+        }
+      }
+    }
     projectile.x += projectile.dx * projectile.speed * dt;
     projectile.y += projectile.dy * projectile.speed * dt;
 
@@ -1842,6 +2105,47 @@ function tickProjectiles() {
   }
 }
 
+function tickAreaEffects(now = Date.now()) {
+  for (const [effectId, effect] of activeAreaEffects.entries()) {
+    if (!effect || now >= Number(effect.endsAt) || Number(effect.durationMs) <= 0) {
+      activeAreaEffects.delete(effectId);
+      continue;
+    }
+
+    const tickIntervalMs = Math.max(50, Number(effect.tickIntervalMs) || 1000);
+    while (Number(effect.nextTickAt) <= now && Number(effect.nextTickAt) < Number(effect.endsAt) + 5) {
+      if (String(effect.kind || "") === "beam") {
+        for (const mob of mobs.values()) {
+          if (!isMobInsideBeamEffect(mob, effect)) {
+            continue;
+          }
+          const tickDamage = rollScaledTickDamage(effect.damageMin, effect.damageMax, tickIntervalMs);
+          if (tickDamage > 0) {
+            applyDamageToMob(mob, tickDamage, effect.ownerId);
+          }
+        }
+      } else {
+        for (const mob of mobs.values()) {
+          if (!mob.alive) {
+            continue;
+          }
+          const dist = Math.hypot(mob.x - effect.x, mob.y - effect.y);
+          if (dist > effect.radius) {
+            continue;
+          }
+          if (effect.damageMax > 0) {
+            applyDamageToMob(mob, randomInt(effect.damageMin, effect.damageMax), effect.ownerId);
+          }
+          if (mob.alive && effect.slowMultiplier < 1 && effect.slowDurationMs > 0) {
+            applySlowToMob(mob, effect.slowMultiplier, effect.slowDurationMs, now);
+          }
+        }
+      }
+      effect.nextTickAt += tickIntervalMs;
+    }
+  }
+}
+
 function tickPlayers() {
   const dt = TICK_MS / 1000;
 
@@ -1853,7 +2157,10 @@ function tickPlayers() {
     tickPlayerManaEffects(player);
 
     if (player.activeCast && playerHasMovementInput(player)) {
-      clearPlayerCast(player);
+      const activeDef = ABILITY_CONFIG.abilityDefs.get(String(player.activeCast.abilityId || ""));
+      if (!activeDef || activeDef.kind !== "teleport") {
+        clearPlayerCast(player);
+      }
     }
 
     if (player.hp <= 0) {
@@ -2188,7 +2495,7 @@ function performMeleeConeAbility(player, abilityDef, abilityLevel, targetDx, tar
 
   let closestMob = null;
   let closestDistance = Infinity;
-  const range = Math.max(0.2, Number(abilityDef.range) || 1.5);
+  const range = Math.max(0.2, getAbilityRangeForLevel(abilityDef, abilityLevel) || 1.5);
   const coneCos = clamp(Number(abilityDef.coneCos) || 0, -1, 1);
 
   for (const mob of mobs.values()) {
@@ -2239,48 +2546,220 @@ function performProjectileAbility(player, abilityDef, abilityLevel, targetDx, ta
   }
 
   const speed = Math.max(0.1, Number(abilityDef.speed) || 1);
-  const range = Math.max(0.25, Number(abilityDef.range) || 6);
+  const range = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 6);
   const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
   const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
+  const projectileCount = clamp(Math.floor(Number(abilityDef.projectileCount) || 1), 1, 12);
+  const spreadDeg =
+    Number(abilityDef.spreadDeg) > 0
+      ? Number(abilityDef.spreadDeg)
+      : projectileCount > 1
+        ? 16
+        : 0;
+  const spreadTotalRad = (spreadDeg * Math.PI) / 180;
+  const baseHomingRange = Math.max(0, Number(abilityDef.homingRange) || 0);
+  const baseHomingTurnRate = Math.max(0, Number(abilityDef.homingTurnRate) || 0);
 
   markAbilityUsed(player, abilityDef, now);
   player.lastDirection = normalized;
-  const projectile = {
-    id: String(nextProjectileId++),
-    ownerId: player.id,
-    x: player.x + normalized.dx,
-    y: player.y + normalized.dy,
-    dx: normalized.dx,
-    dy: normalized.dy,
-    speed,
-    ttlMs,
-    createdAt: now,
-    damageMin,
-    damageMax,
-    hitRadius: clamp(Number(abilityDef.projectileHitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8),
-    explosionRadius: Math.max(0, Number(abilityDef.explosionRadius) || 0),
-    explosionDamageMultiplier: clamp(Number(abilityDef.explosionDamageMultiplier) || 0, 0, 1),
-    slowDurationMs: Math.max(0, Number(abilityDef.slowDurationMs) || 0),
-    slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
-    abilityId: abilityDef.id
-  };
-  projectiles.set(projectile.id, projectile);
+  for (let i = 0; i < projectileCount; i += 1) {
+    const ratio = projectileCount <= 1 ? 0.5 : i / (projectileCount - 1);
+    const angleOffset = projectileCount <= 1 ? 0 : (ratio - 0.5) * spreadTotalRad;
+    const dir = projectileCount <= 1 ? normalized : rotateDirection(normalized, angleOffset);
+    const startOffset = 0.9 + i * 0.04;
+    const projectile = {
+      id: String(nextProjectileId++),
+      ownerId: player.id,
+      x: player.x + dir.dx * startOffset,
+      y: player.y + dir.dy * startOffset,
+      dx: dir.dx,
+      dy: dir.dy,
+      speed,
+      ttlMs,
+      createdAt: now,
+      damageMin,
+      damageMax,
+      hitRadius: clamp(Number(abilityDef.projectileHitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8),
+      explosionRadius: Math.max(0, Number(abilityDef.explosionRadius) || 0),
+      explosionDamageMultiplier: clamp(Number(abilityDef.explosionDamageMultiplier) || 0, 0, 1),
+      slowDurationMs: Math.max(0, Number(abilityDef.slowDurationMs) || 0),
+      slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
+      homingRange: baseHomingRange,
+      homingTurnRate: baseHomingTurnRate,
+      abilityId: abilityDef.id
+    };
+    projectiles.set(projectile.id, projectile);
+  }
   return true;
 }
 
-function performAreaAbility(player, abilityDef, abilityLevel, now) {
-  const range = Math.max(0.2, Number(abilityDef.range) || 2);
+function getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance) {
+  const targetDir =
+    normalizeDirection(targetDx, targetDy) ||
+    normalizeDirection(player.lastDirection.dx, player.lastDirection.dy) ||
+    { dx: 0, dy: 1 };
+  const requestedDistance = Number.isFinite(Number(targetDistance)) ? Number(targetDistance) : castRange;
+  const distanceFromCaster = castRange > 0 ? clamp(requestedDistance, 0, castRange) : 0;
+  const x = clamp(player.x + targetDir.dx * distanceFromCaster, 0, MAP_WIDTH - 1);
+  const y = clamp(player.y + targetDir.dy * distanceFromCaster, 0, MAP_HEIGHT - 1);
+  return {
+    x,
+    y,
+    castRange,
+    distanceFromCaster,
+    targetDir
+  };
+}
+
+function createPersistentAreaEffect(ownerId, abilityDef, centerX, centerY, radius, durationMs, damageMin, damageMax, now) {
+  const tickIntervalMs = 1000;
+  const effect = {
+    id: String(nextAreaEffectId++),
+    ownerId: String(ownerId || ""),
+    abilityId: String(abilityDef.id || ""),
+    kind: "area",
+    x: clamp(centerX, 0, MAP_WIDTH - 1),
+    y: clamp(centerY, 0, MAP_HEIGHT - 1),
+    radius: Math.max(0.1, Number(radius) || 0.1),
+    damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
+    damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+    slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
+    slowDurationMs: Math.max(
+      0,
+      Number(abilityDef.slowDurationMs) || (clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1) < 1 ? 1200 : 0)
+    ),
+    createdAt: now,
+    endsAt: now + durationMs,
+    durationMs,
+    tickIntervalMs,
+    nextTickAt: now
+  };
+  activeAreaEffects.set(effect.id, effect);
+  queueExplosionEvent(effect.x, effect.y, effect.radius, effect.abilityId);
+  return effect;
+}
+
+function createPersistentBeamEffect(
+  ownerId,
+  abilityDef,
+  startX,
+  startY,
+  dir,
+  length,
+  width,
+  durationMs,
+  damageMin,
+  damageMax,
+  now
+) {
+  const beamLength = Math.max(0.2, Number(length) || 0.2);
+  const beamWidth = Math.max(0.2, Number(width) || 0.8);
+  const normalizedDir = normalizeDirection(dir?.dx, dir?.dy) || { dx: 0, dy: 1 };
+  const clampedStartX = clamp(startX, 0, MAP_WIDTH - 1);
+  const clampedStartY = clamp(startY, 0, MAP_HEIGHT - 1);
+  const clampedEndX = clamp(clampedStartX + normalizedDir.dx * beamLength, 0, MAP_WIDTH - 1);
+  const clampedEndY = clamp(clampedStartY + normalizedDir.dy * beamLength, 0, MAP_HEIGHT - 1);
+  const tickIntervalMs = 250;
+
+  const effect = {
+    id: String(nextAreaEffectId++),
+    ownerId: String(ownerId || ""),
+    abilityId: String(abilityDef.id || ""),
+    kind: "beam",
+    x: (clampedStartX + clampedEndX) * 0.5,
+    y: (clampedStartY + clampedEndY) * 0.5,
+    radius: Math.max(beamWidth, beamLength * 0.55),
+    startX: clampedStartX,
+    startY: clampedStartY,
+    dx: normalizedDir.dx,
+    dy: normalizedDir.dy,
+    length: beamLength,
+    width: beamWidth,
+    damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
+    damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+    createdAt: now,
+    endsAt: now + durationMs,
+    durationMs,
+    tickIntervalMs,
+    nextTickAt: now
+  };
+  activeAreaEffects.set(effect.id, effect);
+  return effect;
+}
+
+function rollScaledTickDamage(minPerSecond, maxPerSecond, tickIntervalMs) {
+  const minBase = Math.max(0, Number(minPerSecond) || 0);
+  const maxBase = Math.max(minBase, Number(maxPerSecond) || minBase);
+  if (maxBase <= 0 || tickIntervalMs <= 0) {
+    return 0;
+  }
+  const scale = tickIntervalMs / 1000;
+  const minTick = minBase * scale;
+  const maxTick = maxBase * scale;
+  const sampled = minTick + Math.random() * Math.max(0, maxTick - minTick);
+  let dealt = Math.floor(sampled);
+  const fractional = sampled - dealt;
+  if (Math.random() < fractional) {
+    dealt += 1;
+  }
+  return Math.max(0, dealt);
+}
+
+function isMobInsideBeamEffect(mob, effect) {
+  if (!mob || !effect || !mob.alive) {
+    return false;
+  }
+  const dir = normalizeDirection(effect.dx, effect.dy);
+  if (!dir) {
+    return false;
+  }
+  const startX = Number(effect.startX);
+  const startY = Number(effect.startY);
+  const beamLength = Math.max(0.2, Number(effect.length) || 0);
+  const halfWidth = Math.max(0.1, Number(effect.width) || 0.8) * 0.5;
+  const relX = mob.x - startX;
+  const relY = mob.y - startY;
+  const along = relX * dir.dx + relY * dir.dy;
+  if (along < 0 || along > beamLength) {
+    return false;
+  }
+  const perpendicular = Math.abs(relX * dir.dy - relY * dir.dx);
+  return perpendicular <= halfWidth;
+}
+
+function performAreaAbility(player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now) {
+  const areaRadius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.range) || 2);
   const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
   const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
+  const durationMs = Math.max(0, Number(abilityDef.durationMs) || 0);
+  const castRange = getAbilityRangeForLevel(abilityDef, abilityLevel);
+  const target = getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance);
   markAbilityUsed(player, abilityDef, now);
-  queueExplosionEvent(player.x, player.y, range, abilityDef.id);
+  player.lastDirection = target.targetDir;
+
+  if (durationMs > 0) {
+    createPersistentAreaEffect(
+      player.id,
+      abilityDef,
+      target.x,
+      target.y,
+      areaRadius,
+      durationMs,
+      damageMin,
+      damageMax,
+      now
+    );
+    return true;
+  }
+
+  queueExplosionEvent(target.x, target.y, areaRadius, abilityDef.id);
 
   for (const mob of mobs.values()) {
     if (!mob.alive) {
       continue;
     }
-    const mobDist = distance(player, mob);
-    if (mobDist > range) {
+    const mobDist = Math.hypot(mob.x - target.x, mob.y - target.y);
+    if (mobDist > areaRadius) {
       continue;
     }
     applyDamageToMob(mob, randomInt(damageMin, damageMax), player.id);
@@ -2292,7 +2771,75 @@ function performAreaAbility(player, abilityDef, abilityLevel, now) {
   return true;
 }
 
-function usePlayerAbility(player, abilityId, targetDx, targetDy) {
+function performBeamAbility(player, abilityDef, abilityLevel, targetDx, targetDy, now) {
+  const beamDir =
+    normalizeDirection(targetDx, targetDy) || normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
+  if (!beamDir) {
+    return false;
+  }
+  const beamLength = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+  const beamDurationMs = Math.max(150, Number(abilityDef.durationMs) || 0);
+  if (beamLength <= 0 || beamDurationMs <= 0) {
+    return false;
+  }
+  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
+  const beamWidth = Math.max(0.2, Number(abilityDef.beamWidth) || 0.8);
+
+  markAbilityUsed(player, abilityDef, now);
+  player.lastDirection = beamDir;
+  createPersistentBeamEffect(
+    player.id,
+    abilityDef,
+    player.x,
+    player.y,
+    beamDir,
+    beamLength,
+    beamWidth,
+    beamDurationMs,
+    damageMin,
+    damageMax,
+    now
+  );
+  return true;
+}
+
+function performTeleportAbility(player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now) {
+  const blinkDir =
+    normalizeDirection(targetDx, targetDy) || normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
+  if (!blinkDir) {
+    return false;
+  }
+
+  const castRange = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+  if (castRange <= 0) {
+    return false;
+  }
+  const requestedDistance = Number.isFinite(Number(targetDistance)) ? Number(targetDistance) : castRange;
+  const blinkDistance = clamp(requestedDistance, 0, castRange);
+  if (blinkDistance <= 0.001) {
+    return false;
+  }
+
+  const originX = player.x;
+  const originY = player.y;
+
+  markAbilityUsed(player, abilityDef, now);
+  player.lastDirection = blinkDir;
+  player.x = clamp(player.x + blinkDir.dx * blinkDistance, 0, MAP_WIDTH - 1);
+  player.y = clamp(player.y + blinkDir.dy * blinkDistance, 0, MAP_HEIGHT - 1);
+  resolvePlayerMobCollisions(player);
+
+  const invulnerabilityMs = getAbilityInvulnerabilityDurationMs(abilityDef);
+  if (invulnerabilityMs > 0) {
+    player.invulnerableUntil = Math.max(Number(player.invulnerableUntil) || 0, now + invulnerabilityMs);
+  }
+
+  queueExplosionEvent(originX, originY, 0.45, abilityDef.id);
+  queueExplosionEvent(player.x, player.y, 0.55, abilityDef.id);
+  return true;
+}
+
+function usePlayerAbility(player, abilityId, targetDx, targetDy, targetDistance = null) {
   if (!player || player.hp <= 0) {
     return false;
   }
@@ -2320,7 +2867,7 @@ function usePlayerAbility(player, abilityId, targetDx, targetDy) {
   if (player.mana + 1e-6 < manaCost) {
     return false;
   }
-  if (!getAbilityCooldownPassed(player, abilityDef, now)) {
+  if (!getAbilityCooldownPassed(player, abilityDef, abilityLevel, now)) {
     return false;
   }
 
@@ -2332,13 +2879,14 @@ function usePlayerAbility(player, abilityId, targetDx, targetDy) {
 
   const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
   if (castMs > 0) {
-    if (playerHasMovementInput(player)) {
+    if (abilityDef.kind !== "teleport" && playerHasMovementInput(player)) {
       return false;
     }
     player.activeCast = {
       abilityId: resolvedAbilityId,
       dx: aimDirection.dx,
       dy: aimDirection.dy,
+      targetDistance: Number.isFinite(Number(targetDistance)) ? Number(targetDistance) : null,
       durationMs: castMs,
       startedAt: now,
       endsAt: now + castMs
@@ -2352,7 +2900,11 @@ function usePlayerAbility(player, abilityId, targetDx, targetDy) {
   if (abilityDef.kind === "projectile") {
     used = performProjectileAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, now);
   } else if (abilityDef.kind === "area") {
-    used = performAreaAbility(player, abilityDef, abilityLevel, now);
+    used = performAreaAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, targetDistance, now);
+  } else if (abilityDef.kind === "beam") {
+    used = performBeamAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, now);
+  } else if (abilityDef.kind === "teleport") {
+    used = performTeleportAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, targetDistance, now);
   } else {
     used = performMeleeConeAbility(player, abilityDef, abilityLevel, aimDirection.dx, aimDirection.dy, now);
   }
@@ -2369,7 +2921,13 @@ function tickPlayerCasts(now) {
       continue;
     }
 
-    if (player.hp <= 0 || playerHasMovementInput(player)) {
+    const abilityDef = ABILITY_CONFIG.abilityDefs.get(String(cast.abilityId || ""));
+    if (!abilityDef) {
+      clearPlayerCast(player);
+      continue;
+    }
+
+    if (player.hp <= 0 || (abilityDef.kind !== "teleport" && playerHasMovementInput(player))) {
       clearPlayerCast(player);
       continue;
     }
@@ -2378,8 +2936,8 @@ function tickPlayerCasts(now) {
       continue;
     }
 
-    const abilityDef = ABILITY_CONFIG.abilityDefs.get(String(cast.abilityId || ""));
-    if (!abilityDef) {
+    const abilityLevel = getPlayerAbilityLevel(player, abilityDef.id);
+    if (abilityLevel <= 0) {
       clearPlayerCast(player);
       continue;
     }
@@ -2389,21 +2947,22 @@ function tickPlayerCasts(now) {
       clearPlayerCast(player);
       continue;
     }
-    if (!getAbilityCooldownPassed(player, abilityDef, now)) {
+    if (!getAbilityCooldownPassed(player, abilityDef, abilityLevel, now)) {
       clearPlayerCast(player);
       continue;
     }
 
-    const abilityLevel = getPlayerAbilityLevel(player, abilityDef.id);
     let used = false;
-    if (abilityLevel > 0) {
-      if (abilityDef.kind === "projectile") {
-        used = performProjectileAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
-      } else if (abilityDef.kind === "area") {
-        used = performAreaAbility(player, abilityDef, abilityLevel, now);
-      } else {
-        used = performMeleeConeAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
-      }
+    if (abilityDef.kind === "projectile") {
+      used = performProjectileAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
+    } else if (abilityDef.kind === "area") {
+      used = performAreaAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, cast.targetDistance, now);
+    } else if (abilityDef.kind === "beam") {
+      used = performBeamAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
+    } else if (abilityDef.kind === "teleport") {
+      used = performTeleportAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, cast.targetDistance, now);
+    } else {
+      used = performMeleeConeAbility(player, abilityDef, abilityLevel, cast.dx, cast.dy, now);
     }
     if (used && manaCost > 0) {
       player.mana = clamp(player.mana - manaCost, 0, player.maxMana);
@@ -2516,14 +3075,8 @@ function tickMobs() {
           mob.lastBiteDirection = biteDir;
         }
         mob.biteCounter = (mob.biteCounter + 1) & 0xff;
-        const beforeHp = aggroPlayer.hp;
-        aggroPlayer.hp = Math.max(0, aggroPlayer.hp - randomInt(mob.damageMin, mob.damageMax));
-        const dealt = beforeHp - aggroPlayer.hp;
-        if (dealt > 0) {
-          queueDamageEvent(aggroPlayer, dealt, "player");
-        }
+        applyDamageToPlayer(aggroPlayer, randomInt(mob.damageMin, mob.damageMax), now);
         if (aggroPlayer.hp <= 0) {
-          aggroPlayer.input = { dx: 0, dy: 0 };
           startMobReturnToSpawn(mob);
         }
       }
@@ -3036,6 +3589,7 @@ function processSelfUpdate(sync, player) {
     mana: clamp(Math.round((Number(player.mana) || 0) * MANA_SCALE), 0, 65535),
     maxMana: clamp(Math.round((Number(player.maxMana) || 0) * MANA_SCALE), 0, 65535),
     pendingHeal: clamp(Math.round(getPendingHealAmount(player) * HEAL_SCALE), 0, 65535),
+    pendingMana: clamp(Math.round(getPendingManaAmount(player) * MANA_SCALE), 0, 65535),
     copper: clamp(player.copper, 0, 65535),
     level: clamp(player.level, 1, 65535),
     exp: clamp(player.exp, 0, 4294967295),
@@ -3070,6 +3624,9 @@ function processSelfUpdate(sync, player) {
   if (state.pendingHeal !== previous.pendingHeal) {
     flags |= DELTA_FLAG_PENDING_HEAL_CHANGED;
   }
+  if (state.pendingMana !== previous.pendingMana) {
+    flags |= SELF_FLAG_PENDING_MANA_CHANGED;
+  }
   if (state.copper !== previous.copper) {
     flags |= DELTA_FLAG_COPPER_CHANGED;
   }
@@ -3093,7 +3650,8 @@ function processSelfUpdate(sync, player) {
       maxHp: state.maxHp,
       mana: state.mana,
       maxMana: state.maxMana,
-      pendingHeal: state.pendingHeal
+      pendingHeal: state.pendingHeal,
+      pendingMana: state.pendingMana
     };
   }
 
@@ -3110,7 +3668,7 @@ function encodeSelfUpdate(update) {
   }
 
   if (update.mode === SELF_MODE_FULL) {
-    const buffer = Buffer.alloc(24);
+    const buffer = Buffer.alloc(26);
     buffer.writeUInt16LE(update.x, 0);
     buffer.writeUInt16LE(update.y, 2);
     buffer.writeUInt8(update.hp, 4);
@@ -3118,10 +3676,11 @@ function encodeSelfUpdate(update) {
     buffer.writeUInt16LE(update.mana, 6);
     buffer.writeUInt16LE(update.maxMana, 8);
     buffer.writeUInt16LE(update.pendingHeal, 10);
-    buffer.writeUInt16LE(update.copper, 12);
-    buffer.writeUInt16LE(update.level, 14);
-    buffer.writeUInt32LE(update.exp, 16);
-    buffer.writeUInt32LE(update.expToNext, 20);
+    buffer.writeUInt16LE(update.pendingMana, 12);
+    buffer.writeUInt16LE(update.copper, 14);
+    buffer.writeUInt16LE(update.level, 16);
+    buffer.writeUInt32LE(update.exp, 18);
+    buffer.writeUInt32LE(update.expToNext, 22);
     return buffer;
   }
 
@@ -3140,6 +3699,9 @@ function encodeSelfUpdate(update) {
   }
   if (update.flags & DELTA_FLAG_PENDING_HEAL_CHANGED) {
     bytes.push(update.pendingHeal & 0xff, (update.pendingHeal >> 8) & 0xff);
+  }
+  if (update.flags & SELF_FLAG_PENDING_MANA_CHANGED) {
+    bytes.push(update.pendingMana & 0xff, (update.pendingMana >> 8) & 0xff);
   }
   if (update.flags & DELTA_FLAG_COPPER_CHANGED) {
     bytes.push(update.copper & 0xff, (update.copper >> 8) & 0xff);
@@ -3328,6 +3890,45 @@ function broadcastState() {
       effects: mobEffects
     });
 
+    if (activeAreaEffects.size) {
+      const visibleAreaEffects = [];
+      for (const effect of activeAreaEffects.values()) {
+        if (!effect || now >= Number(effect.endsAt)) {
+          continue;
+        }
+        const remainingMs = clamp(Math.floor(effect.endsAt - now), 1, 65535);
+        const visibility = VISIBILITY_RANGE + Math.max(0, Number(effect.radius) || 0);
+        if (!inVisibilityRange(player, effect, visibility)) {
+          continue;
+        }
+        const serializedEffect = {
+          id: effect.id,
+          x: effect.x,
+          y: effect.y,
+          radius: effect.radius,
+          kind: String(effect.kind || "area"),
+          abilityId: effect.abilityId,
+          remainingMs,
+          durationMs: clamp(Math.floor(effect.durationMs), 1, 65535)
+        };
+        if (String(effect.kind || "") === "beam") {
+          serializedEffect.startX = Number(effect.startX);
+          serializedEffect.startY = Number(effect.startY);
+          serializedEffect.dx = Number(effect.dx);
+          serializedEffect.dy = Number(effect.dy);
+          serializedEffect.length = Math.max(0.1, Number(effect.length) || 0);
+          serializedEffect.width = Math.max(0.1, Number(effect.width) || 0);
+        }
+        visibleAreaEffects.push(serializedEffect);
+      }
+      if (visibleAreaEffects.length) {
+        sendJson(player.ws, {
+          type: "area_effects",
+          effects: visibleAreaEffects
+        });
+      }
+    }
+
     if (pendingDamageEvents.length) {
       const visibleDamageEvents = [];
       for (const event of pendingDamageEvents) {
@@ -3380,6 +3981,21 @@ function broadcastState() {
       }
     }
 
+    if (pendingMobDeathEvents.length) {
+      const visibleMobDeathEvents = [];
+      for (const event of pendingMobDeathEvents) {
+        if (inVisibilityRange(player, event, VISIBILITY_RANGE + 2)) {
+          visibleMobDeathEvents.push(event);
+        }
+      }
+      if (visibleMobDeathEvents.length) {
+        sendJson(player.ws, {
+          type: "mob_death_events",
+          events: visibleMobDeathEvents
+        });
+      }
+    }
+
     if (entityUpdate.packet) {
       sendBinary(player.ws, entityUpdate.packet);
     }
@@ -3388,6 +4004,7 @@ function broadcastState() {
   pendingDamageEvents.length = 0;
   pendingExplosionEvents.length = 0;
   pendingProjectileHitEvents.length = 0;
+  pendingMobDeathEvents.length = 0;
 }
 
 wss.on("connection", (ws) => {
@@ -3452,10 +4069,12 @@ wss.on("connection", (ws) => {
         level: 1,
         exp: 0,
         expToNext: expNeededForLevel(1),
+        skillPoints: 0,
         abilityLevels: new Map(classDef.abilities.map((entry) => [entry.id, entry.level])),
         abilityLastUsedAt: new Map(),
         activeCast: null,
         castStateVersion: 0,
+        invulnerableUntil: 0,
         inventorySlots: createEmptyInventorySlots(),
         input: { dx: 0, dy: 0 },
         lastDirection: { dx: 0, dy: 1 },
@@ -3566,10 +4185,22 @@ wss.on("connection", (ws) => {
       const abilityId = String(msg.abilityId || "").trim();
       const dx = Number(msg.dx);
       const dy = Number(msg.dy);
+      const distance = Number(msg.distance);
       if (!abilityId || !Number.isFinite(dx) || !Number.isFinite(dy)) {
         return;
       }
-      usePlayerAbility(player, abilityId, dx, dy);
+      usePlayerAbility(player, abilityId, dx, dy, Number.isFinite(distance) ? distance : null);
+      return;
+    }
+
+    if (msg.type === "level_up_ability") {
+      const abilityId = String(msg.abilityId || "").trim();
+      if (!abilityId) {
+        return;
+      }
+      if (levelUpPlayerAbility(player, abilityId)) {
+        sendSelfProgress(player);
+      }
       return;
     }
 
@@ -3690,6 +4321,7 @@ wss.on("connection", (ws) => {
 setInterval(() => {
   tickPlayers();
   tickPlayerCasts(Date.now());
+  tickAreaEffects(Date.now());
   tickMobs();
   tickProjectiles();
   broadcastState();

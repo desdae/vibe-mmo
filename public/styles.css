@@ -149,6 +149,15 @@ body {
   background: linear-gradient(90deg, rgba(18, 128, 193, 0.98), rgba(42, 185, 255, 0.96));
 }
 
+.resource-bar.mana .resource-fill.mana-predict {
+  background: linear-gradient(90deg, rgba(15, 79, 136, 0.95), rgba(24, 114, 182, 0.92));
+  z-index: 1;
+}
+
+#mana-fill {
+  z-index: 2;
+}
+
 .resource-bar.exp .resource-fill {
   background: linear-gradient(90deg, rgba(217, 194, 34, 0.97), rgba(255, 238, 125, 0.95));
 }
@@ -182,6 +191,46 @@ body {
 
 .spellbook-entry:active {
   cursor: grabbing;
+}
+
+.spellbook-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.spellbook-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.spellbook-level {
+  font-size: 10px;
+  color: #cfe6fb;
+  opacity: 0.95;
+  line-height: 1;
+}
+
+.spellbook-plus {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(132, 184, 208, 0.62);
+  background: rgba(23, 63, 88, 0.92);
+  color: #def1ff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.spellbook-plus:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 #action-bar {

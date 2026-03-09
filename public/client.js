@@ -13,6 +13,7 @@ const resourceBars = document.getElementById("resource-bars");
 const hpPredictFill = document.getElementById("hp-predict-fill");
 const hpFill = document.getElementById("hp-fill");
 const hpText = document.getElementById("hp-text");
+const manaPredictFill = document.getElementById("mana-predict-fill");
 const manaFill = document.getElementById("mana-fill");
 const manaText = document.getElementById("mana-text");
 const expFill = document.getElementById("exp-fill");
@@ -36,7 +37,7 @@ const MOB_RENDER_RADIUS = 12;
 const MOB_SPRITE_SIZE = 36;
 const DAMAGE_FLOAT_DURATION_MS = 850;
 const ENTITY_PROTO_TYPE = 1;
-const ENTITY_PROTO_VERSION = 6;
+const ENTITY_PROTO_VERSION = 7;
 const POS_SCALE = 64;
 const MANA_SCALE = 10;
 const HEAL_SCALE = 10;
@@ -48,6 +49,7 @@ const DELTA_FLAG_PROGRESS_CHANGED = 1 << 4;
 const DELTA_FLAG_MANA_CHANGED = 1 << 5;
 const DELTA_FLAG_MAX_MANA_CHANGED = 1 << 6;
 const DELTA_FLAG_PENDING_HEAL_CHANGED = 1 << 7;
+const SELF_FLAG_PENDING_MANA_CHANGED = 1 << 2;
 const SELF_MODE_NONE = 0;
 const SELF_MODE_FULL = 1;
 const SELF_MODE_DELTA = 2;
@@ -86,21 +88,13 @@ const movementSync = {
   lastDy: 0,
   lastSentAt: 0
 };
-const fireballAudio = {
-  channel: null,
-  cast: null,
-  explode: null,
-  channelPlaying: false,
-  lastCastPlayedAt: 0,
-  lastExplosionPlayedAt: 0
-};
-const frostboltAudio = {
-  channel: null,
-  fly: null,
-  channelPlaying: false,
-  hit: null,
-  lastFlyPlayedAt: 0,
-  lastHitPlayedAt: 0
+const ABILITY_AUDIO_EVENTS = ["channel", "cast", "hit"];
+const abilityAudioRegistry = new Map();
+const orcBerserkerAudio = {
+  attack: null,
+  death: null,
+  lastDeathPlayedAt: 0,
+  attackByMob: new Map()
 };
 const swordSwing = {
   activeUntil: 0,
@@ -143,6 +137,7 @@ const warriorAnimRuntime = new Map();
 const snapshots = [];
 const floatingDamageNumbers = [];
 const activeExplosions = [];
+const activeAreaEffectsById = new Map();
 const actionSlotEls = new Map();
 const actionBindings = new Map();
 let actionBindingsClassType = null;
@@ -209,6 +204,11 @@ function normalizeDirection(dx, dy) {
     dx: dx / len,
     dy: dy / len
   };
+}
+
+function isOrcBerserkerMobName(name) {
+  const lower = String(name || "").toLowerCase();
+  return lower.includes("orc") && lower.includes("berserker");
 }
 
 function setStatus(text) {
@@ -284,164 +284,226 @@ function parseActionBinding(binding) {
   };
 }
 
-function ensureFireballAudioLoaded() {
-  if (!fireballAudio.channel) {
-    const channel = new Audio("/sounds/mage_channeling_a_fireball.mp3");
-    channel.preload = "auto";
-    channel.loop = true;
-    channel.volume = 0.42;
-    fireballAudio.channel = channel;
+function toAbilityAudioId(abilityId) {
+  return String(abilityId || "").trim().toLowerCase();
+}
+
+function getAbilityAudioBundle(abilityId, createIfMissing = true) {
+  const id = toAbilityAudioId(abilityId);
+  if (!id) {
+    return null;
   }
-  if (!fireballAudio.cast) {
-    const cast = new Audio("/sounds/mage_casting_a_fireball.mp3");
-    cast.preload = "auto";
-    cast.volume = 0.54;
-    fireballAudio.cast = cast;
+  let bundle = abilityAudioRegistry.get(id);
+  if (!bundle && createIfMissing) {
+    bundle = {};
+    abilityAudioRegistry.set(id, bundle);
   }
-  if (!fireballAudio.explode) {
-    const explode = new Audio("/sounds/fireball_exploding.mp3");
-    explode.preload = "auto";
-    explode.volume = 0.58;
-    fireballAudio.explode = explode;
+  return bundle || null;
+}
+
+function getAbilityAudioState(abilityId, eventType, createIfMissing = true) {
+  const eventName = String(eventType || "").trim().toLowerCase();
+  if (!ABILITY_AUDIO_EVENTS.includes(eventName)) {
+    return null;
+  }
+  const bundle = getAbilityAudioBundle(abilityId, createIfMissing);
+  if (!bundle) {
+    return null;
+  }
+  if (!bundle[eventName] && createIfMissing) {
+    bundle[eventName] = {
+      audio: null,
+      status: "idle",
+      playing: false,
+      lastPlayedAt: 0
+    };
+  }
+  return bundle[eventName] || null;
+}
+
+function getAbilityAudioUrl(abilityId, eventType) {
+  return `/sounds/abilities/${encodeURIComponent(String(abilityId || "").trim())}/${eventType}.mp3`;
+}
+
+function applyAbilityAudioDefaults(audio, eventType) {
+  if (!audio) {
+    return;
+  }
+  audio.preload = "auto";
+  if (eventType === "channel") {
+    audio.loop = true;
+    audio.volume = 0.44;
+  } else if (eventType === "cast") {
+    audio.volume = 0.54;
+  } else if (eventType === "hit") {
+    audio.volume = 0.58;
   }
 }
 
-function ensureFrostboltAudioLoaded() {
-  if (!frostboltAudio.channel) {
-    const channel = new Audio("/sounds/mage_channeling_frostbolt.mp3");
-    channel.preload = "auto";
-    channel.loop = true;
-    channel.volume = 0.4;
-    frostboltAudio.channel = channel;
+function ensureAbilityAudioClip(abilityId, eventType) {
+  const state = getAbilityAudioState(abilityId, eventType, true);
+  if (!state || state.status === "ready" || state.status === "loading" || state.status === "missing") {
+    return state;
   }
-  if (!frostboltAudio.fly) {
-    const fly = new Audio("/sounds/frostbolt_flying.mp3");
-    fly.preload = "auto";
-    fly.volume = 0.52;
-    frostboltAudio.fly = fly;
+
+  const normalizedAbilityId = toAbilityAudioId(abilityId);
+  const audio = new Audio(getAbilityAudioUrl(normalizedAbilityId, eventType));
+  applyAbilityAudioDefaults(audio, eventType);
+  state.audio = audio;
+  state.status = "loading";
+  state.playing = false;
+
+  const markReady = () => {
+    if (state.status !== "missing") {
+      state.status = "ready";
+    }
+  };
+  const markMissing = () => {
+    state.status = "missing";
+    state.playing = false;
+  };
+
+  audio.addEventListener("canplaythrough", markReady, { once: true });
+  audio.addEventListener("loadeddata", markReady, { once: true });
+  audio.addEventListener("error", markMissing, { once: true });
+  try {
+    audio.load();
+  } catch (_error) {
+    markMissing();
   }
-  if (!frostboltAudio.hit) {
-    const hit = new Audio("/sounds/frostbolt_hits_a_target.mp3");
-    hit.preload = "auto";
-    hit.volume = 0.56;
-    frostboltAudio.hit = hit;
+  return state;
+}
+
+function preloadAbilityAudioById(abilityId) {
+  const normalizedAbilityId = toAbilityAudioId(abilityId);
+  if (!normalizedAbilityId) {
+    return;
+  }
+  for (const eventType of ABILITY_AUDIO_EVENTS) {
+    ensureAbilityAudioClip(normalizedAbilityId, eventType);
   }
 }
 
-function startFireballChannelAudio() {
-  ensureFireballAudioLoaded();
-  if (!fireballAudio.channel || fireballAudio.channelPlaying) {
-    return;
-  }
-  fireballAudio.channelPlaying = true;
-  fireballAudio.channel.currentTime = 0;
-  const playback = fireballAudio.channel.play();
-  if (playback && typeof playback.catch === "function") {
-    playback.catch(() => {
-      fireballAudio.channelPlaying = false;
-    });
+function preloadAllAbilityAudio() {
+  for (const abilityId of abilityDefsById.keys()) {
+    preloadAbilityAudioById(abilityId);
   }
 }
 
-function stopFireballChannelAudio() {
-  if (!fireballAudio.channel) {
-    fireballAudio.channelPlaying = false;
-    return;
+function ensureOrcBerserkerAudioLoaded() {
+  if (!orcBerserkerAudio.attack) {
+    const attack = new Audio("/sounds/mobs/orc_berserker/attack.mp3");
+    attack.preload = "auto";
+    attack.volume = 0.48;
+    orcBerserkerAudio.attack = attack;
   }
-  fireballAudio.channel.pause();
-  fireballAudio.channel.currentTime = 0;
-  fireballAudio.channelPlaying = false;
-}
-
-function playFireballCastAudio(now = performance.now()) {
-  ensureFireballAudioLoaded();
-  if (!fireballAudio.cast) {
-    return;
-  }
-  if (now - fireballAudio.lastCastPlayedAt < 100) {
-    return;
-  }
-  fireballAudio.lastCastPlayedAt = now;
-  fireballAudio.cast.currentTime = 0;
-  const playback = fireballAudio.cast.play();
-  if (playback && typeof playback.catch === "function") {
-    playback.catch(() => {});
+  if (!orcBerserkerAudio.death) {
+    const death = new Audio("/sounds/mobs/orc_berserker/death.mp3");
+    death.preload = "auto";
+    death.volume = 0.58;
+    orcBerserkerAudio.death = death;
   }
 }
 
-function playFireballExplosionAudio(now = performance.now()) {
-  ensureFireballAudioLoaded();
-  if (!fireballAudio.explode) {
+function playOrcBerserkerAttackAudio(mobId, now = performance.now()) {
+  ensureOrcBerserkerAudioLoaded();
+  if (!orcBerserkerAudio.attack) {
     return;
   }
-  if (now - fireballAudio.lastExplosionPlayedAt < 70) {
+  const idKey = String(mobId || "");
+  if (!idKey) {
     return;
   }
-  fireballAudio.lastExplosionPlayedAt = now;
-  const clip = fireballAudio.explode.cloneNode();
-  clip.volume = fireballAudio.explode.volume;
+  const lastPlayedAt = Number(orcBerserkerAudio.attackByMob.get(idKey) || 0);
+  if (now - lastPlayedAt < 150) {
+    return;
+  }
+  orcBerserkerAudio.attackByMob.set(idKey, now);
+  const clip = orcBerserkerAudio.attack.cloneNode();
+  clip.volume = orcBerserkerAudio.attack.volume;
   const playback = clip.play();
   if (playback && typeof playback.catch === "function") {
     playback.catch(() => {});
   }
 }
 
-function startFrostboltChannelAudio() {
-  ensureFrostboltAudioLoaded();
-  if (!frostboltAudio.channel || frostboltAudio.channelPlaying) {
+function playOrcBerserkerDeathAudio(now = performance.now()) {
+  ensureOrcBerserkerAudioLoaded();
+  if (!orcBerserkerAudio.death) {
     return;
   }
-  frostboltAudio.channelPlaying = true;
-  frostboltAudio.channel.currentTime = 0;
-  const playback = frostboltAudio.channel.play();
-  if (playback && typeof playback.catch === "function") {
-    playback.catch(() => {
-      frostboltAudio.channelPlaying = false;
-    });
-  }
-}
-
-function stopFrostboltChannelAudio() {
-  if (!frostboltAudio.channel) {
-    frostboltAudio.channelPlaying = false;
+  if (now - orcBerserkerAudio.lastDeathPlayedAt < 90) {
     return;
   }
-  frostboltAudio.channel.pause();
-  frostboltAudio.channel.currentTime = 0;
-  frostboltAudio.channelPlaying = false;
-}
-
-function playFrostboltFlyAudio(now = performance.now()) {
-  ensureFrostboltAudioLoaded();
-  if (!frostboltAudio.fly) {
-    return;
-  }
-  if (now - frostboltAudio.lastFlyPlayedAt < 100) {
-    return;
-  }
-  frostboltAudio.lastFlyPlayedAt = now;
-  const clip = frostboltAudio.fly.cloneNode();
-  clip.volume = frostboltAudio.fly.volume;
+  orcBerserkerAudio.lastDeathPlayedAt = now;
+  const clip = orcBerserkerAudio.death.cloneNode();
+  clip.volume = orcBerserkerAudio.death.volume;
   const playback = clip.play();
   if (playback && typeof playback.catch === "function") {
     playback.catch(() => {});
   }
 }
 
-function playFrostboltHitAudio(now = performance.now()) {
-  ensureFrostboltAudioLoaded();
-  if (!frostboltAudio.hit) {
+function getAbilityAudioMinIntervalMs(eventType) {
+  if (eventType === "cast") {
+    return 90;
+  }
+  if (eventType === "hit") {
+    return 60;
+  }
+  return 0;
+}
+
+function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
+  const normalizedAbilityId = toAbilityAudioId(abilityId);
+  const state = ensureAbilityAudioClip(normalizedAbilityId, eventType);
+  if (!state || state.status === "missing" || !state.audio) {
     return;
   }
-  if (now - frostboltAudio.lastHitPlayedAt < 60) {
+
+  const minIntervalMs = getAbilityAudioMinIntervalMs(eventType);
+  if (minIntervalMs > 0 && now - Number(state.lastPlayedAt || 0) < minIntervalMs) {
     return;
   }
-  frostboltAudio.lastHitPlayedAt = now;
-  const clip = frostboltAudio.hit.cloneNode();
-  clip.volume = frostboltAudio.hit.volume;
+  state.lastPlayedAt = now;
+
+  if (eventType === "channel") {
+    if (state.playing) {
+      return;
+    }
+    state.playing = true;
+    state.audio.currentTime = 0;
+    const playback = state.audio.play();
+    if (playback && typeof playback.catch === "function") {
+      playback.catch(() => {
+        state.playing = false;
+      });
+    }
+    return;
+  }
+
+  const clip = state.audio.cloneNode();
+  clip.volume = state.audio.volume;
   const playback = clip.play();
   if (playback && typeof playback.catch === "function") {
     playback.catch(() => {});
+  }
+}
+
+function stopAbilityChannelAudio(abilityId) {
+  const normalizedAbilityId = toAbilityAudioId(abilityId);
+  const state = getAbilityAudioState(normalizedAbilityId, "channel", false);
+  if (!state || !state.audio) {
+    return;
+  }
+  state.audio.pause();
+  state.audio.currentTime = 0;
+  state.playing = false;
+}
+
+function stopAllAbilityChannelAudio() {
+  for (const abilityId of abilityAudioRegistry.keys()) {
+    stopAbilityChannelAudio(abilityId);
   }
 }
 
@@ -457,54 +519,30 @@ function captureCastStateSnapshot(castState) {
 function syncLocalCastAudio(previousCast, nextCast) {
   const prev = previousCast || { active: false, abilityId: "", startedAt: 0, durationMs: 0 };
   const next = nextCast || { active: false, abilityId: "", startedAt: 0, durationMs: 0 };
-  const wasFireball = !!prev.active && prev.abilityId === "fireball";
-  const isFireball = !!next.active && String(next.abilityId || "").toLowerCase() === "fireball";
-  const wasFrostbolt = !!prev.active && prev.abilityId === "frostbolt";
-  const isFrostbolt = !!next.active && String(next.abilityId || "").toLowerCase() === "frostbolt";
+  const prevAbility = toAbilityAudioId(prev.abilityId);
+  const nextAbility = toAbilityAudioId(next.abilityId);
   const now = performance.now();
 
-  if (!wasFireball && isFireball) {
-    startFireballChannelAudio();
-    return;
+  if (prev.active && (!next.active || prevAbility !== nextAbility)) {
+    stopAbilityChannelAudio(prevAbility);
   }
 
-  if (wasFireball && !isFireball) {
-    stopFireballChannelAudio();
+  if (next.active && (!prev.active || prevAbility !== nextAbility)) {
+    playAbilityAudioEvent(nextAbility, "channel", now);
+  }
+
+  if (prev.active && !next.active) {
     const completion =
       prev.durationMs > 0 ? clamp((now - prev.startedAt) / prev.durationMs, 0, 1) : 0;
     if (completion >= 0.94) {
-      playFireballCastAudio(now);
+      markAbilityUsedClient(prevAbility, now);
+      playAbilityAudioEvent(prevAbility, "cast", now);
     }
-    return;
-  }
-
-  if (!isFireball) {
-    stopFireballChannelAudio();
-  }
-
-  if (!wasFrostbolt && isFrostbolt) {
-    startFrostboltChannelAudio();
-    return;
-  }
-
-  if (wasFrostbolt && !isFrostbolt) {
-    stopFrostboltChannelAudio();
-    const completion =
-      prev.durationMs > 0 ? clamp((now - prev.startedAt) / prev.durationMs, 0, 1) : 0;
-    if (completion >= 0.94) {
-      playFrostboltFlyAudio(now);
-    }
-    return;
-  }
-
-  if (!isFrostbolt) {
-    stopFrostboltChannelAudio();
   }
 }
 
 function resetAbilityChanneling() {
-  stopFireballChannelAudio();
-  stopFrostboltChannelAudio();
+  stopAllAbilityChannelAudio();
   abilityChannel.active = false;
   abilityChannel.abilityId = "";
   abilityChannel.startedAt = 0;
@@ -604,75 +642,106 @@ function formatMsAsSeconds(ms) {
 
 function buildAbilityTooltip(abilityId) {
   const action = getActionDefById(abilityId);
-  const ability = abilityDefsById.get(String(abilityId || "")) || action;
+  const abilityIdKey = String(abilityId || "");
+  const ability = abilityDefsById.get(abilityIdKey);
   const lines = [action.name || String(abilityId || "Ability")];
 
-  if (ability.description) {
-    lines.push(String(ability.description));
-  }
-  if (ability.kind && ability.kind !== "none") {
-    lines.push(`Kind: ${String(ability.kind)}`);
+  if (action.description) {
+    lines.push(String(action.description));
   }
 
-  appendTooltipNumber(lines, "Mana Cost", ability.manaCost);
-  appendTooltipNumber(lines, "Cooldown", ability.cooldownMs, formatMsAsSeconds);
-  appendTooltipNumber(lines, "Cast Time", ability.castMs, formatMsAsSeconds);
-  appendTooltipNumber(lines, "Range", ability.range);
-  appendTooltipNumber(lines, "Speed", ability.speed);
-  appendTooltipNumber(lines, "Damage Min", ability.damageMin);
-  appendTooltipNumber(lines, "Damage Max", ability.damageMax);
-  appendTooltipNumber(lines, "Damage/Level Min", ability.damagePerLevelMin);
-  appendTooltipNumber(lines, "Damage/Level Max", ability.damagePerLevelMax);
-  appendTooltipNumber(lines, "Cone Angle", ability.coneAngleDeg, (v) => `${Math.round(v)} deg`);
-  appendTooltipNumber(lines, "Hit Radius", ability.projectileHitRadius);
-  appendTooltipNumber(lines, "Explosion Radius", ability.explosionRadius);
-  appendTooltipNumber(lines, "Explosion Multiplier", ability.explosionDamageMultiplier, (v) => `${Math.round(v * 100)}%`);
-  appendTooltipNumber(lines, "Stun Duration", ability.stunDurationMs, formatMsAsSeconds);
-  appendTooltipNumber(lines, "Slow Duration", ability.slowDurationMs, formatMsAsSeconds);
-  appendTooltipNumber(lines, "Slow Speed Multiplier", ability.slowMultiplier, (v) => `${Math.round(v * 100)}%`);
-
-  const knownKeys = new Set([
-    "id",
-    "name",
-    "description",
-    "kind",
-    "cooldownMs",
-    "range",
-    "speed",
-    "castMs",
-    "manaCost",
-    "damageMin",
-    "damageMax",
-    "damagePerLevelMin",
-    "damagePerLevelMax",
-    "coneAngleDeg",
-    "projectileHitRadius",
-    "explosionRadius",
-    "explosionDamageMultiplier",
-    "stunDurationMs",
-    "slowDurationMs",
-    "slowMultiplier",
-    "coneCos"
-  ]);
-  for (const [key, value] of Object.entries(ability)) {
-    if (knownKeys.has(key)) {
-      continue;
+  if (!ability) {
+    if (action.kind && action.kind !== "none") {
+      lines.push(`Kind: ${String(action.kind)}`);
     }
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      appendTooltipNumber(lines, humanizeKey(key), value);
-    } else if (
-      Array.isArray(value) &&
-      value.length &&
-      value.every((v) => Number.isFinite(Number(v)))
-    ) {
-      const arr = value.map((v) => Number(v));
-      if (arr.some((v) => v > 0)) {
-        if (arr.length === 2) {
-          lines.push(`${humanizeKey(key)}: ${arr[0]} - ${arr[1]}`);
-        } else {
-          lines.push(`${humanizeKey(key)}: ${arr.join(", ")}`);
-        }
-      }
+    appendTooltipNumber(lines, "Mana Cost", action.manaCost);
+    appendTooltipNumber(lines, "Cooldown", action.cooldownMs, formatMsAsSeconds);
+    appendTooltipNumber(lines, "Cast Time", action.castMs, formatMsAsSeconds);
+    appendTooltipNumber(lines, "Range", action.range);
+    return lines.join("\n");
+  }
+
+  const self = getCurrentSelf();
+  const kind = String(ability.kind || action.kind || "meleeCone");
+  const level = getSelfAbilityLevel(self, ability.id, 1);
+  const levelOffset = Math.max(0, level - 1);
+  const cooldownMs = getAbilityEffectiveCooldownMsForSelf(ability.id, self);
+  const castMs = Math.max(0, Number(ability.castMs) || 0);
+  const effectiveRange = getAbilityEffectiveRangeForSelf(ability.id, self);
+  const manaCost = Math.max(0, Number(ability.manaCost) || 0);
+  const totalDamageMin = Math.max(
+    0,
+    Math.floor(Number(ability.damageMin || 0) + Number(ability.damagePerLevelMin || 0) * levelOffset)
+  );
+  const totalDamageMax = Math.max(
+    totalDamageMin,
+    Math.ceil(Number(ability.damageMax || 0) + Number(ability.damagePerLevelMax || 0) * levelOffset)
+  );
+  const durationMs = Math.max(0, Number(ability.durationMs) || 0);
+  const stunDurationMs = Math.max(0, Number(ability.stunDurationMs) || 0);
+  const slowDurationMs = Math.max(0, Number(ability.slowDurationMs) || 0);
+  const rawSlowMultiplier = Number(ability.slowMultiplier);
+  const slowMultiplier = Number.isFinite(rawSlowMultiplier)
+    ? clamp(rawSlowMultiplier, 0.1, 1)
+    : Number.isFinite(Number(ability.slowAmount))
+      ? clamp(1 - clamp(Number(ability.slowAmount), 0, 0.95), 0.1, 1)
+      : 1;
+  const slowPercent = Math.round((1 - slowMultiplier) * 100);
+  const invulnerabilityDurationMs = Math.max(
+    0,
+    Number(ability.invulnerabilityDurationMs || 0) || Math.round((Number(ability.invulnerabilityDuration) || 0) * 1000)
+  );
+
+  if (kind && kind !== "none") {
+    lines.push(`Kind: ${kind}`);
+  }
+  appendTooltipNumber(lines, "Mana Cost", manaCost);
+  appendTooltipNumber(lines, "Cooldown", cooldownMs, formatMsAsSeconds);
+  appendTooltipNumber(lines, "Cast Time", castMs, formatMsAsSeconds);
+  appendTooltipNumber(lines, "Range", effectiveRange);
+
+  if (totalDamageMax > 0) {
+    const damageLabel = (kind === "area" || kind === "beam") && durationMs > 0 ? "Damage / Second" : "Damage";
+    lines.push(`${damageLabel}: ${totalDamageMin} - ${totalDamageMax}`);
+  }
+
+  if (kind === "meleeCone") {
+    appendTooltipNumber(lines, "Cone Angle", ability.coneAngleDeg, (v) => `${Math.round(v)} deg`);
+  }
+
+  if (kind === "projectile") {
+    appendTooltipNumber(lines, "Speed", ability.speed);
+    const projectileCount = Math.max(0, Number(ability.projectileCount) || 0);
+    if (projectileCount > 1) {
+      lines.push(`Projectiles: ${Math.floor(projectileCount)}`);
+    }
+    appendTooltipNumber(lines, "Hit Radius", ability.projectileHitRadius);
+    appendTooltipNumber(lines, "Homing Range", ability.homingRange);
+    appendTooltipNumber(lines, "Homing Turn Rate", ability.homingTurnRate);
+    appendTooltipNumber(lines, "Explosion Radius", ability.explosionRadius);
+    appendTooltipNumber(lines, "Explosion Multiplier", ability.explosionDamageMultiplier, (v) => `${Math.round(v * 100)}%`);
+  }
+
+  if (kind === "area") {
+    appendTooltipNumber(lines, "Area Radius", ability.areaRadius);
+    appendTooltipNumber(lines, "Duration", durationMs, formatMsAsSeconds);
+  }
+
+  if (kind === "beam") {
+    appendTooltipNumber(lines, "Beam Width", ability.beamWidth);
+    appendTooltipNumber(lines, "Duration", durationMs, formatMsAsSeconds);
+  }
+
+  if (kind === "teleport") {
+    appendTooltipNumber(lines, "Invulnerability", invulnerabilityDurationMs, formatMsAsSeconds);
+  }
+
+  appendTooltipNumber(lines, "Stun Duration", stunDurationMs, formatMsAsSeconds);
+  if (slowPercent > 0) {
+    if (slowDurationMs > 0) {
+      lines.push(`Slow: ${slowPercent}% for ${formatMsAsSeconds(slowDurationMs)}`);
+    } else {
+      lines.push(`Slow: ${slowPercent}%`);
     }
   }
 
@@ -750,6 +819,9 @@ function updateResourceBars(self) {
     if (hpPredictFill) {
       hpPredictFill.style.transform = "scaleX(0)";
     }
+    if (manaPredictFill) {
+      manaPredictFill.style.transform = "scaleX(0)";
+    }
     hpFill.style.transform = "scaleX(0)";
     manaFill.style.transform = "scaleX(0)";
     expFill.style.transform = "scaleX(0)";
@@ -775,7 +847,13 @@ function updateResourceBars(self) {
   const classDef = classDefsById.get(String(self.classType || ""));
   const maxMana = Math.max(0, Number(self.maxMana ?? classDef?.baseMana ?? 0) || 0);
   const mana = Math.max(0, Number(self.mana ?? maxMana) || 0);
+  const pendingMana = Math.max(0, Number(self.pendingMana) || 0);
+  const predictedMana = clamp(mana + pendingMana, 0, maxMana);
+  const predictedManaRatio = maxMana > 0 ? clamp(predictedMana / maxMana, 0, 1) : 0;
   const manaRatio = maxMana > 0 ? clamp(mana / maxMana, 0, 1) : 0;
+  if (manaPredictFill) {
+    manaPredictFill.style.transform = `scaleX(${predictedManaRatio})`;
+  }
   manaFill.style.transform = `scaleX(${manaRatio})`;
   manaText.textContent = maxMana > 0 ? `MP ${Math.floor(mana)}/${Math.floor(maxMana)}` : "MP 0/0";
 
@@ -786,17 +864,92 @@ function updateResourceBars(self) {
   expText.textContent = `EXP ${Math.floor(exp)}/${Math.floor(expToNext)} (Lv ${Math.max(1, Math.floor(Number(self.level) || 1))})`;
 }
 
-function buildSpellbookSignature(classType) {
-  const classDef = classDefsById.get(String(classType || ""));
+function getSelfAbilityLevel(self, abilityId, fallbackLevel = 1) {
+  const safeFallback = Math.max(1, Math.floor(Number(fallbackLevel) || 1));
+  if (!self || !self.abilityLevels || typeof self.abilityLevels !== "object") {
+    return safeFallback;
+  }
+  const raw = self.abilityLevels[String(abilityId || "")];
+  const level = Math.floor(Number(raw) || 0);
+  if (!Number.isFinite(level) || level <= 0) {
+    return safeFallback;
+  }
+  return level;
+}
+
+function getAbilityEffectiveRangeForSelf(abilityId, self) {
+  const ability = abilityDefsById.get(String(abilityId || ""));
+  if (!ability) {
+    return Math.max(0, Number(getActionDefById(abilityId).range) || 0);
+  }
+  const level = getSelfAbilityLevel(self, ability.id, 1);
+  const levelOffset = Math.max(0, level - 1);
+  const baseRange = Math.max(0, Number(ability.range) || 0);
+  const rangePerLevel = Math.max(0, Number(ability.rangePerLevel) || 0);
+  return Math.max(0, baseRange + rangePerLevel * levelOffset);
+}
+
+function getAbilityEffectiveCooldownMsForSelf(abilityId, self) {
+  const ability = abilityDefsById.get(String(abilityId || ""));
+  const baseCooldownMs = Math.max(
+    0,
+    Number(ability ? ability.cooldownMs : getActionDefById(abilityId).cooldownMs) || 0
+  );
+  if (!ability) {
+    return baseCooldownMs;
+  }
+  const level = getSelfAbilityLevel(self, ability.id, 1);
+  const levelOffset = Math.max(0, level - 1);
+  const reductionPerLevelMs = Math.max(0, Number(ability.cooldownReductionPerLevel) || 0) * 1000;
+  return Math.max(0, baseCooldownMs - reductionPerLevelMs * levelOffset);
+}
+
+function parseAbilityLevelsPayload(rawLevels) {
+  const result = {};
+  if (Array.isArray(rawLevels)) {
+    for (const entry of rawLevels) {
+      if (!entry) {
+        continue;
+      }
+      const abilityId = String(entry.id || "").trim();
+      const level = Math.max(1, Math.floor(Number(entry.level) || 0));
+      if (!abilityId || level <= 0) {
+        continue;
+      }
+      result[abilityId] = level;
+    }
+    return result;
+  }
+  if (rawLevels && typeof rawLevels === "object") {
+    for (const [rawId, rawLevel] of Object.entries(rawLevels)) {
+      const abilityId = String(rawId || "").trim();
+      const level = Math.max(1, Math.floor(Number(rawLevel) || 0));
+      if (!abilityId || level <= 0) {
+        continue;
+      }
+      result[abilityId] = level;
+    }
+  }
+  return result;
+}
+
+function buildSpellbookSignature(self) {
+  if (!self) {
+    return "";
+  }
+  const classDef = classDefsById.get(String(self.classType || ""));
   if (!classDef) {
     return "";
   }
-  const parts = [String(classType || "")];
+  const skillPoints = Math.max(0, Math.floor(Number(self.skillPoints) || 0));
+  const parts = [String(self.classType || ""), `sp:${skillPoints}`];
   for (const entry of Array.isArray(classDef.abilities) ? classDef.abilities : []) {
     if (!entry) {
       continue;
     }
-    parts.push(`${String(entry.id || "")}:${Math.max(1, Math.floor(Number(entry.level) || 1))}`);
+    const abilityId = String(entry.id || "");
+    const fallbackLevel = Math.max(1, Math.floor(Number(entry.level) || 1));
+    parts.push(`${abilityId}:${getSelfAbilityLevel(self, abilityId, fallbackLevel)}`);
   }
   return parts.join("|");
 }
@@ -811,7 +964,7 @@ function updateSpellbookUI(self) {
     return;
   }
 
-  const signature = buildSpellbookSignature(self.classType);
+  const signature = buildSpellbookSignature(self);
   if (signature === spellbookState.signature) {
     return;
   }
@@ -821,16 +974,24 @@ function updateSpellbookUI(self) {
 
   const classDef = classDefsById.get(String(self.classType || ""));
   const abilities = Array.isArray(classDef?.abilities) ? classDef.abilities : [];
+  const skillPoints = Math.max(0, Math.floor(Number(self.skillPoints) || 0));
 
   for (const entry of abilities) {
     const abilityId = String(entry?.id || "").trim();
     if (!abilityId || !abilityDefsById.has(abilityId)) {
       continue;
     }
+    const fallbackLevel = Math.max(1, Math.floor(Number(entry?.level) || 1));
+    const currentLevel = getSelfAbilityLevel(self, abilityId, fallbackLevel);
+    const canLevelUp = skillPoints > 0;
+
+    const cell = document.createElement("div");
+    cell.className = "spellbook-cell";
+
     const node = document.createElement("div");
     node.className = "spellbook-entry";
     node.style.backgroundImage = `url(${getActionIconUrl(abilityId)})`;
-    node.title = `${buildAbilityTooltip(abilityId)}\nDrag to action slot.`;
+    node.title = `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nDrag to action slot.`;
     node.draggable = true;
     node.addEventListener("dragstart", (event) => {
       dragState.source = "spellbook";
@@ -843,7 +1004,36 @@ function updateSpellbookUI(self) {
     node.addEventListener("dragend", () => {
       clearDragState();
     });
-    spellbookGrid.appendChild(node);
+    cell.appendChild(node);
+
+    const controls = document.createElement("div");
+    controls.className = "spellbook-controls";
+    const levelLabel = document.createElement("div");
+    levelLabel.className = "spellbook-level";
+    levelLabel.textContent = `Lv ${currentLevel}`;
+    controls.appendChild(levelLabel);
+
+    const plusButton = document.createElement("button");
+    plusButton.type = "button";
+    plusButton.className = "spellbook-plus";
+    plusButton.textContent = "+";
+    plusButton.disabled = !canLevelUp;
+    plusButton.title = canLevelUp
+      ? `Spend 1 skill point to level ${abilityId}.`
+      : "No skill points available.";
+    plusButton.addEventListener("click", () => {
+      if (!canLevelUp) {
+        return;
+      }
+      sendJsonMessage({
+        type: "level_up_ability",
+        abilityId
+      });
+    });
+    controls.appendChild(plusButton);
+
+    cell.appendChild(controls);
+    spellbookGrid.appendChild(cell);
   }
 }
 
@@ -921,6 +1111,142 @@ function getActionIconUrl(actionId) {
         iconCtx.moveTo(-12 - i * 3, y);
         iconCtx.lineTo(-17 - i * 3, y);
         iconCtx.stroke();
+      }
+      iconCtx.restore();
+      return;
+    }
+
+    if (actionId === "arcaneMissiles") {
+      iconCtx.save();
+      iconCtx.translate(mid, mid);
+      iconCtx.rotate(-Math.PI / 4.2);
+
+      iconCtx.fillStyle = "#f4ecff";
+      iconCtx.strokeStyle = "#9e84dc";
+      iconCtx.lineWidth = 1.8;
+      iconCtx.beginPath();
+      iconCtx.moveTo(14, 0);
+      iconCtx.lineTo(-7, -5.5);
+      iconCtx.lineTo(-10, 0);
+      iconCtx.lineTo(-7, 5.5);
+      iconCtx.closePath();
+      iconCtx.fill();
+      iconCtx.stroke();
+
+      iconCtx.strokeStyle = "rgba(208, 182, 255, 0.9)";
+      iconCtx.lineWidth = 2.2;
+      iconCtx.beginPath();
+      iconCtx.arc(2, 0, 8.4, 0.2, Math.PI * 1.7);
+      iconCtx.stroke();
+      iconCtx.beginPath();
+      iconCtx.arc(-4, 0, 10.2, Math.PI * 0.4, Math.PI * 2.1);
+      iconCtx.stroke();
+
+      iconCtx.fillStyle = "rgba(233, 223, 255, 0.92)";
+      for (let i = 0; i < 4; i += 1) {
+        const a = i * ((Math.PI * 2) / 4) + 0.35;
+        iconCtx.beginPath();
+        iconCtx.arc(-9 + Math.cos(a) * 7, Math.sin(a) * 7, 1.2, 0, Math.PI * 2);
+        iconCtx.fill();
+      }
+      iconCtx.restore();
+      return;
+    }
+
+    if (actionId === "blizzard") {
+      iconCtx.fillStyle = "rgba(171, 223, 255, 0.2)";
+      iconCtx.beginPath();
+      iconCtx.arc(mid, mid, 12, 0, Math.PI * 2);
+      iconCtx.fill();
+
+      iconCtx.strokeStyle = "#d5f0ff";
+      iconCtx.lineWidth = 1.8;
+      for (let i = 0; i < 6; i += 1) {
+        const a = (Math.PI * 2 * i) / 6;
+        const x0 = mid + Math.cos(a) * 3;
+        const y0 = mid + Math.sin(a) * 3;
+        const x1 = mid + Math.cos(a) * 11;
+        const y1 = mid + Math.sin(a) * 11;
+        iconCtx.beginPath();
+        iconCtx.moveTo(x0, y0);
+        iconCtx.lineTo(x1, y1);
+        iconCtx.stroke();
+      }
+      iconCtx.strokeStyle = "rgba(203, 235, 255, 0.82)";
+      iconCtx.lineWidth = 1.2;
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 12, mid - 10);
+      iconCtx.lineTo(mid - 6, mid - 2);
+      iconCtx.moveTo(mid - 4, mid - 11);
+      iconCtx.lineTo(mid + 2, mid - 3);
+      iconCtx.moveTo(mid + 4, mid - 10);
+      iconCtx.lineTo(mid + 10, mid - 2);
+      iconCtx.stroke();
+      return;
+    }
+
+    if (actionId === "arcaneBeam" || actionDef.kind === "beam") {
+      iconCtx.save();
+      iconCtx.translate(mid, mid);
+      iconCtx.rotate(-Math.PI / 3.2);
+
+      iconCtx.strokeStyle = "rgba(191, 170, 255, 0.92)";
+      iconCtx.lineWidth = 8;
+      iconCtx.lineCap = "round";
+      iconCtx.beginPath();
+      iconCtx.moveTo(-13, 0);
+      iconCtx.lineTo(13, 0);
+      iconCtx.stroke();
+
+      iconCtx.strokeStyle = "rgba(241, 233, 255, 0.98)";
+      iconCtx.lineWidth = 3.2;
+      iconCtx.beginPath();
+      iconCtx.moveTo(-13, 0);
+      iconCtx.lineTo(13, 0);
+      iconCtx.stroke();
+
+      iconCtx.strokeStyle = "rgba(210, 194, 255, 0.84)";
+      iconCtx.lineWidth = 1.8;
+      for (let i = 0; i <= 24; i += 1) {
+        const t = i / 24;
+        const x = -13 + t * 26;
+        const y = Math.sin(t * Math.PI * 4.2) * 3.5;
+        if (i === 0) {
+          iconCtx.beginPath();
+          iconCtx.moveTo(x, y);
+        } else {
+          iconCtx.lineTo(x, y);
+        }
+      }
+      iconCtx.stroke();
+      iconCtx.restore();
+      return;
+    }
+
+    if (actionId === "blink" || actionDef.kind === "teleport") {
+      iconCtx.save();
+      iconCtx.translate(mid, mid);
+      iconCtx.rotate(-Math.PI / 6);
+
+      iconCtx.strokeStyle = "rgba(197, 169, 255, 0.9)";
+      iconCtx.lineWidth = 2.1;
+      iconCtx.beginPath();
+      iconCtx.arc(0, 0, 10.5, 0.35, Math.PI * 1.78);
+      iconCtx.stroke();
+
+      iconCtx.strokeStyle = "rgba(128, 99, 232, 0.95)";
+      iconCtx.lineWidth = 2.6;
+      iconCtx.beginPath();
+      iconCtx.moveTo(-12, 0);
+      iconCtx.lineTo(12, 0);
+      iconCtx.stroke();
+
+      iconCtx.fillStyle = "rgba(230, 220, 255, 0.92)";
+      for (let i = 0; i < 5; i += 1) {
+        const a = i * ((Math.PI * 2) / 5) + 0.2;
+        iconCtx.beginPath();
+        iconCtx.arc(Math.cos(a) * 13, Math.sin(a) * 13, 1.3, 0, Math.PI * 2);
+        iconCtx.fill();
       }
       iconCtx.restore();
       return;
@@ -1350,11 +1676,11 @@ function getActionVisualState(binding, self, now) {
   }
 
   const def = getActionDefById(actionId);
-  const cooldownMs = Math.max(0, Number(def.cooldownMs) || 0);
+  const cooldownMs = Math.max(0, getAbilityEffectiveCooldownMsForSelf(actionId, self));
   if (cooldownMs <= 0) {
     return { type: "cooldown", ratio: 0 };
   }
-  const runtime = abilityRuntime.get(actionId);
+  const runtime = abilityRuntime.get(String(actionId || "").toLowerCase());
   const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
   const remaining = cooldownMs - (now - lastUsedAt);
   if (remaining > 0) {
@@ -1583,6 +1909,12 @@ function triggerRemoteMobBite(mobId, dx, dy) {
     angle: Number.isFinite(angle) ? angle : 0,
     sequence
   });
+  const mob = entityRuntime.mobs.get(mobId);
+  const meta = entityRuntime.mobMeta.get(mobId);
+  const mobName = (mob && mob.name) || (meta && meta.name) || "";
+  if (isOrcBerserkerMobName(mobName)) {
+    playOrcBerserkerAttackAudio(mobId);
+  }
 }
 
 function pushSnapshot(msg) {
@@ -1631,6 +1963,12 @@ function syncSelfToGameState() {
     return;
   }
   const prev = gameState.self || {};
+  const abilityLevels =
+    entityRuntime.self.abilityLevels && typeof entityRuntime.self.abilityLevels === "object"
+      ? { ...entityRuntime.self.abilityLevels }
+      : prev.abilityLevels && typeof prev.abilityLevels === "object"
+        ? { ...prev.abilityLevels }
+        : {};
   gameState.self = {
     ...(selfStatic || {}),
     ...(myId ? { id: myId } : {}),
@@ -1639,12 +1977,15 @@ function syncSelfToGameState() {
     hp: entityRuntime.self.hp ?? prev.hp ?? 0,
     maxHp: entityRuntime.self.maxHp ?? prev.maxHp ?? 0,
     pendingHeal: entityRuntime.self.pendingHeal ?? prev.pendingHeal ?? 0,
+    pendingMana: entityRuntime.self.pendingMana ?? prev.pendingMana ?? 0,
     mana: entityRuntime.self.mana ?? prev.mana ?? 0,
     maxMana: entityRuntime.self.maxMana ?? prev.maxMana ?? 0,
     copper: entityRuntime.self.copper ?? prev.copper ?? 0,
     level: entityRuntime.self.level ?? prev.level ?? 1,
     exp: entityRuntime.self.exp ?? prev.exp ?? 0,
-    expToNext: entityRuntime.self.expToNext ?? prev.expToNext ?? 20
+    expToNext: entityRuntime.self.expToNext ?? prev.expToNext ?? 20,
+    skillPoints: entityRuntime.self.skillPoints ?? prev.skillPoints ?? 0,
+    abilityLevels
   };
 }
 
@@ -1829,6 +2170,8 @@ function applyItemDefs(items) {
 }
 
 function applyClassAndAbilityDefs(classes, abilities) {
+  stopAllAbilityChannelAudio();
+  abilityAudioRegistry.clear();
   abilityDefsById.clear();
   classDefsById.clear();
 
@@ -1858,6 +2201,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
       projectileHitRadius: Math.max(0, Number(ability.projectileHitRadius) || 0),
       explosionRadius: Math.max(0, Number(ability.explosionRadius) || 0),
       explosionDamageMultiplier: Math.max(0, Number(ability.explosionDamageMultiplier) || 0),
+      beamWidth: Math.max(0, Number(ability.beamWidth) || 0),
       stunDurationMs: Math.max(0, Math.floor(Number(ability.stunDurationMs) || 0)),
       slowDurationMs: Math.max(0, Math.floor(Number(ability.slowDurationMs) || 0)),
       slowMultiplier: clamp(Number(ability.slowMultiplier) || 1, 0.1, 1)
@@ -1940,6 +2284,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
   if (selfStatic && selfStatic.classType) {
     ensureActionBindingsForClass(selfStatic.classType);
   }
+  preloadAllAbilityAudio();
   spellbookState.signature = "";
   updateActionBarUI(getCurrentSelf());
 }
@@ -2020,11 +2365,12 @@ function parseEntityBinaryPacket(arrayBuffer) {
     const mana = view.getUint16(offset + 6, true) / MANA_SCALE;
     const maxMana = view.getUint16(offset + 8, true) / MANA_SCALE;
     const pendingHeal = view.getUint16(offset + 10, true) / HEAL_SCALE;
-    const copper = view.getUint16(offset + 12, true);
-    const level = view.getUint16(offset + 14, true);
-    const exp = view.getUint32(offset + 16, true);
-    const expToNext = view.getUint32(offset + 20, true);
-    offset += 24;
+    const pendingMana = view.getUint16(offset + 12, true) / MANA_SCALE;
+    const copper = view.getUint16(offset + 14, true);
+    const level = view.getUint16(offset + 16, true);
+    const exp = view.getUint32(offset + 18, true);
+    const expToNext = view.getUint32(offset + 22, true);
+    offset += 26;
     const prevSelf = entityRuntime.self;
     entityRuntime.self = {
       x: xq / POS_SCALE,
@@ -2032,6 +2378,7 @@ function parseEntityBinaryPacket(arrayBuffer) {
       hp,
       maxHp,
       pendingHeal,
+      pendingMana,
       mana,
       maxMana,
       // Keep progression authoritative from self_progress JSON events.
@@ -2039,6 +2386,11 @@ function parseEntityBinaryPacket(arrayBuffer) {
       level: prevSelf ? prevSelf.level : level,
       exp: prevSelf ? prevSelf.exp : exp,
       expToNext: prevSelf ? prevSelf.expToNext : expToNext,
+      skillPoints: prevSelf ? prevSelf.skillPoints : 0,
+      abilityLevels:
+        prevSelf && prevSelf.abilityLevels && typeof prevSelf.abilityLevels === "object"
+          ? { ...prevSelf.abilityLevels }
+          : {},
       _xq: xq,
       _yq: yq
     };
@@ -2049,12 +2401,15 @@ function parseEntityBinaryPacket(arrayBuffer) {
       hp: 0,
       maxHp: 0,
       pendingHeal: 0,
+      pendingMana: 0,
       mana: 0,
       maxMana: 0,
       copper: 0,
       level: 1,
       exp: 0,
       expToNext: 20,
+      skillPoints: 0,
+      abilityLevels: {},
       _xq: 0,
       _yq: 0
     };
@@ -2081,6 +2436,10 @@ function parseEntityBinaryPacket(arrayBuffer) {
     }
     if (selfFlags & DELTA_FLAG_PENDING_HEAL_CHANGED) {
       base.pendingHeal = view.getUint16(offset, true) / HEAL_SCALE;
+      offset += 2;
+    }
+    if (selfFlags & SELF_FLAG_PENDING_MANA_CHANGED) {
+      base.pendingMana = view.getUint16(offset, true) / MANA_SCALE;
       offset += 2;
     }
     if (selfFlags & DELTA_FLAG_COPPER_CHANGED) {
@@ -2432,9 +2791,11 @@ function connectAndJoin(name, classType) {
     spiderWalkRuntime.clear();
     orcWalkRuntime.clear();
     skeletonWalkRuntime.clear();
+    orcBerserkerAudio.attackByMob.clear();
     warriorAnimRuntime.clear();
     floatingDamageNumbers.length = 0;
     activeExplosions.length = 0;
+    activeAreaEffectsById.clear();
     abilityRuntime.clear();
     dpsState.samples.length = 0;
     setDpsVisible(false);
@@ -2495,9 +2856,11 @@ function connectAndJoin(name, classType) {
       spiderWalkRuntime.clear();
       orcWalkRuntime.clear();
       skeletonWalkRuntime.clear();
+      orcBerserkerAudio.attackByMob.clear();
       warriorAnimRuntime.clear();
       floatingDamageNumbers.length = 0;
       activeExplosions.length = 0;
+      activeAreaEffectsById.clear();
       abilityRuntime.clear();
       dpsState.samples.length = 0;
       setDpsVisible(false);
@@ -2603,8 +2966,18 @@ function connectAndJoin(name, classType) {
       return;
     }
 
+    if (msg.type === "area_effects") {
+      applyAreaEffects(msg.effects);
+      return;
+    }
+
     if (msg.type === "projectile_hit_events") {
       addProjectileHitEvents(msg.events);
+      return;
+    }
+
+    if (msg.type === "mob_death_events") {
+      addMobDeathEvents(msg.events);
       return;
     }
 
@@ -2618,12 +2991,15 @@ function connectAndJoin(name, classType) {
           hp: gameState.self ? gameState.self.hp : 0,
           maxHp: gameState.self ? gameState.self.maxHp : 0,
           pendingHeal: gameState.self ? gameState.self.pendingHeal ?? 0 : 0,
+          pendingMana: gameState.self ? gameState.self.pendingMana ?? 0 : 0,
           mana: gameState.self ? gameState.self.mana ?? fallbackMaxMana : fallbackMaxMana,
           maxMana: gameState.self ? gameState.self.maxMana ?? fallbackMaxMana : fallbackMaxMana,
           copper: 0,
           level: 1,
           exp: 0,
           expToNext: 20,
+          skillPoints: 0,
+          abilityLevels: {},
           _xq: gameState.self ? Math.round(gameState.self.x * POS_SCALE) : 0,
           _yq: gameState.self ? Math.round(gameState.self.y * POS_SCALE) : 0
         };
@@ -2632,6 +3008,8 @@ function connectAndJoin(name, classType) {
       const level = Number(msg.level);
       const exp = Number(msg.exp);
       const expToNext = Number(msg.expToNext);
+      const skillPoints = Number(msg.skillPoints);
+      const abilityLevels = parseAbilityLevelsPayload(msg.abilityLevels);
       if (Number.isFinite(copper) && copper >= 0) {
         entityRuntime.self.copper = copper;
       }
@@ -2643,6 +3021,12 @@ function connectAndJoin(name, classType) {
       }
       if (Number.isFinite(expToNext) && expToNext >= 1) {
         entityRuntime.self.expToNext = expToNext;
+      }
+      if (Number.isFinite(skillPoints) && skillPoints >= 0) {
+        entityRuntime.self.skillPoints = Math.floor(skillPoints);
+      }
+      if (msg.abilityLevels !== undefined) {
+        entityRuntime.self.abilityLevels = abilityLevels;
       }
       syncSelfToGameState();
       return;
@@ -2820,25 +3204,33 @@ function sendAbilityUse(abilityId, worldX, worldY) {
     type: "use_ability",
     abilityId: resolvedAbilityId,
     dx: dx / len,
-    dy: dy / len
+    dy: dy / len,
+    distance: len
   });
 }
 
-function canUseAbilityNow(abilityId, now) {
-  const def = getActionDefById(abilityId);
-  const cooldownMs = Math.max(0, Number(def.cooldownMs) || 0);
+function getAbilityRuntimeKey(abilityId) {
+  return String(abilityId || "").trim().toLowerCase();
+}
+
+function canUseAbilityNow(abilityId, now, self = null) {
+  const cooldownMs = Math.max(0, getAbilityEffectiveCooldownMsForSelf(abilityId, self));
   if (cooldownMs <= 0) {
     return true;
   }
-  const runtime = abilityRuntime.get(abilityId);
+  const runtime = abilityRuntime.get(getAbilityRuntimeKey(abilityId));
   const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
   return now - lastUsedAt >= cooldownMs;
 }
 
 function markAbilityUsedClient(abilityId, now) {
-  const existing = abilityRuntime.get(abilityId) || {};
+  const key = getAbilityRuntimeKey(abilityId);
+  if (!key) {
+    return;
+  }
+  const existing = abilityRuntime.get(key) || {};
   existing.lastUsedAt = now;
-  abilityRuntime.set(abilityId, existing);
+  abilityRuntime.set(key, existing);
 }
 
 function hasEnoughManaForAbility(self, abilityId) {
@@ -2867,7 +3259,7 @@ function useAbilityAt(abilityId, worldX, worldY) {
   }
 
   const now = performance.now();
-  if (!canUseAbilityNow(resolvedAbilityId, now)) {
+  if (!canUseAbilityNow(resolvedAbilityId, now, self)) {
     return false;
   }
 
@@ -2875,6 +3267,20 @@ function useAbilityAt(abilityId, worldX, worldY) {
     return false;
   }
   const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
+  if (castMs > 0) {
+    const dx = worldX - self.x;
+    const dy = worldY - self.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 0) {
+      const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(resolvedAbilityId, self) || len);
+      const distance = castRange > 0 ? Math.min(len, castRange) : len;
+      abilityChannel.targetX = self.x + (dx / len) * distance;
+      abilityChannel.targetY = self.y + (dy / len) * distance;
+    } else {
+      abilityChannel.targetX = self.x;
+      abilityChannel.targetY = self.y;
+    }
+  }
   if (castMs <= 0) {
     markAbilityUsedClient(resolvedAbilityId, now);
   }
@@ -3005,7 +3411,7 @@ function addExplosionEvents(events) {
   }
 
   const now = performance.now();
-  let hasFireballExplosion = false;
+  const abilitiesToPlay = new Set();
   for (const event of events) {
     if (!event) {
       continue;
@@ -3026,13 +3432,69 @@ function addExplosionEvents(events) {
       createdAt: now,
       durationMs: 380
     });
-    if (String(event.abilityId || "").toLowerCase() === "fireball") {
-      hasFireballExplosion = true;
+    const abilityId = toAbilityAudioId(event.abilityId);
+    if (abilityId) {
+      abilitiesToPlay.add(abilityId);
     }
   }
 
-  if (hasFireballExplosion) {
-    playFireballExplosionAudio(now);
+  for (const abilityId of abilitiesToPlay) {
+    playAbilityAudioEvent(abilityId, "hit", now);
+  }
+}
+
+function applyAreaEffects(events) {
+  if (!Array.isArray(events)) {
+    return;
+  }
+  const now = performance.now();
+  for (const raw of events) {
+    if (!raw) {
+      continue;
+    }
+    const id = String(raw.id || "").trim();
+    const x = Number(raw.x);
+    const y = Number(raw.y);
+    const radius = Math.max(0, Number(raw.radius) || 0);
+    const remainingMs = Math.max(1, Math.floor(Number(raw.remainingMs) || 0));
+    const durationMs = Math.max(1, Math.floor(Number(raw.durationMs) || remainingMs));
+    const abilityId = String(raw.abilityId || "").toLowerCase();
+    const kind = String(raw.kind || (abilityId === "arcanebeam" ? "beam" : "area")).toLowerCase();
+    if (!id || !Number.isFinite(x) || !Number.isFinite(y) || radius <= 0) {
+      continue;
+    }
+    const existing = activeAreaEffectsById.get(id);
+    const parsedDx = Number(raw.dx);
+    const parsedDy = Number(raw.dy);
+    const parsedLength = Math.max(0, Number(raw.length) || 0);
+    const parsedWidth = Math.max(0, Number(raw.width) || 0);
+    const normalizedDir = normalizeDirection(parsedDx, parsedDy);
+    activeAreaEffectsById.set(id, {
+      id,
+      x,
+      y,
+      radius,
+      kind,
+      abilityId,
+      durationMs,
+      startedAt: existing ? existing.startedAt : now - Math.max(0, durationMs - remainingMs),
+      endsAt: now + remainingMs,
+      seed: existing ? existing.seed : hashString(`area:${id}`),
+      startX: Number.isFinite(Number(raw.startX))
+        ? Number(raw.startX)
+        : existing && Number.isFinite(existing.startX)
+          ? existing.startX
+          : x,
+      startY: Number.isFinite(Number(raw.startY))
+        ? Number(raw.startY)
+        : existing && Number.isFinite(existing.startY)
+          ? existing.startY
+          : y,
+      dx: normalizedDir ? normalizedDir.dx : existing && Number.isFinite(existing.dx) ? existing.dx : 0,
+      dy: normalizedDir ? normalizedDir.dy : existing && Number.isFinite(existing.dy) ? existing.dy : 1,
+      length: parsedLength > 0 ? parsedLength : existing && Number.isFinite(existing.length) ? existing.length : 0,
+      width: parsedWidth > 0 ? parsedWidth : existing && Number.isFinite(existing.width) ? existing.width : 0
+    });
   }
 }
 
@@ -3041,18 +3503,33 @@ function addProjectileHitEvents(events) {
     return;
   }
   const now = performance.now();
-  let hasFrostboltHit = false;
+  const abilitiesToPlay = new Set();
   for (const event of events) {
     if (!event) {
       continue;
     }
-    if (String(event.abilityId || "").toLowerCase() === "frostbolt") {
-      hasFrostboltHit = true;
-      break;
+    const abilityId = toAbilityAudioId(event.abilityId);
+    if (abilityId) {
+      abilitiesToPlay.add(abilityId);
     }
   }
-  if (hasFrostboltHit) {
-    playFrostboltHitAudio(now);
+  for (const abilityId of abilitiesToPlay) {
+    playAbilityAudioEvent(abilityId, "hit", now);
+  }
+}
+
+function addMobDeathEvents(events) {
+  if (!Array.isArray(events) || !events.length) {
+    return;
+  }
+  const now = performance.now();
+  for (const event of events) {
+    if (!event) {
+      continue;
+    }
+    if (isOrcBerserkerMobName(event.mobType)) {
+      playOrcBerserkerDeathAudio(now);
+    }
   }
 }
 
@@ -3147,6 +3624,35 @@ function drawExplosionEffects(cameraX, cameraY) {
       continue;
     }
 
+    if (String(fx.abilityId || "").toLowerCase() === "blink") {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const blinkGradient = ctx.createRadialGradient(
+        screen.x,
+        screen.y,
+        ringRadius * 0.12,
+        screen.x,
+        screen.y,
+        ringRadius
+      );
+      blinkGradient.addColorStop(0, `rgba(240, 226, 255, ${(0.75 * alpha).toFixed(3)})`);
+      blinkGradient.addColorStop(0.55, `rgba(170, 126, 255, ${(0.46 * alpha).toFixed(3)})`);
+      blinkGradient.addColorStop(1, "rgba(118, 75, 245, 0)");
+      ctx.fillStyle = blinkGradient;
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, ringRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.78 * alpha;
+      ctx.strokeStyle = "rgba(209, 188, 255, 0.94)";
+      ctx.lineWidth = Math.max(1.1, 2.8 * (1 - progress));
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, ringRadius * 0.92, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      continue;
+    }
+
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.5 * alpha;
@@ -3172,6 +3678,236 @@ function drawExplosionEffects(cameraX, cameraY) {
   for (const fx of kept) {
     activeExplosions.push(fx);
   }
+}
+
+function drawArcaneBeamAreaEffect(effect, cameraX, cameraY, now) {
+  const dir = normalizeDirection(effect.dx, effect.dy) || { dx: 0, dy: -1 };
+  const lengthTiles = Math.max(0.2, Number(effect.length) || Number(effect.radius) || 1);
+  const widthTiles = Math.max(0.2, Number(effect.width) || 0.8);
+  const startX = Number.isFinite(Number(effect.startX)) ? Number(effect.startX) : effect.x;
+  const startY = Number.isFinite(Number(effect.startY)) ? Number(effect.startY) : effect.y;
+  const endX = startX + dir.dx * lengthTiles;
+  const endY = startY + dir.dy * lengthTiles;
+  const start = worldToScreen(startX + 0.5, startY + 0.5, cameraX, cameraY);
+  const end = worldToScreen(endX + 0.5, endY + 0.5, cameraX, cameraY);
+  const beamLengthPx = Math.max(1, Math.hypot(end.x - start.x, end.y - start.y));
+  const beamWidthPx = Math.max(3, widthTiles * TILE_SIZE);
+  const lifeT = clamp((now - effect.startedAt) / Math.max(1, effect.durationMs), 0, 1);
+  const fadeOut = 1 - clamp((now - effect.endsAt + 300) / 300, 0, 1);
+  const alpha = clamp((0.82 - lifeT * 0.2) * fadeOut, 0, 1);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  // Outer glow.
+  ctx.strokeStyle = `rgba(165, 132, 255, ${(0.45 * alpha).toFixed(3)})`;
+  ctx.lineCap = "round";
+  ctx.lineWidth = beamWidthPx * 1.9;
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  // Core beam.
+  const beamGradient = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
+  beamGradient.addColorStop(0, `rgba(206, 176, 255, ${(0.88 * alpha).toFixed(3)})`);
+  beamGradient.addColorStop(0.5, `rgba(245, 236, 255, ${(0.98 * alpha).toFixed(3)})`);
+  beamGradient.addColorStop(1, `rgba(196, 168, 255, ${(0.9 * alpha).toFixed(3)})`);
+  ctx.strokeStyle = beamGradient;
+  ctx.lineWidth = beamWidthPx * 0.9;
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  // Inner hot line.
+  ctx.strokeStyle = `rgba(255, 252, 255, ${(0.95 * alpha).toFixed(3)})`;
+  ctx.lineWidth = Math.max(1.5, beamWidthPx * 0.22);
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  // Spiral arcane ribbons around the beam.
+  const perpX = -dir.dy;
+  const perpY = dir.dx;
+  for (let strand = 0; strand < 2; strand += 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(233, 220, 255, ${(0.56 * alpha).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1.2, beamWidthPx * 0.18);
+    for (let i = 0; i <= 32; i += 1) {
+      const t = i / 32;
+      const phase = now * 0.008 + strand * Math.PI + t * Math.PI * 6;
+      const wobble = Math.sin(phase) * beamWidthPx * 0.55;
+      const px = start.x + (end.x - start.x) * t + perpX * wobble;
+      const py = start.y + (end.y - start.y) * t + perpY * wobble;
+      if (i === 0) {
+        ctx.moveTo(px, py);
+      } else {
+        ctx.lineTo(px, py);
+      }
+    }
+    ctx.stroke();
+  }
+
+  // Small spark particles along beam.
+  for (let i = 0; i < 20; i += 1) {
+    const t = (seededUnit(effect.seed, i * 23 + 11) + now * 0.00035) % 1;
+    const baseX = start.x + (end.x - start.x) * t;
+    const baseY = start.y + (end.y - start.y) * t;
+    const wiggle = (seededUnit(effect.seed, i * 31 + 7) - 0.5) * beamWidthPx * 1.7;
+    const px = baseX + perpX * wiggle;
+    const py = baseY + perpY * wiggle;
+    const radius = 0.8 + seededUnit(effect.seed, i * 19 + 3) * 1.8;
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(244, 238, 255, ${(0.38 + seededUnit(effect.seed, i * 13 + 5) * 0.4 * alpha).toFixed(3)})`;
+    ctx.arc(px, py, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // End-point bursts.
+  const burstRadius = Math.max(6, beamWidthPx * 1.1);
+  for (const p of [start, end]) {
+    const burst = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, burstRadius);
+    burst.addColorStop(0, `rgba(250, 243, 255, ${(0.9 * alpha).toFixed(3)})`);
+    burst.addColorStop(0.5, `rgba(196, 159, 255, ${(0.45 * alpha).toFixed(3)})`);
+    burst.addColorStop(1, "rgba(124, 90, 220, 0)");
+    ctx.fillStyle = burst;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, burstRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawBlizzardAreaEffect(effect, cameraX, cameraY, now) {
+  const center = worldToScreen(effect.x + 0.5, effect.y + 0.5, cameraX, cameraY);
+  const radiusPx = Math.max(8, effect.radius * TILE_SIZE);
+  const lifeT = clamp((now - effect.startedAt) / Math.max(1, effect.durationMs), 0, 1);
+  const fadeOut = 1 - clamp((now - effect.endsAt + 420) / 420, 0, 1);
+  const alpha = (0.72 - lifeT * 0.18) * fadeOut;
+
+  ctx.save();
+  const zoneGlow = ctx.createRadialGradient(center.x, center.y, radiusPx * 0.15, center.x, center.y, radiusPx * 1.08);
+  zoneGlow.addColorStop(0, `rgba(196, 230, 255, ${(0.34 * alpha).toFixed(3)})`);
+  zoneGlow.addColorStop(0.6, `rgba(103, 165, 218, ${(0.21 * alpha).toFixed(3)})`);
+  zoneGlow.addColorStop(1, "rgba(61, 104, 168, 0)");
+  ctx.fillStyle = zoneGlow;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radiusPx * 1.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.lineCap = "round";
+  for (let i = 0; i < 42; i += 1) {
+    const driftSpeed = 0.00022 + seededUnit(effect.seed, i * 17 + 9) * 0.0002;
+    const u = (seededUnit(effect.seed, i * 31 + 5) + now * driftSpeed * 1.7) % 1;
+    const v = (seededUnit(effect.seed, i * 29 + 11) + now * driftSpeed * 2.3) % 1;
+    const px = center.x + (u * 2 - 1) * radiusPx * 0.95;
+    const py = center.y + (v * 2 - 1) * radiusPx * 0.95;
+    if ((px - center.x) ** 2 + (py - center.y) ** 2 > radiusPx * radiusPx) {
+      continue;
+    }
+    const len = 7 + seededUnit(effect.seed, i * 13 + 3) * 9;
+    ctx.strokeStyle = `rgba(225, 245, 255, ${(0.28 + seededUnit(effect.seed, i * 19 + 4) * 0.34 * alpha).toFixed(3)})`;
+    ctx.lineWidth = 0.8 + seededUnit(effect.seed, i * 7 + 2) * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(px - len * 0.45, py - len * 0.75);
+    ctx.lineTo(px + len * 0.12, py + len * 0.2);
+    ctx.stroke();
+
+    if (i % 8 === 0) {
+      ctx.strokeStyle = `rgba(239, 250, 255, ${(0.35 * alpha).toFixed(3)})`;
+      ctx.lineWidth = 1.05;
+      ctx.beginPath();
+      ctx.moveTo(px - 2.1, py);
+      ctx.lineTo(px + 2.1, py);
+      ctx.moveTo(px, py - 2.1);
+      ctx.lineTo(px, py + 2.1);
+      ctx.stroke();
+    }
+  }
+
+  for (let i = 0; i < 10; i += 1) {
+    const baseA = now * 0.0012 + i * 0.57 + effect.seed * 0.0001;
+    const r = radiusPx * (0.35 + (i % 5) * 0.13);
+    const x0 = center.x + Math.cos(baseA) * (r * 0.5);
+    const y0 = center.y + Math.sin(baseA * 1.1) * (r * 0.35);
+    ctx.strokeStyle = `rgba(205, 236, 255, ${(0.14 * alpha).toFixed(3)})`;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(x0 - 12, y0 - 6);
+    ctx.quadraticCurveTo(x0, y0 + 4, x0 + 12, y0 + 10);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = `rgba(167, 224, 255, ${(0.45 * alpha).toFixed(3)})`;
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawAreaEffects(cameraX, cameraY, now) {
+  for (const [id, effect] of activeAreaEffectsById.entries()) {
+    if (!effect || now >= effect.endsAt + 420) {
+      activeAreaEffectsById.delete(id);
+      continue;
+    }
+    if (effect.abilityId === "blizzard") {
+      drawBlizzardAreaEffect(effect, cameraX, cameraY, now);
+    } else if (effect.abilityId === "arcanebeam" || effect.kind === "beam") {
+      drawArcaneBeamAreaEffect(effect, cameraX, cameraY, now);
+    }
+  }
+}
+
+function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
+  if (!self || !abilityChannel.active || String(abilityChannel.abilityId || "").toLowerCase() !== "blizzard") {
+    return;
+  }
+  const targetX = Number(abilityChannel.targetX);
+  const targetY = Number(abilityChannel.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+  const abilityDef = abilityDefsById.get("blizzard");
+  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf("blizzard", self));
+  const areaRadius = Math.max(0.2, Number(abilityDef?.areaRadius || abilityDef?.radius || 3));
+  const center = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
+  const radiusPx = Math.max(8, areaRadius * TILE_SIZE);
+  const dist = Math.hypot(targetX - self.x, targetY - self.y);
+  const inRange = castRange <= 0 || dist <= castRange + 0.001;
+  const pulse = 0.65 + Math.sin(now * 0.01) * 0.12;
+
+  const selfP = worldToScreen(self.x + 0.5, self.y + 0.5, cameraX, cameraY);
+  ctx.save();
+  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = inRange ? "rgba(168, 222, 255, 0.5)" : "rgba(255, 145, 145, 0.52)";
+  ctx.beginPath();
+  ctx.moveTo(selfP.x, selfP.y);
+  ctx.lineTo(center.x, center.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.fillStyle = inRange ? `rgba(122, 191, 238, ${(0.15 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.15 * pulse).toFixed(3)})`;
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.lineWidth = 1.8;
+  ctx.strokeStyle = inRange ? "rgba(195, 234, 255, 0.72)" : "rgba(255, 164, 164, 0.72)";
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 function hashString(value) {
@@ -5684,12 +6420,116 @@ function drawFrostboltProjectile(p, runtime, now) {
   }
 }
 
+function drawArcaneMissileProjectile(p, runtime, now) {
+  const dirX = runtime.dirX;
+  const dirY = runtime.dirY;
+  const perpX = -dirY;
+  const perpY = dirX;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 11; i += 1) {
+    const t = (i + 1) / 11;
+    const dist = 6 + t * 22;
+    const wobble =
+      Math.sin(now * 0.015 + runtime.seed * 0.0011 + i * 0.9) * (2.6 - t * 1.5) +
+      (seededUnit(runtime.seed, i * 29 + 11) - 0.5) * 1.3;
+    const px = p.x - dirX * dist + perpX * wobble;
+    const py = p.y - dirY * dist + perpY * wobble;
+    const radius = Math.max(0.7, 2.2 - t * 1.6);
+    const alpha = 0.35 * (1 - t) + 0.08;
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(207, 176, 255, ${alpha.toFixed(3)})`;
+    ctx.arc(px, py, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const glow = ctx.createRadialGradient(p.x, p.y, 1.2, p.x, p.y, 14.5);
+  glow.addColorStop(0, "rgba(255, 246, 255, 0.98)");
+  glow.addColorStop(0.35, "rgba(212, 186, 255, 0.9)");
+  glow.addColorStop(0.7, "rgba(145, 100, 222, 0.5)");
+  glow.addColorStop(1, "rgba(91, 63, 173, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 14.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  const tipX = p.x + dirX * 15.5;
+  const tipY = p.y + dirY * 15.5;
+  const backX = p.x - dirX * 6.2;
+  const backY = p.y - dirY * 6.2;
+  const wing = 4.8;
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(242, 231, 255, 0.96)";
+  ctx.strokeStyle = "rgba(146, 117, 214, 0.95)";
+  ctx.lineWidth = 1.7;
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(p.x + perpX * wing, p.y + perpY * wing);
+  ctx.lineTo(backX, backY);
+  ctx.lineTo(p.x - perpX * wing, p.y - perpY * wing);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  const coreGrad = ctx.createLinearGradient(backX, backY, tipX, tipY);
+  coreGrad.addColorStop(0, "rgba(128, 93, 205, 0.55)");
+  coreGrad.addColorStop(0.5, "rgba(252, 240, 255, 0.98)");
+  coreGrad.addColorStop(1, "rgba(178, 140, 236, 0.78)");
+  ctx.strokeStyle = coreGrad;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(backX + dirX * 1.2, backY + dirY * 1.2);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+
+  ctx.lineCap = "round";
+  for (let band = 0; band < 3; band += 1) {
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(232, 214, 255, ${(0.7 - band * 0.14).toFixed(3)})`;
+    ctx.lineWidth = 1.2 + (2 - band) * 0.35;
+    for (let i = 0; i <= 24; i += 1) {
+      const t = i / 24;
+      const dist = -8 + t * 30;
+      const phase = now * 0.016 + runtime.seed * 0.0013 + band * 2.0 + t * 11.5;
+      const radius = (1 - Math.abs(t - 0.5) * 1.15) * (5.6 - band * 1.15);
+      const swirl = Math.sin(phase) * radius;
+      const x = p.x - dirX * dist + perpX * swirl;
+      const y = p.y - dirY * dist + perpY * swirl;
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = "rgba(244, 236, 255, 0.88)";
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 6; i += 1) {
+    const a = now * 0.0048 + i * ((Math.PI * 2) / 6) + runtime.seed * 0.0008;
+    const r = 7 + (i % 2) * 2 + Math.sin(now * 0.01 + i) * 0.6;
+    const sx = p.x + Math.cos(a) * r;
+    const sy = p.y + Math.sin(a) * r;
+    ctx.beginPath();
+    ctx.moveTo(sx - 1.4, sy);
+    ctx.lineTo(sx + 1.4, sy);
+    ctx.moveTo(sx, sy - 1.4);
+    ctx.lineTo(sx, sy + 1.4);
+    ctx.stroke();
+  }
+}
+
 function drawProjectile(projectile, cameraX, cameraY, frameNow) {
   const p = worldToScreen(projectile.x + 0.5, projectile.y + 0.5, cameraX, cameraY);
   const now = Number.isFinite(frameNow) ? frameNow : performance.now();
   const runtime = getProjectileVisualState(projectile, now);
   const abilityId = String(projectile.abilityId || "").toLowerCase();
 
+  if (abilityId === "arcanemissiles") {
+    drawArcaneMissileProjectile(p, runtime, now);
+    return;
+  }
   if (abilityId === "frostbolt") {
     drawFrostboltProjectile(p, runtime, now);
     return;
@@ -5774,6 +6614,7 @@ function render() {
   const cameraY = interpolatedState.self.y + 0.5;
 
   drawGrid(cameraX, cameraY);
+  drawBlizzardCastPreview(interpolatedState.self, cameraX, cameraY, frameNow);
   const hoveredMob = getHoveredMob(interpolatedState.mobs, cameraX, cameraY);
   const hoveredBag = getHoveredLootBag(interpolatedState.lootBags, cameraX, cameraY);
 
@@ -5781,6 +6622,7 @@ function render() {
     drawProjectile(projectile, cameraX, cameraY, frameNow);
   }
   drawExplosionEffects(cameraX, cameraY);
+  drawAreaEffects(cameraX, cameraY, frameNow);
 
   for (const bag of interpolatedState.lootBags) {
     drawLootBag(bag, cameraX, cameraY);
@@ -5834,7 +6676,7 @@ function render() {
   const latestSelf = gameState.self || interpolatedState.self;
   updateActionBarUI(latestSelf);
   hudName.textContent = `Player: ${latestSelf.name} (${myId || "?"})`;
-  hudClass.textContent = `Class: ${latestSelf.classType} | HP: ${latestSelf.hp}/${latestSelf.maxHp} | Copper: ${latestSelf.copper ?? 0} | Lvl: ${latestSelf.level ?? 1} EXP: ${latestSelf.exp ?? 0}/${latestSelf.expToNext ?? 20}`;
+  hudClass.textContent = `Class: ${latestSelf.classType} | HP: ${latestSelf.hp}/${latestSelf.maxHp} | Copper: ${latestSelf.copper ?? 0} | Lvl: ${latestSelf.level ?? 1} EXP: ${latestSelf.exp ?? 0}/${latestSelf.expToNext ?? 20} | SP: ${latestSelf.skillPoints ?? 0}`;
   hudPos.textContent = `Pos: ${interpolatedState.self.x.toFixed(1)}, ${interpolatedState.self.y.toFixed(1)}`;
 }
 

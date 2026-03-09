@@ -21,9 +21,57 @@
         "range": 10,
         "speed": 5,
         "damageRange": [2, 4],
-        "slowDuration": 3.0,
+        "slowDuration": 5.0,
         "slowAmount": 0.5,
         "damageRangePerLevel": [0.4, 0.8]
+    },
+    "arcaneMissiles": {
+        "name": "Arcane Missiles",
+        "description": "Fires several magical missiles that seek enemies.",
+        "kind": "projectile",
+        "castTime": 1.2,
+        "manaCost": 6,
+        "range": 11,
+        "speed": 6,
+        "projectileCount": 3,
+        "damageRange": [1, 2],
+        "damageRangePerLevel": [0.3, 0.6]
+    },  
+    "blizzard": {
+        "name": "Blizzard",
+        "description": "Summons a freezing storm that damages and slows enemies.",
+        "kind": "area",
+        "castTime": 2.0,
+        "manaCost": 12,
+        "range": 8,
+        "radius": 3,
+        "duration": 4,
+        "damagePerSecond": [1, 2],
+        "slowAmount": 0.4,
+        "damageRangePerLevel": [0.2, 0.4]
+    },
+    "blink": {
+        "name": "Blink",
+        "description": "Instantly teleport a short distance in the targeted direction.",
+        "kind": "teleport",
+        "castTime": 0.1,
+        "cooldown": 6.0,
+        "manaCost": 8,
+        "range": 6,
+        "invulnerabilityDuration": 0.2,
+        "rangePerLevel": 0.5,
+        "cooldownReductionPerLevel": 0.2
+    },
+    "arcaneBeam": {
+        "name": "Arcane Beam",
+        "description": "Channels a focused beam of arcane power in a straight line.",
+        "kind": "beam",
+        "castTime": 0.5,
+        "manaCost": 10,
+        "range": 9,
+        "duration": 2.5,
+        "damagePerSecond": [2, 4],
+        "damageRangePerLevel": [0.4, 0.7]
     },
     "slash": {
         "name": "Slash",
