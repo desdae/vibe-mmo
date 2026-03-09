@@ -18,7 +18,7 @@
         "baseHealth": 60,
         "baseMana": 100,
         "manaRegen": 0.5,
-        "abilities": [{"id":"fireball", "level": 1}],
+        "abilities": [{"id":"fireball", "level": 1}, {"id":"frostbolt", "level": 1}],
         "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 50}],
         "speed": 1.7
     }

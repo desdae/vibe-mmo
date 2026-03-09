@@ -3,7 +3,6 @@
         "name": "Fireball",
         "description": "Hurls a fiery ball that explodes upon impact, dealing area damage.",
         "kind": "projectile",
-        "channelTime": 2.0,
         "castTime": 1.5,
         "manaCost": 5,
         "range": 10,
@@ -12,6 +11,19 @@
         "explosionRadius": 2,
         "explosionDamageMultiplier": 0.3,
         "damageRangePerLevel": [0.5, 1.0]
+    },
+    "frostbolt": {
+        "name": "Frostbolt",
+        "description": "Launches a shard of ice that slows the target and deals damage.",
+        "kind": "projectile",
+        "castTime": 1.0,
+        "manaCost": 3,
+        "range": 10,
+        "speed": 5,
+        "damageRange": [2, 4],
+        "slowDuration": 3.0,
+        "slowAmount": 0.5,
+        "damageRangePerLevel": [0.4, 0.8]
     },
     "slash": {
         "name": "Slash",

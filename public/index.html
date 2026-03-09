@@ -21,7 +21,7 @@
 
         <button type="submit">Join Game</button>
       </form>
-      <p class="hint">Movement: WASD or Arrow Keys. Action bar: LMB/RMB + keys 1-9. Inventory: I. Spellbook: P. Debug: F3.</p>
+      <p class="hint">Movement: WASD or Arrow Keys. Action bar: LMB/RMB + keys 1-9. Inventory: I. Spellbook: P. DPS: K. Debug: F3.</p>
       <p id="status" class="status"></p>
     </div>
 
@@ -57,6 +57,15 @@
       <div id="spellbook-panel" class="hidden">
         <div class="inventory-header">Spellbook (P)</div>
         <div id="spellbook-grid"></div>
+      </div>
+      <div id="dps-panel" class="hidden">
+        <div class="dps-header">DPS Meter (K)</div>
+        <div id="dps-tabs" class="dps-tabs">
+          <button type="button" class="dps-tab active" data-window="60">Last 1 min</button>
+          <button type="button" class="dps-tab" data-window="20">Last 20s</button>
+          <button type="button" class="dps-tab" data-window="5">Last 5s</button>
+        </div>
+        <div id="dps-value" class="dps-value">0.00 DPS</div>
       </div>
       <div id="debug-panel" class="hidden">
         <h2>Debug</h2>

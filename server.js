@@ -252,17 +252,11 @@ function loadAbilityConfig() {
 
     const castMsRaw = Number(entry.castMs);
     const castTimeRaw = Number(entry.castTime);
-    const channelMsRaw = Number(entry.channelMs);
-    const channelTimeRaw = Number(entry.channelTime);
     let castMs = 0;
     if (Number.isFinite(castMsRaw) && castMsRaw > 0) {
       castMs = Math.round(castMsRaw);
     } else if (Number.isFinite(castTimeRaw) && castTimeRaw > 0) {
       castMs = Math.round(castTimeRaw * 1000);
-    } else if (Number.isFinite(channelMsRaw) && channelMsRaw > 0) {
-      castMs = Math.round(channelMsRaw);
-    } else if (Number.isFinite(channelTimeRaw) && channelTimeRaw > 0) {
-      castMs = Math.round(channelTimeRaw * 1000);
     }
 
     const projectileHitRadius = clamp(
@@ -279,6 +273,21 @@ function loadAbilityConfig() {
       1
     );
     const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000));
+    const slowDurationMsRaw = Number(entry.slowDurationMs);
+    const slowDurationSecRaw = Number(entry.slowDuration);
+    const slowDurationMs =
+      Number.isFinite(slowDurationMsRaw) && slowDurationMsRaw > 0
+        ? Math.round(slowDurationMsRaw)
+        : Number.isFinite(slowDurationSecRaw) && slowDurationSecRaw > 0
+          ? Math.round(slowDurationSecRaw * 1000)
+          : 0;
+    let slowMultiplier = 1;
+    if (Number.isFinite(Number(entry.slowMultiplier)) && Number(entry.slowMultiplier) > 0) {
+      slowMultiplier = clamp(Number(entry.slowMultiplier), 0.1, 1);
+    } else if (Number.isFinite(Number(entry.slowAmount)) && Number(entry.slowAmount) > 0) {
+      const slowAmount = Number(entry.slowAmount);
+      slowMultiplier = clamp(1 - clamp(slowAmount, 0, 0.95), 0.1, 1);
+    }
 
     const def = {
       id,
@@ -299,7 +308,9 @@ function loadAbilityConfig() {
       explosionRadius,
       explosionDamageMultiplier,
       castMs,
-      stunDurationMs
+      stunDurationMs,
+      slowDurationMs,
+      slowMultiplier
     };
 
     const extraClientFields = {};
@@ -310,8 +321,6 @@ function loadAbilityConfig() {
         fieldKey === "kind" ||
         fieldKey === "cooldown" ||
         fieldKey === "cooldownMs" ||
-        fieldKey === "channelMs" ||
-        fieldKey === "channelTime" ||
         fieldKey === "castMs" ||
         fieldKey === "castTime" ||
         fieldKey === "manaCost" ||
@@ -324,7 +333,11 @@ function loadAbilityConfig() {
         fieldKey === "projectileHitRadius" ||
         fieldKey === "explosionRadius" ||
         fieldKey === "explosionDamageMultiplier" ||
-        fieldKey === "stunDuration"
+        fieldKey === "stunDuration" ||
+        fieldKey === "slowDuration" ||
+        fieldKey === "slowDurationMs" ||
+        fieldKey === "slowAmount" ||
+        fieldKey === "slowMultiplier"
       ) {
         continue;
       }
@@ -352,7 +365,6 @@ function loadAbilityConfig() {
       range: def.range,
       speed: def.speed,
       castMs: def.castMs,
-      channelMs: def.castMs,
       manaCost: def.manaCost,
       damageMin: def.damageMin,
       damageMax: def.damageMax,
@@ -363,6 +375,8 @@ function loadAbilityConfig() {
       explosionRadius: def.explosionRadius,
       explosionDamageMultiplier: def.explosionDamageMultiplier,
       stunDurationMs: def.stunDurationMs,
+      slowDurationMs: def.slowDurationMs,
+      slowMultiplier: def.slowMultiplier,
       damageRange: [def.damageMin, def.damageMax],
       damageRangePerLevel: [def.damagePerLevelMin, def.damagePerLevelMax],
       ...extraClientFields
@@ -1023,6 +1037,7 @@ const mobs = new Map();
 const lootBags = new Map();
 const pendingDamageEvents = [];
 const pendingExplosionEvents = [];
+const pendingProjectileHitEvents = [];
 
 function createEmptyInventorySlots() {
   return Array.from({ length: INVENTORY_SLOT_COUNT }, () => null);
@@ -1323,7 +1338,7 @@ function syncPlayerCopperFromInventory(player, shouldNotify = false) {
   return true;
 }
 
-function queueDamageEvent(target, amount, targetType) {
+function queueDamageEvent(target, amount, targetType, sourcePlayerId = null) {
   const dmg = Math.max(0, Math.round(Number(amount) || 0));
   if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) || dmg <= 0) {
     return;
@@ -1333,7 +1348,8 @@ function queueDamageEvent(target, amount, targetType) {
     x: target.x,
     y: target.y,
     amount: dmg,
-    targetType: targetType === "player" ? "player" : "mob"
+    targetType: targetType === "player" ? "player" : "mob",
+    sourcePlayerId: sourcePlayerId ? String(sourcePlayerId) : null
   });
 }
 
@@ -1351,6 +1367,21 @@ function queueExplosionEvent(x, y, radius, abilityId = "") {
   });
 }
 
+function queueProjectileHitEvent(x, y, abilityId = "") {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
+  const normalizedAbilityId = String(abilityId || "").slice(0, 32);
+  if (!normalizedAbilityId) {
+    return;
+  }
+  pendingProjectileHitEvents.push({
+    x: clamp(x, 0, MAP_WIDTH - 1),
+    y: clamp(y, 0, MAP_HEIGHT - 1),
+    abilityId: normalizedAbilityId
+  });
+}
+
 function markMobProvokedByPlayer(mob, ownerId, now = Date.now()) {
   if (!mob || !ownerId) {
     return;
@@ -1363,6 +1394,7 @@ function markMobProvokedByPlayer(mob, ownerId, now = Date.now()) {
   mob.chaseTargetPlayerId = ownerKey;
   mob.chaseUntil = Math.max(Number(mob.chaseUntil) || 0, now + MOB_PROVOKED_CHASE_MS);
   mob.wanderTarget = null;
+  mob.returningHome = false;
 }
 
 function stunMob(mob, durationMs, now = Date.now()) {
@@ -1381,13 +1413,63 @@ function hasActiveProvokedChase(mob, now = Date.now()) {
   return !!(mob && mob.chaseTargetPlayerId && Number(mob.chaseUntil) > now);
 }
 
+function getMobDistanceFromSpawn(mob) {
+  if (!mob) {
+    return 0;
+  }
+  return Math.hypot((mob.x || 0) - (mob.spawnX || 0), (mob.y || 0) - (mob.spawnY || 0));
+}
+
 function getMobLeashRadius(mob, now = Date.now()) {
-  return hasActiveProvokedChase(mob, now) ? MOB_PROVOKED_LEASH_RADIUS : MOB_WANDER_RADIUS;
+  if (hasActiveProvokedChase(mob, now)) {
+    return MOB_PROVOKED_LEASH_RADIUS;
+  }
+  return Math.max(MOB_WANDER_RADIUS, getMobDistanceFromSpawn(mob));
+}
+
+function startMobReturnToSpawn(mob) {
+  if (!mob) {
+    return;
+  }
+  mob.chaseTargetPlayerId = null;
+  mob.chaseUntil = 0;
+  mob.wanderTarget = null;
+  mob.returningHome = true;
 }
 
 function getMobMoveSpeed(mob) {
   const baseSpeed = clamp(Number(mob?.baseSpeed) || Number(mob?.speed) || 0.5, 0.05, 20);
-  return clamp(baseSpeed * SERVER_CONFIG.mobSpeedMultiplier, 0.05, 20);
+  let slowMultiplier = 1;
+  if (mob && Number(mob.slowUntil) > Date.now()) {
+    slowMultiplier = clamp(Number(mob.slowMultiplier) || 1, 0.1, 1);
+  } else if (mob && (mob.slowUntil || mob.slowMultiplier !== 1)) {
+    mob.slowUntil = 0;
+    mob.slowMultiplier = 1;
+  }
+  return clamp(baseSpeed * SERVER_CONFIG.mobSpeedMultiplier * slowMultiplier, 0.05, 20);
+}
+
+function applySlowToMob(mob, slowMultiplier, durationMs, now = Date.now()) {
+  if (!mob || !mob.alive) {
+    return;
+  }
+  const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+  if (duration <= 0) {
+    return;
+  }
+  const multiplier = clamp(Number(slowMultiplier) || 1, 0.1, 1);
+  if (multiplier >= 1) {
+    return;
+  }
+
+  const active = Number(mob.slowUntil) > now;
+  if (active) {
+    mob.slowUntil = Math.max(Number(mob.slowUntil) || 0, now + duration);
+    mob.slowMultiplier = Math.min(clamp(Number(mob.slowMultiplier) || 1, 0.1, 1), multiplier);
+  } else {
+    mob.slowUntil = now + duration;
+    mob.slowMultiplier = multiplier;
+  }
 }
 
 function applyDamageToMob(mob, damage, ownerId) {
@@ -1403,7 +1485,7 @@ function applyDamageToMob(mob, damage, ownerId) {
   mob.hp = Math.max(0, mob.hp - dmg);
   const dealt = beforeHp - mob.hp;
   if (dealt > 0) {
-    queueDamageEvent(mob, dealt, "mob");
+    queueDamageEvent(mob, dealt, "mob", ownerId);
     markMobProvokedByPlayer(mob, ownerId);
   }
   if (mob.hp <= 0) {
@@ -1543,7 +1625,10 @@ function createMob(spawner) {
     lastAttackAt: 0,
     chaseTargetPlayerId: null,
     chaseUntil: 0,
-    stunnedUntil: 0
+    stunnedUntil: 0,
+    slowUntil: 0,
+    slowMultiplier: 1,
+    returningHome: false
   };
   mobs.set(mob.id, mob);
   spawner.mobIds.push(mob.id);
@@ -1619,6 +1704,8 @@ function killMob(mob, killerPlayerId = null) {
   mob.chaseTargetPlayerId = null;
   mob.chaseUntil = 0;
   mob.stunnedUntil = 0;
+  mob.slowUntil = 0;
+  mob.slowMultiplier = 1;
   const killer = killerPlayerId ? players.get(String(killerPlayerId)) : null;
   const globalDrops = rollGlobalDropsForPlayer(killer);
   const mobDrops = rollMobDrops(mob);
@@ -1645,6 +1732,20 @@ function respawnMob(mob) {
   mob.chaseTargetPlayerId = null;
   mob.chaseUntil = 0;
   mob.stunnedUntil = 0;
+  mob.slowUntil = 0;
+  mob.slowMultiplier = 1;
+  mob.returningHome = false;
+}
+
+function applyProjectileHitEffects(mob, projectile, dealtDamage, now = Date.now()) {
+  if (!mob || !mob.alive || dealtDamage <= 0 || !projectile) {
+    return;
+  }
+  const slowDurationMs = Math.max(0, Number(projectile.slowDurationMs) || 0);
+  const slowMultiplier = clamp(Number(projectile.slowMultiplier) || 1, 0.1, 1);
+  if (slowDurationMs > 0 && slowMultiplier < 1) {
+    applySlowToMob(mob, slowMultiplier, slowDurationMs, now);
+  }
 }
 
 function tickProjectiles() {
@@ -1677,6 +1778,7 @@ function tickProjectiles() {
       projectile.y > MAP_HEIGHT - 1;
 
     if (hitMob) {
+      queueProjectileHitEvent(hitMob.x, hitMob.y, projectile.abilityId);
       const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
       const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 255);
       const baseDamage = randomInt(damageMin, damageMax);
@@ -1696,12 +1798,18 @@ function tickProjectiles() {
           const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
           const scale = 1 - t * (1 - minMultiplier);
           const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
-          applyDamageToMob(mob, scaledDamage, projectile.ownerId);
+          const dealt = applyDamageToMob(mob, scaledDamage, projectile.ownerId);
+          applyProjectileHitEffects(mob, projectile, dealt, now);
         }
       } else {
-        applyDamageToMob(hitMob, baseDamage, projectile.ownerId);
+        const dealt = applyDamageToMob(hitMob, baseDamage, projectile.ownerId);
+        applyProjectileHitEffects(hitMob, projectile, dealt, now);
       }
-    } else if ((expired || outOfMap) && (Number(projectile.explosionRadius) || 0) > 0) {
+    } else if (
+      (expired || outOfMap) &&
+      (Number(projectile.explosionRadius) || 0) > 0 &&
+      String(projectile.abilityId || "").toLowerCase() !== "fireball"
+    ) {
       const explosionRadius = Math.max(0, Number(projectile.explosionRadius) || 0);
       const minMultiplier = clamp(Number(projectile.explosionDamageMultiplier) || 0, 0, 1);
       const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
@@ -1719,7 +1827,8 @@ function tickProjectiles() {
         const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
         const scale = 1 - t * (1 - minMultiplier);
         const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
-        applyDamageToMob(mob, scaledDamage, projectile.ownerId);
+        const dealt = applyDamageToMob(mob, scaledDamage, projectile.ownerId);
+        applyProjectileHitEffects(mob, projectile, dealt, now);
       }
     }
 
@@ -2044,9 +2153,6 @@ function buildMobEffectsForRecipient(recipient, nearbyMobObjects, now = Date.now
       continue;
     }
     const stunnedUntil = Number(mob.stunnedUntil) || 0;
-    if (stunnedUntil <= now) {
-      continue;
-    }
 
     const realId = toEntityRealId(mob.id);
     if (!realId) {
@@ -2056,9 +2162,17 @@ function buildMobEffectsForRecipient(recipient, nearbyMobObjects, now = Date.now
     if (!slot) {
       continue;
     }
+    const slowedUntil = Number(mob.slowUntil) || 0;
+    const slowedMs = slowedUntil > now ? clamp(slowedUntil - now, 1, 65535) : 0;
+    const slowMultiplierQ = clamp(Math.round(clamp(Number(mob.slowMultiplier) || 1, 0.1, 1) * 1000), 1, 1000);
+    if (stunnedUntil <= now && slowedMs <= 0) {
+      continue;
+    }
     effects.push({
       id: slot,
-      stunnedMs: clamp(stunnedUntil - now, 1, 65535)
+      stunnedMs: stunnedUntil > now ? clamp(stunnedUntil - now, 1, 65535) : 0,
+      slowedMs,
+      slowMultiplierQ
     });
   }
 
@@ -2146,6 +2260,8 @@ function performProjectileAbility(player, abilityDef, abilityLevel, targetDx, ta
     hitRadius: clamp(Number(abilityDef.projectileHitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8),
     explosionRadius: Math.max(0, Number(abilityDef.explosionRadius) || 0),
     explosionDamageMultiplier: clamp(Number(abilityDef.explosionDamageMultiplier) || 0, 0, 1),
+    slowDurationMs: Math.max(0, Number(abilityDef.slowDurationMs) || 0),
+    slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
     abilityId: abilityDef.id
   };
   projectiles.set(projectile.id, projectile);
@@ -2330,30 +2446,59 @@ function tickMobs() {
       continue;
     }
 
+    const mobSpeed = getMobMoveSpeed(mob);
+    if (mob.returningHome) {
+      const distFromSpawn = getMobDistanceFromSpawn(mob);
+      if (distFromSpawn <= MOB_WANDER_RADIUS + 0.05) {
+        mob.returningHome = false;
+        mob.wanderTarget = null;
+        mob.nextWanderAt = now + randomInt(450, 1300);
+      } else {
+        const homeDir = normalizeDirection(mob.spawnX - mob.x, mob.spawnY - mob.y);
+        if (homeDir) {
+          const returnRadius = Math.max(MOB_WANDER_RADIUS, distFromSpawn);
+          const nextPos = clampToSpawnRadius(
+            mob.x + homeDir.dx * mobSpeed * 0.8 * dt,
+            mob.y + homeDir.dy * mobSpeed * 0.8 * dt,
+            mob.spawnX,
+            mob.spawnY,
+            returnRadius
+          );
+          mob.x = nextPos.x;
+          mob.y = nextPos.y;
+        }
+        continue;
+      }
+    }
+
     let forcedTarget = null;
     if (hasActiveProvokedChase(mob, now)) {
       const candidate = players.get(String(mob.chaseTargetPlayerId));
       if (candidate && candidate.hp > 0) {
         forcedTarget = candidate;
       } else {
-        mob.chaseTargetPlayerId = null;
-        mob.chaseUntil = 0;
+        startMobReturnToSpawn(mob);
+        continue;
       }
     } else {
       mob.chaseTargetPlayerId = null;
       mob.chaseUntil = 0;
     }
 
+    if (forcedTarget && getMobDistanceFromSpawn(mob) >= MOB_PROVOKED_LEASH_RADIUS - 0.05) {
+      startMobReturnToSpawn(mob);
+      continue;
+    }
+
     const nearestAggro = forcedTarget ? null : getNearestAggroPlayer(mob);
     const aggroPlayer = forcedTarget || (nearestAggro ? nearestAggro.player : null);
     const dist = aggroPlayer ? distance(mob, aggroPlayer) : Infinity;
-    const mobSpeed = getMobMoveSpeed(mob);
 
     if (aggroPlayer) {
       if (dist > MOB_ATTACK_RANGE) {
         const dir = normalizeDirection(aggroPlayer.x - mob.x, aggroPlayer.y - mob.y);
         if (dir) {
-          const leashRadius = forcedTarget ? MOB_PROVOKED_LEASH_RADIUS : MOB_WANDER_RADIUS;
+          const leashRadius = forcedTarget ? MOB_PROVOKED_LEASH_RADIUS : getMobLeashRadius(mob, now);
           const nextPos = clampToSpawnRadius(
             mob.x + dir.dx * mobSpeed * dt,
             mob.y + dir.dy * mobSpeed * dt,
@@ -2379,6 +2524,7 @@ function tickMobs() {
         }
         if (aggroPlayer.hp <= 0) {
           aggroPlayer.input = { dx: 0, dy: 0 };
+          startMobReturnToSpawn(mob);
         }
       }
       continue;
@@ -2399,7 +2545,7 @@ function tickMobs() {
       mob.y + dir.dy * mobSpeed * 0.7 * dt,
       mob.spawnX,
       mob.spawnY,
-      MOB_WANDER_RADIUS
+      getMobLeashRadius(mob, now)
     );
     mob.x = nextPos.x;
     mob.y = nextPos.y;
@@ -2633,6 +2779,7 @@ function processVisibleProjectiles(sync, entities) {
   const store = getEntitySyncStore(sync, "projectile");
   const full = [];
   const delta = [];
+  const meta = [];
   const visibleRealIds = new Set();
 
   for (const entity of entities) {
@@ -2661,6 +2808,12 @@ function processVisibleProjectiles(sync, entities) {
     if (!previous) {
       full.push({ id: slot, ...state });
       store.statesBySlot.set(slot, state);
+      const abilityId = String(entity.abilityId || "");
+      sync.projectileMetaBySlot.set(slot, abilityId);
+      meta.push({
+        id: slot,
+        abilityId
+      });
       continue;
     }
 
@@ -2683,6 +2836,15 @@ function processVisibleProjectiles(sync, entities) {
     }
 
     store.statesBySlot.set(slot, state);
+    const abilityId = String(entity.abilityId || "");
+    const previousAbilityId = sync.projectileMetaBySlot.get(slot);
+    if (previousAbilityId !== abilityId) {
+      sync.projectileMetaBySlot.set(slot, abilityId);
+      meta.push({
+        id: slot,
+        abilityId
+      });
+    }
   }
 
   const toRemove = [];
@@ -2705,9 +2867,10 @@ function processVisibleProjectiles(sync, entities) {
     store.realIdBySlot.delete(entry.slot);
     store.statesBySlot.delete(entry.slot);
     store.freeSlots.push(entry.slot);
+    sync.projectileMetaBySlot.delete(entry.slot);
   }
 
-  return { full, delta };
+  return { full, delta, meta };
 }
 
 function processVisibleLootBags(sync, entities) {
@@ -3054,6 +3217,7 @@ function buildEntityUpdatePacket(player, visiblePlayers, visibleMobs, visiblePro
       : null,
     playerMeta: playerUpdates.meta,
     mobMeta: mobUpdates.meta,
+    projectileMeta: projectileUpdates.meta,
     lootBagMeta: lootBagUpdates.meta
   };
 }
@@ -3083,6 +3247,7 @@ function broadcastState() {
         nearbyProjectiles.push({
           id: projectile.id,
           ownerId: projectile.ownerId,
+          abilityId: projectile.abilityId,
           x: projectile.x,
           y: projectile.y
         });
@@ -3117,6 +3282,12 @@ function broadcastState() {
       sendJson(player.ws, {
         type: "mob_meta",
         mobs: entityUpdate.mobMeta
+      });
+    }
+    if (entityUpdate.projectileMeta.length) {
+      sendJson(player.ws, {
+        type: "projectile_meta",
+        projectiles: entityUpdate.projectileMeta
       });
     }
     if (entityUpdate.lootBagMeta.length) {
@@ -3161,7 +3332,13 @@ function broadcastState() {
       const visibleDamageEvents = [];
       for (const event of pendingDamageEvents) {
         if (inVisibilityRange(player, event, VISIBILITY_RANGE)) {
-          visibleDamageEvents.push(event);
+          visibleDamageEvents.push({
+            x: event.x,
+            y: event.y,
+            amount: event.amount,
+            targetType: event.targetType,
+            fromSelf: !!(event.sourcePlayerId && event.sourcePlayerId === player.id)
+          });
         }
       }
       if (visibleDamageEvents.length) {
@@ -3188,6 +3365,21 @@ function broadcastState() {
       }
     }
 
+    if (pendingProjectileHitEvents.length) {
+      const visibleProjectileHitEvents = [];
+      for (const event of pendingProjectileHitEvents) {
+        if (inVisibilityRange(player, event, VISIBILITY_RANGE + 2)) {
+          visibleProjectileHitEvents.push(event);
+        }
+      }
+      if (visibleProjectileHitEvents.length) {
+        sendJson(player.ws, {
+          type: "projectile_hit_events",
+          events: visibleProjectileHitEvents
+        });
+      }
+    }
+
     if (entityUpdate.packet) {
       sendBinary(player.ws, entityUpdate.packet);
     }
@@ -3195,6 +3387,7 @@ function broadcastState() {
 
   pendingDamageEvents.length = 0;
   pendingExplosionEvents.length = 0;
+  pendingProjectileHitEvents.length = 0;
 }
 
 wss.on("connection", (ws) => {
@@ -3286,6 +3479,7 @@ wss.on("connection", (ws) => {
           projectileSlotsByRealId: new Map(),
           projectileRealIdBySlot: new Map(),
           projectileStatesBySlot: new Map(),
+          projectileMetaBySlot: new Map(),
           freeProjectileSlots: [],
           nextProjectileSlot: 1,
           lootBagSlotsByRealId: new Map(),

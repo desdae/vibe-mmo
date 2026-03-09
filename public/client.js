@@ -24,6 +24,9 @@ const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
 const debugPanel = document.getElementById("debug-panel");
 const debugNet = document.getElementById("debug-net");
+const dpsPanel = document.getElementById("dps-panel");
+const dpsTabs = document.getElementById("dps-tabs");
+const dpsValue = document.getElementById("dps-value");
 
 const TILE_SIZE = 32;
 const INTERPOLATION_DELAY_MS = 100;
@@ -83,6 +86,22 @@ const movementSync = {
   lastDy: 0,
   lastSentAt: 0
 };
+const fireballAudio = {
+  channel: null,
+  cast: null,
+  explode: null,
+  channelPlaying: false,
+  lastCastPlayedAt: 0,
+  lastExplosionPlayedAt: 0
+};
+const frostboltAudio = {
+  channel: null,
+  fly: null,
+  channelPlaying: false,
+  hit: null,
+  lastFlyPlayedAt: 0,
+  lastHitPlayedAt: 0
+};
 const swordSwing = {
   activeUntil: 0,
   durationMs: 170,
@@ -105,6 +124,7 @@ const remotePlayerSwings = new Map();
 const remotePlayerCasts = new Map();
 const remoteMobBites = new Map();
 const remoteMobStuns = new Map();
+const remoteMobSlows = new Map();
 const mobSpriteCache = new Map();
 const projectileVisualRuntime = new Map();
 const zombieWalkFramesCache = new Map();
@@ -113,6 +133,9 @@ const creeperWalkFramesCache = new Map();
 const creeperWalkRuntime = new Map();
 const spiderWalkFramesCache = new Map();
 const spiderWalkRuntime = new Map();
+const orcWalkFramesCache = new Map();
+const orcNoAxesWalkFramesCache = new Map();
+const orcWalkRuntime = new Map();
 const skeletonWalkFramesCache = new Map();
 const skeletonNoSwordWalkFramesCache = new Map();
 const skeletonWalkRuntime = new Map();
@@ -148,11 +171,17 @@ const debugState = {
   upBytesWindow: 0,
   downBytesWindow: 0
 };
+const dpsState = {
+  enabled: false,
+  selectedWindowSec: 60,
+  samples: []
+};
 const entityRuntime = {
   self: null,
   players: new Map(),
   mobMeta: new Map(),
   mobs: new Map(),
+  projectileMeta: new Map(),
   projectiles: new Map(),
   lootBags: new Map(),
   lootBagMeta: new Map(),
@@ -169,6 +198,17 @@ function clamp(value, min, max) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+function normalizeDirection(dx, dy) {
+  const len = Math.hypot(dx, dy);
+  if (!len) {
+    return null;
+  }
+  return {
+    dx: dx / len,
+    dy: dy / len
+  };
 }
 
 function setStatus(text) {
@@ -204,8 +244,7 @@ const BUILTIN_ACTION_DEFS = {
     description: "Pick up nearby loot bag.",
     kind: "utility",
     cooldownMs: 0,
-    castMs: 0,
-    channelMs: 0
+    castMs: 0
   },
   none: {
     id: "none",
@@ -213,8 +252,7 @@ const BUILTIN_ACTION_DEFS = {
     description: "No action bound.",
     kind: "none",
     cooldownMs: 0,
-    castMs: 0,
-    channelMs: 0
+    castMs: 0
   }
 };
 
@@ -246,7 +284,227 @@ function parseActionBinding(binding) {
   };
 }
 
+function ensureFireballAudioLoaded() {
+  if (!fireballAudio.channel) {
+    const channel = new Audio("/sounds/mage_channeling_a_fireball.mp3");
+    channel.preload = "auto";
+    channel.loop = true;
+    channel.volume = 0.42;
+    fireballAudio.channel = channel;
+  }
+  if (!fireballAudio.cast) {
+    const cast = new Audio("/sounds/mage_casting_a_fireball.mp3");
+    cast.preload = "auto";
+    cast.volume = 0.54;
+    fireballAudio.cast = cast;
+  }
+  if (!fireballAudio.explode) {
+    const explode = new Audio("/sounds/fireball_exploding.mp3");
+    explode.preload = "auto";
+    explode.volume = 0.58;
+    fireballAudio.explode = explode;
+  }
+}
+
+function ensureFrostboltAudioLoaded() {
+  if (!frostboltAudio.channel) {
+    const channel = new Audio("/sounds/mage_channeling_frostbolt.mp3");
+    channel.preload = "auto";
+    channel.loop = true;
+    channel.volume = 0.4;
+    frostboltAudio.channel = channel;
+  }
+  if (!frostboltAudio.fly) {
+    const fly = new Audio("/sounds/frostbolt_flying.mp3");
+    fly.preload = "auto";
+    fly.volume = 0.52;
+    frostboltAudio.fly = fly;
+  }
+  if (!frostboltAudio.hit) {
+    const hit = new Audio("/sounds/frostbolt_hits_a_target.mp3");
+    hit.preload = "auto";
+    hit.volume = 0.56;
+    frostboltAudio.hit = hit;
+  }
+}
+
+function startFireballChannelAudio() {
+  ensureFireballAudioLoaded();
+  if (!fireballAudio.channel || fireballAudio.channelPlaying) {
+    return;
+  }
+  fireballAudio.channelPlaying = true;
+  fireballAudio.channel.currentTime = 0;
+  const playback = fireballAudio.channel.play();
+  if (playback && typeof playback.catch === "function") {
+    playback.catch(() => {
+      fireballAudio.channelPlaying = false;
+    });
+  }
+}
+
+function stopFireballChannelAudio() {
+  if (!fireballAudio.channel) {
+    fireballAudio.channelPlaying = false;
+    return;
+  }
+  fireballAudio.channel.pause();
+  fireballAudio.channel.currentTime = 0;
+  fireballAudio.channelPlaying = false;
+}
+
+function playFireballCastAudio(now = performance.now()) {
+  ensureFireballAudioLoaded();
+  if (!fireballAudio.cast) {
+    return;
+  }
+  if (now - fireballAudio.lastCastPlayedAt < 100) {
+    return;
+  }
+  fireballAudio.lastCastPlayedAt = now;
+  fireballAudio.cast.currentTime = 0;
+  const playback = fireballAudio.cast.play();
+  if (playback && typeof playback.catch === "function") {
+    playback.catch(() => {});
+  }
+}
+
+function playFireballExplosionAudio(now = performance.now()) {
+  ensureFireballAudioLoaded();
+  if (!fireballAudio.explode) {
+    return;
+  }
+  if (now - fireballAudio.lastExplosionPlayedAt < 70) {
+    return;
+  }
+  fireballAudio.lastExplosionPlayedAt = now;
+  const clip = fireballAudio.explode.cloneNode();
+  clip.volume = fireballAudio.explode.volume;
+  const playback = clip.play();
+  if (playback && typeof playback.catch === "function") {
+    playback.catch(() => {});
+  }
+}
+
+function startFrostboltChannelAudio() {
+  ensureFrostboltAudioLoaded();
+  if (!frostboltAudio.channel || frostboltAudio.channelPlaying) {
+    return;
+  }
+  frostboltAudio.channelPlaying = true;
+  frostboltAudio.channel.currentTime = 0;
+  const playback = frostboltAudio.channel.play();
+  if (playback && typeof playback.catch === "function") {
+    playback.catch(() => {
+      frostboltAudio.channelPlaying = false;
+    });
+  }
+}
+
+function stopFrostboltChannelAudio() {
+  if (!frostboltAudio.channel) {
+    frostboltAudio.channelPlaying = false;
+    return;
+  }
+  frostboltAudio.channel.pause();
+  frostboltAudio.channel.currentTime = 0;
+  frostboltAudio.channelPlaying = false;
+}
+
+function playFrostboltFlyAudio(now = performance.now()) {
+  ensureFrostboltAudioLoaded();
+  if (!frostboltAudio.fly) {
+    return;
+  }
+  if (now - frostboltAudio.lastFlyPlayedAt < 100) {
+    return;
+  }
+  frostboltAudio.lastFlyPlayedAt = now;
+  const clip = frostboltAudio.fly.cloneNode();
+  clip.volume = frostboltAudio.fly.volume;
+  const playback = clip.play();
+  if (playback && typeof playback.catch === "function") {
+    playback.catch(() => {});
+  }
+}
+
+function playFrostboltHitAudio(now = performance.now()) {
+  ensureFrostboltAudioLoaded();
+  if (!frostboltAudio.hit) {
+    return;
+  }
+  if (now - frostboltAudio.lastHitPlayedAt < 60) {
+    return;
+  }
+  frostboltAudio.lastHitPlayedAt = now;
+  const clip = frostboltAudio.hit.cloneNode();
+  clip.volume = frostboltAudio.hit.volume;
+  const playback = clip.play();
+  if (playback && typeof playback.catch === "function") {
+    playback.catch(() => {});
+  }
+}
+
+function captureCastStateSnapshot(castState) {
+  return {
+    active: !!(castState && castState.active),
+    abilityId: String((castState && castState.abilityId) || "").toLowerCase(),
+    startedAt: Number(castState && castState.startedAt) || 0,
+    durationMs: Math.max(0, Number(castState && castState.durationMs) || 0)
+  };
+}
+
+function syncLocalCastAudio(previousCast, nextCast) {
+  const prev = previousCast || { active: false, abilityId: "", startedAt: 0, durationMs: 0 };
+  const next = nextCast || { active: false, abilityId: "", startedAt: 0, durationMs: 0 };
+  const wasFireball = !!prev.active && prev.abilityId === "fireball";
+  const isFireball = !!next.active && String(next.abilityId || "").toLowerCase() === "fireball";
+  const wasFrostbolt = !!prev.active && prev.abilityId === "frostbolt";
+  const isFrostbolt = !!next.active && String(next.abilityId || "").toLowerCase() === "frostbolt";
+  const now = performance.now();
+
+  if (!wasFireball && isFireball) {
+    startFireballChannelAudio();
+    return;
+  }
+
+  if (wasFireball && !isFireball) {
+    stopFireballChannelAudio();
+    const completion =
+      prev.durationMs > 0 ? clamp((now - prev.startedAt) / prev.durationMs, 0, 1) : 0;
+    if (completion >= 0.94) {
+      playFireballCastAudio(now);
+    }
+    return;
+  }
+
+  if (!isFireball) {
+    stopFireballChannelAudio();
+  }
+
+  if (!wasFrostbolt && isFrostbolt) {
+    startFrostboltChannelAudio();
+    return;
+  }
+
+  if (wasFrostbolt && !isFrostbolt) {
+    stopFrostboltChannelAudio();
+    const completion =
+      prev.durationMs > 0 ? clamp((now - prev.startedAt) / prev.durationMs, 0, 1) : 0;
+    if (completion >= 0.94) {
+      playFrostboltFlyAudio(now);
+    }
+    return;
+  }
+
+  if (!isFrostbolt) {
+    stopFrostboltChannelAudio();
+  }
+}
+
 function resetAbilityChanneling() {
+  stopFireballChannelAudio();
+  stopFrostboltChannelAudio();
   abilityChannel.active = false;
   abilityChannel.abilityId = "";
   abilityChannel.startedAt = 0;
@@ -308,8 +566,7 @@ function getActionDefById(actionId) {
     description: ability.description || "",
     kind: ability.kind || "meleeCone",
     cooldownMs: Math.max(0, Math.floor(Number(ability.cooldownMs) || 0)),
-    castMs: Math.max(0, Math.floor(Number(ability.castMs ?? ability.channelMs) || 0)),
-    channelMs: Math.max(0, Math.floor(Number(ability.castMs ?? ability.channelMs) || 0)),
+    castMs: Math.max(0, Math.floor(Number(ability.castMs) || 0)),
     range: Math.max(0, Number(ability.range) || 0)
   };
 }
@@ -359,7 +616,7 @@ function buildAbilityTooltip(abilityId) {
 
   appendTooltipNumber(lines, "Mana Cost", ability.manaCost);
   appendTooltipNumber(lines, "Cooldown", ability.cooldownMs, formatMsAsSeconds);
-  appendTooltipNumber(lines, "Cast Time", ability.castMs ?? ability.channelMs, formatMsAsSeconds);
+  appendTooltipNumber(lines, "Cast Time", ability.castMs, formatMsAsSeconds);
   appendTooltipNumber(lines, "Range", ability.range);
   appendTooltipNumber(lines, "Speed", ability.speed);
   appendTooltipNumber(lines, "Damage Min", ability.damageMin);
@@ -371,6 +628,8 @@ function buildAbilityTooltip(abilityId) {
   appendTooltipNumber(lines, "Explosion Radius", ability.explosionRadius);
   appendTooltipNumber(lines, "Explosion Multiplier", ability.explosionDamageMultiplier, (v) => `${Math.round(v * 100)}%`);
   appendTooltipNumber(lines, "Stun Duration", ability.stunDurationMs, formatMsAsSeconds);
+  appendTooltipNumber(lines, "Slow Duration", ability.slowDurationMs, formatMsAsSeconds);
+  appendTooltipNumber(lines, "Slow Speed Multiplier", ability.slowMultiplier, (v) => `${Math.round(v * 100)}%`);
 
   const knownKeys = new Set([
     "id",
@@ -381,7 +640,6 @@ function buildAbilityTooltip(abilityId) {
     "range",
     "speed",
     "castMs",
-    "channelMs",
     "manaCost",
     "damageMin",
     "damageMax",
@@ -392,6 +650,8 @@ function buildAbilityTooltip(abilityId) {
     "explosionRadius",
     "explosionDamageMultiplier",
     "stunDurationMs",
+    "slowDurationMs",
+    "slowMultiplier",
     "coneCos"
   ]);
   for (const [key, value] of Object.entries(ability)) {
@@ -628,6 +888,41 @@ function getActionIconUrl(actionId) {
       iconCtx.moveTo(mid - 5, mid + 3);
       iconCtx.lineTo(mid - 12, mid + 10);
       iconCtx.stroke();
+      return;
+    }
+
+    if (actionId === "frostbolt") {
+      iconCtx.save();
+      iconCtx.translate(mid, mid);
+      iconCtx.rotate(-Math.PI / 4);
+      iconCtx.fillStyle = "#b9f2ff";
+      iconCtx.strokeStyle = "#6bb8e8";
+      iconCtx.lineWidth = 2;
+      iconCtx.beginPath();
+      iconCtx.moveTo(-13, 0);
+      iconCtx.lineTo(9, -4.5);
+      iconCtx.lineTo(13, 0);
+      iconCtx.lineTo(9, 4.5);
+      iconCtx.closePath();
+      iconCtx.fill();
+      iconCtx.stroke();
+
+      iconCtx.strokeStyle = "rgba(189, 236, 255, 0.92)";
+      iconCtx.lineWidth = 1.4;
+      iconCtx.beginPath();
+      iconCtx.moveTo(-14, 0);
+      iconCtx.lineTo(-20, 0);
+      iconCtx.stroke();
+
+      iconCtx.strokeStyle = "rgba(141, 214, 255, 0.78)";
+      for (let i = 0; i < 3; i += 1) {
+        const y = -6 + i * 6;
+        iconCtx.beginPath();
+        iconCtx.moveTo(-12 - i * 3, y);
+        iconCtx.lineTo(-17 - i * 3, y);
+        iconCtx.stroke();
+      }
+      iconCtx.restore();
       return;
     }
 
@@ -1180,6 +1475,85 @@ function toggleDebugPanel() {
   setDebugEnabled(!debugState.enabled);
 }
 
+function pruneDpsSamples(now) {
+  const cutoff = now - 60000;
+  while (dpsState.samples.length && dpsState.samples[0].t < cutoff) {
+    dpsState.samples.shift();
+  }
+}
+
+function addDpsSample(amount, now = performance.now()) {
+  const dmg = Math.max(0, Number(amount) || 0);
+  if (dmg <= 0) {
+    return;
+  }
+  pruneDpsSamples(now);
+  dpsState.samples.push({ t: now, amount: dmg });
+}
+
+function getDpsAverage(windowSec, now = performance.now()) {
+  const windowMs = Math.max(1000, Math.round(windowSec * 1000));
+  const cutoff = now - windowMs;
+  let total = 0;
+  for (const sample of dpsState.samples) {
+    if (sample.t >= cutoff) {
+      total += sample.amount;
+    }
+  }
+  return total / (windowMs / 1000);
+}
+
+function setDpsWindow(windowSec) {
+  const normalized = Number(windowSec);
+  if (normalized !== 60 && normalized !== 20 && normalized !== 5) {
+    return;
+  }
+  dpsState.selectedWindowSec = normalized;
+  if (dpsTabs) {
+    for (const node of dpsTabs.querySelectorAll(".dps-tab")) {
+      const tabWindow = Number(node.getAttribute("data-window") || 0);
+      node.classList.toggle("active", tabWindow === dpsState.selectedWindowSec);
+    }
+  }
+  updateDpsPanel();
+}
+
+function updateDpsPanel() {
+  const now = performance.now();
+  pruneDpsSamples(now);
+  if (!dpsState.enabled || !dpsValue) {
+    return;
+  }
+  const dps = getDpsAverage(dpsState.selectedWindowSec, now);
+  dpsValue.textContent = `${dps.toFixed(2)} DPS`;
+}
+
+function setDpsVisible(visible) {
+  dpsState.enabled = !!visible;
+  if (!dpsPanel) {
+    return;
+  }
+  dpsPanel.classList.toggle("hidden", !dpsState.enabled);
+  updateDpsPanel();
+}
+
+function toggleDpsPanel() {
+  setDpsVisible(!dpsState.enabled);
+}
+
+function initializeDpsPanel() {
+  if (!dpsTabs) {
+    return;
+  }
+  for (const node of dpsTabs.querySelectorAll(".dps-tab")) {
+    node.addEventListener("click", () => {
+      const windowSec = Number(node.getAttribute("data-window") || 0);
+      setDpsWindow(windowSec);
+    });
+  }
+  setDpsWindow(dpsState.selectedWindowSec);
+}
+
 function sendJsonMessage(payload) {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return false;
@@ -1201,10 +1575,13 @@ function triggerRemotePlayerSwing(playerId, dx, dy) {
 
 function triggerRemoteMobBite(mobId, dx, dy) {
   const angle = Math.atan2(dy, dx);
+  const previous = remoteMobBites.get(mobId);
+  const sequence = previous ? (((Number(previous.sequence) || 0) + 1) & 0xff) : 0;
   remoteMobBites.set(mobId, {
     activeUntil: performance.now() + 160,
     durationMs: 160,
-    angle: Number.isFinite(angle) ? angle : 0
+    angle: Number.isFinite(angle) ? angle : 0,
+    sequence
   });
 }
 
@@ -1228,6 +1605,7 @@ function clearEntityRuntime() {
   entityRuntime.players.clear();
   entityRuntime.mobMeta.clear();
   entityRuntime.mobs.clear();
+  entityRuntime.projectileMeta.clear();
   entityRuntime.projectiles.clear();
   entityRuntime.lootBags.clear();
   entityRuntime.lootBagMeta.clear();
@@ -1272,7 +1650,9 @@ function syncSelfToGameState() {
 
 function applyPlayerCastStates(msg) {
   if (msg && msg.self && typeof msg.self === "object") {
+    const previousSelfCast = captureCastStateSnapshot(abilityChannel);
     applyServerCastState(abilityChannel, msg.self);
+    syncLocalCastAudio(previousSelfCast, abilityChannel);
   }
 
   if (!Array.isArray(msg && msg.casts)) {
@@ -1301,6 +1681,7 @@ function applyPlayerCastStates(msg) {
 function applyMobEffects(msg) {
   const now = performance.now();
   remoteMobStuns.clear();
+  remoteMobSlows.clear();
   if (!Array.isArray(msg && msg.effects)) {
     return;
   }
@@ -1310,11 +1691,20 @@ function applyMobEffects(msg) {
     }
     const stunnedMs = Math.max(0, Number(effect.stunnedMs) || 0);
     if (stunnedMs <= 0) {
-      continue;
+      // Keep parsing slow-only effects below.
+    } else {
+      remoteMobStuns.set(effect.id, {
+        endsAt: now + stunnedMs
+      });
     }
-    remoteMobStuns.set(effect.id, {
-      endsAt: now + stunnedMs
-    });
+    const slowedMs = Math.max(0, Number(effect.slowedMs) || 0);
+    if (slowedMs > 0) {
+      const slowMultiplierQ = Math.max(1, Math.floor(Number(effect.slowMultiplierQ) || 1000));
+      remoteMobSlows.set(effect.id, {
+        endsAt: now + slowedMs,
+        multiplier: clamp(slowMultiplierQ / 1000, 0.1, 1)
+      });
+    }
   }
 }
 
@@ -1355,6 +1745,24 @@ function applyMobMeta(metaMobs) {
     if (existing) {
       existing.name = name;
       entityRuntime.mobs.set(meta.id, existing);
+    }
+  }
+}
+
+function applyProjectileMeta(metaProjectiles) {
+  if (!Array.isArray(metaProjectiles)) {
+    return;
+  }
+  for (const meta of metaProjectiles) {
+    if (!meta || typeof meta.id !== "number") {
+      continue;
+    }
+    const abilityId = String(meta.abilityId || "").trim().toLowerCase();
+    entityRuntime.projectileMeta.set(meta.id, { abilityId });
+    const existing = entityRuntime.projectiles.get(meta.id);
+    if (existing) {
+      existing.abilityId = abilityId;
+      entityRuntime.projectiles.set(meta.id, existing);
     }
   }
 }
@@ -1440,8 +1848,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
       cooldownMs: Math.max(0, Math.floor(Number(ability.cooldownMs) || 0)),
       range: Math.max(0, Number(ability.range) || 0),
       speed: Math.max(0, Number(ability.speed) || 0),
-      castMs: Math.max(0, Math.floor(Number(ability.castMs ?? ability.channelMs) || 0)),
-      channelMs: Math.max(0, Math.floor(Number(ability.castMs ?? ability.channelMs) || 0)),
+      castMs: Math.max(0, Math.floor(Number(ability.castMs) || 0)),
       manaCost: Math.max(0, Number(ability.manaCost) || 0),
       damageMin: Math.max(0, Number(ability.damageMin) || 0),
       damageMax: Math.max(0, Number(ability.damageMax) || 0),
@@ -1451,7 +1858,9 @@ function applyClassAndAbilityDefs(classes, abilities) {
       projectileHitRadius: Math.max(0, Number(ability.projectileHitRadius) || 0),
       explosionRadius: Math.max(0, Number(ability.explosionRadius) || 0),
       explosionDamageMultiplier: Math.max(0, Number(ability.explosionDamageMultiplier) || 0),
-      stunDurationMs: Math.max(0, Math.floor(Number(ability.stunDurationMs) || 0))
+      stunDurationMs: Math.max(0, Math.floor(Number(ability.stunDurationMs) || 0)),
+      slowDurationMs: Math.max(0, Math.floor(Number(ability.slowDurationMs) || 0)),
+      slowMultiplier: clamp(Number(ability.slowMultiplier) || 1, 0.1, 1)
     };
 
     for (const [key, value] of Object.entries(ability)) {
@@ -1827,11 +2236,13 @@ function parseEntityBinaryPacket(arrayBuffer) {
     const xq = view.getUint16(offset + 2, true);
     const yq = view.getUint16(offset + 4, true);
     offset += 6;
+    const meta = entityRuntime.projectileMeta.get(id);
 
     entityRuntime.projectiles.set(id, {
       id,
       x: xq / POS_SCALE,
       y: yq / POS_SCALE,
+      abilityId: meta ? String(meta.abilityId || "") : "",
       _xq: xq,
       _yq: yq
     });
@@ -1846,13 +2257,16 @@ function parseEntityBinaryPacket(arrayBuffer) {
 
     if (flags & DELTA_FLAG_REMOVED) {
       entityRuntime.projectiles.delete(id);
+      entityRuntime.projectileMeta.delete(id);
       continue;
     }
 
+    const meta = entityRuntime.projectileMeta.get(id);
     const entity = entityRuntime.projectiles.get(id) || {
       id,
       x: 0,
       y: 0,
+      abilityId: meta ? String(meta.abilityId || "") : "",
       _xq: 0,
       _yq: 0
     };
@@ -1860,6 +2274,9 @@ function parseEntityBinaryPacket(arrayBuffer) {
     entity._yq = clamp(entity._yq + dy, 0, 65535);
     entity.x = entity._xq / POS_SCALE;
     entity.y = entity._yq / POS_SCALE;
+    if (meta) {
+      entity.abilityId = String(meta.abilityId || "");
+    }
     entityRuntime.projectiles.set(id, entity);
   }
 
@@ -2009,14 +2426,18 @@ function connectAndJoin(name, classType) {
     remotePlayerCasts.clear();
     remoteMobBites.clear();
     remoteMobStuns.clear();
+    remoteMobSlows.clear();
     zombieWalkRuntime.clear();
     creeperWalkRuntime.clear();
     spiderWalkRuntime.clear();
+    orcWalkRuntime.clear();
     skeletonWalkRuntime.clear();
     warriorAnimRuntime.clear();
     floatingDamageNumbers.length = 0;
     activeExplosions.length = 0;
     abilityRuntime.clear();
+    dpsState.samples.length = 0;
+    setDpsVisible(false);
     spellbookState.signature = "";
     resetAbilityChanneling();
     clearEntityRuntime();
@@ -2068,14 +2489,18 @@ function connectAndJoin(name, classType) {
       remotePlayerCasts.clear();
       remoteMobBites.clear();
       remoteMobStuns.clear();
+      remoteMobSlows.clear();
       zombieWalkRuntime.clear();
       creeperWalkRuntime.clear();
       spiderWalkRuntime.clear();
+      orcWalkRuntime.clear();
       skeletonWalkRuntime.clear();
       warriorAnimRuntime.clear();
       floatingDamageNumbers.length = 0;
       activeExplosions.length = 0;
       abilityRuntime.clear();
+      dpsState.samples.length = 0;
+      setDpsVisible(false);
       spellbookState.signature = "";
       resetAbilityChanneling();
       clearEntityRuntime();
@@ -2128,6 +2553,12 @@ function connectAndJoin(name, classType) {
       return;
     }
 
+    if (msg.type === "projectile_meta") {
+      applyProjectileMeta(msg.projectiles);
+      syncEntityArraysToGameState();
+      return;
+    }
+
     if (msg.type === "player_swings") {
       if (Array.isArray(msg.swings)) {
         for (const swing of msg.swings) {
@@ -2169,6 +2600,11 @@ function connectAndJoin(name, classType) {
 
     if (msg.type === "explosion_events") {
       addExplosionEvents(msg.events);
+      return;
+    }
+
+    if (msg.type === "projectile_hit_events") {
+      addProjectileHitEvents(msg.events);
       return;
     }
 
@@ -2438,7 +2874,7 @@ function useAbilityAt(abilityId, worldX, worldY) {
   if (!sendAbilityUse(resolvedAbilityId, worldX, worldY)) {
     return false;
   }
-  const castMs = Math.max(0, Number(abilityDef.castMs ?? abilityDef.channelMs) || 0);
+  const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
   if (castMs <= 0) {
     markAbilityUsedClient(resolvedAbilityId, now);
   }
@@ -2455,7 +2891,9 @@ function updateAbilityChannel(now) {
   const progress = getCastProgress(abilityChannel, now);
   if (!progress) {
     // Server should send explicit cast-stop, but auto-clean stale local state as safety.
+    const previousSelfCast = captureCastStateSnapshot(abilityChannel);
     resetAbilityChanneling();
+    syncLocalCastAudio(previousSelfCast, abilityChannel);
   }
 }
 
@@ -2543,6 +2981,9 @@ function addFloatingDamageEvents(events) {
     if (!Number.isFinite(x) || !Number.isFinite(y) || amount <= 0) {
       continue;
     }
+    if (event.fromSelf) {
+      addDpsSample(amount, now);
+    }
 
     floatingDamageNumbers.push({
       id: nextDamageFloatId++,
@@ -2564,6 +3005,7 @@ function addExplosionEvents(events) {
   }
 
   const now = performance.now();
+  let hasFireballExplosion = false;
   for (const event of events) {
     if (!event) {
       continue;
@@ -2584,6 +3026,33 @@ function addExplosionEvents(events) {
       createdAt: now,
       durationMs: 380
     });
+    if (String(event.abilityId || "").toLowerCase() === "fireball") {
+      hasFireballExplosion = true;
+    }
+  }
+
+  if (hasFireballExplosion) {
+    playFireballExplosionAudio(now);
+  }
+}
+
+function addProjectileHitEvents(events) {
+  if (!Array.isArray(events) || !events.length) {
+    return;
+  }
+  const now = performance.now();
+  let hasFrostboltHit = false;
+  for (const event of events) {
+    if (!event) {
+      continue;
+    }
+    if (String(event.abilityId || "").toLowerCase() === "frostbolt") {
+      hasFrostboltHit = true;
+      break;
+    }
+  }
+  if (hasFrostboltHit) {
+    playFrostboltHitAudio(now);
   }
 }
 
@@ -3366,6 +3835,303 @@ function pruneSpiderWalkRuntime() {
   }
 }
 
+function drawOrcBerserkerSpriteFrame(targetCtx, palette, pose, options = {}) {
+  const drawAxes = options.drawAxes !== false;
+  const bob = Math.abs(pose) * 0.9;
+  const step = pose * 1.9;
+  const shoulderSway = pose * 0.5;
+  const headY = -6 + bob * 0.3;
+  const torsoY = 3 + bob * 0.35;
+  const armY = torsoY - 4;
+
+  // Legs.
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 3.4;
+  targetCtx.lineCap = "round";
+  targetCtx.beginPath();
+  targetCtx.moveTo(-3.6, 9 + bob);
+  targetCtx.lineTo(-5.8 - step * 0.5, 15.8 + bob);
+  targetCtx.moveTo(3.6, 9 + bob);
+  targetCtx.lineTo(5.8 + step * 0.5, 15.8 + bob);
+  targetCtx.stroke();
+
+  targetCtx.fillStyle = palette.boot;
+  targetCtx.beginPath();
+  targetCtx.ellipse(-5.9 - step * 0.5, 16.1 + bob, 2.2, 1.6, -0.2, 0, Math.PI * 2);
+  targetCtx.ellipse(5.9 + step * 0.5, 16.1 + bob, 2.2, 1.6, 0.2, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  // Torso.
+  targetCtx.fillStyle = palette.skin;
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 2.3;
+  targetCtx.beginPath();
+  targetCtx.ellipse(0, torsoY, 8.9, 7.7, 0, 0, Math.PI * 2);
+  targetCtx.fill();
+  targetCtx.stroke();
+
+  targetCtx.fillStyle = palette.skinDark;
+  targetCtx.beginPath();
+  targetCtx.ellipse(0, torsoY + 3.2, 7.1, 2.7, 0, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  // Ragged belt.
+  targetCtx.strokeStyle = palette.leather;
+  targetCtx.lineWidth = 2.4;
+  targetCtx.beginPath();
+  targetCtx.moveTo(-6.6, torsoY + 4.8);
+  targetCtx.lineTo(6.6, torsoY + 4.8);
+  targetCtx.stroke();
+
+  // Arms.
+  const leftShoulderX = -6.9;
+  const rightShoulderX = 6.9;
+  const leftHandX = -12.4 - shoulderSway * 0.85;
+  const leftHandY = armY - 0.2 + shoulderSway * 0.7;
+  const rightHandX = 12.4 + shoulderSway * 0.85;
+  const rightHandY = armY + 0.2 - shoulderSway * 0.7;
+
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 3.2;
+  targetCtx.lineCap = "round";
+  targetCtx.beginPath();
+  targetCtx.moveTo(leftShoulderX, armY);
+  targetCtx.lineTo(leftHandX, leftHandY);
+  targetCtx.moveTo(rightShoulderX, armY);
+  targetCtx.lineTo(rightHandX, rightHandY);
+  targetCtx.stroke();
+
+  targetCtx.fillStyle = palette.skin;
+  targetCtx.beginPath();
+  targetCtx.arc(leftHandX, leftHandY, 2.2, 0, Math.PI * 2);
+  targetCtx.arc(rightHandX, rightHandY, 2.2, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  // Head.
+  targetCtx.fillStyle = palette.skin;
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 2.6;
+  targetCtx.beginPath();
+  targetCtx.arc(0, headY, 9.8, 0, Math.PI * 2);
+  targetCtx.fill();
+  targetCtx.stroke();
+
+  // Ears.
+  targetCtx.fillStyle = palette.skinDark;
+  targetCtx.beginPath();
+  targetCtx.moveTo(-9.2, headY - 0.8);
+  targetCtx.lineTo(-13.6, headY - 3.2);
+  targetCtx.lineTo(-11.4, headY + 1.6);
+  targetCtx.closePath();
+  targetCtx.moveTo(9.2, headY - 0.8);
+  targetCtx.lineTo(13.6, headY - 3.2);
+  targetCtx.lineTo(11.4, headY + 1.6);
+  targetCtx.closePath();
+  targetCtx.fill();
+  targetCtx.stroke();
+
+  // Skull spikes.
+  targetCtx.fillStyle = palette.spike;
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 1.6;
+  for (let i = 0; i < 4; i += 1) {
+    const x = -5.8 + i * 3.9;
+    const y = headY - 8.8 - Math.abs(1.5 - i) * 0.35;
+    targetCtx.beginPath();
+    targetCtx.moveTo(x - 1.0, y + 1.1);
+    targetCtx.lineTo(x, y - 2.4);
+    targetCtx.lineTo(x + 1.0, y + 1.1);
+    targetCtx.closePath();
+    targetCtx.fill();
+    targetCtx.stroke();
+  }
+
+  // Eyes and mouth.
+  targetCtx.fillStyle = palette.eye;
+  targetCtx.beginPath();
+  targetCtx.ellipse(-3.8, headY - 1.5, 2.7, 1.6, -0.2, 0, Math.PI * 2);
+  targetCtx.ellipse(3.8, headY - 1.5, 2.7, 1.6, 0.2, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  targetCtx.fillStyle = palette.mouth;
+  targetCtx.beginPath();
+  targetCtx.ellipse(0, headY + 3.7, 4.4, 3.1, 0, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  targetCtx.fillStyle = palette.tusk;
+  targetCtx.beginPath();
+  targetCtx.moveTo(-2.7, headY + 3.4);
+  targetCtx.lineTo(-1.6, headY + 6.9);
+  targetCtx.lineTo(-0.8, headY + 3.7);
+  targetCtx.closePath();
+  targetCtx.moveTo(2.7, headY + 3.4);
+  targetCtx.lineTo(1.6, headY + 6.9);
+  targetCtx.lineTo(0.8, headY + 3.7);
+  targetCtx.closePath();
+  targetCtx.fill();
+
+  if (!drawAxes) {
+    return;
+  }
+
+  // Dual axes in idle/walk pose.
+  const drawAxe = (hx, hy, baseAngle, bladeTint) => {
+    const shaftLen = 12.7;
+    const shaftTipX = hx + Math.cos(baseAngle) * shaftLen;
+    const shaftTipY = hy + Math.sin(baseAngle) * shaftLen;
+
+    targetCtx.strokeStyle = palette.handle;
+    targetCtx.lineWidth = 2.6;
+    targetCtx.beginPath();
+    targetCtx.moveTo(hx, hy);
+    targetCtx.lineTo(shaftTipX, shaftTipY);
+    targetCtx.stroke();
+
+    targetCtx.fillStyle = bladeTint;
+    targetCtx.strokeStyle = palette.outline;
+    targetCtx.lineWidth = 1.8;
+    const bladeAngle = baseAngle - Math.PI / 2;
+    const bx = shaftTipX + Math.cos(baseAngle) * 0.7;
+    const by = shaftTipY + Math.sin(baseAngle) * 0.7;
+    targetCtx.beginPath();
+    targetCtx.moveTo(bx, by);
+    targetCtx.lineTo(bx + Math.cos(bladeAngle - 0.2) * 5.8, by + Math.sin(bladeAngle - 0.2) * 5.8);
+    targetCtx.lineTo(bx + Math.cos(bladeAngle - 1.0) * 8.1, by + Math.sin(bladeAngle - 1.0) * 8.1);
+    targetCtx.lineTo(bx + Math.cos(bladeAngle + 1.0) * 8.1, by + Math.sin(bladeAngle + 1.0) * 8.1);
+    targetCtx.lineTo(bx + Math.cos(bladeAngle + 0.2) * 5.8, by + Math.sin(bladeAngle + 0.2) * 5.8);
+    targetCtx.closePath();
+    targetCtx.fill();
+    targetCtx.stroke();
+  };
+
+  drawAxe(leftHandX, leftHandY, -Math.PI / 2 - 0.23 + shoulderSway * 0.04, palette.axeBladeA);
+  drawAxe(rightHandX, rightHandY, -Math.PI / 2 + 0.23 - shoulderSway * 0.04, palette.axeBladeB);
+}
+
+function getOrcWalkFrames(typeName, includeAxes = true) {
+  const key = String(typeName || "Orc Berserker");
+  const cache = includeAxes ? orcWalkFramesCache : orcNoAxesWalkFramesCache;
+  const cached = cache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const seed = hashString(key);
+  const palettes = [
+    {
+      skin: "#8fbf63",
+      skinDark: "#5f8242",
+      outline: "#1b2416",
+      eye: "#150e0f",
+      mouth: "#2a1413",
+      tusk: "#ece5cf",
+      spike: "#d9c4a4",
+      handle: "#6f4c33",
+      axeBladeA: "#d98272",
+      axeBladeB: "#e17f66",
+      leather: "#7b4b3f",
+      boot: "#352520"
+    },
+    {
+      skin: "#83b75b",
+      skinDark: "#597a3f",
+      outline: "#1a2215",
+      eye: "#170f0f",
+      mouth: "#2d1514",
+      tusk: "#efe7d3",
+      spike: "#d8c2a2",
+      handle: "#744e35",
+      axeBladeA: "#db7869",
+      axeBladeB: "#cf6f63",
+      leather: "#804f42",
+      boot: "#31231e"
+    },
+    {
+      skin: "#94c16a",
+      skinDark: "#668749",
+      outline: "#1f2819",
+      eye: "#151011",
+      mouth: "#2b1513",
+      tusk: "#e8dfc7",
+      spike: "#d3bc9b",
+      handle: "#6a4933",
+      axeBladeA: "#d67063",
+      axeBladeB: "#e18370",
+      leather: "#875444",
+      boot: "#37261f"
+    }
+  ];
+  const palette = palettes[(seed >>> 7) % palettes.length];
+  const frames = [];
+
+  for (let i = 0; i < 6; i += 1) {
+    const phase = (i / 6) * Math.PI * 2;
+    const pose = Math.sin(phase);
+    const frame = document.createElement("canvas");
+    frame.width = MOB_SPRITE_SIZE;
+    frame.height = MOB_SPRITE_SIZE;
+    const fctx = frame.getContext("2d");
+    fctx.translate(MOB_SPRITE_SIZE / 2, MOB_SPRITE_SIZE / 2);
+    drawOrcBerserkerSpriteFrame(fctx, palette, pose, { drawAxes: includeAxes });
+    frames.push(frame);
+  }
+
+  cache.set(key, frames);
+  return frames;
+}
+
+function getOrcWalkSprite(mob, includeAxes = true) {
+  const mobName = String(mob.name || "Orc Berserker");
+  const frames = getOrcWalkFrames(mobName, includeAxes);
+  const now = performance.now();
+  const existing = orcWalkRuntime.get(mob.id);
+  const state =
+    existing ||
+    {
+      lastX: mob.x,
+      lastY: mob.y,
+      lastT: now,
+      phase: ((Number(mob.id) || hashString(mobName)) % 628) / 100,
+      lastSeenAt: now
+    };
+
+  const dt = Math.max(0.001, (now - state.lastT) / 1000);
+  const moved = Math.hypot(mob.x - state.lastX, mob.y - state.lastY);
+  const speed = moved / dt;
+  const moving = speed > 0.022;
+
+  if (moving) {
+    state.phase = (state.phase + dt * 2.5) % (Math.PI * 2);
+  } else {
+    state.phase = (state.phase + dt * 0.9) % (Math.PI * 2);
+  }
+
+  state.lastX = mob.x;
+  state.lastY = mob.y;
+  state.lastT = now;
+  state.lastSeenAt = now;
+  orcWalkRuntime.set(mob.id, state);
+
+  const cycle = state.phase / (Math.PI * 2);
+  if (!moving) {
+    const idlePulse = (Math.sin(state.phase * 0.65) + 1) * 0.5;
+    const index = clamp(Math.floor(idlePulse * (frames.length - 1)), 0, frames.length - 1);
+    return frames[index];
+  }
+
+  const index = clamp(Math.floor(cycle * frames.length), 0, frames.length - 1);
+  return frames[index];
+}
+
+function pruneOrcWalkRuntime() {
+  const now = performance.now();
+  for (const [mobId, state] of orcWalkRuntime.entries()) {
+    if (now - state.lastSeenAt > 3000) {
+      orcWalkRuntime.delete(mobId);
+    }
+  }
+}
+
 function drawSkeletonSpriteFrame(targetCtx, palette, pose, options = {}) {
   const drawSwordArm = options.drawSwordArm !== false;
   const drawSword = options.drawSword !== false;
@@ -3728,6 +4494,13 @@ function createMobSprite(typeName) {
     return idle;
   }
 
+  if (keyLower.includes("orc") || keyLower.includes("berserker")) {
+    const frames = getOrcWalkFrames(key);
+    const idle = frames[0];
+    mobSpriteCache.set(key, idle);
+    return idle;
+  }
+
   if (keyLower.includes("zombie")) {
     const frames = getZombieWalkFrames(key);
     const idle = frames[0];
@@ -4059,6 +4832,47 @@ function drawMobStunEffect(mob, cameraX, cameraY, frameNow) {
   ctx.restore();
 }
 
+function drawMobSlowTint(mob, cameraX, cameraY, frameNow) {
+  const state = remoteMobSlows.get(mob.id);
+  if (!state) {
+    return;
+  }
+  if (state.endsAt <= frameNow) {
+    remoteMobSlows.delete(mob.id);
+    return;
+  }
+
+  const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
+  const timeLeft = state.endsAt - frameNow;
+  const strength = clamp(1 - state.multiplier, 0, 1);
+  const pulse = 0.6 + Math.sin(frameNow * 0.016 + (mob.id % 7)) * 0.4;
+  const alpha = clamp(0.16 + strength * 0.28, 0.12, 0.42) * (0.75 + pulse * 0.25);
+  const radius = 16.5 + strength * 3.5;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, radius);
+  grad.addColorStop(0, "rgba(214, 247, 255, 0.86)");
+  grad.addColorStop(0.52, "rgba(118, 194, 255, 0.56)");
+  grad.addColorStop(1, "rgba(78, 155, 235, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = clamp(0.2 + strength * 0.25, 0.18, 0.45);
+  ctx.strokeStyle = "rgba(154, 221, 255, 0.9)";
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 3; i += 1) {
+    const a0 = frameNow * 0.005 + i * ((Math.PI * 2) / 3);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 8 + i * 3.4, a0, a0 + Math.PI * 0.65);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawCreeperIgnitionAnimation(mob, cameraX, cameraY, attackState = null) {
   const attack = attackState || getActiveMobAttackState(mob.id);
   if (!attack) {
@@ -4114,7 +4928,8 @@ function getActiveMobAttackState(mobId) {
 
   return {
     angle: bite.angle,
-    progress: 1 - timeLeft / bite.durationMs
+    progress: 1 - timeLeft / bite.durationMs,
+    sequence: Number(bite.sequence) || 0
   };
 }
 
@@ -4178,6 +4993,94 @@ function drawSkeletonSwordSwing(mob, cameraX, cameraY, attackState = null) {
   ctx.moveTo(handX + Math.cos(guardAngle) * guardHalf, handY + Math.sin(guardAngle) * guardHalf);
   ctx.lineTo(handX - Math.cos(guardAngle) * guardHalf, handY - Math.sin(guardAngle) * guardHalf);
   ctx.stroke();
+}
+
+function drawOrcDualAxeSwing(mob, cameraX, cameraY, attackState = null) {
+  const attack = attackState || getActiveMobAttackState(mob.id);
+  if (!attack) {
+    return;
+  }
+
+  const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
+  const progress = clamp(attack.progress, 0, 1);
+  const leadLeft = ((Number(attack.sequence) || 0) & 1) === 0;
+
+  const easing = progress < 0.6
+    ? 1 - Math.pow(1 - progress / 0.6, 3)
+    : 1 - ((progress - 0.6) / 0.4) * 0.18;
+
+  const base = attack.angle;
+  const leftStart = base - (leadLeft ? 1.7 : 1.15);
+  const leftEnd = base + (leadLeft ? 0.42 : 0.08);
+  const rightStart = base + (leadLeft ? 1.15 : 1.7);
+  const rightEnd = base - (leadLeft ? 0.08 : 0.42);
+
+  const leftAngle = lerp(leftStart, leftEnd, easing);
+  const rightAngle = lerp(rightStart, rightEnd, easing);
+  const pulse = 0.8 + Math.sin(progress * Math.PI) * 0.35;
+
+  const drawSwing = (shoulderX, shoulderY, angle, options) => {
+    const armLength = 8.2;
+    const handX = shoulderX + Math.cos(angle) * armLength;
+    const handY = shoulderY + Math.sin(angle) * armLength;
+
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(29, 35, 29, 0.98)";
+    ctx.lineWidth = 3;
+    ctx.lineCap = "round";
+    ctx.moveTo(shoulderX, shoulderY);
+    ctx.lineTo(handX, handY);
+    ctx.stroke();
+
+    const trailStart = angle - options.trailSpan * 0.88;
+    const trailEnd = angle + options.trailSpan * 0.16;
+    ctx.beginPath();
+    ctx.strokeStyle = options.trailColor;
+    ctx.lineWidth = options.trailWidth;
+    ctx.arc(shoulderX, shoulderY, options.trailRadius, trailStart, trailEnd);
+    ctx.stroke();
+
+    const handleLen = 11.2;
+    const shaftTipX = handX + Math.cos(angle) * handleLen;
+    const shaftTipY = handY + Math.sin(angle) * handleLen;
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(110, 74, 47, 0.98)";
+    ctx.lineWidth = 2.8;
+    ctx.moveTo(handX, handY);
+    ctx.lineTo(shaftTipX, shaftTipY);
+    ctx.stroke();
+
+    const bladeAngle = angle - Math.PI / 2;
+    const b0x = shaftTipX + Math.cos(angle) * 0.6;
+    const b0y = shaftTipY + Math.sin(angle) * 0.6;
+    ctx.beginPath();
+    ctx.fillStyle = options.bladeColor;
+    ctx.strokeStyle = "rgba(33, 24, 20, 0.95)";
+    ctx.lineWidth = 1.7;
+    ctx.moveTo(b0x, b0y);
+    ctx.lineTo(b0x + Math.cos(bladeAngle - 0.2) * 6.0, b0y + Math.sin(bladeAngle - 0.2) * 6.0);
+    ctx.lineTo(b0x + Math.cos(bladeAngle - 1.03) * 8.6, b0y + Math.sin(bladeAngle - 1.03) * 8.6);
+    ctx.lineTo(b0x + Math.cos(bladeAngle + 1.03) * 8.6, b0y + Math.sin(bladeAngle + 1.03) * 8.6);
+    ctx.lineTo(b0x + Math.cos(bladeAngle + 0.2) * 6.0, b0y + Math.sin(bladeAngle + 0.2) * 6.0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  };
+
+  drawSwing(p.x - 6.8, p.y - 2.1, leftAngle, {
+    trailSpan: 0.55 + pulse * 0.11,
+    trailRadius: 12.4,
+    trailWidth: 2.8,
+    trailColor: "rgba(232, 126, 104, 0.35)",
+    bladeColor: "rgba(228, 128, 108, 0.96)"
+  });
+  drawSwing(p.x + 6.8, p.y - 2.1, rightAngle, {
+    trailSpan: 0.55 + pulse * 0.11,
+    trailRadius: 12.2,
+    trailWidth: 2.6,
+    trailColor: "rgba(226, 102, 92, 0.3)",
+    bladeColor: "rgba(215, 112, 102, 0.95)"
+  });
 }
 
 function getWarriorSwingState(player, isSelf) {
@@ -4623,10 +5526,7 @@ function pruneProjectileVisualRuntime(now = performance.now()) {
   }
 }
 
-function drawProjectile(projectile, cameraX, cameraY, frameNow) {
-  const p = worldToScreen(projectile.x + 0.5, projectile.y + 0.5, cameraX, cameraY);
-  const now = Number.isFinite(frameNow) ? frameNow : performance.now();
-  const runtime = getProjectileVisualState(projectile, now);
+function drawFireballProjectile(p, runtime, now) {
   const dirX = runtime.dirX;
   const dirY = runtime.dirY;
   const perpX = -dirY;
@@ -4635,7 +5535,6 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
 
-  // Tail particles.
   for (let i = 0; i < 8; i += 1) {
     const t = (i + 1) / 8;
     const wobble =
@@ -4653,7 +5552,6 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
     ctx.fill();
   }
 
-  // Main flame glow.
   const glow = ctx.createRadialGradient(p.x, p.y, 1.5, p.x, p.y, 14);
   glow.addColorStop(0, "rgba(255, 252, 200, 0.98)");
   glow.addColorStop(0.28, "rgba(255, 154, 64, 0.95)");
@@ -4663,10 +5561,8 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
   ctx.beginPath();
   ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
   ctx.fill();
-
   ctx.restore();
 
-  // Reddish core.
   const pulse = 1 + Math.sin(now * 0.02 + runtime.seed * 0.0008) * 0.06;
   const coreR = 4.9 * pulse;
   ctx.beginPath();
@@ -4674,7 +5570,6 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
   ctx.arc(p.x, p.y, coreR, 0, Math.PI * 2);
   ctx.fill();
 
-  // Inner swirl.
   ctx.beginPath();
   ctx.strokeStyle = "rgba(255, 226, 148, 0.78)";
   ctx.lineWidth = 1.4;
@@ -4686,7 +5581,6 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
   ctx.arc(p.x + 0.9, p.y - 0.45, 1.7, 1.5, 4.3);
   ctx.stroke();
 
-  // Orange animated outline flames.
   ctx.save();
   ctx.translate(p.x, p.y);
   ctx.rotate(Math.atan2(dirY, dirX) + Math.PI / 2);
@@ -4707,14 +5601,121 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
   ctx.restore();
 }
 
+function drawFrostboltProjectile(p, runtime, now) {
+  const dirX = runtime.dirX;
+  const dirY = runtime.dirY;
+  const perpX = -dirY;
+  const perpY = dirX;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  for (let i = 0; i < 9; i += 1) {
+    const t = (i + 1) / 9;
+    const wobble =
+      (seededUnit(runtime.seed, i * 17 + 3) - 0.5) * 3.2 +
+      Math.sin(now * 0.01 + i * 1.2 + runtime.seed * 0.0005) * (1.1 - t * 0.7);
+    const dist = 6 + t * 24 + seededUnit(runtime.seed, i * 19 + 7) * 2;
+    const px = p.x - dirX * dist + perpX * wobble;
+    const py = p.y - dirY * dist + perpY * wobble;
+    const pr = Math.max(0.8, 2.4 - t * 1.7);
+    const alpha = 0.36 * (1 - t) + 0.1;
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(156, 223, 255, ${alpha.toFixed(3)})`;
+    ctx.arc(px, py, pr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const glow = ctx.createRadialGradient(p.x, p.y, 1.2, p.x, p.y, 13.8);
+  glow.addColorStop(0, "rgba(242, 253, 255, 0.97)");
+  glow.addColorStop(0.35, "rgba(171, 233, 255, 0.9)");
+  glow.addColorStop(0.7, "rgba(103, 185, 242, 0.48)");
+  glow.addColorStop(1, "rgba(75, 157, 224, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 13.8, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  const spearLength = 17;
+  const spearWidth = 4.6;
+  const tipX = p.x + dirX * spearLength;
+  const tipY = p.y + dirY * spearLength;
+  const backX = p.x - dirX * 5.2;
+  const backY = p.y - dirY * 5.2;
+  const leftX = p.x + perpX * spearWidth;
+  const leftY = p.y + perpY * spearWidth;
+  const rightX = p.x - perpX * spearWidth;
+  const rightY = p.y - perpY * spearWidth;
+
+  ctx.beginPath();
+  ctx.fillStyle = "rgba(198, 244, 255, 0.95)";
+  ctx.strokeStyle = "rgba(107, 180, 231, 0.95)";
+  ctx.lineWidth = 1.8;
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(leftX, leftY);
+  ctx.lineTo(backX, backY);
+  ctx.lineTo(rightX, rightY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(236, 253, 255, 0.9)";
+  ctx.lineWidth = 1.2;
+  ctx.moveTo(backX + dirX * 1.4, backY + dirY * 1.4);
+  ctx.lineTo(tipX, tipY);
+  ctx.stroke();
+
+  // Sparkle flakes around the bolt.
+  ctx.strokeStyle = "rgba(209, 244, 255, 0.85)";
+  ctx.lineWidth = 1.1;
+  for (let i = 0; i < 5; i += 1) {
+    const a = now * 0.004 + i * ((Math.PI * 2) / 5);
+    const r = 7 + (i % 2) * 2 + Math.sin(now * 0.01 + i) * 0.8;
+    const sx = p.x + Math.cos(a) * r;
+    const sy = p.y + Math.sin(a) * r;
+    ctx.beginPath();
+    ctx.moveTo(sx - 1.4, sy);
+    ctx.lineTo(sx + 1.4, sy);
+    ctx.moveTo(sx, sy - 1.4);
+    ctx.lineTo(sx, sy + 1.4);
+    ctx.stroke();
+  }
+}
+
+function drawProjectile(projectile, cameraX, cameraY, frameNow) {
+  const p = worldToScreen(projectile.x + 0.5, projectile.y + 0.5, cameraX, cameraY);
+  const now = Number.isFinite(frameNow) ? frameNow : performance.now();
+  const runtime = getProjectileVisualState(projectile, now);
+  const abilityId = String(projectile.abilityId || "").toLowerCase();
+
+  if (abilityId === "frostbolt") {
+    drawFrostboltProjectile(p, runtime, now);
+    return;
+  }
+  if (abilityId === "fireball" || !abilityId) {
+    drawFireballProjectile(p, runtime, now);
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.fillStyle = "#c8d9ee";
+  ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawMob(mob, cameraX, cameraY, attackState = null) {
   const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
   const mobName = String(mob.name || "Mob");
-  const isSkeleton = mobName.toLowerCase().includes("skeleton");
-  const isCreeper = mobName.toLowerCase().includes("creeper");
-  const isSpider = mobName.toLowerCase().includes("spider");
-  const isZombie = mobName.toLowerCase().includes("zombie");
+  const mobNameLower = mobName.toLowerCase();
+  const isSkeleton = mobNameLower.includes("skeleton");
+  const isCreeper = mobNameLower.includes("creeper");
+  const isSpider = mobNameLower.includes("spider");
+  const isZombie = mobNameLower.includes("zombie");
+  const isOrcBerserker = mobNameLower.includes("orc") || mobNameLower.includes("berserker");
   const skeletonIncludeSword = !attackState;
+  const orcIncludeAxes = !attackState;
   const sprite = isSkeleton
     ? getSkeletonWalkSprite(mob, skeletonIncludeSword)
     : isCreeper
@@ -4723,6 +5724,8 @@ function drawMob(mob, cameraX, cameraY, attackState = null) {
       ? getSpiderWalkSprite(mob)
       : isZombie
         ? getZombieWalkSprite(mob)
+      : isOrcBerserker
+        ? getOrcWalkSprite(mob, orcIncludeAxes)
         : createMobSprite(mobName);
   const half = MOB_SPRITE_SIZE / 2;
   ctx.drawImage(sprite, Math.round(p.x - half), Math.round(p.y - half));
@@ -4793,10 +5796,15 @@ function render() {
       const attackState = getActiveMobAttackState(mob.id);
       drawMob(mob, cameraX, cameraY, attackState);
       drawCreeperIgnitionAnimation(mob, cameraX, cameraY, attackState);
+    } else if (mobName.includes("orc") || mobName.includes("berserker")) {
+      const attackState = getActiveMobAttackState(mob.id);
+      drawMob(mob, cameraX, cameraY, attackState);
+      drawOrcDualAxeSwing(mob, cameraX, cameraY, attackState);
     } else {
       drawMob(mob, cameraX, cameraY);
       drawMobBiteAnimation(mob, cameraX, cameraY);
     }
+    drawMobSlowTint(mob, cameraX, cameraY, frameNow);
     drawMobStunEffect(mob, cameraX, cameraY, frameNow);
   }
   drawFloatingDamageNumbers(cameraX, cameraY);
@@ -4804,6 +5812,7 @@ function render() {
   pruneCreeperWalkRuntime();
   pruneZombieWalkRuntime();
   pruneSpiderWalkRuntime();
+  pruneOrcWalkRuntime();
   pruneWarriorAnimRuntime();
   pruneProjectileVisualRuntime(frameNow);
 
@@ -4847,6 +5856,12 @@ document.addEventListener("keydown", (event) => {
 
   if (event.code === "KeyP" && !gameUI.classList.contains("hidden")) {
     toggleSpellbookPanel();
+    event.preventDefault();
+    return;
+  }
+
+  if (event.code === "KeyK" && !gameUI.classList.contains("hidden")) {
+    toggleDpsPanel();
     event.preventDefault();
     return;
   }
@@ -4939,6 +5954,8 @@ joinForm.addEventListener("submit", (event) => {
 });
 
 setInterval(updateDebugPanel, 250);
+setInterval(updateDpsPanel, 250);
 setInterval(tryPrimaryAutoAction, 50);
+initializeDpsPanel();
 loadInitialGameConfig();
 requestAnimationFrame(render);

@@ -34,12 +34,21 @@
         "spawnRange": [25, 45],
         "speed": 1.0, 
         "respawnTime": [20, 40]
+        },
+        {
+        "name": "Orc Berserker",
+        "health": 40,
+        "damage": 6,
+        "spawnRange": [10, 20], 
+        "speed": 2.0,
+        "respawnTime": [40, 80],
+        "drops": [{"copperCoin": [0, 5], "healthPotion01": [0.3]}]  
         }
     ],
     "mobClusters": [
         {
         "name": "Undead Horde",
-        "mobs": ["Zombie", "Skeleton"],
+        "mobs": ["Zombie", "Skeleton", "Orc Berserker"],
         "spawnChance": 0.3,
         "maxSize": 5
         },
