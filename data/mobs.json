@@ -1,0 +1,59 @@
+{
+    "mobs": [
+        {
+        "name": "Zombie",
+        "health": 20,
+        "damage": 1,
+        "spawnRange": [10, 30],
+        "speed": 0.5,
+        "respawnTime": [25,50],
+        "drops": [{"copperCoin": [0, 2], "healthPotion01": [0.05]}]        
+        },
+        {
+        "name": "Skeleton",
+        "health": 30,
+        "damage": 2,
+        "spawnRange": [20, 40],
+        "speed": 0.8, 
+        "respawnTime": [20, 40],
+        "drops": [{"copperCoin": [0, 3], "healthPotion01": [0.1]}]
+        },
+        {
+        "name": "Creeper",
+        "health": 20,
+        "damage": 4,
+        "spawnRange": [30, 50],
+        "speed": 0.9,
+        "respawnTime": [30, 60],
+        "drops": [{"copperCoin": [0, 4], "healthPotion01": [0.2]}]
+        },
+        {
+        "name": "Spider",
+        "health": 16,
+        "damage": 2,
+        "spawnRange": [25, 45],
+        "speed": 1.0, 
+        "respawnTime": [20, 40]
+        }
+    ],
+    "mobClusters": [
+        {
+        "name": "Undead Horde",
+        "mobs": ["Zombie", "Skeleton"],
+        "spawnChance": 0.3,
+        "maxSize": 5
+        },
+        {
+        "name": "Explosive Threat",
+        "mobs": ["Creeper"],
+        "spawnChance": 0.2, 
+        "maxSize": 3 
+        },
+        {
+        "name": "Arachnid Swarm",
+        "mobs": ["Spider"],
+        "spawnChance": 0.1,
+        "maxSize": 7
+        }
+    ]
+}

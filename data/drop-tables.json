@@ -1,0 +1,8 @@
+[
+    [ {"range": [0, 30], "items": {"copperCoin": [0, 1], "healthPotion01": [0.1]} }],
+    [ {"range": [30, 60], "items": {"copperCoin": [0, 2] } }],
+    [ {"range": [60, 90], "items": {"copperCoin": [0, 4] } }],
+    [ {"range": [90, 120], "items": {"copperCoin": [0, 8] } }],
+    [ {"range": [120, 150], "items": {"copperCoin": [0, 10] } }],
+    [ {"range": [0, 70], "items": {"healthPotion01": [0.05] } }]
+]

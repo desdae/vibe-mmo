@@ -1,0 +1,33 @@
+[
+    {
+        "name": "Copper Coin",
+        "id": "copperCoin",
+        "stackSize": 10000,
+        "description": "A common currency used for trading and purchasing items.",
+        "icon": "Procedurally generated copper coin"
+    },
+    {
+        "name": "Small Health Potion",
+        "id": "healthPotion01",
+        "stackSize": 99,
+        "description": "Restores a small amount of health when consumed.",
+        "icon": "Procedurally generated small red potion",
+        "effect": {
+            "type": "heal",
+            "value": 20,
+            "duration": 10
+        }
+    },
+    {
+        "name": "Small Mana Potion",
+        "id": "manaPotion01",
+        "stackSize": 99,
+        "description": "Restores a small amount of mana when consumed.",
+        "icon": "Procedurally generated small blue potion",
+        "effect": {
+            "type": "mana",
+            "value": 30,
+            "duration": 5
+        }
+    }
+]

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VibeMMO Prototype</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="join-screen" class="panel">
+      <h1>VibeMMO</h1>
+      <p>Enter a name and choose a class to join the 1000x1000 world.</p>
+      <form id="join-form">
+        <label for="name">Name</label>
+        <input id="name" name="name" maxlength="24" required />
+
+        <label for="classType">Class</label>
+        <select id="classType" name="classType">
+          <option value="">Loading classes...</option>
+        </select>
+
+        <button type="submit">Join Game</button>
+      </form>
+      <p class="hint">Movement: WASD or Arrow Keys. Action bar: LMB/RMB + keys 1-9. Inventory: I. Spellbook: P. Debug: F3.</p>
+      <p id="status" class="status"></p>
+    </div>
+
+    <div id="game-ui" class="hidden">
+      <canvas id="game"></canvas>
+      <div id="hud">
+        <span id="hud-name"></span>
+        <span id="hud-class"></span>
+        <span id="hud-pos"></span>
+      </div>
+      <div id="action-ui">
+        <div id="resource-bars">
+          <div class="resource-bar hp">
+            <div id="hp-predict-fill" class="resource-fill hp-predict"></div>
+            <div id="hp-fill" class="resource-fill"></div>
+            <div id="hp-text" class="resource-text"></div>
+          </div>
+          <div class="resource-bar mana">
+            <div id="mana-fill" class="resource-fill"></div>
+            <div id="mana-text" class="resource-text"></div>
+          </div>
+        </div>
+        <div id="action-bar"></div>
+        <div id="exp-bar" class="resource-bar exp">
+          <div id="exp-fill" class="resource-fill"></div>
+          <div id="exp-text" class="resource-text"></div>
+        </div>
+      </div>
+      <div id="inventory-panel" class="hidden">
+        <div class="inventory-header">Bag (I)</div>
+        <div id="inventory-grid"></div>
+      </div>
+      <div id="spellbook-panel" class="hidden">
+        <div class="inventory-header">Spellbook (P)</div>
+        <div id="spellbook-grid"></div>
+      </div>
+      <div id="debug-panel" class="hidden">
+        <h2>Debug</h2>
+        <div id="debug-net"></div>
+      </div>
+    </div>
+
+    <script src="/client.js"></script>
+  </body>
+</html>

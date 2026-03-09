@@ -1,0 +1,25 @@
+{
+    "warrior": {
+        "name": "Warrior",
+        "description": "A strong and resilient fighter, excelling in close combat with high health and defense.",
+        "baseHealth": 100,
+        "baseMana": 30,
+        "manaRegen": 0.3,
+        "abilities": [
+            {"id":"slash", "level": 1}, 
+            {"id":"warstomp", "level": 1}
+        ],
+        "startingItems": [{"healthPotion01": 50, "manaPotion01": 20}],
+        "speed": 1.8
+    },
+    "mage": {
+        "name": "Mage",
+        "description": "A master of elemental magic, capable of dealing high damage from a distance but with lower health.",
+        "baseHealth": 60,
+        "baseMana": 100,
+        "manaRegen": 0.5,
+        "abilities": [{"id":"fireball", "level": 1}],
+        "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 50}],
+        "speed": 1.7
+    }
+}

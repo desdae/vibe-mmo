@@ -1,0 +1,12 @@
+{
+  "name": "vibemmo-prototype",
+  "version": "0.1.0",
+  "description": "Basic MMO prototype from game_spec.md",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

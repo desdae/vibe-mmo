@@ -1,0 +1,38 @@
+{
+    "fireball": {
+        "name": "Fireball",
+        "description": "Hurls a fiery ball that explodes upon impact, dealing area damage.",
+        "kind": "projectile",
+        "channelTime": 2.0,
+        "castTime": 1.5,
+        "manaCost": 5,
+        "range": 10,
+        "speed": 4,
+        "damageRange": [3, 5],
+        "explosionRadius": 2,
+        "explosionDamageMultiplier": 0.3,
+        "damageRangePerLevel": [0.5, 1.0]
+    },
+    "slash": {
+        "name": "Slash",
+        "description": "A quick melee attack that strikes in front of the player.",
+        "kind": "meleeCone",
+        "cooldown": 1.0,
+        "manaCost": 0,
+        "range": 1.9,
+        "damageRange": [2, 4],
+        "damageRangePerLevel": [0.3, 0.7],
+        "coneAngle": 120
+    },
+    "warstomp": {
+        "name": "War Stomp",
+        "description": "Stomps the ground, dealing damage and stunning nearby enemies.",
+        "kind": "area",
+        "cooldown": 5.0,
+        "manaCost": 10,
+        "range": 2,
+        "damageRange": [4, 6],
+        "damageRangePerLevel": [0.5, 1.0],
+        "stunDuration": 2.0
+    }
+}   
