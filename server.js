@@ -29,6 +29,7 @@ const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createLootBagTools } = require("./server/gameplay/loot-bags");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
+const { createMobCombatEffectTools } = require("./server/gameplay/mob-combat-effects");
 const { createPlayerResourceTools } = require("./server/gameplay/player-resources");
 const { createProgressionTools } = require("./server/gameplay/progression");
 const {
@@ -2467,8 +2468,8 @@ const abilityHandlerContext = {
   getAbilityDotDamageRange,
   markAbilityUsed: (...args) => markAbilityUsed(...args),
   applyDamageToMob: (...args) => applyDamageToMob(...args),
-  applyAbilityHitEffectsToMob,
-  stunMob,
+  applyAbilityHitEffectsToMob: (...args) => applyAbilityHitEffectsToMob(...args),
+  stunMob: (...args) => stunMob(...args),
   queueExplosionEvent,
   getAreaAbilityTargetPosition,
   createPersistentAreaEffect,
@@ -2581,18 +2582,6 @@ function markMobProvokedByPlayer(mob, ownerId, now = Date.now()) {
   mob.returningHome = false;
 }
 
-function stunMob(mob, durationMs, now = Date.now()) {
-  if (!mob) {
-    return;
-  }
-  const duration = Math.max(0, Math.floor(Number(durationMs) || 0));
-  if (duration <= 0) {
-    return;
-  }
-  mob.stunnedUntil = Math.max(Number(mob.stunnedUntil) || 0, now + duration);
-  mob.wanderTarget = null;
-}
-
 function hasActiveProvokedChase(mob, now = Date.now()) {
   return !!(mob && mob.chaseTargetPlayerId && Number(mob.chaseUntil) > now);
 }
@@ -2635,168 +2624,6 @@ function getMobMoveSpeed(mob) {
   return clamp(baseSpeed * SERVER_CONFIG.mobSpeedMultiplier * slowMultiplier, 0.05, 20);
 }
 
-function applySlowToMob(mob, slowMultiplier, durationMs, now = Date.now()) {
-  if (!mob || !mob.alive) {
-    return;
-  }
-  const duration = Math.max(0, Math.round(Number(durationMs) || 0));
-  if (duration <= 0) {
-    return;
-  }
-  const multiplier = clamp(Number(slowMultiplier) || 1, 0.1, 1);
-  if (multiplier >= 1) {
-    return;
-  }
-
-  const active = Number(mob.slowUntil) > now;
-  if (active) {
-    mob.slowUntil = Math.max(Number(mob.slowUntil) || 0, now + duration);
-    mob.slowMultiplier = Math.min(clamp(Number(mob.slowMultiplier) || 1, 0.1, 1), multiplier);
-  } else {
-    mob.slowUntil = now + duration;
-    mob.slowMultiplier = multiplier;
-  }
-}
-
-function applyDotToMob(
-  mob,
-  ownerId,
-  school,
-  damageMinPerSecond,
-  damageMaxPerSecond,
-  durationMs,
-  now = Date.now()
-) {
-  if (!mob || !mob.alive) {
-    return;
-  }
-  const duration = Math.max(0, Math.round(Number(durationMs) || 0));
-  if (duration <= 0) {
-    return;
-  }
-  const dotMin = Math.max(0, Number(damageMinPerSecond) || 0);
-  const dotMax = Math.max(dotMin, Number(damageMaxPerSecond) || dotMin);
-  if (dotMax <= 0) {
-    return;
-  }
-  const schoolKey = String(school || "generic").trim().toLowerCase() || "generic";
-  if (!(mob.activeDots instanceof Map)) {
-    mob.activeDots = new Map();
-  }
-  const tickIntervalMs = 1000;
-  const nextEndsAt = now + duration;
-  const existing = mob.activeDots.get(schoolKey);
-  if (existing) {
-    existing.ownerId = ownerId ? String(ownerId) : existing.ownerId;
-    existing.damageMin = Math.max(Number(existing.damageMin) || 0, dotMin);
-    existing.damageMax = Math.max(Number(existing.damageMax) || existing.damageMin, dotMax);
-    existing.endsAt = Math.max(Number(existing.endsAt) || 0, nextEndsAt);
-    existing.nextTickAt = Math.min(Number(existing.nextTickAt) || now + tickIntervalMs, now + tickIntervalMs);
-    mob.activeDots.set(schoolKey, existing);
-  } else {
-    mob.activeDots.set(schoolKey, {
-      school: schoolKey,
-      ownerId: ownerId ? String(ownerId) : "",
-      damageMin: dotMin,
-      damageMax: dotMax,
-      tickIntervalMs,
-      nextTickAt: now + tickIntervalMs,
-      endsAt: nextEndsAt
-    });
-  }
-  if (schoolKey === "fire") {
-    mob.burningUntil = Math.max(Number(mob.burningUntil) || 0, nextEndsAt);
-  }
-}
-
-function tickMobDotEffects(mob, now = Date.now()) {
-  if (!mob || !mob.alive) {
-    return;
-  }
-  const dots = mob.activeDots;
-  if (!(dots instanceof Map) || dots.size === 0) {
-    mob.burningUntil = 0;
-    return;
-  }
-
-  let fireEndsAt = 0;
-  for (const [schoolKey, dot] of Array.from(dots.entries())) {
-    const endsAt = Math.max(0, Math.floor(Number(dot.endsAt) || 0));
-    if (endsAt <= now) {
-      dots.delete(schoolKey);
-      continue;
-    }
-    if (schoolKey === "fire") {
-      fireEndsAt = Math.max(fireEndsAt, endsAt);
-    }
-
-    const tickIntervalMs = Math.max(100, Math.floor(Number(dot.tickIntervalMs) || 1000));
-    while (Number(dot.nextTickAt) <= now && Number(dot.nextTickAt) < endsAt + 5) {
-      if (!mob.alive) {
-        break;
-      }
-      const dealt = applyDamageToMob(
-        mob,
-        randomInt(Math.floor(dot.damageMin), Math.ceil(dot.damageMax)),
-        dot.ownerId || null
-      );
-      dot.nextTickAt += tickIntervalMs;
-      if (!mob.alive || dealt <= 0) {
-        break;
-      }
-    }
-
-    if (!mob.alive) {
-      break;
-    }
-    dots.set(schoolKey, dot);
-  }
-
-  if (!mob.alive) {
-    if (dots instanceof Map) {
-      dots.clear();
-    }
-    mob.burningUntil = 0;
-    return;
-  }
-
-  if (dots.size <= 0) {
-    mob.burningUntil = 0;
-  } else if (fireEndsAt > now) {
-    mob.burningUntil = fireEndsAt;
-  } else {
-    mob.burningUntil = 0;
-  }
-}
-
-function applyAbilityHitEffectsToMob(mob, ownerId, abilityDef, abilityLevel, dealtDamage, now = Date.now()) {
-  if (!mob || !mob.alive || dealtDamage <= 0 || !abilityDef) {
-    return;
-  }
-  const slowDurationMs = Math.max(0, Number(abilityDef.slowDurationMs) || 0);
-  const slowMultiplier = clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1);
-  if (slowDurationMs > 0 && slowMultiplier < 1) {
-    applySlowToMob(mob, slowMultiplier, slowDurationMs, now);
-  }
-  const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
-  if (stunDurationMs > 0) {
-    stunMob(mob, stunDurationMs, now);
-  }
-  const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
-  const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
-  if (dotDurationMs > 0 && dotDamageMax > 0) {
-    applyDotToMob(
-      mob,
-      ownerId,
-      String(abilityDef.dotSchool || "generic"),
-      dotDamageMin,
-      dotDamageMax,
-      dotDurationMs,
-      now
-    );
-  }
-}
-
 const damageTools = createDamageTools({
   queueDamageEvent,
   markMobProvokedByPlayer,
@@ -2806,6 +2633,17 @@ const damageTools = createDamageTools({
 });
 const applyDamageToMob = damageTools.applyDamageToMob;
 const applyDamageToPlayer = damageTools.applyDamageToPlayer;
+const mobCombatEffectTools = createMobCombatEffectTools({
+  clamp,
+  randomInt,
+  applyDamageToMob,
+  getAbilityDotDamageRange
+});
+const stunMob = mobCombatEffectTools.stunMob;
+const applySlowToMob = mobCombatEffectTools.applySlowToMob;
+const applyDotToMob = mobCombatEffectTools.applyDotToMob;
+const tickMobDotEffects = mobCombatEffectTools.tickMobDotEffects;
+const applyAbilityHitEffectsToMob = mobCombatEffectTools.applyAbilityHitEffectsToMob;
 
 const playerAbilityTools = createPlayerAbilityTools({
   clamp,
