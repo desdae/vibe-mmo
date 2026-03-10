@@ -370,6 +370,33 @@
     ],
     "tags": ["mob", "melee"]
   },
+  "orcBerserkerAxeSwing": {
+    "id": "orcBerserkerAxeSwing",
+    "name": "Berserker Axe Swing",
+    "description": "A heavy dual-axe melee swing used by Orc Berserkers.",
+    "delivery": {
+      "type": "meleeCone",
+      "castTime": 0,
+      "cooldown": 1,
+      "resourceCost": {
+        "mana": 0
+      }
+    },
+    "targeting": {
+      "range": 1.8,
+      "coneAngle": 130,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [5, 7],
+        "school": "physical"
+      }
+    ],
+    "tags": ["mob", "melee", "orc", "axe"]
+  },
   "boneArrow": {
     "id": "boneArrow",
     "name": "Bone Arrow",

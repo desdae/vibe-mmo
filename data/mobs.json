@@ -276,14 +276,14 @@
         "leashRange": 18,
         "basicAttack": {
           "type": "ability",
-          "abilityId": "mobMeleeSwing",
+          "abilityId": "orcBerserkerAxeSwing",
           "damage": [5, 7],
           "cooldown": 1,
           "range": 1.7
         },
         "abilities": [
           {
-            "abilityId": "mobMeleeSwing",
+            "abilityId": "orcBerserkerAxeSwing",
             "weight": 1,
             "minRange": 0,
             "maxRange": 1.8,
