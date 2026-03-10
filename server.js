@@ -7,6 +7,7 @@ const { createAreaEffectTools } = require("./server/gameplay/area-effects");
 const { createGameLoop } = require("./server/runtime/game-loop");
 const { createDebouncedFileReloader } = require("./server/runtime/file-reload-watch");
 const { createConfigOrchestrator } = require("./server/runtime/config-orchestrator");
+const { startConfigWatchers } = require("./server/runtime/config-watch");
 const { createProjectileTickSystem } = require("./server/runtime/projectile-tick");
 const { createPlayerTickSystem } = require("./server/runtime/player-tick");
 const { createMobTickSystem } = require("./server/runtime/mob-tick");
@@ -541,12 +542,7 @@ const configOrchestrator = createConfigOrchestrator({
   },
   createDebouncedFileReloader
 });
-const watchServerConfig = configOrchestrator.watchServerConfig;
-const watchAbilityConfig = configOrchestrator.watchAbilityConfig;
-const watchMobConfig = configOrchestrator.watchMobConfig;
-watchServerConfig();
-watchAbilityConfig();
-watchMobConfig();
+startConfigWatchers(configOrchestrator);
 
 const projectileRuntimeTools = createProjectileRuntimeTools({
   clamp,
