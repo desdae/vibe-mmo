@@ -22,6 +22,7 @@ const {
   getAbilityCooldownMsForLevel,
   getAbilityInvulnerabilityDurationMs
 } = require("./server/gameplay/ability-stats");
+const { createCastingTools } = require("./server/gameplay/casting");
 const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createPlayerResourceTools } = require("./server/gameplay/player-resources");
@@ -2860,6 +2861,14 @@ const clearPlayerCombatEffects = playerCombatEffectTools.clearPlayerCombatEffect
 const tickPlayerDotEffects = playerCombatEffectTools.tickPlayerDotEffects;
 const applyAbilityHitEffectsToPlayer = playerCombatEffectTools.applyAbilityHitEffectsToPlayer;
 const applyProjectileHitEffectsToPlayer = playerCombatEffectTools.applyProjectileHitEffectsToPlayer;
+const castingTools = createCastingTools({
+  getAbilityCooldownMsForLevel
+});
+const getAbilityCooldownPassed = castingTools.getAbilityCooldownPassed;
+const markAbilityUsed = castingTools.markAbilityUsed;
+const playerHasMovementInput = castingTools.playerHasMovementInput;
+const clearPlayerCast = castingTools.clearPlayerCast;
+const clearMobCast = castingTools.clearMobCast;
 
 function levelUpPlayerAbility(player, abilityId) {
   if (!player) {
@@ -2883,40 +2892,6 @@ function levelUpPlayerAbility(player, abilityId) {
   }
   player.skillPoints = skillPoints - 1;
   player.abilityLevels.set(resolvedAbilityId, currentLevel + 1);
-  return true;
-}
-
-function getAbilityCooldownPassed(player, abilityDef, level, now) {
-  const lastUsed = Number(player.abilityLastUsedAt.get(abilityDef.id) || 0);
-  return now - lastUsed >= getAbilityCooldownMsForLevel(abilityDef, level);
-}
-
-function markAbilityUsed(player, abilityDef, now) {
-  player.abilityLastUsedAt.set(abilityDef.id, now);
-}
-
-function playerHasMovementInput(player) {
-  if (!player || !player.input) {
-    return false;
-  }
-  return Math.abs(Number(player.input.dx) || 0) > 1e-6 || Math.abs(Number(player.input.dy) || 0) > 1e-6;
-}
-
-function clearPlayerCast(player) {
-  if (!player || !player.activeCast) {
-    return false;
-  }
-  player.activeCast = null;
-  player.castStateVersion = (Number(player.castStateVersion) + 1) & 0xffff;
-  return true;
-}
-
-function clearMobCast(mob) {
-  if (!mob || !mob.activeCast) {
-    return false;
-  }
-  mob.activeCast = null;
-  mob.castStateVersion = (Number(mob.castStateVersion) + 1) & 0xffff;
   return true;
 }
 
