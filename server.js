@@ -2,6 +2,7 @@ const http = require("http");
 const path = require("path");
 const { WebSocketServer } = require("ws");
 const { executeAbilityByKind } = require("./server/ability-handlers");
+const { createAbilityHandlerContext } = require("./server/ability-handlers/context");
 const { createAreaEffectTools } = require("./server/gameplay/area-effects");
 const { createGameLoop } = require("./server/runtime/game-loop");
 const { createDebouncedFileReloader } = require("./server/runtime/file-reload-watch");
@@ -378,7 +379,7 @@ const normalizeProjectileTargetType = projectileSpawnTools.normalizeProjectileTa
 const inferProjectileTargetTypeFromOwner = projectileSpawnTools.inferProjectileTargetTypeFromOwner;
 const spawnProjectileFromTemplate = projectileSpawnTools.spawnProjectileFromTemplate;
 
-const abilityHandlerContext = {
+const abilityHandlerContext = createAbilityHandlerContext({
   mobs,
   projectiles,
   mapWidth: MAP_WIDTH,
@@ -402,7 +403,7 @@ const abilityHandlerContext = {
   createPersistentBeamEffect: (...args) => createPersistentBeamEffect(...args),
   resolvePlayerMobCollisions: (...args) => resolvePlayerMobCollisions(...args),
   getAbilityInvulnerabilityDurationMs
-};
+});
 
 const lootBagTools = createLootBagTools({
   normalizeItemEntries,
