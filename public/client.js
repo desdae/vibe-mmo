@@ -3590,373 +3590,269 @@ function getInterpolatedState() {
   return renderStateInterpolator.getInterpolatedState(performance.now());
 }
 
-function connectAndJoin(name, classType) {
-  pendingJoinInfo = { name, classType };
-  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-  const wsUrl = `${protocol}//${location.host}`;
-  socket = new WebSocket(wsUrl);
-  socket.binaryType = "arraybuffer";
+function resetClientSessionState() {
+  gameState.self = null;
+  gameState.players = [];
+  gameState.projectiles = [];
+  gameState.mobs = [];
+  gameState.lootBags = [];
+  inventoryState.slots = [];
+  entityRuntime.lootBagMeta.clear();
+  setInventoryVisible(false);
+  setSpellbookVisible(false);
+  updateInventoryUI();
+  remotePlayerSwings.clear();
+  remotePlayerCasts.clear();
+  remotePlayerStuns.clear();
+  remotePlayerSlows.clear();
+  remotePlayerBurns.clear();
+  remoteMobCasts.clear();
+  remoteMobBites.clear();
+  remoteMobStuns.clear();
+  remoteMobSlows.clear();
+  remoteMobBurns.clear();
+  zombieWalkRuntime.clear();
+  creeperWalkRuntime.clear();
+  spiderWalkRuntime.clear();
+  orcWalkRuntime.clear();
+  skeletonWalkRuntime.clear();
+  skeletonArcherWalkRuntime.clear();
+  warriorAnimRuntime.clear();
+  floatingDamageNumbers.length = 0;
+  activeExplosions.length = 0;
+  activeAreaEffectsById.clear();
+  abilityRuntime.clear();
+  dpsState.samples.length = 0;
+  setDpsVisible(false);
+  spellbookState.signature = "";
+  resetAbilityChanneling();
+  clearEntityRuntime();
+  snapshots.length = 0;
+  lastRenderState = null;
+}
 
-  socket.addEventListener("open", () => {
+function handleServerSelfProgress(msg) {
+  if (!entityRuntime.self) {
+    const classDef = classDefsById.get(String((selfStatic && selfStatic.classType) || ""));
+    const fallbackMaxMana = Math.max(0, Number(classDef?.baseMana) || 0);
+    entityRuntime.self = {
+      x: gameState.self ? gameState.self.x : 0,
+      y: gameState.self ? gameState.self.y : 0,
+      hp: gameState.self ? gameState.self.hp : 0,
+      maxHp: gameState.self ? gameState.self.maxHp : 0,
+      pendingHeal: gameState.self ? gameState.self.pendingHeal ?? 0 : 0,
+      pendingMana: gameState.self ? gameState.self.pendingMana ?? 0 : 0,
+      mana: gameState.self ? gameState.self.mana ?? fallbackMaxMana : fallbackMaxMana,
+      maxMana: gameState.self ? gameState.self.maxMana ?? fallbackMaxMana : fallbackMaxMana,
+      copper: 0,
+      level: 1,
+      exp: 0,
+      expToNext: 20,
+      skillPoints: 0,
+      abilityLevels: {},
+      _xq: gameState.self ? Math.round(gameState.self.x * POS_SCALE) : 0,
+      _yq: gameState.self ? Math.round(gameState.self.y * POS_SCALE) : 0
+    };
+  }
+  const copper = Number(msg.copper);
+  const level = Number(msg.level);
+  const exp = Number(msg.exp);
+  const expToNext = Number(msg.expToNext);
+  const skillPoints = Number(msg.skillPoints);
+  const abilityLevels = parseAbilityLevelsPayload(msg.abilityLevels);
+  if (Number.isFinite(copper) && copper >= 0) {
+    entityRuntime.self.copper = copper;
+  }
+  if (Number.isFinite(level) && level >= 1) {
+    entityRuntime.self.level = level;
+  }
+  if (Number.isFinite(exp) && exp >= 0) {
+    entityRuntime.self.exp = exp;
+  }
+  if (Number.isFinite(expToNext) && expToNext >= 1) {
+    entityRuntime.self.expToNext = expToNext;
+  }
+  if (Number.isFinite(skillPoints) && skillPoints >= 0) {
+    entityRuntime.self.skillPoints = Math.floor(skillPoints);
+  }
+  if (msg.abilityLevels !== undefined) {
+    entityRuntime.self.abilityLevels = abilityLevels;
+  }
+  syncSelfToGameState();
+}
+
+function handleServerLootPicked(msg) {
+  if (Array.isArray(msg.itemsGained) && msg.itemsGained.length) {
+    const summary = msg.itemsGained
+      .map((entry) => {
+        const itemId = String(entry.itemId || "");
+        const qty = Math.max(0, Math.floor(Number(entry.qty) || 0));
+        const itemDef = itemDefsById.get(itemId);
+        return `${(itemDef && itemDef.name) || String(entry.name || itemId)} x${qty}`;
+      })
+      .join(", ");
+    if (summary) {
+      setStatus(`Looted: ${summary}${msg.inventoryFull ? " (bag still has leftovers)" : ""}`);
+    }
+  } else if (msg.inventoryFull) {
+    setStatus("Inventory is full.");
+  }
+}
+
+function handleServerItemUsed(msg) {
+  const itemId = String(msg.itemId || "");
+  const itemDef = itemDefsById.get(itemId);
+  const effectType = String(msg.effectType || "").toLowerCase();
+  const healed = Math.max(0, Math.floor(Number(msg.healed) || 0));
+  const restoredMana = Math.max(0, Number(msg.restoredMana) || 0);
+  const overTime = !!msg.overTime;
+  const effectValue = Math.max(0, Number(msg.effectValue) || 0);
+  const effectDuration = Math.max(0, Number(msg.effectDuration) || 0);
+  if (effectType === "mana") {
+    if (overTime && effectValue > 0 && effectDuration > 0) {
+      setStatus(
+        `Used ${(itemDef && itemDef.name) || itemId} (+${Math.floor(effectValue)} MP over ${effectDuration.toFixed(1)}s)`
+      );
+    } else {
+      setStatus(
+        `Used ${(itemDef && itemDef.name) || itemId}${restoredMana > 0 ? ` (+${Math.floor(restoredMana)} MP)` : ""}`
+      );
+    }
+  } else if (overTime && effectValue > 0 && effectDuration > 0) {
+    setStatus(
+      `Used ${(itemDef && itemDef.name) || itemId} (+${Math.floor(effectValue)} HP over ${effectDuration.toFixed(1)}s)`
+    );
+  } else {
+    setStatus(`Used ${(itemDef && itemDef.name) || itemId}${healed > 0 ? ` (+${healed} HP)` : ""}`);
+  }
+}
+
+const serverMessageHandlers = {
+  __open: ({ name, classType }) => {
     sendJsonMessage({
       type: "join",
       name,
       classType
     });
-  });
-
-  socket.addEventListener("close", () => {
+  },
+  __close: () => {
     setStatus("Disconnected from server.");
     joinScreen.classList.remove("hidden");
     gameUI.classList.add("hidden");
-    gameState.self = null;
-    gameState.players = [];
-    gameState.projectiles = [];
-    gameState.mobs = [];
-    gameState.lootBags = [];
     selfStatic = null;
-    inventoryState.slots = [];
-    entityRuntime.lootBagMeta.clear();
-    setInventoryVisible(false);
-    setSpellbookVisible(false);
-    updateInventoryUI();
-	    remotePlayerSwings.clear();
-	    remotePlayerCasts.clear();
-	    remotePlayerStuns.clear();
-	    remotePlayerSlows.clear();
-	    remotePlayerBurns.clear();
-	    remoteMobCasts.clear();
-    remoteMobBites.clear();
-    remoteMobStuns.clear();
-    remoteMobSlows.clear();
-    remoteMobBurns.clear();
-    zombieWalkRuntime.clear();
-    creeperWalkRuntime.clear();
-    spiderWalkRuntime.clear();
-    orcWalkRuntime.clear();
-    skeletonWalkRuntime.clear();
-    skeletonArcherWalkRuntime.clear();
-    warriorAnimRuntime.clear();
-    floatingDamageNumbers.length = 0;
-    activeExplosions.length = 0;
-    activeAreaEffectsById.clear();
-    abilityRuntime.clear();
-    dpsState.samples.length = 0;
-    setDpsVisible(false);
-    spellbookState.signature = "";
-    resetAbilityChanneling();
-    clearEntityRuntime();
-    snapshots.length = 0;
-    lastRenderState = null;
-  });
-
-  socket.addEventListener("message", (event) => {
-    addTrafficEvent("down", byteLengthOfWsData(event.data));
-
-    if (event.data instanceof ArrayBuffer) {
-      try {
-        parseBinaryPacket(event.data);
-      } catch (_error) {
-        // Ignore malformed binary packets.
+    resetClientSessionState();
+  },
+  error: (msg) => {
+    setStatus(msg.message || "Server error.");
+  },
+  hello: (msg) => {
+    if (msg && typeof msg === "object" && msg.sounds) {
+      applySoundManifest(msg.sounds);
+    }
+    applyClassAndAbilityDefs(msg.classes, msg.abilities);
+  },
+  welcome: (msg) => {
+    myId = msg.id;
+    selfStatic = msg.selfStatic || {
+      id: msg.id,
+      name: (pendingJoinInfo && pendingJoinInfo.name) || "You",
+      classType: (pendingJoinInfo && pendingJoinInfo.classType) || getDefaultClassId()
+    };
+    if (msg && typeof msg === "object" && msg.sounds) {
+      applySoundManifest(msg.sounds);
+    }
+    gameState.map = msg.map || gameState.map;
+    gameState.visibilityRange = msg.visibilityRange || gameState.visibilityRange;
+    resetClientSessionState();
+    joinScreen.classList.add("hidden");
+    gameUI.classList.remove("hidden");
+    ensureActionBindingsForClass(selfStatic.classType);
+    setStatus("");
+  },
+  class_defs: (msg) => applyClassAndAbilityDefs(msg.classes, msg.abilities),
+  item_defs: (msg) => applyItemDefs(msg.items),
+  inventory_state: (msg) => applyInventoryState(msg),
+  player_meta: (msg) => {
+    applyPlayerMeta(msg.players);
+    syncEntityArraysToGameState();
+  },
+  lootbag_meta: (msg) => {
+    applyLootBagMeta(msg.bags);
+    syncEntityArraysToGameState();
+  },
+  mob_meta: (msg) => {
+    applyMobMeta(msg.mobs);
+    syncEntityArraysToGameState();
+  },
+  projectile_meta: (msg) => {
+    applyProjectileMeta(msg.projectiles);
+    syncEntityArraysToGameState();
+  },
+  player_swings: (msg) => {
+    if (!Array.isArray(msg.swings)) {
+      return;
+    }
+    for (const swing of msg.swings) {
+      if (!swing || typeof swing.id !== "number") {
+        continue;
       }
+      triggerRemotePlayerSwing(swing.id, Number(swing.dx) || 0, Number(swing.dy) || 0);
+    }
+  },
+  player_casts: (msg) => applyPlayerCastStates(msg),
+  mob_casts: (msg) => applyMobCastStates(msg),
+  player_effects: (msg) => applyPlayerEffects(msg),
+  player_effects_nearby: (msg) => applyNearbyPlayerEffects(msg),
+  mob_bites: (msg) => {
+    if (!Array.isArray(msg.bites)) {
       return;
     }
-
-    let msg;
-    try {
-      msg = JSON.parse(event.data);
-    } catch (_error) {
-      return;
-    }
-
-    if (msg.type === "error") {
-      setStatus(msg.message || "Server error.");
-      return;
-    }
-
-    if (msg.type === "hello") {
-      if (msg && typeof msg === "object" && msg.sounds) {
-        applySoundManifest(msg.sounds);
+    for (const bite of msg.bites) {
+      if (!bite || typeof bite.id !== "number") {
+        continue;
       }
-      applyClassAndAbilityDefs(msg.classes, msg.abilities);
-      return;
+      triggerRemoteMobBite(
+        bite.id,
+        Number(bite.dx) || 0,
+        Number(bite.dy) || 0,
+        String(bite.abilityId || "")
+      );
     }
+  },
+  mob_effects: (msg) => applyMobEffects(msg),
+  damage_events: (msg) => addFloatingDamageEvents(msg.events),
+  explosion_events: (msg) => addExplosionEvents(msg.events),
+  area_effects: (msg) => applyAreaEffects(msg.effects),
+  projectile_hit_events: (msg) => addProjectileHitEvents(msg.events),
+  mob_death_events: (msg) => addMobDeathEvents(msg.events),
+  self_progress: (msg) => handleServerSelfProgress(msg),
+  loot_picked: (msg) => handleServerLootPicked(msg),
+  item_used: (msg) => handleServerItemUsed(msg)
+};
 
-    if (msg.type === "welcome") {
-      myId = msg.id;
-      selfStatic = msg.selfStatic || {
-        id: msg.id,
-        name: (pendingJoinInfo && pendingJoinInfo.name) || "You",
-        classType: (pendingJoinInfo && pendingJoinInfo.classType) || getDefaultClassId()
-      };
-      if (msg && typeof msg === "object" && msg.sounds) {
-        applySoundManifest(msg.sounds);
+const sharedClientNetworkSession = globalThis.VibeClientNetworkSession || null;
+const sharedCreateNetworkSessionTools =
+  sharedClientNetworkSession && typeof sharedClientNetworkSession.createNetworkSessionTools === "function"
+    ? sharedClientNetworkSession.createNetworkSessionTools
+    : null;
+const networkSessionTools = sharedCreateNetworkSessionTools
+  ? sharedCreateNetworkSessionTools({
+      addTrafficEvent,
+      byteLengthOfWsData,
+      parseBinaryPacket,
+      messageHandlers: serverMessageHandlers,
+      onSocketReady: (nextSocket) => {
+        socket = nextSocket;
       }
-      gameState.map = msg.map || gameState.map;
-      gameState.visibilityRange = msg.visibilityRange || gameState.visibilityRange;
-      snapshots.length = 0;
-      lastRenderState = null;
-	      remotePlayerSwings.clear();
-	      remotePlayerCasts.clear();
-	      remotePlayerStuns.clear();
-	      remotePlayerSlows.clear();
-	      remotePlayerBurns.clear();
-	      remoteMobCasts.clear();
-      remoteMobBites.clear();
-      remoteMobStuns.clear();
-      remoteMobSlows.clear();
-      remoteMobBurns.clear();
-      zombieWalkRuntime.clear();
-      creeperWalkRuntime.clear();
-      spiderWalkRuntime.clear();
-      orcWalkRuntime.clear();
-      skeletonWalkRuntime.clear();
-      skeletonArcherWalkRuntime.clear();
-      warriorAnimRuntime.clear();
-      floatingDamageNumbers.length = 0;
-      activeExplosions.length = 0;
-      activeAreaEffectsById.clear();
-      abilityRuntime.clear();
-      dpsState.samples.length = 0;
-      setDpsVisible(false);
-      spellbookState.signature = "";
-      resetAbilityChanneling();
-      clearEntityRuntime();
-      gameState.self = null;
-      gameState.players = [];
-      gameState.projectiles = [];
-      gameState.mobs = [];
-      gameState.lootBags = [];
-      inventoryState.slots = [];
-      setInventoryVisible(false);
-      setSpellbookVisible(false);
-      updateInventoryUI();
-      joinScreen.classList.add("hidden");
-      gameUI.classList.remove("hidden");
-      ensureActionBindingsForClass(selfStatic.classType);
-      setStatus("");
-      return;
-    }
+    })
+  : null;
 
-    if (msg.type === "class_defs") {
-      applyClassAndAbilityDefs(msg.classes, msg.abilities);
-      return;
-    }
-
-    if (msg.type === "item_defs") {
-      applyItemDefs(msg.items);
-      return;
-    }
-
-    if (msg.type === "inventory_state") {
-      applyInventoryState(msg);
-      return;
-    }
-
-    if (msg.type === "player_meta") {
-      applyPlayerMeta(msg.players);
-      syncEntityArraysToGameState();
-      return;
-    }
-
-    if (msg.type === "lootbag_meta") {
-      applyLootBagMeta(msg.bags);
-      syncEntityArraysToGameState();
-      return;
-    }
-
-    if (msg.type === "mob_meta") {
-      applyMobMeta(msg.mobs);
-      syncEntityArraysToGameState();
-      return;
-    }
-
-    if (msg.type === "projectile_meta") {
-      applyProjectileMeta(msg.projectiles);
-      syncEntityArraysToGameState();
-      return;
-    }
-
-    if (msg.type === "player_swings") {
-      if (Array.isArray(msg.swings)) {
-        for (const swing of msg.swings) {
-          if (!swing || typeof swing.id !== "number") {
-            continue;
-          }
-          triggerRemotePlayerSwing(swing.id, Number(swing.dx) || 0, Number(swing.dy) || 0);
-        }
-      }
-      return;
-    }
-
-    if (msg.type === "player_casts") {
-      applyPlayerCastStates(msg);
-      return;
-    }
-
-    if (msg.type === "mob_casts") {
-      applyMobCastStates(msg);
-      return;
-    }
-
-	    if (msg.type === "player_effects") {
-	      applyPlayerEffects(msg);
-	      return;
-	    }
-
-	    if (msg.type === "player_effects_nearby") {
-	      applyNearbyPlayerEffects(msg);
-	      return;
-	    }
-
-	    if (msg.type === "mob_bites") {
-	      if (Array.isArray(msg.bites)) {
-	        for (const bite of msg.bites) {
-	          if (!bite || typeof bite.id !== "number") {
-	            continue;
-	          }
-	          triggerRemoteMobBite(
-	            bite.id,
-	            Number(bite.dx) || 0,
-	            Number(bite.dy) || 0,
-	            String(bite.abilityId || "")
-	          );
-	        }
-	      }
-	      return;
-	    }
-
-    if (msg.type === "mob_effects") {
-      applyMobEffects(msg);
-      return;
-    }
-
-    if (msg.type === "damage_events") {
-      addFloatingDamageEvents(msg.events);
-      return;
-    }
-
-    if (msg.type === "explosion_events") {
-      addExplosionEvents(msg.events);
-      return;
-    }
-
-    if (msg.type === "area_effects") {
-      applyAreaEffects(msg.effects);
-      return;
-    }
-
-    if (msg.type === "projectile_hit_events") {
-      addProjectileHitEvents(msg.events);
-      return;
-    }
-
-    if (msg.type === "mob_death_events") {
-      addMobDeathEvents(msg.events);
-      return;
-    }
-
-    if (msg.type === "self_progress") {
-      if (!entityRuntime.self) {
-        const classDef = classDefsById.get(String((selfStatic && selfStatic.classType) || ""));
-        const fallbackMaxMana = Math.max(0, Number(classDef?.baseMana) || 0);
-        entityRuntime.self = {
-          x: gameState.self ? gameState.self.x : 0,
-          y: gameState.self ? gameState.self.y : 0,
-          hp: gameState.self ? gameState.self.hp : 0,
-          maxHp: gameState.self ? gameState.self.maxHp : 0,
-          pendingHeal: gameState.self ? gameState.self.pendingHeal ?? 0 : 0,
-          pendingMana: gameState.self ? gameState.self.pendingMana ?? 0 : 0,
-          mana: gameState.self ? gameState.self.mana ?? fallbackMaxMana : fallbackMaxMana,
-          maxMana: gameState.self ? gameState.self.maxMana ?? fallbackMaxMana : fallbackMaxMana,
-          copper: 0,
-          level: 1,
-          exp: 0,
-          expToNext: 20,
-          skillPoints: 0,
-          abilityLevels: {},
-          _xq: gameState.self ? Math.round(gameState.self.x * POS_SCALE) : 0,
-          _yq: gameState.self ? Math.round(gameState.self.y * POS_SCALE) : 0
-        };
-      }
-      const copper = Number(msg.copper);
-      const level = Number(msg.level);
-      const exp = Number(msg.exp);
-      const expToNext = Number(msg.expToNext);
-      const skillPoints = Number(msg.skillPoints);
-      const abilityLevels = parseAbilityLevelsPayload(msg.abilityLevels);
-      if (Number.isFinite(copper) && copper >= 0) {
-        entityRuntime.self.copper = copper;
-      }
-      if (Number.isFinite(level) && level >= 1) {
-        entityRuntime.self.level = level;
-      }
-      if (Number.isFinite(exp) && exp >= 0) {
-        entityRuntime.self.exp = exp;
-      }
-      if (Number.isFinite(expToNext) && expToNext >= 1) {
-        entityRuntime.self.expToNext = expToNext;
-      }
-      if (Number.isFinite(skillPoints) && skillPoints >= 0) {
-        entityRuntime.self.skillPoints = Math.floor(skillPoints);
-      }
-      if (msg.abilityLevels !== undefined) {
-        entityRuntime.self.abilityLevels = abilityLevels;
-      }
-      syncSelfToGameState();
-      return;
-    }
-
-    if (msg.type === "loot_picked") {
-      if (Array.isArray(msg.itemsGained) && msg.itemsGained.length) {
-        const summary = msg.itemsGained
-          .map((entry) => {
-            const itemId = String(entry.itemId || "");
-            const qty = Math.max(0, Math.floor(Number(entry.qty) || 0));
-            const itemDef = itemDefsById.get(itemId);
-            return `${(itemDef && itemDef.name) || String(entry.name || itemId)} x${qty}`;
-          })
-          .join(", ");
-        if (summary) {
-          setStatus(`Looted: ${summary}${msg.inventoryFull ? " (bag still has leftovers)" : ""}`);
-        }
-      } else if (msg.inventoryFull) {
-        setStatus("Inventory is full.");
-      }
-      return;
-    }
-
-    if (msg.type === "item_used") {
-      const itemId = String(msg.itemId || "");
-      const itemDef = itemDefsById.get(itemId);
-      const effectType = String(msg.effectType || "").toLowerCase();
-      const healed = Math.max(0, Math.floor(Number(msg.healed) || 0));
-      const restoredMana = Math.max(0, Number(msg.restoredMana) || 0);
-      const overTime = !!msg.overTime;
-      const effectValue = Math.max(0, Number(msg.effectValue) || 0);
-      const effectDuration = Math.max(0, Number(msg.effectDuration) || 0);
-      if (effectType === "mana") {
-        if (overTime && effectValue > 0 && effectDuration > 0) {
-          setStatus(
-            `Used ${(itemDef && itemDef.name) || itemId} (+${Math.floor(effectValue)} MP over ${effectDuration.toFixed(1)}s)`
-          );
-        } else {
-          setStatus(
-            `Used ${(itemDef && itemDef.name) || itemId}${restoredMana > 0 ? ` (+${Math.floor(restoredMana)} MP)` : ""}`
-          );
-        }
-      } else {
-        if (overTime && effectValue > 0 && effectDuration > 0) {
-          setStatus(
-            `Used ${(itemDef && itemDef.name) || itemId} (+${Math.floor(effectValue)} HP over ${effectDuration.toFixed(1)}s)`
-          );
-        } else {
-          setStatus(`Used ${(itemDef && itemDef.name) || itemId}${healed > 0 ? ` (+${healed} HP)` : ""}`);
-        }
-      }
-      return;
-    }
-  });
+function connectAndJoin(name, classType) {
+  pendingJoinInfo = { name, classType };
+  if (!networkSessionTools) {
+    return;
+  }
+  socket = networkSessionTools.createSocketSession(name, classType);
 }
 
 function resizeCanvas() {
