@@ -6895,6 +6895,44 @@ const renderLoopTools = sharedCreateRenderLoopTools
       getMyId: () => myId
     })
   : null;
+const sharedClientInputBootstrap = globalThis.VibeClientInputBootstrap || null;
+const sharedCreateInputBootstrap =
+  sharedClientInputBootstrap && typeof sharedClientInputBootstrap.createInputBootstrap === "function"
+    ? sharedClientInputBootstrap.createInputBootstrap
+    : null;
+const inputBootstrapTools = sharedCreateInputBootstrap
+  ? sharedCreateInputBootstrap({
+      windowObject: window,
+      document,
+      canvas,
+      joinForm,
+      gameUI,
+      keys,
+      mouseState,
+      classDefsById,
+      requestAnimationFrame,
+      resizeCanvas,
+      resumeSpatialAudioContext,
+      toggleDebugPanel,
+      toggleInventoryPanel,
+      toggleSpellbookPanel,
+      toggleDpsPanel,
+      executeBoundAction,
+      sendMove,
+      clearDragState,
+      resetAbilityChanneling,
+      stopAllSpatialLoops,
+      updateMouseScreenPosition,
+      tryPrimaryAutoAction,
+      setStatus,
+      connectAndJoin,
+      updateDebugPanel,
+      updateDpsPanel,
+      initializeDpsPanel,
+      loadInitialGameConfig,
+      render
+    })
+  : null;
 
 function render() {
   if (!renderLoopTools) {
@@ -6902,130 +6940,6 @@ function render() {
   }
   renderLoopTools.renderFrame();
 }
-
-window.addEventListener("resize", resizeCanvas);
-resizeCanvas();
-
-document.addEventListener("keydown", (event) => {
-  resumeSpatialAudioContext();
-  if (event.code === "F3") {
-    toggleDebugPanel();
-    event.preventDefault();
-    return;
-  }
-
-  if (event.code === "KeyI" && !gameUI.classList.contains("hidden")) {
-    toggleInventoryPanel();
-    event.preventDefault();
-    return;
-  }
-
-  if (event.code === "KeyP" && !gameUI.classList.contains("hidden")) {
-    toggleSpellbookPanel();
-    event.preventDefault();
-    return;
-  }
-
-  if (event.code === "KeyK" && !gameUI.classList.contains("hidden")) {
-    toggleDpsPanel();
-    event.preventDefault();
-    return;
-  }
-
-  if (event.code.startsWith("Digit")) {
-    const slot = event.code.replace("Digit", "");
-    if (slot >= "1" && slot <= "9" && !gameUI.classList.contains("hidden")) {
-      executeBoundAction(slot);
-      event.preventDefault();
-      return;
-    }
-  }
-
-  if (event.code in keys) {
-    keys[event.code] = true;
-    sendMove();
-    event.preventDefault();
-  }
-});
-
-document.addEventListener("keyup", (event) => {
-  if (event.code in keys) {
-    keys[event.code] = false;
-    sendMove();
-    event.preventDefault();
-  }
-});
-
-window.addEventListener("blur", () => {
-  let changed = false;
-  for (const key in keys) {
-    if (keys[key]) {
-      keys[key] = false;
-      changed = true;
-    }
-  }
-  if (changed) {
-    sendMove();
-  }
-  mouseState.leftDown = false;
-  clearDragState();
-  resetAbilityChanneling();
-  stopAllSpatialLoops();
-});
-
-canvas.addEventListener("mousemove", (event) => {
-  updateMouseScreenPosition(event);
-});
-
-canvas.addEventListener("mousedown", (event) => {
-  resumeSpatialAudioContext();
-  if (event.button !== 0) {
-    return;
-  }
-
-  updateMouseScreenPosition(event);
-  mouseState.leftDown = true;
-  tryPrimaryAutoAction(true);
-});
-
-window.addEventListener("mouseup", (event) => {
-  if (event.button === 0) {
-    mouseState.leftDown = false;
-  }
-});
-
-canvas.addEventListener("contextmenu", (event) => {
-  resumeSpatialAudioContext();
-  event.preventDefault();
-  updateMouseScreenPosition(event);
-  executeBoundAction("mouse_right");
-});
-
-joinForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  resumeSpatialAudioContext();
-  const formData = new FormData(joinForm);
-  const name = String(formData.get("name") || "").trim();
-  const selectedClass = String(formData.get("classType") || "").trim();
-  const firstClassId = classDefsById.size ? classDefsById.keys().next().value : "";
-  const classType = selectedClass || firstClassId;
-
-  if (!name) {
-    setStatus("Please enter a name.");
-    return;
-  }
-  if (!classType) {
-    setStatus("Class data is not loaded yet.");
-    return;
-  }
-
-  setStatus("Connecting...");
-  connectAndJoin(name, classType);
-});
-
-setInterval(updateDebugPanel, 250);
-setInterval(updateDpsPanel, 250);
-setInterval(tryPrimaryAutoAction, 50);
-initializeDpsPanel();
-loadInitialGameConfig();
-requestAnimationFrame(render);
+if (inputBootstrapTools) {
+  inputBootstrapTools.bind();
+}
