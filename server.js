@@ -24,6 +24,7 @@ const {
   getAbilityInvulnerabilityDurationMs
 } = require("./server/gameplay/ability-stats");
 const { createCastingTools } = require("./server/gameplay/casting");
+const { createDamageTools } = require("./server/gameplay/damage");
 const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createLootBagTools } = require("./server/gameplay/loot-bags");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
@@ -2465,7 +2466,7 @@ const abilityHandlerContext = {
   getAbilityDamageRange,
   getAbilityDotDamageRange,
   markAbilityUsed: (...args) => markAbilityUsed(...args),
-  applyDamageToMob,
+  applyDamageToMob: (...args) => applyDamageToMob(...args),
   applyAbilityHitEffectsToMob,
   stunMob,
   queueExplosionEvent,
@@ -2796,57 +2797,15 @@ function applyAbilityHitEffectsToMob(mob, ownerId, abilityDef, abilityLevel, dea
   }
 }
 
-function applyDamageToMob(mob, damage, ownerId) {
-  if (!mob || !mob.alive) {
-    return 0;
-  }
-  const dmg = Math.max(0, Math.floor(Number(damage) || 0));
-  if (dmg <= 0) {
-    return 0;
-  }
-
-  const beforeHp = mob.hp;
-  mob.hp = Math.max(0, mob.hp - dmg);
-  const dealt = beforeHp - mob.hp;
-  if (dealt > 0) {
-    queueDamageEvent(mob, dealt, "mob", ownerId);
-    markMobProvokedByPlayer(mob, ownerId);
-  }
-  if (mob.hp <= 0) {
-    killMob(mob, ownerId);
-  }
-  return dealt;
-}
-
-function isPlayerInvulnerable(player, now = Date.now()) {
-  if (!player) {
-    return false;
-  }
-  return (Number(player.invulnerableUntil) || 0) > now;
-}
-
-function applyDamageToPlayer(player, damage, now = Date.now()) {
-  if (!player || player.hp <= 0 || isPlayerInvulnerable(player, now)) {
-    return 0;
-  }
-  const dmg = Math.max(0, Math.floor(Number(damage) || 0));
-  if (dmg <= 0) {
-    return 0;
-  }
-
-  const beforeHp = player.hp;
-  player.hp = Math.max(0, player.hp - dmg);
-  const dealt = beforeHp - player.hp;
-  if (dealt > 0) {
-    queueDamageEvent(player, dealt, "player");
-  }
-  if (player.hp <= 0) {
-    player.input = { dx: 0, dy: 0 };
-    clearPlayerCast(player);
-    clearPlayerCombatEffects(player);
-  }
-  return dealt;
-}
+const damageTools = createDamageTools({
+  queueDamageEvent,
+  markMobProvokedByPlayer,
+  killMob,
+  clearPlayerCast: (...args) => clearPlayerCast(...args),
+  clearPlayerCombatEffects: (...args) => clearPlayerCombatEffects(...args)
+});
+const applyDamageToMob = damageTools.applyDamageToMob;
+const applyDamageToPlayer = damageTools.applyDamageToPlayer;
 
 const playerAbilityTools = createPlayerAbilityTools({
   clamp,
