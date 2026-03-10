@@ -41,6 +41,11 @@ const INVENTORY_SLOT_SIZE_PX = 50;
 const INVENTORY_SLOT_GAP_PX = 6;
 const INVENTORY_PANEL_PADDING_PX = 10;
 const INVENTORY_PANEL_BORDER_PX = 1;
+const sharedVectorUtils = globalThis.VibeVectorUtils || null;
+const sharedNormalizeDirection =
+  sharedVectorUtils && typeof sharedVectorUtils.normalizeDirection === "function"
+    ? sharedVectorUtils.normalizeDirection
+    : null;
 const protocol = globalThis.VibeProtocol || {
   ENTITY_PROTO_TYPE: 1,
   ENTITY_PROTO_VERSION: 7,
@@ -299,6 +304,9 @@ function lerp(a, b, t) {
 }
 
 function normalizeDirection(dx, dy) {
+  if (sharedNormalizeDirection) {
+    return sharedNormalizeDirection(dx, dy);
+  }
   const len = Math.hypot(dx, dy);
   if (!len) {
     return null;
