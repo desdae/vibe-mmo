@@ -7990,111 +7990,71 @@ function drawLootBag(bag, cameraX, cameraY) {
   ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
 }
 
+const sharedClientRenderLoop = globalThis.VibeClientRenderLoop || null;
+const sharedCreateRenderLoopTools =
+  sharedClientRenderLoop && typeof sharedClientRenderLoop.createRenderLoopTools === "function"
+    ? sharedClientRenderLoop.createRenderLoopTools
+    : null;
+const renderLoopTools = sharedCreateRenderLoopTools
+  ? sharedCreateRenderLoopTools({
+      ctx,
+      canvas,
+      gameState,
+      requestAnimationFrame,
+      updateAbilityChannel,
+      getInterpolatedState,
+      setLastRenderState: (state) => {
+        lastRenderState = state;
+      },
+      updateActionBarUI,
+      updateMobCastSpatialAudio,
+      updateProjectileSpatialAudio,
+      drawGrid,
+      drawAbilityCastPreview,
+      getHoveredMob,
+      getHoveredLootBag,
+      drawProjectile,
+      drawExplosionEffects,
+      drawAreaEffects,
+      drawLootBag,
+      drawMob,
+      getActiveMobAttackState,
+      getMobAttackVisualType,
+      drawSkeletonSwordSwing,
+      drawSkeletonArcherBowShot,
+      drawCreeperIgnitionAnimation,
+      drawOrcDualAxeSwing,
+      drawMobBiteAnimation,
+      drawMobCastBar,
+      drawMobSlowTint,
+      drawMobBurnEffect,
+      drawMobStunEffect,
+      drawFloatingDamageNumbers,
+      pruneSkeletonWalkRuntime,
+      pruneCreeperWalkRuntime,
+      pruneZombieWalkRuntime,
+      pruneSpiderWalkRuntime,
+      pruneOrcWalkRuntime,
+      pruneSkeletonArcherWalkRuntime,
+      pruneWarriorAnimRuntime,
+      pruneProjectileVisualRuntime,
+      drawPlayer,
+      drawPlayerEffectAnimations,
+      drawPlayerCastBar,
+      drawMobTooltip,
+      drawLootBagTooltip,
+      hudName,
+      hudClass,
+      hudPos,
+      getMyId: () => myId
+    })
+  : null;
+
 function render() {
-  requestAnimationFrame(render);
-  const frameNow = performance.now();
-  updateAbilityChannel(frameNow);
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#0a1621";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  const interpolatedState =
-    getInterpolatedState() ||
-    (gameState.self
-      ? {
-          self: gameState.self,
-          players: gameState.players,
-          projectiles: gameState.projectiles,
-          mobs: gameState.mobs,
-          lootBags: gameState.lootBags
-        }
-      : null);
-
-  if (!interpolatedState || !interpolatedState.self) {
-    updateActionBarUI(null);
+  if (!renderLoopTools) {
     return;
   }
-  lastRenderState = interpolatedState;
-
-  const cameraX = interpolatedState.self.x + 0.5;
-  const cameraY = interpolatedState.self.y + 0.5;
-  updateMobCastSpatialAudio(interpolatedState.mobs, frameNow);
-  updateProjectileSpatialAudio(interpolatedState.projectiles, frameNow);
-
-  drawGrid(cameraX, cameraY);
-  drawAbilityCastPreview(interpolatedState.self, cameraX, cameraY, frameNow);
-  const hoveredMob = getHoveredMob(interpolatedState.mobs, cameraX, cameraY);
-  const hoveredBag = getHoveredLootBag(interpolatedState.lootBags, cameraX, cameraY);
-
-  for (const projectile of interpolatedState.projectiles) {
-    drawProjectile(projectile, cameraX, cameraY, frameNow);
-  }
-  drawExplosionEffects(cameraX, cameraY);
-  drawAreaEffects(cameraX, cameraY, frameNow);
-
-  for (const bag of interpolatedState.lootBags) {
-    drawLootBag(bag, cameraX, cameraY);
-  }
-
-  for (const mob of interpolatedState.mobs) {
-    const attackState = getActiveMobAttackState(mob.id);
-    const attackVisual = getMobAttackVisualType(mob);
-    if (attackVisual === "sword") {
-      drawMob(mob, cameraX, cameraY, attackState);
-      drawSkeletonSwordSwing(mob, cameraX, cameraY, attackState);
-    } else if (attackVisual === "bow") {
-      drawMob(mob, cameraX, cameraY, attackState);
-      drawSkeletonArcherBowShot(mob, cameraX, cameraY, attackState);
-    } else if (attackVisual === "ignition") {
-      drawMob(mob, cameraX, cameraY, attackState);
-      drawCreeperIgnitionAnimation(mob, cameraX, cameraY, attackState);
-    } else if (attackVisual === "dual_axes") {
-      drawMob(mob, cameraX, cameraY, attackState);
-      drawOrcDualAxeSwing(mob, cameraX, cameraY, attackState);
-    } else if (attackVisual === "none") {
-      drawMob(mob, cameraX, cameraY, attackState);
-    } else {
-      drawMob(mob, cameraX, cameraY, attackState);
-      drawMobBiteAnimation(mob, cameraX, cameraY);
-    }
-    drawMobCastBar(mob, cameraX, cameraY, frameNow);
-    drawMobSlowTint(mob, cameraX, cameraY, frameNow);
-    drawMobBurnEffect(mob, cameraX, cameraY, frameNow);
-    drawMobStunEffect(mob, cameraX, cameraY, frameNow);
-  }
-  drawFloatingDamageNumbers(cameraX, cameraY);
-  pruneSkeletonWalkRuntime();
-  pruneCreeperWalkRuntime();
-  pruneZombieWalkRuntime();
-  pruneSpiderWalkRuntime();
-  pruneOrcWalkRuntime();
-  pruneSkeletonArcherWalkRuntime();
-  pruneWarriorAnimRuntime();
-  pruneProjectileVisualRuntime(frameNow);
-
-  for (const other of interpolatedState.players) {
-    drawPlayer(other, cameraX, cameraY, false);
-    drawPlayerEffectAnimations(other, cameraX, cameraY, false, frameNow);
-    drawPlayerCastBar(other, cameraX, cameraY, false, frameNow);
-  }
-
-  drawPlayer(interpolatedState.self, cameraX, cameraY, true);
-  drawPlayerEffectAnimations(interpolatedState.self, cameraX, cameraY, true, frameNow);
-  drawPlayerCastBar(interpolatedState.self, cameraX, cameraY, true, frameNow);
-
-  if (hoveredMob) {
-    drawMobTooltip(hoveredMob.mob, hoveredMob.p);
-  }
-  if (hoveredBag) {
-    drawLootBagTooltip(hoveredBag.bag, hoveredBag.p);
-  }
-
-  const latestSelf = gameState.self || interpolatedState.self;
-  updateActionBarUI(latestSelf);
-  hudName.textContent = `Player: ${latestSelf.name} (${myId || "?"})`;
-  hudClass.textContent = `Class: ${latestSelf.classType} | HP: ${latestSelf.hp}/${latestSelf.maxHp} | Copper: ${latestSelf.copper ?? 0} | Lvl: ${latestSelf.level ?? 1} EXP: ${latestSelf.exp ?? 0}/${latestSelf.expToNext ?? 20} | SP: ${latestSelf.skillPoints ?? 0}`;
-  hudPos.textContent = `Pos: ${interpolatedState.self.x.toFixed(1)}, ${interpolatedState.self.y.toFixed(1)}`;
+  renderLoopTools.renderFrame();
 }
 
 window.addEventListener("resize", resizeCanvas);
