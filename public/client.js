@@ -41,6 +41,11 @@ const INVENTORY_SLOT_SIZE_PX = 50;
 const INVENTORY_SLOT_GAP_PX = 6;
 const INVENTORY_PANEL_PADDING_PX = 10;
 const INVENTORY_PANEL_BORDER_PX = 1;
+const sharedAbilityNormalization = globalThis.VibeAbilityNormalization || null;
+const sharedCreateAbilityNormalizationTools =
+  sharedAbilityNormalization && typeof sharedAbilityNormalization.createAbilityNormalizationTools === "function"
+    ? sharedAbilityNormalization.createAbilityNormalizationTools
+    : null;
 const sharedAbilityStats = globalThis.VibeAbilityStats || null;
 const sharedGetAbilityDamageRange =
   sharedAbilityStats && typeof sharedAbilityStats.getAbilityDamageRange === "function"
@@ -54,6 +59,9 @@ const sharedGetAbilityCooldownMsForLevel =
   sharedAbilityStats && typeof sharedAbilityStats.getAbilityCooldownMsForLevel === "function"
     ? sharedAbilityStats.getAbilityCooldownMsForLevel
     : null;
+const clientAbilityNormalizationTools = sharedCreateAbilityNormalizationTools
+  ? sharedCreateAbilityNormalizationTools({ defaultProjectileHitRadius: 0.6 })
+  : null;
 const sharedNumberUtils = globalThis.VibeNumberUtils || null;
 const sharedClamp =
   sharedNumberUtils && typeof sharedNumberUtils.clamp === "function" ? sharedNumberUtils.clamp : null;
@@ -3411,35 +3419,41 @@ function applyClassAndAbilityDefs(classes, abilities) {
     if (!ability) {
       continue;
     }
-    const id = String(ability.id || "").trim();
+    const normalizedEntryRaw =
+      clientAbilityNormalizationTools && typeof clientAbilityNormalizationTools.normalizeAbilityEntry === "function"
+        ? clientAbilityNormalizationTools.normalizeAbilityEntry(ability.id, ability)
+        : ability;
+    const normalizedEntry =
+      normalizedEntryRaw && typeof normalizedEntryRaw === "object" ? normalizedEntryRaw : ability;
+    const id = String(normalizedEntry && normalizedEntry.id ? normalizedEntry.id : ability.id || "").trim();
     if (!id) {
       continue;
     }
     const normalizedAbility = {
       id,
-      name: String(ability.name || id),
-      description: String(ability.description || ""),
-      kind: String(ability.kind || "meleeCone"),
-      cooldownMs: Math.max(0, Math.floor(Number(ability.cooldownMs) || 0)),
-      range: Math.max(0, Number(ability.range) || 0),
-      speed: Math.max(0, Number(ability.speed) || 0),
-      castMs: Math.max(0, Math.floor(Number(ability.castMs) || 0)),
-      manaCost: Math.max(0, Number(ability.manaCost) || 0),
-      damageMin: Math.max(0, Number(ability.damageMin) || 0),
-      damageMax: Math.max(0, Number(ability.damageMax) || 0),
-      damagePerLevelMin: Math.max(0, Number(ability.damagePerLevelMin) || 0),
-      damagePerLevelMax: Math.max(0, Number(ability.damagePerLevelMax) || 0),
-      coneAngleDeg: Math.max(0, Number(ability.coneAngleDeg) || 0),
-      projectileHitRadius: Math.max(0, Number(ability.projectileHitRadius) || 0),
-      explosionRadius: Math.max(0, Number(ability.explosionRadius) || 0),
-      explosionDamageMultiplier: Math.max(0, Number(ability.explosionDamageMultiplier) || 0),
-      beamWidth: Math.max(0, Number(ability.beamWidth) || 0),
-      stunDurationMs: Math.max(0, Math.floor(Number(ability.stunDurationMs) || 0)),
-      slowDurationMs: Math.max(0, Math.floor(Number(ability.slowDurationMs) || 0)),
-      slowMultiplier: clamp(Number(ability.slowMultiplier) || 1, 0.1, 1)
+      name: String(normalizedEntry.name || id),
+      description: String(normalizedEntry.description || ""),
+      kind: String(normalizedEntry.kind || "meleeCone"),
+      cooldownMs: Math.max(0, Math.floor(Number(normalizedEntry.cooldownMs) || 0)),
+      range: Math.max(0, Number(normalizedEntry.range) || 0),
+      speed: Math.max(0, Number(normalizedEntry.speed) || 0),
+      castMs: Math.max(0, Math.floor(Number(normalizedEntry.castMs) || 0)),
+      manaCost: Math.max(0, Number(normalizedEntry.manaCost) || 0),
+      damageMin: Math.max(0, Number(normalizedEntry.damageMin) || 0),
+      damageMax: Math.max(0, Number(normalizedEntry.damageMax) || 0),
+      damagePerLevelMin: Math.max(0, Number(normalizedEntry.damagePerLevelMin) || 0),
+      damagePerLevelMax: Math.max(0, Number(normalizedEntry.damagePerLevelMax) || 0),
+      coneAngleDeg: Math.max(0, Number(normalizedEntry.coneAngleDeg) || 0),
+      projectileHitRadius: Math.max(0, Number(normalizedEntry.projectileHitRadius) || 0),
+      explosionRadius: Math.max(0, Number(normalizedEntry.explosionRadius) || 0),
+      explosionDamageMultiplier: Math.max(0, Number(normalizedEntry.explosionDamageMultiplier) || 0),
+      beamWidth: Math.max(0, Number(normalizedEntry.beamWidth) || 0),
+      stunDurationMs: Math.max(0, Math.floor(Number(normalizedEntry.stunDurationMs) || 0)),
+      slowDurationMs: Math.max(0, Math.floor(Number(normalizedEntry.slowDurationMs) || 0)),
+      slowMultiplier: clamp(Number(normalizedEntry.slowMultiplier) || 1, 0.1, 1)
     };
 
-    for (const [key, value] of Object.entries(ability)) {
+    for (const [key, value] of Object.entries(normalizedEntry)) {
       if (key in normalizedAbility || key === "id") {
         continue;
       }
