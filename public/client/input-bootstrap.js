@@ -129,6 +129,11 @@
     }
 
     function bind() {
+      const requestFrame =
+        typeof deps.requestAnimationFrame === "function"
+          ? deps.requestAnimationFrame.bind(deps.windowObject)
+          : deps.windowObject.requestAnimationFrame.bind(deps.windowObject);
+
       deps.windowObject.addEventListener("resize", deps.resizeCanvas);
       deps.resizeCanvas();
 
@@ -146,7 +151,7 @@
       globalScope.setInterval(deps.tryPrimaryAutoAction, 50);
       deps.initializeDpsPanel();
       deps.loadInitialGameConfig();
-      deps.requestAnimationFrame(deps.render);
+      requestFrame(deps.render);
     }
 
     return {
