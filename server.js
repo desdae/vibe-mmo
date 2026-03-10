@@ -11,6 +11,7 @@ const { createStateBroadcaster } = require("./server/network/state-broadcast");
 const { createGameHttpServer } = require("./server/network/http-server");
 const { createSoundManifestBuilder } = require("./server/network/sound-manifest");
 const { createEntityUpdatePacketBuilder } = require("./server/network/entity-update-packet");
+const { serializePlayer, serializeMob, serializeLootBag } = require("./server/network/entity-serializers");
 const { createEventBuilders } = require("./server/network/event-builders");
 const { createAreaEffectEventBuilder } = require("./server/network/area-effect-events");
 const { createPlayerMessageTools } = require("./server/network/player-messages");
@@ -2861,38 +2862,6 @@ const markAbilityUsed = castingTools.markAbilityUsed;
 const playerHasMovementInput = castingTools.playerHasMovementInput;
 const clearPlayerCast = castingTools.clearPlayerCast;
 const clearMobCast = castingTools.clearMobCast;
-
-function serializePlayer(player) {
-  return {
-    id: player.id,
-    name: player.name,
-    classType: player.classType,
-    x: player.x,
-    y: player.y,
-    hp: player.hp,
-    maxHp: player.maxHp
-  };
-}
-
-function serializeMob(mob) {
-  return {
-    id: mob.id,
-    name: mob.type || "Mob",
-    renderStyle: mob.renderStyle || null,
-    x: mob.x,
-    y: mob.y,
-    hp: mob.hp,
-    maxHp: mob.maxHp
-  };
-}
-
-function serializeLootBag(bag) {
-  return {
-    id: bag.id,
-    x: bag.x,
-    y: bag.y
-  };
-}
 
 function createLootBag(x, y, items = []) {
   const normalizedItems = normalizeItemEntries(items);
