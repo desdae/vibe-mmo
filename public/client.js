@@ -3723,56 +3723,32 @@ function parseBinaryPacket(arrayBuffer) {
   networkPacketParsers.parseBinaryPacket(arrayBuffer);
 }
 
+const sharedClientRenderState = globalThis.VibeClientRenderState || null;
+const sharedCreateRenderStateInterpolator =
+  sharedClientRenderState && typeof sharedClientRenderState.createRenderStateInterpolator === "function"
+    ? sharedClientRenderState.createRenderStateInterpolator
+    : null;
+const renderStateInterpolator = sharedCreateRenderStateInterpolator
+  ? sharedCreateRenderStateInterpolator({
+      snapshots,
+      clamp,
+      lerp,
+      interpolationDelayMs: INTERPOLATION_DELAY_MS
+    })
+  : null;
+
 function blendEntityList(previousList, currentList, alpha) {
-  const previousById = new Map(previousList.map((entity) => [entity.id, entity]));
-  return currentList.map((entity) => {
-    const previous = previousById.get(entity.id);
-    if (!previous) {
-      return entity;
-    }
-    return {
-      ...entity,
-      x: lerp(previous.x, entity.x, alpha),
-      y: lerp(previous.y, entity.y, alpha)
-    };
-  });
+  if (!renderStateInterpolator) {
+    return Array.isArray(currentList) ? currentList : [];
+  }
+  return renderStateInterpolator.blendEntityList(previousList, currentList, alpha);
 }
 
 function getInterpolatedState() {
-  if (!snapshots.length) {
+  if (!renderStateInterpolator) {
     return null;
   }
-
-  const renderTime = performance.now() - INTERPOLATION_DELAY_MS;
-  while (snapshots.length >= 3 && snapshots[1].t <= renderTime) {
-    snapshots.shift();
-  }
-
-  if (snapshots.length === 1) {
-    return snapshots[0];
-  }
-
-  const previous = snapshots[0];
-  const current = snapshots[1];
-  const span = current.t - previous.t;
-  const alpha = span > 0 ? clamp((renderTime - previous.t) / span, 0, 1) : 1;
-
-  let self = current.self || previous.self;
-  if (previous.self && current.self && previous.self.id === current.self.id) {
-    self = {
-      ...current.self,
-      x: lerp(previous.self.x, current.self.x, alpha),
-      y: lerp(previous.self.y, current.self.y, alpha)
-    };
-  }
-
-  return {
-    self,
-    players: blendEntityList(previous.players, current.players, alpha),
-    projectiles: blendEntityList(previous.projectiles, current.projectiles, alpha),
-    mobs: blendEntityList(previous.mobs, current.mobs, alpha),
-    lootBags: blendEntityList(previous.lootBags, current.lootBags, alpha)
-  };
+  return renderStateInterpolator.getInterpolatedState(performance.now());
 }
 
 function connectAndJoin(name, classType) {
