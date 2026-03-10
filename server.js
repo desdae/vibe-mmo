@@ -4,6 +4,7 @@ const path = require("path");
 const { WebSocketServer } = require("ws");
 const PROTOCOL = require("./public/shared/protocol");
 const { executeAbilityByKind } = require("./server/ability-handlers");
+const { createGameLoop } = require("./server/runtime/game-loop");
 
 const PORT = process.env.PORT || 3000;
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
@@ -7415,8 +7416,9 @@ wss.on("connection", (ws) => {
   });
 });
 
-setInterval(() => {
-  const now = Date.now();
+const gameLoop = createGameLoop({
+  tickMs: TICK_MS,
+  runTick: (now) => {
   tickPlayers();
   tickPlayerCasts(now);
   tickAreaEffects(now);
@@ -7424,7 +7426,9 @@ setInterval(() => {
   tickProjectiles();
   tickLootBags(now);
   broadcastState();
-}, TICK_MS);
+  }
+});
+gameLoop.start();
 
 initializeMobSpawners();
 
