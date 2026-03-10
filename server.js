@@ -9,6 +9,7 @@ const { createConfigOrchestrator } = require("./server/runtime/config-orchestrat
 const { createProjectileTickSystem } = require("./server/runtime/projectile-tick");
 const { createPlayerTickSystem } = require("./server/runtime/player-tick");
 const { createMobTickSystem } = require("./server/runtime/mob-tick");
+const { createWorldState } = require("./server/runtime/world-state");
 const {
   createAbilityConfigLoader,
   createClassAbilityDefsBroadcaster
@@ -329,18 +330,19 @@ const server = createGameHttpServer({
 
 const wss = new WebSocketServer({ server });
 
-let nextPlayerId = 1;
-let nextProjectileId = 1;
-let nextSpawnerId = 1;
-let nextMobId = 1;
-let nextLootBagId = 1;
-let nextAreaEffectId = 1;
-const players = new Map();
-const projectiles = new Map();
-const mobSpawners = new Map();
-const mobs = new Map();
-const lootBags = new Map();
-const activeAreaEffects = new Map();
+const worldState = createWorldState();
+const players = worldState.players;
+const projectiles = worldState.projectiles;
+const mobSpawners = worldState.mobSpawners;
+const mobs = worldState.mobs;
+const lootBags = worldState.lootBags;
+const activeAreaEffects = worldState.activeAreaEffects;
+const allocatePlayerId = worldState.allocatePlayerId;
+const allocateProjectileId = worldState.allocateProjectileId;
+const allocateSpawnerId = worldState.allocateSpawnerId;
+const allocateMobId = worldState.allocateMobId;
+const allocateLootBagId = worldState.allocateLootBagId;
+const allocateAreaEffectId = worldState.allocateAreaEffectId;
 const worldEventQueues = createWorldEventQueues({
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT
@@ -362,10 +364,6 @@ const classAbilityDefsBroadcaster = createClassAbilityDefsBroadcaster({
   abilityConfigProvider: () => ABILITY_CONFIG
 });
 const broadcastClassAndAbilityDefs = classAbilityDefsBroadcaster.broadcastClassAndAbilityDefs;
-
-function allocateProjectileId() {
-  return nextProjectileId++;
-}
 
 const projectileSpawnTools = createProjectileSpawnTools({
   normalizeDirection,
@@ -413,7 +411,7 @@ const lootBagTools = createLootBagTools({
   mapHeight: MAP_HEIGHT,
   bagDespawnMs: BAG_DESPAWN_MS,
   lootBags,
-  allocateLootBagId: () => String(nextLootBagId++)
+  allocateLootBagId
 });
 const createLootBag = lootBagTools.createLootBag;
 const tickLootBags = lootBagTools.tickLootBags;
@@ -433,8 +431,8 @@ const mobLifecycleTools = createMobLifecycleTools({
   createLootBag,
   normalizeItemEntries,
   grantPlayerExp,
-  allocateMobId: () => nextMobId++,
-  allocateSpawnerId: () => nextSpawnerId++,
+  allocateMobId,
+  allocateSpawnerId,
   getServerConfig: () => SERVER_CONFIG,
   getMobConfig: () => MOB_CONFIG,
   mapWidth: MAP_WIDTH,
@@ -495,7 +493,7 @@ const areaEffectTools = createAreaEffectTools({
   clamp,
   normalizeDirection,
   queueExplosionEvent,
-  allocateAreaEffectId: () => String(nextAreaEffectId++),
+  allocateAreaEffectId,
   activeAreaEffects,
   mobs,
   randomInt,
@@ -779,7 +777,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     getClassConfig: () => CLASS_CONFIG,
     getAbilityConfig: () => ABILITY_CONFIG,
     getItemConfig: () => ITEM_CONFIG,
-    allocatePlayerId: () => String(nextPlayerId++),
+    allocatePlayerId,
     sendJson,
     players,
     mapWidth: MAP_WIDTH,
