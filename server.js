@@ -15,6 +15,7 @@ const { createEventBuilders } = require("./server/network/event-builders");
 const { createAreaEffectEventBuilder } = require("./server/network/area-effect-events");
 const { createPlayerMessageTools } = require("./server/network/player-messages");
 const { createWorldEventQueues } = require("./server/network/world-events");
+const { createInventoryTools } = require("./server/gameplay/inventory");
 const {
   encodeMobEffectEventPacket,
   encodeAreaEffectEventPacket,
@@ -2307,6 +2308,18 @@ const playerMessageTools = createPlayerMessageTools({
 const sendSelfProgress = playerMessageTools.sendSelfProgress;
 const sendInventoryState = playerMessageTools.sendInventoryState;
 const serializeBagItemsForMeta = (items) => playerMessageTools.serializeBagItemsForMeta(items, normalizeItemEntries);
+const inventoryTools = createInventoryTools({
+  itemDefs: ITEM_CONFIG.itemDefs,
+  inventorySlotCount: INVENTORY_SLOT_COUNT,
+  copperItemId: ITEM_COPPER_ID,
+  normalizeItemEntries,
+  sendSelfProgress
+});
+const createEmptyInventorySlots = inventoryTools.createEmptyInventorySlots;
+const addItemsToInventory = inventoryTools.addItemsToInventory;
+const mergeOrSwapInventorySlots = inventoryTools.mergeOrSwapInventorySlots;
+const consumeInventoryItem = inventoryTools.consumeInventoryItem;
+const syncPlayerCopperFromInventory = inventoryTools.syncPlayerCopperFromInventory;
 let SERVER_CONFIG;
 try {
   SERVER_CONFIG = loadServerConfigFromDisk();
@@ -2615,10 +2628,6 @@ const abilityHandlerContext = {
   getAbilityInvulnerabilityDurationMs
 };
 
-function createEmptyInventorySlots() {
-  return Array.from({ length: INVENTORY_SLOT_COUNT }, () => null);
-}
-
 function normalizeItemEntries(entries) {
   const merged = new Map();
   for (const entry of Array.isArray(entries) ? entries : []) {
@@ -2694,184 +2703,6 @@ function rollGlobalDropsForPlayer(player) {
 function rollMobDrops(mob) {
   const rules = Array.isArray(mob?.dropRules) ? mob.dropRules : [];
   return rollDropRules(rules);
-}
-
-function addItemsToInventory(player, entries) {
-  const normalizedEntries = normalizeItemEntries(entries);
-  if (!normalizedEntries.length || !player || !Array.isArray(player.inventorySlots)) {
-    return {
-      added: [],
-      leftover: normalizedEntries,
-      changed: false
-    };
-  }
-
-  const addedByItem = new Map();
-  const leftover = [];
-  let changed = false;
-
-  for (const entry of normalizedEntries) {
-    const itemDef = ITEM_CONFIG.itemDefs.get(entry.itemId);
-    if (!itemDef) {
-      continue;
-    }
-
-    let remaining = entry.qty;
-    const stackSize = itemDef.stackSize;
-
-    for (let i = 0; i < player.inventorySlots.length && remaining > 0; i += 1) {
-      const slot = player.inventorySlots[i];
-      if (!slot || slot.itemId !== entry.itemId) {
-        continue;
-      }
-      if (slot.qty >= stackSize) {
-        continue;
-      }
-
-      const canAdd = Math.min(stackSize - slot.qty, remaining);
-      if (canAdd <= 0) {
-        continue;
-      }
-      slot.qty += canAdd;
-      remaining -= canAdd;
-      changed = true;
-      addedByItem.set(entry.itemId, (addedByItem.get(entry.itemId) || 0) + canAdd);
-    }
-
-    for (let i = 0; i < player.inventorySlots.length && remaining > 0; i += 1) {
-      const slot = player.inventorySlots[i];
-      if (slot) {
-        continue;
-      }
-      const putQty = Math.min(stackSize, remaining);
-      player.inventorySlots[i] = { itemId: entry.itemId, qty: putQty };
-      remaining -= putQty;
-      changed = true;
-      addedByItem.set(entry.itemId, (addedByItem.get(entry.itemId) || 0) + putQty);
-    }
-
-    if (remaining > 0) {
-      leftover.push({
-        itemId: entry.itemId,
-        qty: remaining
-      });
-    }
-  }
-
-  const added = Array.from(addedByItem.entries()).map(([itemId, qty]) => ({
-    itemId,
-    qty,
-    name: ITEM_CONFIG.itemDefs.get(itemId)?.name || itemId
-  }));
-
-  return {
-    added,
-    leftover: normalizeItemEntries(leftover),
-    changed
-  };
-}
-
-function mergeOrSwapInventorySlots(player, fromIndex, toIndex) {
-  if (!player || !Array.isArray(player.inventorySlots)) {
-    return false;
-  }
-  if (
-    !Number.isInteger(fromIndex) ||
-    !Number.isInteger(toIndex) ||
-    fromIndex < 0 ||
-    toIndex < 0 ||
-    fromIndex >= player.inventorySlots.length ||
-    toIndex >= player.inventorySlots.length ||
-    fromIndex === toIndex
-  ) {
-    return false;
-  }
-
-  const slots = player.inventorySlots;
-  const from = slots[fromIndex];
-  const to = slots[toIndex];
-
-  if (!from && !to) {
-    return false;
-  }
-
-  if (!from || !to) {
-    slots[fromIndex] = to;
-    slots[toIndex] = from;
-    return true;
-  }
-
-  if (from.itemId === to.itemId) {
-    const stackSize = ITEM_CONFIG.itemDefs.get(from.itemId)?.stackSize || 1;
-    if (to.qty < stackSize) {
-      const moveQty = Math.min(from.qty, stackSize - to.qty);
-      to.qty += moveQty;
-      from.qty -= moveQty;
-      if (from.qty <= 0) {
-        slots[fromIndex] = null;
-      }
-      return moveQty > 0;
-    }
-  }
-
-  slots[fromIndex] = to;
-  slots[toIndex] = from;
-  return true;
-}
-
-function consumeInventoryItem(player, itemId, qty = 1) {
-  if (!player || !Array.isArray(player.inventorySlots)) {
-    return false;
-  }
-  const targetId = String(itemId || "").trim();
-  let remaining = Math.max(1, Math.floor(Number(qty) || 1));
-  if (!targetId) {
-    return false;
-  }
-
-  for (let i = 0; i < player.inventorySlots.length && remaining > 0; i += 1) {
-    const slot = player.inventorySlots[i];
-    if (!slot || slot.itemId !== targetId) {
-      continue;
-    }
-    const take = Math.min(slot.qty, remaining);
-    slot.qty -= take;
-    remaining -= take;
-    if (slot.qty <= 0) {
-      player.inventorySlots[i] = null;
-    }
-  }
-
-  return remaining === 0;
-}
-
-function getInventoryItemCount(player, itemId) {
-  if (!player || !Array.isArray(player.inventorySlots) || !itemId) {
-    return 0;
-  }
-  let total = 0;
-  for (const slot of player.inventorySlots) {
-    if (!slot || slot.itemId !== itemId) {
-      continue;
-    }
-    total += Math.max(0, Math.floor(Number(slot.qty) || 0));
-  }
-  return total;
-}
-
-function syncPlayerCopperFromInventory(player, shouldNotify = false) {
-  if (!player) {
-    return false;
-  }
-  const nextCopper = clamp(getInventoryItemCount(player, ITEM_COPPER_ID), 0, 65535);
-  if (nextCopper === player.copper) {
-    return false;
-  }
-  player.copper = nextCopper;
-  if (shouldNotify) {
-    sendSelfProgress(player);
-  }
-  return true;
 }
 
 function markMobProvokedByPlayer(mob, ownerId, now = Date.now()) {
