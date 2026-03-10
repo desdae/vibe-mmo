@@ -512,6 +512,21 @@ const projectileRenderTools = sharedCreateProjectileRenderTools
       getAbilityVisualHook
     })
   : null;
+const sharedClientUiPresentation = globalThis.VibeClientUiPresentation || null;
+const sharedCreateUiPresentationTools =
+  sharedClientUiPresentation && typeof sharedClientUiPresentation.createUiPresentationTools === "function"
+    ? sharedClientUiPresentation.createUiPresentationTools
+    : null;
+const uiPresentationTools = sharedCreateUiPresentationTools
+  ? sharedCreateUiPresentationTools({
+      ctx,
+      canvas,
+      clamp,
+      drawRoundedRect,
+      mobRenderRadius: MOB_RENDER_RADIUS,
+      itemDefsById
+    })
+  : null;
 
 function detectMobSpriteTypeFromName(name) {
   if (!mobRenderTools) {
@@ -6145,71 +6160,17 @@ function getHoveredLootBag(lootBags, cameraX, cameraY) {
 }
 
 function drawMobTooltip(mob, p) {
-  const label = String(mob.name || "Mob");
-  ctx.font = "12px Segoe UI";
-  ctx.textAlign = "center";
-  const paddingX = 8;
-  const height = 22;
-  const width = Math.ceil(ctx.measureText(label).width) + paddingX * 2;
-  const centerX = clamp(Math.round(p.x), width / 2 + 4, canvas.width - width / 2 - 4);
-  const x = Math.round(centerX - width / 2);
-  const y = Math.max(4, Math.round(p.y - MOB_RENDER_RADIUS - 38));
-
-  ctx.fillStyle = "rgba(8, 12, 18, 0.88)";
-  drawRoundedRect(ctx, x, y, width, height, 6);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(184, 212, 236, 0.45)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  ctx.fillStyle = "#eaf6ff";
-  ctx.fillText(label, centerX, y + 15);
+  if (!uiPresentationTools) {
+    return;
+  }
+  uiPresentationTools.drawMobTooltip(mob, p);
 }
 
 function drawLootBagTooltip(bag, p) {
-  const lines = ["Loot Bag"];
-  const items = Array.isArray(bag.items) ? bag.items : [];
-  if (!items.length) {
-    lines.push("(empty)");
-  } else {
-    for (const entry of items) {
-      if (!entry) {
-        continue;
-      }
-      const itemId = String(entry.itemId || "");
-      const qty = Math.max(0, Math.floor(Number(entry.qty) || 0));
-      if (!itemId || qty <= 0) {
-        continue;
-      }
-      const itemDef = itemDefsById.get(itemId);
-      lines.push(`${(itemDef && itemDef.name) || String(entry.name || itemId)} x${qty}`);
-    }
+  if (!uiPresentationTools) {
+    return;
   }
-
-  ctx.font = "12px Segoe UI";
-  ctx.textAlign = "left";
-  const paddingX = 8;
-  const lineHeight = 15;
-  let width = 90;
-  for (const line of lines) {
-    width = Math.max(width, Math.ceil(ctx.measureText(line).width) + paddingX * 2);
-  }
-
-  const height = 8 + lines.length * lineHeight;
-  const x = clamp(Math.round(p.x + 12), 4, Math.max(4, canvas.width - width - 4));
-  const y = clamp(Math.round(p.y - height - 8), 4, Math.max(4, canvas.height - height - 4));
-
-  ctx.fillStyle = "rgba(8, 12, 18, 0.9)";
-  drawRoundedRect(ctx, x, y, width, height, 6);
-  ctx.fill();
-  ctx.strokeStyle = "rgba(184, 212, 236, 0.45)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  for (let i = 0; i < lines.length; i += 1) {
-    ctx.fillStyle = i === 0 ? "#f6e8be" : "#eaf6ff";
-    ctx.fillText(lines[i], x + paddingX, y + 14 + i * lineHeight);
-  }
+  uiPresentationTools.drawLootBagTooltip(bag, p);
 }
 
 function drawGrid(cameraX, cameraY) {
