@@ -24,6 +24,7 @@ const {
 } = require("./server/config/server-config");
 const { loadGameplayConfigFromDisk } = require("./server/config/gameplay-config");
 const { loadItemConfigFromDisk } = require("./server/config/item-config");
+const { loadClassConfigFromDisk } = require("./server/config/class-config");
 const {
   parseMobDropRules,
   loadGlobalDropTableConfigFromDisk
@@ -890,99 +891,6 @@ function loadAbilityConfig() {
   };
 }
 
-function parseClassStartingItems(rawStartingItems, itemDefs) {
-  const result = [];
-  for (const block of Array.isArray(rawStartingItems) ? rawStartingItems : []) {
-    if (!block || typeof block !== "object") {
-      continue;
-    }
-    for (const [itemId, rawQty] of Object.entries(block)) {
-      if (!itemDefs.has(itemId)) {
-        continue;
-      }
-      const qtyRange = parseNumericRange(rawQty, 0, 0);
-      const qty = Math.max(0, Math.floor(Math.max(qtyRange[0], qtyRange[1])));
-      if (qty <= 0) {
-        continue;
-      }
-      result.push({
-        itemId,
-        qty
-      });
-    }
-  }
-  return normalizeItemEntries(result);
-}
-
-function loadClassConfig(abilityDefs, itemDefs) {
-  const raw = fs.readFileSync(CLASS_CONFIG_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  const entries = parsed && typeof parsed === "object" ? Object.entries(parsed) : [];
-
-  const classDefs = new Map();
-  const clientClassDefs = [];
-
-  for (const [rawId, entry] of entries) {
-    const id = String(rawId || "").trim();
-    if (!id || !entry || typeof entry !== "object") {
-      continue;
-    }
-
-    const abilities = [];
-    const abilityLevels = new Map();
-    for (const abilityEntry of Array.isArray(entry.abilities) ? entry.abilities : []) {
-      const abilityId = String(abilityEntry?.id || "").trim();
-      if (!abilityId || !abilityDefs.has(abilityId)) {
-        continue;
-      }
-      const level = clamp(Math.floor(Number(abilityEntry.level) || 1), 1, 255);
-      abilities.push({ id: abilityId, level });
-      abilityLevels.set(abilityId, level);
-    }
-
-    const baseHealth = clamp(Math.floor(Number(entry.baseHealth) || 10), 1, 255);
-    const baseMana = clamp(Math.floor(Number(entry.baseMana) || 0), 0, 65535);
-    const manaRegen = Math.max(0, Number(entry.manaRegen) || 0);
-    const classSpeedRaw = Number(entry.speed);
-    const movementSpeed = clamp(Number.isFinite(classSpeedRaw) ? classSpeedRaw : BASE_PLAYER_SPEED, 0.1, 20);
-    const startingItems = parseClassStartingItems(entry.startingItems, itemDefs);
-    const def = {
-      id,
-      name: String(entry.name || id).slice(0, 48),
-      description: String(entry.description || "").slice(0, 240),
-      baseHealth,
-      baseMana,
-      manaRegen,
-      speed: movementSpeed,
-      movementSpeed,
-      abilities,
-      abilityLevels,
-      startingItems
-    };
-
-    classDefs.set(id, def);
-    clientClassDefs.push({
-      id: def.id,
-      name: def.name,
-      description: def.description,
-      baseHealth: def.baseHealth,
-      baseMana: def.baseMana,
-      manaRegen: def.manaRegen,
-      speed: def.speed,
-      abilities: def.abilities.map((ability) => ({ ...ability }))
-    });
-  }
-
-  if (!classDefs.size) {
-    throw new Error(`No valid class definitions in ${CLASS_CONFIG_PATH}`);
-  }
-
-  return {
-    classDefs,
-    clientClassDefs
-  };
-}
-
 function sanitizeCssColor(value) {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -1595,7 +1503,13 @@ function broadcastClassAndAbilityDefs() {
 function reloadAbilityAndClassConfig(reason) {
   try {
     const nextAbilityConfig = loadAbilityConfig();
-    const nextClassConfig = loadClassConfig(nextAbilityConfig.abilityDefs, ITEM_CONFIG.itemDefs);
+    const nextClassConfig = loadClassConfigFromDisk(
+      CLASS_CONFIG_PATH,
+      nextAbilityConfig.abilityDefs,
+      ITEM_CONFIG.itemDefs,
+      BASE_PLAYER_SPEED,
+      normalizeItemEntries
+    );
     ABILITY_CONFIG = nextAbilityConfig;
     CLASS_CONFIG = nextClassConfig;
     console.log(`[config] Reloaded ${ABILITY_CONFIG_PATH} (${reason})`);
@@ -1761,7 +1675,13 @@ function watchMobConfig() {
 }
 
 let ABILITY_CONFIG = loadAbilityConfig();
-let CLASS_CONFIG = loadClassConfig(ABILITY_CONFIG.abilityDefs, ITEM_CONFIG.itemDefs);
+let CLASS_CONFIG = loadClassConfigFromDisk(
+  CLASS_CONFIG_PATH,
+  ABILITY_CONFIG.abilityDefs,
+  ITEM_CONFIG.itemDefs,
+  BASE_PLAYER_SPEED,
+  normalizeItemEntries
+);
 let MOB_CONFIG = loadMobConfig(ITEM_CONFIG.itemDefs, ABILITY_CONFIG.abilityDefs);
 const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
   GLOBAL_DROP_TABLE_PATH,
