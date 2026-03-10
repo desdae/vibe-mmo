@@ -2,7 +2,6 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { WebSocketServer } = require("ws");
-const PROTOCOL = require("./public/shared/protocol");
 const { executeAbilityByKind } = require("./server/ability-handlers");
 const { createAreaEffectTools } = require("./server/gameplay/area-effects");
 const { createGameLoop } = require("./server/runtime/game-loop");
@@ -43,6 +42,7 @@ const { createMobAbilityTools } = require("./server/gameplay/mob-abilities");
 const { createMobBehaviorTools } = require("./server/gameplay/mob-behavior");
 const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { pickClusterDef } = require("./server/gameplay/cluster-spawn");
+const { createSpatialTools } = require("./server/gameplay/spatial-tools");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createMobCombatEffectTools } = require("./server/gameplay/mob-combat-effects");
@@ -166,10 +166,6 @@ const INVENTORY_COLS = GAMEPLAY_CONFIG.inventory.cols;
 const INVENTORY_ROWS = GAMEPLAY_CONFIG.inventory.rows;
 const INVENTORY_SLOT_COUNT = INVENTORY_COLS * INVENTORY_ROWS;
 const ITEM_COPPER_ID = GAMEPLAY_CONFIG.loot.copperItemId;
-
-const {
-  POS_SCALE
-} = PROTOCOL;
 
 const publicDir = path.join(__dirname, "public");
 const buildSoundManifest = createSoundManifestBuilder({ publicDir });
@@ -850,61 +846,16 @@ const mobAbilityOverrideTools = createMobAbilityOverrideResolver({
   findAbilityEffect
 });
 const resolveMobAbilityOverrideDef = mobAbilityOverrideTools.resolveMobAbilityOverrideDef;
-
-function quantizePos(value) {
-  return clamp(Math.round(value * POS_SCALE), 0, 65535);
-}
-
-function randomPointInRadius(cx, cy, radius) {
-  const angle = Math.random() * Math.PI * 2;
-  const r = Math.sqrt(Math.random()) * radius;
-  return {
-    x: clamp(cx + Math.cos(angle) * r, 0, MAP_WIDTH - 1),
-    y: clamp(cy + Math.sin(angle) * r, 0, MAP_HEIGHT - 1)
-  };
-}
-
-function clampToSpawnRadius(x, y, spawnX, spawnY, radius) {
-  const dx = x - spawnX;
-  const dy = y - spawnY;
-  const len = Math.hypot(dx, dy);
-  if (!len || len <= radius) {
-    return { x, y };
-  }
-  const scale = radius / len;
-  return {
-    x: clamp(spawnX + dx * scale, 0, MAP_WIDTH - 1),
-    y: clamp(spawnY + dy * scale, 0, MAP_HEIGHT - 1)
-  };
-}
-
-function randomSpawn() {
-  const centerX = Math.floor(MAP_WIDTH / 2);
-  const centerY = Math.floor(MAP_HEIGHT / 2);
-  const maxDistance = 10;
-
-  // Rejection sampling to keep spawn inside a radius of 10 tiles from center.
-  for (let i = 0; i < 100; i += 1) {
-    const dx = Math.floor(Math.random() * (maxDistance * 2 + 1)) - maxDistance;
-    const dy = Math.floor(Math.random() * (maxDistance * 2 + 1)) - maxDistance;
-    if (dx * dx + dy * dy <= maxDistance * maxDistance) {
-      return {
-        x: clamp(centerX + dx, 0, MAP_WIDTH - 1),
-        y: clamp(centerY + dy, 0, MAP_HEIGHT - 1)
-      };
-    }
-  }
-
-  // Fallback to exact center (should be rare).
-  return {
-    x: centerX,
-    y: centerY
-  };
-}
-
-function inVisibilityRange(a, b, range) {
-  return Math.abs(a.x - b.x) <= range && Math.abs(a.y - b.y) <= range;
-}
+const spatialTools = createSpatialTools({
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  clamp,
+  spawnMaxDistance: 10
+});
+const randomPointInRadius = spatialTools.randomPointInRadius;
+const clampToSpawnRadius = spatialTools.clampToSpawnRadius;
+const randomSpawn = spatialTools.randomSpawn;
+const inVisibilityRange = spatialTools.inVisibilityRange;
 
 const ITEM_CONFIG = loadItemConfigFromDisk(ITEM_CONFIG_PATH);
 const playerMessageTools = createPlayerMessageTools({
