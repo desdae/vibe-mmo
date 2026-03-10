@@ -25,7 +25,6 @@ const { createEntityUpdatePacketBuilder } = require("./server/network/entity-upd
 const { serializePlayer, serializeMob, serializeLootBag } = require("./server/network/entity-serializers");
 const { createEventBuilders } = require("./server/network/event-builders");
 const { createAreaEffectEventBuilder } = require("./server/network/area-effect-events");
-const { createPlayerMessageTools } = require("./server/network/player-messages");
 const { createWsConnectionDeps } = require("./server/network/ws-deps");
 const { createWorldEventQueues } = require("./server/network/world-events");
 const {
@@ -49,8 +48,6 @@ const {
 } = require("./server/gameplay/ability-stats");
 const { createCastingTools } = require("./server/gameplay/casting");
 const { createDamageTools } = require("./server/gameplay/damage");
-const { createNormalizeItemEntries, createDropRollTools } = require("./server/gameplay/drops");
-const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createLootBagTools } = require("./server/gameplay/loot-bags");
 const { createMobAbilityOverrideResolver } = require("./server/gameplay/mob-ability-overrides");
 const { createMobAbilityTools } = require("./server/gameplay/mob-abilities");
@@ -70,8 +67,7 @@ const { createProjectileEffectTools } = require("./server/gameplay/projectile-ef
 const { createProjectileRuntimeTools } = require("./server/gameplay/projectile-runtime");
 const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spawn");
 const { createPlayerCommandTools } = require("./server/gameplay/player-commands");
-const { createPlayerResourceTools } = require("./server/gameplay/player-resources");
-const { createProgressionTools } = require("./server/gameplay/progression");
+const { createCoreServices } = require("./server/runtime/core-services");
 const {
   normalizeDirection,
   distance,
@@ -219,31 +215,6 @@ const randomSpawn = spatialTools.randomSpawn;
 const inVisibilityRange = spatialTools.inVisibilityRange;
 
 const ITEM_CONFIG = loadItemConfigFromDisk(ITEM_CONFIG_PATH);
-const normalizeItemEntries = createNormalizeItemEntries({
-  itemDefs: ITEM_CONFIG.itemDefs
-});
-const playerMessageTools = createPlayerMessageTools({
-  sendJson,
-  itemDefs: ITEM_CONFIG.itemDefs,
-  inventoryCols: INVENTORY_COLS,
-  inventoryRows: INVENTORY_ROWS,
-  inventorySlotCount: INVENTORY_SLOT_COUNT
-});
-const sendSelfProgress = playerMessageTools.sendSelfProgress;
-const sendInventoryState = playerMessageTools.sendInventoryState;
-const serializeBagItemsForMeta = (items) => playerMessageTools.serializeBagItemsForMeta(items, normalizeItemEntries);
-const inventoryTools = createInventoryTools({
-  itemDefs: ITEM_CONFIG.itemDefs,
-  inventorySlotCount: INVENTORY_SLOT_COUNT,
-  copperItemId: ITEM_COPPER_ID,
-  normalizeItemEntries,
-  sendSelfProgress
-});
-const createEmptyInventorySlots = inventoryTools.createEmptyInventorySlots;
-const addItemsToInventory = inventoryTools.addItemsToInventory;
-const mergeOrSwapInventorySlots = inventoryTools.mergeOrSwapInventorySlots;
-const consumeInventoryItem = inventoryTools.consumeInventoryItem;
-const syncPlayerCopperFromInventory = inventoryTools.syncPlayerCopperFromInventory;
 let SERVER_CONFIG;
 try {
   SERVER_CONFIG = loadServerConfigFromDisk(SERVER_CONFIG_PATH);
@@ -255,24 +226,46 @@ try {
     `[config] Failed to load ${SERVER_CONFIG_PATH}, using defaults. Reason: ${reason}`
   );
 }
-const progressionTools = createProgressionTools({
+let GLOBAL_DROP_CONFIG = { entries: [] };
+const coreServices = createCoreServices({
+  sendJson,
+  itemDefs: ITEM_CONFIG.itemDefs,
+  inventoryCols: INVENTORY_COLS,
+  inventoryRows: INVENTORY_ROWS,
+  inventorySlotCount: INVENTORY_SLOT_COUNT,
+  copperItemId: ITEM_COPPER_ID,
   baseExpToNext: BASE_EXP_TO_NEXT,
   expGrowthFactor: EXP_GROWTH_FACTOR,
   getExpMultiplier: () => Number(SERVER_CONFIG?.expMultiplier) || 1,
-  sendSelfProgress
-});
-const expNeededForLevel = progressionTools.expNeededForLevel;
-const grantPlayerExp = progressionTools.grantPlayerExp;
-const playerResourceTools = createPlayerResourceTools({
   tickMs: TICK_MS,
-  clamp
+  clamp,
+  randomInt,
+  getServerConfig: () => SERVER_CONFIG,
+  getGlobalDropConfig: () => GLOBAL_DROP_CONFIG,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT
 });
-const getPendingHealAmount = playerResourceTools.getPendingHealAmount;
-const getPendingManaAmount = playerResourceTools.getPendingManaAmount;
-const addHealOverTimeEffect = playerResourceTools.addHealOverTimeEffect;
-const addManaOverTimeEffect = playerResourceTools.addManaOverTimeEffect;
-const tickPlayerHealEffects = playerResourceTools.tickPlayerHealEffects;
-const tickPlayerManaEffects = playerResourceTools.tickPlayerManaEffects;
+const normalizeItemEntries = coreServices.normalizeItemEntries;
+const sendSelfProgress = coreServices.sendSelfProgress;
+const sendInventoryState = coreServices.sendInventoryState;
+const serializeBagItemsForMeta = coreServices.serializeBagItemsForMeta;
+const createEmptyInventorySlots = coreServices.createEmptyInventorySlots;
+const addItemsToInventory = coreServices.addItemsToInventory;
+const mergeOrSwapInventorySlots = coreServices.mergeOrSwapInventorySlots;
+const consumeInventoryItem = coreServices.consumeInventoryItem;
+const syncPlayerCopperFromInventory = coreServices.syncPlayerCopperFromInventory;
+const expNeededForLevel = coreServices.expNeededForLevel;
+const grantPlayerExp = coreServices.grantPlayerExp;
+const getPendingHealAmount = coreServices.getPendingHealAmount;
+const getPendingManaAmount = coreServices.getPendingManaAmount;
+const addHealOverTimeEffect = coreServices.addHealOverTimeEffect;
+const addManaOverTimeEffect = coreServices.addManaOverTimeEffect;
+const tickPlayerHealEffects = coreServices.tickPlayerHealEffects;
+const tickPlayerManaEffects = coreServices.tickPlayerManaEffects;
+const rollDropRules = coreServices.rollDropRules;
+const getDistanceFromCenter = coreServices.getDistanceFromCenter;
+const rollGlobalDropsForPlayer = coreServices.rollGlobalDropsForPlayer;
+const rollMobDrops = coreServices.rollMobDrops;
 
 let ABILITY_CONFIG = loadAbilityConfig();
 let CLASS_CONFIG = loadClassConfigFromDisk(
@@ -295,25 +288,12 @@ let MOB_CONFIG = loadMobConfigFromDisk(
     mobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
   }
 );
-const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
+GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
   GLOBAL_DROP_TABLE_PATH,
   ITEM_CONFIG.itemDefs,
   MAP_WIDTH,
   MAP_HEIGHT
 );
-const dropRollTools = createDropRollTools({
-  clamp,
-  randomInt,
-  normalizeItemEntries,
-  getServerConfig: () => SERVER_CONFIG,
-  getGlobalDropConfig: () => GLOBAL_DROP_CONFIG,
-  mapWidth: MAP_WIDTH,
-  mapHeight: MAP_HEIGHT
-});
-const rollDropRules = dropRollTools.rollDropRules;
-const getDistanceFromCenter = dropRollTools.getDistanceFromCenter;
-const rollGlobalDropsForPlayer = dropRollTools.rollGlobalDropsForPlayer;
-const rollMobDrops = dropRollTools.rollMobDrops;
 
 const server = createGameHttpServer({
   http,
