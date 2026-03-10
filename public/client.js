@@ -447,124 +447,78 @@ function normalizeMobRenderStyle(rawStyle) {
   return Object.keys(style).length > 0 ? style : null;
 }
 
+const sharedClientRenderMobs = globalThis.VibeClientRenderMobs || null;
+const sharedCreateMobRenderTools =
+  sharedClientRenderMobs && typeof sharedClientRenderMobs.createMobRenderTools === "function"
+    ? sharedClientRenderMobs.createMobRenderTools
+    : null;
+const mobRenderTools = sharedCreateMobRenderTools
+  ? sharedCreateMobRenderTools({
+      clamp,
+      ctx,
+      mouseState,
+      entityRuntime,
+      mobSpriteCache,
+      MOB_SPRITE_SIZE,
+      sanitizeCssColor,
+      drawRoundedRect,
+      worldToScreen,
+      getZombieWalkSprite,
+      getCreeperWalkSprite,
+      getSpiderWalkSprite,
+      getOrcWalkSprite,
+      getSkeletonWalkSprite,
+      getSkeletonArcherWalkSprite
+    })
+  : null;
+
 function detectMobSpriteTypeFromName(name) {
-  const lower = String(name || "").toLowerCase();
-  if (lower.includes("skeleton") && lower.includes("archer")) {
-    return "skeleton_archer";
+  if (!mobRenderTools) {
+    return "basic";
   }
-  if (lower.includes("skeleton")) {
-    return "skeleton";
-  }
-  if (lower.includes("creeper")) {
-    return "creeper";
-  }
-  if (lower.includes("spider")) {
-    return "spider";
-  }
-  if (lower.includes("zombie")) {
-    return "zombie";
-  }
-  if (lower.includes("orc") || lower.includes("berserker")) {
-    return "orc";
-  }
-  return "basic";
+  return mobRenderTools.detectMobSpriteTypeFromName(name);
 }
 
 function getMobRenderStyle(mob) {
-  if (mob && mob.renderStyle && typeof mob.renderStyle === "object") {
-    return mob.renderStyle;
+  if (!mobRenderTools) {
+    return null;
   }
-  const meta = entityRuntime.mobMeta.get(mob && mob.id);
-  if (meta && meta.renderStyle && typeof meta.renderStyle === "object") {
-    return meta.renderStyle;
-  }
-  return null;
+  return mobRenderTools.getMobRenderStyle(mob);
 }
 
 function getMobSpriteType(mob) {
-  const style = getMobRenderStyle(mob);
-  const configured = String((style && style.spriteType) || "").toLowerCase();
-  const normalized =
-    configured === "orcberserker" || configured === "orc_berserker" ? "orc" : configured;
-  if (
-    normalized === "zombie" ||
-    normalized === "skeleton" ||
-    normalized === "skeleton_archer" ||
-    normalized === "creeper" ||
-    normalized === "spider" ||
-    normalized === "orc" ||
-    normalized === "basic"
-  ) {
-    return normalized;
+  if (!mobRenderTools) {
+    return "basic";
   }
-  return detectMobSpriteTypeFromName(mob && mob.name);
+  return mobRenderTools.getMobSpriteType(mob);
 }
 
 function getMobAttackVisualType(mob) {
-  const style = getMobRenderStyle(mob);
-  const configured = String((style && style.attackVisual) || "").toLowerCase();
-  if (
-    configured === "bite" ||
-    configured === "sword" ||
-    configured === "dual_axes" ||
-    configured === "ignition" ||
-    configured === "bow" ||
-    configured === "none"
-  ) {
-    return configured;
+  if (!mobRenderTools) {
+    return "bite";
   }
-  const spriteType = getMobSpriteType(mob);
-  if (spriteType === "skeleton_archer") {
-    return "bow";
-  }
-  if (spriteType === "skeleton") {
-    return "sword";
-  }
-  if (spriteType === "creeper") {
-    return "ignition";
-  }
-  if (spriteType === "orc") {
-    return "dual_axes";
-  }
-  return "bite";
+  return mobRenderTools.getMobAttackVisualType(mob);
 }
 
 function getMobStyleNumber(style, key, fallback, min, max) {
-  const n = Number(style && style[key]);
-  if (!Number.isFinite(n)) {
+  if (!mobRenderTools) {
     return fallback;
   }
-  return clamp(n, min, max);
+  return mobRenderTools.getMobStyleNumber(style, key, fallback, min, max);
 }
 
 function getMobStyleCacheKey(style) {
-  if (!style || typeof style !== "object") {
+  if (!mobRenderTools) {
     return "";
   }
-  try {
-    return JSON.stringify(style);
-  } catch {
-    return "";
-  }
+  return mobRenderTools.getMobStyleCacheKey(style);
 }
 
 function applyMobPaletteOverrides(basePalette, style) {
-  const palette = { ...basePalette };
-  const source = style && style.palette && typeof style.palette === "object" ? style.palette : null;
-  if (!source) {
-    return palette;
+  if (!mobRenderTools) {
+    return { ...(basePalette || {}) };
   }
-  for (const [key, value] of Object.entries(source)) {
-    if (!(key in palette)) {
-      continue;
-    }
-    const color = sanitizeCssColor(value);
-    if (!color) {
-      continue;
-    }
-    palette[key] = color;
-  }
-  return palette;
+  return mobRenderTools.applyMobPaletteOverrides(basePalette, style);
 }
 
 function setStatus(text) {
@@ -6122,201 +6076,31 @@ function pruneSkeletonArcherWalkRuntime() {
 }
 
 function createMobSprite(typeName, style = null) {
-  const styleKey = getMobStyleCacheKey(style);
-  const key = `${String(typeName || "Mob")}|${styleKey}`;
-  const cached = mobSpriteCache.get(key);
-  if (cached) {
-    return cached;
+  if (!mobRenderTools) {
+    return document.createElement("canvas");
   }
-
-  const sprite = document.createElement("canvas");
-  sprite.width = MOB_SPRITE_SIZE;
-  sprite.height = MOB_SPRITE_SIZE;
-  const sctx = sprite.getContext("2d");
-  const keyLower = String(typeName || "Mob").toLowerCase();
-  const seed = hashString(String(typeName || "Mob"));
-  const variant = seed % 4;
-  const palettes = [
-    { body: "#6ab04a", accent: "#b8e994", outline: "#1a2f16", eye: "#171717" },
-    { body: "#c86b3c", accent: "#f7b267", outline: "#3d1d11", eye: "#120b08" },
-    { body: "#5577cc", accent: "#a9c3ff", outline: "#1a2442", eye: "#0b1022" },
-    { body: "#9b59b6", accent: "#d7b4ec", outline: "#2c1738", eye: "#14091b" }
-  ];
-  const palette = applyMobPaletteOverrides(palettes[(seed >>> 3) % palettes.length], style);
-  const cx = MOB_SPRITE_SIZE / 2;
-  const cy = MOB_SPRITE_SIZE / 2;
-
-  sctx.translate(cx, cy);
-
-  if (keyLower.includes("skeleton")) {
-    if (keyLower.includes("archer")) {
-      const frames = getSkeletonArcherWalkFrames(typeName, style);
-      const idle = frames[0];
-      mobSpriteCache.set(key, idle);
-      return idle;
-    }
-    const frames = getSkeletonWalkFrames(typeName, style);
-    const idle = frames[0];
-    mobSpriteCache.set(key, idle);
-    return idle;
-  }
-
-  if (keyLower.includes("creeper")) {
-    const frames = getCreeperWalkFrames(typeName, style);
-    const idle = frames[0];
-    mobSpriteCache.set(key, idle);
-    return idle;
-  }
-
-  if (keyLower.includes("spider")) {
-    const frames = getSpiderWalkFrames(typeName, style);
-    const idle = frames[0];
-    mobSpriteCache.set(key, idle);
-    return idle;
-  }
-
-  if (keyLower.includes("orc") || keyLower.includes("berserker")) {
-    const frames = getOrcWalkFrames(typeName, style);
-    const idle = frames[0];
-    mobSpriteCache.set(key, idle);
-    return idle;
-  }
-
-  if (keyLower.includes("zombie")) {
-    const frames = getZombieWalkFrames(typeName, style);
-    const idle = frames[0];
-    mobSpriteCache.set(key, idle);
-    return idle;
-  }
-
-  sctx.strokeStyle = palette.outline;
-  sctx.fillStyle = palette.body;
-  sctx.lineWidth = 2;
-
-  if (variant === 0) {
-    sctx.beginPath();
-    sctx.arc(0, 1, 10, 0, Math.PI * 2);
-    sctx.fill();
-    sctx.stroke();
-
-    sctx.fillStyle = palette.accent;
-    sctx.beginPath();
-    sctx.arc(-4, -2, 2.5, 0, Math.PI * 2);
-    sctx.arc(3, 2, 2.3, 0, Math.PI * 2);
-    sctx.fill();
-  } else if (variant === 1) {
-    drawRoundedRect(sctx, -10, -10, 20, 20, 6);
-    sctx.fill();
-    sctx.stroke();
-
-    sctx.strokeStyle = palette.accent;
-    sctx.lineWidth = 1.5;
-    sctx.beginPath();
-    sctx.moveTo(-6, -4);
-    sctx.lineTo(6, -1);
-    sctx.moveTo(-7, 3);
-    sctx.lineTo(5, 6);
-    sctx.stroke();
-    sctx.strokeStyle = palette.outline;
-    sctx.lineWidth = 2;
-  } else if (variant === 2) {
-    sctx.beginPath();
-    sctx.moveTo(0, -12);
-    sctx.lineTo(10, -4);
-    sctx.lineTo(9, 8);
-    sctx.lineTo(0, 12);
-    sctx.lineTo(-9, 8);
-    sctx.lineTo(-10, -4);
-    sctx.closePath();
-    sctx.fill();
-    sctx.stroke();
-
-    sctx.fillStyle = palette.accent;
-    sctx.beginPath();
-    sctx.arc(0, 5, 3, 0, Math.PI * 2);
-    sctx.fill();
-  } else {
-    sctx.beginPath();
-    sctx.ellipse(0, 1, 11, 9, 0, 0, Math.PI * 2);
-    sctx.fill();
-    sctx.stroke();
-
-    sctx.fillStyle = palette.accent;
-    sctx.beginPath();
-    sctx.moveTo(-7, -2);
-    sctx.lineTo(-2, -6);
-    sctx.lineTo(2, -6);
-    sctx.lineTo(7, -2);
-    sctx.lineTo(2, 0);
-    sctx.lineTo(-2, 0);
-    sctx.closePath();
-    sctx.fill();
-  }
-
-  sctx.fillStyle = "#ffffff";
-  sctx.beginPath();
-  sctx.arc(-3.2, -1.8, 2.4, 0, Math.PI * 2);
-  sctx.arc(3.2, -1.8, 2.4, 0, Math.PI * 2);
-  sctx.fill();
-  sctx.fillStyle = palette.eye;
-  sctx.beginPath();
-  sctx.arc(-3.2, -1.8, 0.9, 0, Math.PI * 2);
-  sctx.arc(3.2, -1.8, 0.9, 0, Math.PI * 2);
-  sctx.fill();
-
-  mobSpriteCache.set(key, sprite);
-  return sprite;
+  return mobRenderTools.createMobSprite(typeName, style);
 }
 
 function drawMobHpBar(mob, p) {
-  if (!Number.isFinite(mob.maxHp) || mob.maxHp <= 0 || mob.hp >= mob.maxHp) {
+  if (!mobRenderTools) {
     return;
   }
-
-  const ratio = clamp(mob.hp / mob.maxHp, 0, 1);
-  const barWidth = 26;
-  const barHeight = 5;
-  const x = Math.round(p.x - barWidth / 2);
-  const y = Math.round(p.y - MOB_RENDER_RADIUS - 12);
-
-  ctx.fillStyle = "rgba(12, 18, 28, 0.85)";
-  ctx.fillRect(x - 1, y - 1, barWidth + 2, barHeight + 2);
-  ctx.fillStyle = "rgba(77, 17, 17, 0.95)";
-  ctx.fillRect(x, y, barWidth, barHeight);
-  ctx.fillStyle = ratio > 0.45 ? "#79e06f" : ratio > 0.2 ? "#f3d860" : "#f26a6a";
-  ctx.fillRect(x, y, Math.round(barWidth * ratio), barHeight);
+  mobRenderTools.drawMobHpBar(mob, p);
 }
 
 function getHoveredMob(mobs, cameraX, cameraY) {
-  let nearest = null;
-  let nearestDist = Infinity;
-
-  for (const mob of mobs) {
-    const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
-    const dist = Math.hypot(mouseState.sx - p.x, mouseState.sy - p.y);
-    if (dist <= MOB_RENDER_RADIUS + 4 && dist < nearestDist) {
-      nearest = { mob, p };
-      nearestDist = dist;
-    }
+  if (!mobRenderTools) {
+    return null;
   }
-
-  return nearest;
+  return mobRenderTools.getHoveredMob(mobs, cameraX, cameraY);
 }
 
 function getHoveredLootBag(lootBags, cameraX, cameraY) {
-  let nearest = null;
-  let nearestDist = Infinity;
-
-  for (const bag of lootBags) {
-    const p = worldToScreen(bag.x + 0.5, bag.y + 0.5, cameraX, cameraY);
-    const dist = Math.hypot(mouseState.sx - p.x, mouseState.sy - p.y);
-    if (dist <= MOB_RENDER_RADIUS + 2 && dist < nearestDist) {
-      nearest = { bag, p };
-      nearestDist = dist;
-    }
+  if (!mobRenderTools) {
+    return null;
   }
-
-  return nearest;
+  return mobRenderTools.getHoveredLootBag(lootBags, cameraX, cameraY);
 }
 
 function drawMobTooltip(mob, p) {
@@ -7951,32 +7735,10 @@ function drawProjectile(projectile, cameraX, cameraY, frameNow) {
 }
 
 function drawMob(mob, cameraX, cameraY, attackState = null) {
-  const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
-  const mobStyle = getMobRenderStyle(mob);
-  const mobName = String(mob.name || "Mob");
-  const spriteType = getMobSpriteType(mob);
-  const skeletonArcherIncludeBow = !attackState;
-  const skeletonIncludeSword = !attackState;
-  const orcIncludeAxes = !attackState;
-  const sprite = spriteType === "skeleton_archer"
-    ? getSkeletonArcherWalkSprite(mob, skeletonArcherIncludeBow)
-    : spriteType === "skeleton"
-      ? getSkeletonWalkSprite(mob, skeletonIncludeSword)
-    : spriteType === "creeper"
-      ? getCreeperWalkSprite(mob)
-      : spriteType === "spider"
-        ? getSpiderWalkSprite(mob)
-        : spriteType === "zombie"
-          ? getZombieWalkSprite(mob)
-          : spriteType === "orc"
-            ? getOrcWalkSprite(mob, orcIncludeAxes)
-            : createMobSprite(mobName, mobStyle);
-
-  const sizeScale = getMobStyleNumber(mobStyle, "sizeScale", 1, 0.5, 3);
-  const drawSize = Math.round(MOB_SPRITE_SIZE * sizeScale);
-  const half = drawSize / 2;
-  ctx.drawImage(sprite, Math.round(p.x - half), Math.round(p.y - half), drawSize, drawSize);
-  drawMobHpBar(mob, p);
+  if (!mobRenderTools) {
+    return;
+  }
+  mobRenderTools.drawMob(mob, cameraX, cameraY, attackState);
 }
 
 function drawLootBag(bag, cameraX, cameraY) {
