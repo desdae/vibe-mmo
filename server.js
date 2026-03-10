@@ -25,10 +25,8 @@ const {
 const { loadGameplayConfigFromDisk } = require("./server/config/gameplay-config");
 const { loadItemConfigFromDisk } = require("./server/config/item-config");
 const { loadClassConfigFromDisk } = require("./server/config/class-config");
-const {
-  parseMobDropRules,
-  loadGlobalDropTableConfigFromDisk
-} = require("./server/config/drop-config");
+const { loadMobConfigFromDisk } = require("./server/config/mob-config");
+const { loadGlobalDropTableConfigFromDisk } = require("./server/config/drop-config");
 const {
   getAbilityDamageRange,
   getAbilityDotDamageRange,
@@ -43,12 +41,10 @@ const { createLootBagTools } = require("./server/gameplay/loot-bags");
 const { createMobAbilityOverrideResolver } = require("./server/gameplay/mob-ability-overrides");
 const { createMobAbilityTools } = require("./server/gameplay/mob-abilities");
 const { createMobBehaviorTools } = require("./server/gameplay/mob-behavior");
-const { parseMobCombatConfig } = require("./server/gameplay/mob-combat-config");
 const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createMobCombatEffectTools } = require("./server/gameplay/mob-combat-effects");
-const { parseMobRenderStyle } = require("./server/gameplay/mob-render-style");
 const {
   getObjectPath,
   firstFiniteNumber,
@@ -854,154 +850,6 @@ const mobAbilityOverrideTools = createMobAbilityOverrideResolver({
 });
 const resolveMobAbilityOverrideDef = mobAbilityOverrideTools.resolveMobAbilityOverrideDef;
 
-function loadMobConfig(itemDefs, abilityDefs) {
-  const raw = fs.readFileSync(MOB_CONFIG_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  const maxMapRadius = Math.hypot(MAP_WIDTH / 2, MAP_HEIGHT / 2);
-  const healthMultiplier = SERVER_CONFIG.mobHealthMultiplier;
-  const damageMultiplier = SERVER_CONFIG.mobDamageMultiplier;
-  const respawnMultiplier = SERVER_CONFIG.mobRespawnMultiplier;
-
-  const mobDefs = new Map();
-  for (const mobEntry of Array.isArray(parsed.mobs) ? parsed.mobs : []) {
-    const name = String(mobEntry?.name || "").trim();
-    if (!name) {
-      continue;
-    }
-
-    const health = clamp(Math.round((Number(mobEntry.health) || 1) * healthMultiplier), 1, 255);
-    const [damageMinRaw, damageMaxRaw] = parseNumericRange(mobEntry.damage, 1, 1);
-    const damageMin = clamp(Math.round(damageMinRaw * damageMultiplier), 0, 255);
-    const damageMax = clamp(Math.round(damageMaxRaw * damageMultiplier), damageMin, 255);
-    const baseSpeed = clamp(Number(mobEntry.speed) || 0.5, 0.05, 20);
-    const [respawnMinRaw, respawnMaxRaw] = parseNumericRange(mobEntry.respawnTime, 30, 30);
-    const respawnMinMs = Math.max(1000, Math.round(respawnMinRaw * 1000 * respawnMultiplier));
-    const respawnMaxMs = Math.max(respawnMinMs, Math.round(respawnMaxRaw * 1000 * respawnMultiplier));
-    const dropRules = parseMobDropRules(mobEntry.drops, itemDefs);
-    const renderStyle = parseMobRenderStyle(mobEntry.renderStyle);
-    const combat = parseMobCombatConfig(mobEntry.combat, abilityDefs, damageMin, damageMax, {
-      mobAggroRange: MOB_AGGRO_RANGE,
-      mobAttackRange: MOB_ATTACK_RANGE,
-      mobWanderRadius: MOB_WANDER_RADIUS,
-      mobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
-    });
-
-    mobDefs.set(name, {
-      name,
-      health,
-      damageMin,
-      damageMax,
-      baseSpeed,
-      respawnMinMs,
-      respawnMaxMs,
-      dropRules,
-      renderStyle,
-      combat
-    });
-  }
-
-  if (!mobDefs.size) {
-    throw new Error(`No valid mob definitions in ${MOB_CONFIG_PATH}`);
-  }
-
-  const clusterDefs = [];
-  for (const clusterEntry of Array.isArray(parsed.mobClusters) ? parsed.mobClusters : []) {
-    const name = String(clusterEntry?.name || "").trim() || `cluster_${clusterDefs.length + 1}`;
-    const memberMobNames = Array.isArray(clusterEntry?.mobs) ? clusterEntry.mobs : [];
-    const members = memberMobNames.map((mobName) => mobDefs.get(String(mobName))).filter(Boolean);
-    if (!members.length) {
-      continue;
-    }
-
-    const maxSize = clamp(Math.round(Number(clusterEntry.maxSize) || 1), 1, 16);
-
-    const rawSpawnRanges = Array.isArray(clusterEntry.spawnRanges)
-      ? clusterEntry.spawnRanges
-      : Array.isArray(clusterEntry.spawnBands)
-        ? clusterEntry.spawnBands
-        : [];
-    const fallbackLegacyRange = parseNumericRange(clusterEntry.spawnRange, 0, maxMapRadius);
-    const fallbackLegacyChance = Math.max(0, Number(clusterEntry.spawnChance) || 0);
-    const spawnBandEntries = rawSpawnRanges.length
-      ? rawSpawnRanges
-      : fallbackLegacyChance > 0
-        ? [
-            {
-              range: fallbackLegacyRange,
-              chance: fallbackLegacyChance,
-              curve: clusterEntry.spawnCurve || "linear"
-            }
-          ]
-        : [];
-
-    const spawnBands = [];
-    for (const bandEntry of spawnBandEntries) {
-      if (!bandEntry || typeof bandEntry !== "object") {
-        continue;
-      }
-      const [rangeMinRaw, rangeMaxRaw] = parseNumericRange(
-        bandEntry.range || [bandEntry.from, bandEntry.to],
-        0,
-        maxMapRadius
-      );
-      const rangeMin = clamp(Math.min(rangeMinRaw, rangeMaxRaw), 0, maxMapRadius);
-      const rangeMax = clamp(Math.max(rangeMinRaw, rangeMaxRaw), rangeMin, maxMapRadius);
-      const chance = Math.max(
-        0,
-        Number(
-          bandEntry.chance ??
-            bandEntry.spawnChance ??
-            bandEntry.weight ??
-            0
-        ) || 0
-      );
-      if (chance <= 0) {
-        continue;
-      }
-      const curve = String(bandEntry.curve || "linear").trim().toLowerCase() || "linear";
-      spawnBands.push({
-        rangeMin,
-        rangeMax,
-        chance,
-        curve
-      });
-    }
-
-    if (!spawnBands.length) {
-      continue;
-    }
-
-    const spawnRangeMin = Math.min(...spawnBands.map((band) => band.rangeMin));
-    const spawnRangeMax = Math.max(...spawnBands.map((band) => band.rangeMax));
-    const totalSpawnChance = spawnBands.reduce((sum, band) => sum + band.chance, 0);
-
-    clusterDefs.push({
-      name,
-      members,
-      spawnBands,
-      totalSpawnChance,
-      maxSize,
-      spawnRangeMin,
-      spawnRangeMax
-    });
-  }
-
-  if (!clusterDefs.length) {
-    throw new Error(`No valid mob cluster definitions in ${MOB_CONFIG_PATH}`);
-  }
-
-  const totalSpawnChance = clusterDefs.reduce((sum, cluster) => sum + cluster.totalSpawnChance, 0);
-  const configMaxSpawnRadius = clusterDefs.length
-    ? Math.max(...clusterDefs.map((cluster) => cluster.spawnRangeMax))
-    : maxMapRadius;
-  return {
-    mobDefs,
-    clusterDefs,
-    totalSpawnChance,
-    maxSpawnRadius: clamp(configMaxSpawnRadius, 1, maxMapRadius)
-  };
-}
-
 function getClusterSpawnWeightAtDistance(clusterDef, distanceFromCenter) {
   if (!clusterDef || !Array.isArray(clusterDef.spawnBands)) {
     return 0;
@@ -1365,7 +1213,19 @@ function applyRuntimeMobConfig(nextMobConfig) {
 
 function reloadMobConfig(reason) {
   try {
-    const nextMobConfig = loadMobConfig(ITEM_CONFIG.itemDefs, ABILITY_CONFIG.abilityDefs);
+    const nextMobConfig = loadMobConfigFromDisk(
+      MOB_CONFIG_PATH,
+      ITEM_CONFIG.itemDefs,
+      ABILITY_CONFIG.abilityDefs,
+      { width: MAP_WIDTH, height: MAP_HEIGHT },
+      SERVER_CONFIG,
+      {
+        mobAggroRange: MOB_AGGRO_RANGE,
+        mobAttackRange: MOB_ATTACK_RANGE,
+        mobWanderRadius: MOB_WANDER_RADIUS,
+        mobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
+      }
+    );
     MOB_CONFIG = nextMobConfig;
     const { updatedMobs, updatedSpawners } = applyRuntimeMobConfig(nextMobConfig);
     console.log(
@@ -1408,7 +1268,19 @@ let CLASS_CONFIG = loadClassConfigFromDisk(
   BASE_PLAYER_SPEED,
   normalizeItemEntries
 );
-let MOB_CONFIG = loadMobConfig(ITEM_CONFIG.itemDefs, ABILITY_CONFIG.abilityDefs);
+let MOB_CONFIG = loadMobConfigFromDisk(
+  MOB_CONFIG_PATH,
+  ITEM_CONFIG.itemDefs,
+  ABILITY_CONFIG.abilityDefs,
+  { width: MAP_WIDTH, height: MAP_HEIGHT },
+  SERVER_CONFIG,
+  {
+    mobAggroRange: MOB_AGGRO_RANGE,
+    mobAttackRange: MOB_ATTACK_RANGE,
+    mobWanderRadius: MOB_WANDER_RADIUS,
+    mobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
+  }
+);
 const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
   GLOBAL_DROP_TABLE_PATH,
   ITEM_CONFIG.itemDefs,
