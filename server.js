@@ -13,6 +13,7 @@ const { createSoundManifestBuilder } = require("./server/network/sound-manifest"
 const { createEntityUpdatePacketBuilder } = require("./server/network/entity-update-packet");
 const { createEventBuilders } = require("./server/network/event-builders");
 const { createAreaEffectEventBuilder } = require("./server/network/area-effect-events");
+const { createPlayerMessageTools } = require("./server/network/player-messages");
 const {
   encodeMobEffectEventPacket,
   encodeAreaEffectEventPacket,
@@ -2026,38 +2027,6 @@ function expNeededForLevel(level) {
   return Math.max(1, Math.ceil(BASE_EXP_TO_NEXT * Math.pow(EXP_GROWTH_FACTOR, level - 1)));
 }
 
-function serializePlayerAbilityLevels(player) {
-  if (!player || !player.abilityLevels || typeof player.abilityLevels.entries !== "function") {
-    return [];
-  }
-  const result = [];
-  for (const [abilityId, rawLevel] of player.abilityLevels.entries()) {
-    const id = String(abilityId || "").trim();
-    const level = clamp(Math.floor(Number(rawLevel) || 0), 1, 255);
-    if (!id || level <= 0) {
-      continue;
-    }
-    result.push({ id, level });
-  }
-  result.sort((a, b) => a.id.localeCompare(b.id));
-  return result;
-}
-
-function sendSelfProgress(player) {
-  if (!player) {
-    return;
-  }
-  sendJson(player.ws, {
-    type: "self_progress",
-    copper: player.copper,
-    level: player.level,
-    exp: player.exp,
-    expToNext: player.expToNext,
-    skillPoints: clamp(Math.floor(Number(player.skillPoints) || 0), 0, 65535),
-    abilityLevels: serializePlayerAbilityLevels(player)
-  });
-}
-
 function grantPlayerExp(player, amount) {
   if (!player || amount <= 0) {
     return;
@@ -2327,6 +2296,16 @@ function inVisibilityRange(a, b, range) {
 }
 
 const ITEM_CONFIG = loadItemConfig();
+const playerMessageTools = createPlayerMessageTools({
+  sendJson,
+  itemDefs: ITEM_CONFIG.itemDefs,
+  inventoryCols: INVENTORY_COLS,
+  inventoryRows: INVENTORY_ROWS,
+  inventorySlotCount: INVENTORY_SLOT_COUNT
+});
+const sendSelfProgress = playerMessageTools.sendSelfProgress;
+const sendInventoryState = playerMessageTools.sendInventoryState;
+const serializeBagItemsForMeta = (items) => playerMessageTools.serializeBagItemsForMeta(items, normalizeItemEntries);
 let SERVER_CONFIG;
 try {
   SERVER_CONFIG = loadServerConfigFromDisk();
@@ -2704,46 +2683,6 @@ function rollGlobalDropsForPlayer(player) {
 function rollMobDrops(mob) {
   const rules = Array.isArray(mob?.dropRules) ? mob.dropRules : [];
   return rollDropRules(rules);
-}
-
-function serializeBagItemsForMeta(items) {
-  return normalizeItemEntries(items).map((entry) => {
-    const itemDef = ITEM_CONFIG.itemDefs.get(entry.itemId);
-    return {
-      itemId: entry.itemId,
-      qty: entry.qty,
-      name: itemDef ? itemDef.name : entry.itemId
-    };
-  });
-}
-
-function serializeInventorySlots(player) {
-  const slots = Array.isArray(player?.inventorySlots) ? player.inventorySlots : [];
-  const serialized = [];
-  for (let i = 0; i < INVENTORY_SLOT_COUNT; i += 1) {
-    const slot = slots[i];
-    if (!slot || !ITEM_CONFIG.itemDefs.has(slot.itemId)) {
-      serialized.push(null);
-      continue;
-    }
-    serialized.push({
-      itemId: slot.itemId,
-      qty: Math.max(0, Math.floor(Number(slot.qty) || 0))
-    });
-  }
-  return serialized;
-}
-
-function sendInventoryState(player) {
-  if (!player) {
-    return;
-  }
-  sendJson(player.ws, {
-    type: "inventory_state",
-    cols: INVENTORY_COLS,
-    rows: INVENTORY_ROWS,
-    slots: serializeInventorySlots(player)
-  });
 }
 
 function addItemsToInventory(player, entries) {
