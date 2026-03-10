@@ -171,8 +171,10 @@ let myId = null;
 let lastRenderState = null;
 let selfStatic = null;
 let pendingJoinInfo = null;
-let nextDamageFloatId = 1;
-let nextExplosionFxId = 1;
+const vfxIdState = {
+  nextDamageFloatId: 1,
+  nextExplosionFxId: 1
+};
 
 const gameState = {
   map: { width: 1000, height: 1000 },
@@ -4009,174 +4011,67 @@ function worldToScreen(worldX, worldY, cameraX, cameraY) {
   };
 }
 
+const sharedClientVfxRuntime = globalThis.VibeClientVfxRuntime || null;
+const sharedCreateVfxRuntimeTools =
+  sharedClientVfxRuntime && typeof sharedClientVfxRuntime.createVfxRuntimeTools === "function"
+    ? sharedClientVfxRuntime.createVfxRuntimeTools
+    : null;
+const vfxRuntimeTools = sharedCreateVfxRuntimeTools
+  ? sharedCreateVfxRuntimeTools({
+      floatingDamageNumbers,
+      activeExplosions,
+      activeAreaEffectsById,
+      idState: vfxIdState,
+      damageFloatDurationMs: DAMAGE_FLOAT_DURATION_MS,
+      addDpsSample,
+      toAbilityAudioId,
+      playAbilityAudioEvent,
+      normalizeDirection,
+      hashString,
+      playMobEventSound
+    })
+  : null;
+
 function addFloatingDamageEvents(events) {
-  if (!Array.isArray(events) || !events.length) {
+  if (!vfxRuntimeTools) {
     return;
   }
-
-  const now = performance.now();
-  for (const event of events) {
-    if (!event) {
-      continue;
-    }
-    const x = Number(event.x);
-    const y = Number(event.y);
-    const amount = Math.max(0, Math.round(Number(event.amount) || 0));
-    if (!Number.isFinite(x) || !Number.isFinite(y) || amount <= 0) {
-      continue;
-    }
-    if (event.fromSelf) {
-      addDpsSample(amount, now);
-    }
-
-    floatingDamageNumbers.push({
-      id: nextDamageFloatId++,
-      x,
-      y,
-      amount,
-      targetType: event.targetType === "player" ? "player" : "mob",
-      createdAt: now,
-      durationMs: DAMAGE_FLOAT_DURATION_MS,
-      jitterX: (Math.random() - 0.5) * 0.34,
-      riseOffset: Math.random() * 0.25
-    });
-  }
+  vfxRuntimeTools.addFloatingDamageEvents(events);
 }
 
 function addExplosionEvents(events) {
-  if (!Array.isArray(events) || !events.length) {
+  if (!vfxRuntimeTools) {
     return;
   }
-
-  const now = performance.now();
-  const abilitiesToPlay = new Set();
-  for (const event of events) {
-    if (!event) {
-      continue;
-    }
-    const x = Number(event.x);
-    const y = Number(event.y);
-    const radius = Math.max(0, Number(event.radius) || 0);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || radius <= 0) {
-      continue;
-    }
-
-    activeExplosions.push({
-      id: nextExplosionFxId++,
-      x,
-      y,
-      radius,
-      abilityId: String(event.abilityId || ""),
-      createdAt: now,
-      durationMs: 380
-    });
-    const abilityId = toAbilityAudioId(event.abilityId);
-    if (abilityId) {
-      abilitiesToPlay.add(abilityId);
-    }
-  }
-
-  for (const abilityId of abilitiesToPlay) {
-    playAbilityAudioEvent(abilityId, "hit", now);
-  }
+  vfxRuntimeTools.addExplosionEvents(events);
 }
 
 function upsertAreaEffectState(raw, now = performance.now()) {
-  if (!raw) {
+  if (!vfxRuntimeTools) {
     return;
   }
-  const id = String(raw.id || "").trim();
-  const x = Number(raw.x);
-  const y = Number(raw.y);
-  const radius = Math.max(0, Number(raw.radius) || 0);
-  const remainingMs = Math.max(1, Math.floor(Number(raw.remainingMs) || 0));
-  const durationMs = Math.max(1, Math.floor(Number(raw.durationMs) || remainingMs));
-  const abilityId = String(raw.abilityId || "").toLowerCase();
-  const kind = String(raw.kind || (abilityId === "arcanebeam" ? "beam" : "area")).toLowerCase();
-  if (!id || !Number.isFinite(x) || !Number.isFinite(y) || radius <= 0) {
-    return;
-  }
-  const existing = activeAreaEffectsById.get(id);
-  const parsedDx = Number(raw.dx);
-  const parsedDy = Number(raw.dy);
-  const parsedLength = Math.max(0, Number(raw.length) || 0);
-  const parsedWidth = Math.max(0, Number(raw.width) || 0);
-  const normalizedDir = normalizeDirection(parsedDx, parsedDy);
-  activeAreaEffectsById.set(id, {
-    id,
-    x,
-    y,
-    radius,
-    kind,
-    abilityId,
-    durationMs,
-    startedAt: existing ? existing.startedAt : now - Math.max(0, durationMs - remainingMs),
-    endsAt: now + remainingMs,
-    seed: existing ? existing.seed : hashString(`area:${id}`),
-    startX: Number.isFinite(Number(raw.startX))
-      ? Number(raw.startX)
-      : existing && Number.isFinite(existing.startX)
-        ? existing.startX
-        : x,
-    startY: Number.isFinite(Number(raw.startY))
-      ? Number(raw.startY)
-      : existing && Number.isFinite(existing.startY)
-        ? existing.startY
-        : y,
-    dx: normalizedDir ? normalizedDir.dx : existing && Number.isFinite(existing.dx) ? existing.dx : 0,
-    dy: normalizedDir ? normalizedDir.dy : existing && Number.isFinite(existing.dy) ? existing.dy : 1,
-    length: parsedLength > 0 ? parsedLength : existing && Number.isFinite(existing.length) ? existing.length : 0,
-    width: parsedWidth > 0 ? parsedWidth : existing && Number.isFinite(existing.width) ? existing.width : 0
-  });
+  vfxRuntimeTools.upsertAreaEffectState(raw, now);
 }
 
 function applyAreaEffects(events) {
-  if (!Array.isArray(events)) {
+  if (!vfxRuntimeTools) {
     return;
   }
-  const now = performance.now();
-  for (const raw of events) {
-    upsertAreaEffectState(raw, now);
-  }
+  vfxRuntimeTools.applyAreaEffects(events);
 }
 
 function addProjectileHitEvents(events) {
-  if (!Array.isArray(events) || !events.length) {
+  if (!vfxRuntimeTools) {
     return;
   }
-  const now = performance.now();
-  const abilitiesToPlay = new Set();
-  for (const event of events) {
-    if (!event) {
-      continue;
-    }
-    const abilityId = toAbilityAudioId(event.abilityId);
-    if (abilityId) {
-      abilitiesToPlay.add(abilityId);
-    }
-  }
-  for (const abilityId of abilitiesToPlay) {
-    playAbilityAudioEvent(abilityId, "hit", now);
-  }
+  vfxRuntimeTools.addProjectileHitEvents(events);
 }
 
 function addMobDeathEvents(events) {
-  if (!Array.isArray(events) || !events.length) {
+  if (!vfxRuntimeTools) {
     return;
   }
-  const now = performance.now();
-  for (const event of events) {
-    if (!event) {
-      continue;
-    }
-    const mobType = String(event.mobType || "").trim();
-    const x = Number(event.x);
-    const y = Number(event.y);
-    if (!mobType || !Number.isFinite(x) || !Number.isFinite(y)) {
-      continue;
-    }
-    playMobEventSound(mobType, "death", x, y, now, 0.8, 60);
-  }
+  vfxRuntimeTools.addMobDeathEvents(events);
 }
 
 function updateMobCastSpatialAudio(mobs, frameNow) {
