@@ -1,10 +1,10 @@
-const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { WebSocketServer } = require("ws");
 const { executeAbilityByKind } = require("./server/ability-handlers");
 const { createAreaEffectTools } = require("./server/gameplay/area-effects");
 const { createGameLoop } = require("./server/runtime/game-loop");
+const { createDebouncedFileReloader } = require("./server/runtime/file-reload-watch");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
@@ -256,9 +256,6 @@ const addManaOverTimeEffect = playerResourceTools.addManaOverTimeEffect;
 const tickPlayerHealEffects = playerResourceTools.tickPlayerHealEffects;
 const tickPlayerManaEffects = playerResourceTools.tickPlayerManaEffects;
 
-let serverConfigReloadTimer = null;
-let abilityConfigReloadTimer = null;
-let mobConfigReloadTimer = null;
 function reloadServerConfig(reason) {
   try {
     const nextConfig = loadServerConfigFromDisk(SERVER_CONFIG_PATH);
@@ -270,27 +267,6 @@ function reloadServerConfig(reason) {
       `[config] Failed to reload ${SERVER_CONFIG_PATH} (${reason}). Keeping previous config. Reason: ${details}`
     );
   }
-}
-
-function scheduleServerConfigReload(reason) {
-  if (serverConfigReloadTimer !== null) {
-    clearTimeout(serverConfigReloadTimer);
-  }
-  serverConfigReloadTimer = setTimeout(() => {
-    serverConfigReloadTimer = null;
-    reloadServerConfig(reason);
-  }, 120);
-}
-
-function watchServerConfig() {
-  const watchIntervalMs = 1000;
-  fs.watchFile(SERVER_CONFIG_PATH, { interval: watchIntervalMs }, (curr, prev) => {
-    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) {
-      return;
-    }
-    scheduleServerConfigReload("file change");
-  });
-  console.log(`[config] Watching ${SERVER_CONFIG_PATH} for changes (poll ${watchIntervalMs}ms)`);
 }
 
 function broadcastClassAndAbilityDefs() {
@@ -324,27 +300,6 @@ function reloadAbilityAndClassConfig(reason) {
       `[config] Failed to reload ${ABILITY_CONFIG_PATH} (${reason}). Keeping previous config. Reason: ${details}`
     );
   }
-}
-
-function scheduleAbilityConfigReload(reason) {
-  if (abilityConfigReloadTimer !== null) {
-    clearTimeout(abilityConfigReloadTimer);
-  }
-  abilityConfigReloadTimer = setTimeout(() => {
-    abilityConfigReloadTimer = null;
-    reloadAbilityAndClassConfig(reason);
-  }, 120);
-}
-
-function watchAbilityConfig() {
-  const watchIntervalMs = 1000;
-  fs.watchFile(ABILITY_CONFIG_PATH, { interval: watchIntervalMs }, (curr, prev) => {
-    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) {
-      return;
-    }
-    scheduleAbilityConfigReload("file change");
-  });
-  console.log(`[config] Watching ${ABILITY_CONFIG_PATH} for changes (poll ${watchIntervalMs}ms)`);
 }
 
 function applyRuntimeMobDefinition(mob, mobDef) {
@@ -468,26 +423,26 @@ function reloadMobConfig(reason) {
   }
 }
 
-function scheduleMobConfigReload(reason) {
-  if (mobConfigReloadTimer !== null) {
-    clearTimeout(mobConfigReloadTimer);
-  }
-  mobConfigReloadTimer = setTimeout(() => {
-    mobConfigReloadTimer = null;
-    reloadMobConfig(reason);
-  }, 120);
-}
+const serverConfigReloader = createDebouncedFileReloader({
+  filePath: SERVER_CONFIG_PATH,
+  reloadFn: reloadServerConfig
+});
+const scheduleServerConfigReload = serverConfigReloader.schedule;
+const watchServerConfig = serverConfigReloader.watch;
 
-function watchMobConfig() {
-  const watchIntervalMs = 1000;
-  fs.watchFile(MOB_CONFIG_PATH, { interval: watchIntervalMs }, (curr, prev) => {
-    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) {
-      return;
-    }
-    scheduleMobConfigReload("file change");
-  });
-  console.log(`[config] Watching ${MOB_CONFIG_PATH} for changes (poll ${watchIntervalMs}ms)`);
-}
+const abilityConfigReloader = createDebouncedFileReloader({
+  filePath: ABILITY_CONFIG_PATH,
+  reloadFn: reloadAbilityAndClassConfig
+});
+const scheduleAbilityConfigReload = abilityConfigReloader.schedule;
+const watchAbilityConfig = abilityConfigReloader.watch;
+
+const mobConfigReloader = createDebouncedFileReloader({
+  filePath: MOB_CONFIG_PATH,
+  reloadFn: reloadMobConfig
+});
+const scheduleMobConfigReload = mobConfigReloader.schedule;
+const watchMobConfig = mobConfigReloader.watch;
 
 let ABILITY_CONFIG = loadAbilityConfig();
 let CLASS_CONFIG = loadClassConfigFromDisk(
