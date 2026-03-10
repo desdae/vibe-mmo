@@ -62,6 +62,11 @@ const sharedGetAbilityCooldownMsForLevel =
 const clientAbilityNormalizationTools = sharedCreateAbilityNormalizationTools
   ? sharedCreateAbilityNormalizationTools({ defaultProjectileHitRadius: 0.6 })
   : null;
+const sharedMobRenderStyle = globalThis.VibeMobRenderStyle || null;
+const sharedParseMobRenderStyle =
+  sharedMobRenderStyle && typeof sharedMobRenderStyle.parseMobRenderStyle === "function"
+    ? sharedMobRenderStyle.parseMobRenderStyle
+    : null;
 const sharedNumberUtils = globalThis.VibeNumberUtils || null;
 const sharedClamp =
   sharedNumberUtils && typeof sharedNumberUtils.clamp === "function" ? sharedNumberUtils.clamp : null;
@@ -373,6 +378,9 @@ function sanitizeCssColor(value) {
 }
 
 function normalizeMobRenderStyle(rawStyle) {
+  if (sharedParseMobRenderStyle) {
+    return sharedParseMobRenderStyle(rawStyle);
+  }
   if (!rawStyle || typeof rawStyle !== "object") {
     return null;
   }
