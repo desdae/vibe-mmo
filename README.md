@@ -28,6 +28,26 @@ npm start
 
 Open `http://localhost:3000` in one or more browser tabs.
 
+### Launch modes
+
+- Dev mode (separate JS files, easier debugging):
+
+```bash
+npm run start:dev
+```
+
+- Prod mode (single minified JS bundle + prod index):
+
+```bash
+npm run start:prod
+```
+
+You can also only rebuild the client bundle:
+
+```bash
+npm run build:client
+```
+
 ## Controls
 
 - Move: `WASD` or arrow keys

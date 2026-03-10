@@ -4,9 +4,15 @@
   "description": "Basic MMO prototype from game_spec.md",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "start:dev": "node server.js",
+    "build:client": "node scripts/build-client-bundle.js",
+    "start:prod": "node scripts/run-prod.js"
   },
   "dependencies": {
     "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.3"
   }
 }

@@ -1,3 +1,4 @@
+const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { WebSocketServer } = require("ws");
@@ -90,6 +91,8 @@ const {
 } = require("./server/network/packet-encoders");
 
 const PORT = process.env.PORT || 3000;
+const APP_MODE = String(process.env.APP_MODE || process.env.NODE_ENV || "development").trim().toLowerCase();
+const IS_PROD_MODE = APP_MODE === "prod" || APP_MODE === "production";
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
 const ITEM_CONFIG_PATH = path.join(__dirname, "data", "items.json");
 const GLOBAL_DROP_TABLE_PATH = path.join(__dirname, "data", "drop-tables.json");
@@ -133,6 +136,13 @@ const {
 const DEFAULT_ABILITY_KIND = "meleeCone";
 
 const publicDir = path.join(__dirname, "public");
+const preferredIndexFileName = IS_PROD_MODE ? "index.prod.html" : "index.dev.html";
+const selectedIndexFileName = fs.existsSync(path.join(publicDir, preferredIndexFileName))
+  ? preferredIndexFileName
+  : "index.dev.html";
+if (IS_PROD_MODE && selectedIndexFileName !== preferredIndexFileName) {
+  console.warn("[server] Missing public/index.prod.html, falling back to index.dev.html");
+}
 const buildSoundManifest = createSoundManifestBuilder({ publicDir });
 
 const abilityNormalizationTools = createAbilityNormalizationTools({
@@ -252,6 +262,7 @@ GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
 const server = createGameHttpServer({
   http,
   publicDir,
+  indexFileName: selectedIndexFileName,
   getGameConfigPayload: () => ({
     classes: CLASS_CONFIG.clientClassDefs,
     abilities: ABILITY_CONFIG.clientAbilityDefs,
@@ -780,7 +791,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
   server,
   port: PORT,
   onServerListening: () => {
-    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`Server running at http://localhost:${PORT} (${IS_PROD_MODE ? "prod" : "dev"} mode)`);
     console.log(`Initialized ${mobSpawners.size} mob spawners and ${mobs.size} mobs.`);
   }
 });

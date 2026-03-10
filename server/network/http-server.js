@@ -16,9 +16,12 @@ const DEFAULT_CONTENT_TYPES = {
   ".svg": "image/svg+xml"
 };
 
-function resolveRequestPath(urlPathname) {
+function resolveRequestPath(urlPathname, indexFileName = "index.html") {
   const decodedPath = decodeURIComponent(urlPathname);
-  const relativePath = (decodedPath === "/" ? "index.html" : decodedPath).replace(/^[/\\]+/, "");
+  const relativePath =
+    decodedPath === "/" || decodedPath === "/index.html"
+      ? String(indexFileName || "index.html")
+      : decodedPath.replace(/^[/\\]+/, "");
   return path.normalize(relativePath);
 }
 
@@ -27,6 +30,7 @@ function createGameHttpServer(options = {}) {
     http,
     publicDir,
     getGameConfigPayload,
+    indexFileName = "index.html",
     contentTypes = DEFAULT_CONTENT_TYPES
   } = options;
 
@@ -54,7 +58,7 @@ function createGameHttpServer(options = {}) {
 
     let normalizedPath;
     try {
-      normalizedPath = resolveRequestPath(pathOnly);
+      normalizedPath = resolveRequestPath(pathOnly, indexFileName);
     } catch (_error) {
       res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("Bad request");
