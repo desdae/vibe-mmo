@@ -4,7 +4,6 @@
       "name": "Zombie",
       "health": 20,
       "damage": [1, 2],
-      "spawnRange": [10, 30],
       "speed": 0.5,
       "respawnTime": [25, 50],
       "drops": [{ "copperCoin": [0, 2], "healthPotion01": [0.05] }],
@@ -53,7 +52,6 @@
       "name": "Skeleton",
       "health": 30,
       "damage": [2, 3],
-      "spawnRange": [20, 40],
       "speed": 0.8,
       "respawnTime": [20, 40],
       "drops": [{ "copperCoin": [0, 3], "healthPotion01": [0.1] }],
@@ -105,7 +103,6 @@
       "name": "Skeleton Archer",
       "health": 28,
       "damage": [1, 2],
-      "spawnRange": [12, 28],
       "speed": 1,
       "respawnTime": [25, 45],
       "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.14], "manaPotion01": [0.08] }],
@@ -172,7 +169,6 @@
       "name": "Creeper",
       "health": 20,
       "damage": [3, 5],
-      "spawnRange": [30, 50],
       "speed": 0.9,
       "respawnTime": [30, 60],
       "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.2] }],
@@ -222,7 +218,6 @@
       "name": "Spider",
       "health": 16,
       "damage": [2, 3],
-      "spawnRange": [25, 45],
       "speed": 1,
       "respawnTime": [20, 40],
       "combat": {
@@ -271,7 +266,6 @@
       "name": "Orc Berserker",
       "health": 40,
       "damage": [5, 7],
-      "spawnRange": [10, 20],
       "speed": 2,
       "respawnTime": [40, 80],
       "drops": [{ "copperCoin": [0, 5], "healthPotion01": [0.3] }],
@@ -337,25 +331,49 @@
     {
       "name": "Undead Horde",
       "mobs": ["Zombie", "Skeleton"],
-      "spawnChance": 0.28,
+      "spawnRanges": [
+        {
+          "range": [10, 40],
+          "chance": 0.28,
+          "curve": "linear"
+        }
+      ],
       "maxSize": 5
     },
     {
       "name": "Berserker Patrol",
       "mobs": ["Skeleton Archer", "Orc Berserker"],
-      "spawnChance": 0.3,
+      "spawnRanges": [
+        {
+          "range": [10, 28],
+          "chance": 0.3,
+          "curve": "linear"
+        }
+      ],
       "maxSize": 5
     },
     {
       "name": "Explosive Threat",
       "mobs": ["Creeper"],
-      "spawnChance": 0.2,
+      "spawnRanges": [
+        {
+          "range": [30, 50],
+          "chance": 0.2,
+          "curve": "linear"
+        }
+      ],
       "maxSize": 3
     },
     {
       "name": "Arachnid Swarm",
       "mobs": ["Spider"],
-      "spawnChance": 0.1,
+      "spawnRanges": [
+        {
+          "range": [25, 45],
+          "chance": 0.1,
+          "curve": "linear"
+        }
+      ],
       "maxSize": 7
     }
   ]

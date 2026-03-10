@@ -1932,9 +1932,6 @@ function loadMobConfig(itemDefs, abilityDefs) {
     const [damageMinRaw, damageMaxRaw] = parseNumericRange(mobEntry.damage, 1, 1);
     const damageMin = clamp(Math.round(damageMinRaw * damageMultiplier), 0, 255);
     const damageMax = clamp(Math.round(damageMaxRaw * damageMultiplier), damageMin, 255);
-    const [spawnMinRaw, spawnMaxRaw] = parseNumericRange(mobEntry.spawnRange, 0, maxMapRadius);
-    const spawnRangeMin = clamp(spawnMinRaw, 0, maxMapRadius);
-    const spawnRangeMax = clamp(spawnMaxRaw, spawnRangeMin, maxMapRadius);
     const baseSpeed = clamp(Number(mobEntry.speed) || 0.5, 0.05, 20);
     const [respawnMinRaw, respawnMaxRaw] = parseNumericRange(mobEntry.respawnTime, 30, 30);
     const respawnMinMs = Math.max(1000, Math.round(respawnMinRaw * 1000 * respawnMultiplier));
@@ -1948,8 +1945,6 @@ function loadMobConfig(itemDefs, abilityDefs) {
       health,
       damageMin,
       damageMax,
-      spawnRangeMin,
-      spawnRangeMax,
       baseSpeed,
       respawnMinMs,
       respawnMaxMs,
@@ -1972,18 +1967,73 @@ function loadMobConfig(itemDefs, abilityDefs) {
       continue;
     }
 
-    const spawnChance = Math.max(0, Number(clusterEntry.spawnChance) || 0);
     const maxSize = clamp(Math.round(Number(clusterEntry.maxSize) || 1), 1, 16);
-    const spawnRangeMin = Math.max(...members.map((member) => member.spawnRangeMin));
-    const spawnRangeMax = Math.min(...members.map((member) => member.spawnRangeMax));
-    if (spawnRangeMin > spawnRangeMax) {
+
+    const rawSpawnRanges = Array.isArray(clusterEntry.spawnRanges)
+      ? clusterEntry.spawnRanges
+      : Array.isArray(clusterEntry.spawnBands)
+        ? clusterEntry.spawnBands
+        : [];
+    const fallbackLegacyRange = parseNumericRange(clusterEntry.spawnRange, 0, maxMapRadius);
+    const fallbackLegacyChance = Math.max(0, Number(clusterEntry.spawnChance) || 0);
+    const spawnBandEntries = rawSpawnRanges.length
+      ? rawSpawnRanges
+      : fallbackLegacyChance > 0
+        ? [
+            {
+              range: fallbackLegacyRange,
+              chance: fallbackLegacyChance,
+              curve: clusterEntry.spawnCurve || "linear"
+            }
+          ]
+        : [];
+
+    const spawnBands = [];
+    for (const bandEntry of spawnBandEntries) {
+      if (!bandEntry || typeof bandEntry !== "object") {
+        continue;
+      }
+      const [rangeMinRaw, rangeMaxRaw] = parseNumericRange(
+        bandEntry.range || [bandEntry.from, bandEntry.to],
+        0,
+        maxMapRadius
+      );
+      const rangeMin = clamp(Math.min(rangeMinRaw, rangeMaxRaw), 0, maxMapRadius);
+      const rangeMax = clamp(Math.max(rangeMinRaw, rangeMaxRaw), rangeMin, maxMapRadius);
+      const chance = Math.max(
+        0,
+        Number(
+          bandEntry.chance ??
+            bandEntry.spawnChance ??
+            bandEntry.weight ??
+            0
+        ) || 0
+      );
+      if (chance <= 0) {
+        continue;
+      }
+      const curve = String(bandEntry.curve || "linear").trim().toLowerCase() || "linear";
+      spawnBands.push({
+        rangeMin,
+        rangeMax,
+        chance,
+        curve
+      });
+    }
+
+    if (!spawnBands.length) {
       continue;
     }
+
+    const spawnRangeMin = Math.min(...spawnBands.map((band) => band.rangeMin));
+    const spawnRangeMax = Math.max(...spawnBands.map((band) => band.rangeMax));
+    const totalSpawnChance = spawnBands.reduce((sum, band) => sum + band.chance, 0);
 
     clusterDefs.push({
       name,
       members,
-      spawnChance,
+      spawnBands,
+      totalSpawnChance,
       maxSize,
       spawnRangeMin,
       spawnRangeMax
@@ -1994,31 +2044,85 @@ function loadMobConfig(itemDefs, abilityDefs) {
     throw new Error(`No valid mob cluster definitions in ${MOB_CONFIG_PATH}`);
   }
 
-  const totalSpawnChance = clusterDefs.reduce((sum, cluster) => sum + cluster.spawnChance, 0);
+  const totalSpawnChance = clusterDefs.reduce((sum, cluster) => sum + cluster.totalSpawnChance, 0);
+  const configMaxSpawnRadius = clusterDefs.length
+    ? Math.max(...clusterDefs.map((cluster) => cluster.spawnRangeMax))
+    : maxMapRadius;
   return {
     mobDefs,
     clusterDefs,
-    totalSpawnChance
+    totalSpawnChance,
+    maxSpawnRadius: clamp(configMaxSpawnRadius, 1, maxMapRadius)
   };
 }
 
-function pickClusterDef(config) {
+function getClusterSpawnWeightAtDistance(clusterDef, distanceFromCenter) {
+  if (!clusterDef || !Array.isArray(clusterDef.spawnBands)) {
+    return 0;
+  }
+  const distance = Math.max(0, Number(distanceFromCenter) || 0);
+  let total = 0;
+  for (const band of clusterDef.spawnBands) {
+    if (!band || typeof band !== "object") {
+      continue;
+    }
+    const min = Math.max(0, Number(band.rangeMin) || 0);
+    const max = Math.max(min, Number(band.rangeMax) || min);
+    if (distance < min || distance > max) {
+      continue;
+    }
+    const peakChance = Math.max(0, Number(band.chance) || 0);
+    if (peakChance <= 0) {
+      continue;
+    }
+    const curve = String(band.curve || "linear").trim().toLowerCase();
+    if (curve === "flat" || curve === "uniform" || max === min) {
+      total += peakChance;
+      continue;
+    }
+    const midpoint = (min + max) * 0.5;
+    const halfSpan = Math.max(0.0001, (max - min) * 0.5);
+    const normalized = clamp(1 - Math.abs(distance - midpoint) / halfSpan, 0, 1);
+    total += peakChance * normalized;
+  }
+  return total;
+}
+
+function pickClusterDef(config, distanceFromCenter = null) {
   if (!config.clusterDefs.length) {
     return null;
   }
 
-  if (config.totalSpawnChance <= 0) {
+  const useDistanceWeighting = Number.isFinite(Number(distanceFromCenter));
+  if (!useDistanceWeighting && config.totalSpawnChance <= 0) {
     return config.clusterDefs[randomInt(0, config.clusterDefs.length - 1)];
   }
 
-  let roll = Math.random() * config.totalSpawnChance;
+  const weightedClusters = [];
+  let totalWeight = 0;
   for (const clusterDef of config.clusterDefs) {
-    roll -= clusterDef.spawnChance;
+    const weight = useDistanceWeighting
+      ? getClusterSpawnWeightAtDistance(clusterDef, distanceFromCenter)
+      : Math.max(0, Number(clusterDef.totalSpawnChance) || 0);
+    if (weight <= 0) {
+      continue;
+    }
+    totalWeight += weight;
+    weightedClusters.push({ clusterDef, weight });
+  }
+
+  if (totalWeight <= 0) {
+    return null;
+  }
+
+  let roll = Math.random() * totalWeight;
+  for (const entry of weightedClusters) {
+    roll -= entry.weight;
     if (roll <= 0) {
-      return clusterDef;
+      return entry.clusterDef;
     }
   }
-  return config.clusterDefs[config.clusterDefs.length - 1];
+  return weightedClusters[weightedClusters.length - 1].clusterDef;
 }
 
 function expNeededForLevel(level) {
@@ -2474,7 +2578,16 @@ function applyRuntimeMobConfig(nextMobConfig) {
     const existingClusterName = String(spawner.clusterName || "");
     let nextCluster = nextMobConfig.clusterDefs.find((entry) => String(entry?.name || "") === existingClusterName);
     if (!nextCluster) {
-      nextCluster = pickClusterDef(nextMobConfig);
+      const centerX = MAP_WIDTH / 2;
+      const centerY = MAP_HEIGHT / 2;
+      const spawnerDistance = Math.hypot(
+        (Number(spawner.x) || centerX) - centerX,
+        (Number(spawner.y) || centerY) - centerY
+      );
+      nextCluster = pickClusterDef(nextMobConfig, spawnerDistance);
+      if (!nextCluster) {
+        nextCluster = pickClusterDef(nextMobConfig);
+      }
       if (!nextCluster) {
         continue;
       }
@@ -3764,6 +3877,7 @@ function initializeMobSpawners() {
   const centerX = MAP_WIDTH / 2;
   const centerY = MAP_HEIGHT / 2;
   const targetMobClusters = Math.max(0, Math.round(TARGET_MOB_CLUSTERS * SERVER_CONFIG.mobSpawnMultiplier));
+  const maxSpawnRadius = Math.max(1, Number(MOB_CONFIG.maxSpawnRadius) || 1);
 
   const clustersPerCell = new Map();
   let attempts = 0;
@@ -3771,13 +3885,12 @@ function initializeMobSpawners() {
 
   while (mobSpawners.size < targetMobClusters && attempts < maxAttempts) {
     attempts += 1;
-    const clusterDef = pickClusterDef(MOB_CONFIG);
+    const distanceFromCenter = Math.random() * maxSpawnRadius;
+    const clusterDef = pickClusterDef(MOB_CONFIG, distanceFromCenter);
     if (!clusterDef) {
-      break;
+      continue;
     }
 
-    const distanceFromCenter =
-      clusterDef.spawnRangeMin + Math.random() * (clusterDef.spawnRangeMax - clusterDef.spawnRangeMin);
     const angle = Math.random() * Math.PI * 2;
     const x = clamp(centerX + Math.cos(angle) * distanceFromCenter, 0, MAP_WIDTH - 1);
     const y = clamp(centerY + Math.sin(angle) * distanceFromCenter, 0, MAP_HEIGHT - 1);
