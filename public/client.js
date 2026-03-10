@@ -3965,43 +3965,35 @@ function resizeCanvas() {
   updateInventoryUI();
 }
 
+const sharedClientPlayerControls = globalThis.VibeClientPlayerControls || null;
+const sharedCreatePlayerControlTools =
+  sharedClientPlayerControls && typeof sharedClientPlayerControls.createPlayerControlTools === "function"
+    ? sharedClientPlayerControls.createPlayerControlTools
+    : null;
+const playerControlTools = sharedCreatePlayerControlTools
+  ? sharedCreatePlayerControlTools({
+      keys,
+      movementSync,
+      mouseState,
+      gameState,
+      canvas,
+      tileSize: TILE_SIZE,
+      sendJsonMessage
+    })
+  : null;
+
 function getCurrentInputVector() {
-  const left = keys.ArrowLeft || keys.KeyA;
-  const right = keys.ArrowRight || keys.KeyD;
-  const up = keys.ArrowUp || keys.KeyW;
-  const down = keys.ArrowDown || keys.KeyS;
-
-  const rawDx = (right ? 1 : 0) - (left ? 1 : 0);
-  const rawDy = (down ? 1 : 0) - (up ? 1 : 0);
-  const len = Math.hypot(rawDx, rawDy);
-
-  if (!len) {
+  if (!playerControlTools) {
     return { dx: 0, dy: 0 };
   }
-
-  return { dx: rawDx / len, dy: rawDy / len };
+  return playerControlTools.getCurrentInputVector();
 }
 
 function sendMove() {
-  if (!socket || socket.readyState !== WebSocket.OPEN || !gameState.self) {
+  if (!playerControlTools) {
     return;
   }
-
-  const { dx, dy } = getCurrentInputVector();
-  const changed = dx !== movementSync.lastDx || dy !== movementSync.lastDy;
-  if (!changed) {
-    return;
-  }
-
-  sendJsonMessage({
-    type: "move",
-    dx,
-    dy
-  });
-
-  movementSync.lastDx = dx;
-  movementSync.lastDy = dy;
-  movementSync.lastSentAt = performance.now();
+  playerControlTools.sendMove(socket);
 }
 
 function triggerSwordSwing(worldX, worldY) {
@@ -4041,18 +4033,17 @@ function sendUseItem(itemId) {
 }
 
 function updateMouseScreenPosition(event) {
-  const rect = canvas.getBoundingClientRect();
-  mouseState.sx = event.clientX - rect.left;
-  mouseState.sy = event.clientY - rect.top;
+  if (!playerControlTools) {
+    return;
+  }
+  playerControlTools.updateMouseScreenPosition(event);
 }
 
 function screenToWorld(sx, sy, self) {
-  const cameraX = self.x + 0.5;
-  const cameraY = self.y + 0.5;
-  return {
-    x: cameraX + (sx - canvas.width / 2) / TILE_SIZE,
-    y: cameraY + (sy - canvas.height / 2) / TILE_SIZE
-  };
+  if (!playerControlTools) {
+    return { x: 0, y: 0 };
+  }
+  return playerControlTools.screenToWorld(sx, sy, self);
 }
 
 function getCurrentSelf() {
