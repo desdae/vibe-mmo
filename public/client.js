@@ -1334,86 +1334,66 @@ function stopAllAbilityChannelAudio() {
   }
 }
 
+const sharedClientAbilityRuntime = globalThis.VibeClientAbilityRuntime || null;
+const sharedCreateAbilityRuntimeTools =
+  sharedClientAbilityRuntime && typeof sharedClientAbilityRuntime.createAbilityRuntimeTools === "function"
+    ? sharedClientAbilityRuntime.createAbilityRuntimeTools
+    : null;
+const abilityRuntimeTools = sharedCreateAbilityRuntimeTools
+  ? sharedCreateAbilityRuntimeTools({
+      abilityRuntime,
+      abilityChannel,
+      clamp,
+      getCurrentSelf,
+      getActionDefById,
+      sendAbilityUse,
+      getAbilityEffectiveCooldownMsForSelf,
+      getAbilityEffectiveRangeForSelf,
+      playAbilityAudioEvent,
+      triggerSwordSwing,
+      stopAbilityChannelAudio,
+      stopAllAbilityChannelAudio
+    })
+  : null;
+
 function captureCastStateSnapshot(castState) {
-  return {
-    active: !!(castState && castState.active),
-    abilityId: String((castState && castState.abilityId) || "").toLowerCase(),
-    startedAt: Number(castState && castState.startedAt) || 0,
-    durationMs: Math.max(0, Number(castState && castState.durationMs) || 0)
-  };
+  if (!abilityRuntimeTools) {
+    return {
+      active: false,
+      abilityId: "",
+      startedAt: 0,
+      durationMs: 0
+    };
+  }
+  return abilityRuntimeTools.captureCastStateSnapshot(castState);
 }
 
 function syncLocalCastAudio(previousCast, nextCast) {
-  const prev = previousCast || { active: false, abilityId: "", startedAt: 0, durationMs: 0 };
-  const next = nextCast || { active: false, abilityId: "", startedAt: 0, durationMs: 0 };
-  const prevAbility = toAbilityAudioId(prev.abilityId);
-  const nextAbility = toAbilityAudioId(next.abilityId);
-  const now = performance.now();
-
-  if (prev.active && (!next.active || prevAbility !== nextAbility)) {
-    stopAbilityChannelAudio(prevAbility);
+  if (!abilityRuntimeTools) {
+    return;
   }
-
-  if (next.active && (!prev.active || prevAbility !== nextAbility)) {
-    playAbilityAudioEvent(nextAbility, "channel", now);
-  }
-
-  if (prev.active && !next.active) {
-    const completion =
-      prev.durationMs > 0 ? clamp((now - prev.startedAt) / prev.durationMs, 0, 1) : 0;
-    if (completion >= 0.94) {
-      markAbilityUsedClient(prevAbility, now);
-      playAbilityAudioEvent(prevAbility, "cast", now);
-    }
-  }
+  abilityRuntimeTools.syncLocalCastAudio(previousCast, nextCast);
 }
 
 function resetAbilityChanneling() {
-  stopAllAbilityChannelAudio();
-  abilityChannel.active = false;
-  abilityChannel.abilityId = "";
-  abilityChannel.startedAt = 0;
-  abilityChannel.durationMs = 0;
-  abilityChannel.targetX = 0;
-  abilityChannel.targetY = 0;
+  if (!abilityRuntimeTools) {
+    return;
+  }
+  abilityRuntimeTools.resetAbilityChanneling();
 }
 
 function applyServerCastState(targetState, payload) {
-  if (!targetState || !payload || typeof payload !== "object") {
+  if (!abilityRuntimeTools) {
     return;
   }
-  if (!payload.active) {
-    targetState.active = false;
-    targetState.abilityId = "";
-    targetState.startedAt = 0;
-    targetState.durationMs = 0;
-    return;
-  }
-
-  const durationMs = Math.max(1, Math.floor(Number(payload.durationMs) || 0));
-  const elapsedMs = clamp(Number(payload.elapsedMs) || 0, 0, durationMs);
-  targetState.active = true;
-  targetState.abilityId = String(payload.abilityId || "");
-  targetState.durationMs = durationMs;
-  targetState.startedAt = performance.now() - elapsedMs;
+  abilityRuntimeTools.applyServerCastState(targetState, payload);
 }
 
 function getCastProgress(castState, now) {
-  if (!castState || !castState.active || !castState.durationMs) {
+  if (!abilityRuntimeTools) {
     return null;
   }
-  const elapsed = now - castState.startedAt;
-  if (!Number.isFinite(elapsed) || elapsed < 0) {
-    return { ratio: 0, elapsedMs: 0, durationMs: castState.durationMs };
-  }
-  if (elapsed >= castState.durationMs) {
-    return null;
-  }
-  return {
-    ratio: clamp(elapsed / castState.durationMs, 0, 1),
-    elapsedMs: elapsed,
-    durationMs: castState.durationMs
-  };
+  return abilityRuntimeTools.getCastProgress(castState, now);
 }
 
 function findAbilityDefById(abilityId) {
@@ -3973,98 +3953,45 @@ function sendAbilityUse(abilityId, worldX, worldY) {
 }
 
 function getAbilityRuntimeKey(abilityId) {
-  return String(abilityId || "").trim().toLowerCase();
+  if (!abilityRuntimeTools) {
+    return String(abilityId || "").trim().toLowerCase();
+  }
+  return abilityRuntimeTools.getAbilityRuntimeKey(abilityId);
 }
 
 function canUseAbilityNow(abilityId, now, self = null) {
-  const cooldownMs = Math.max(0, getAbilityEffectiveCooldownMsForSelf(abilityId, self));
-  if (cooldownMs <= 0) {
+  if (!abilityRuntimeTools) {
     return true;
   }
-  const runtime = abilityRuntime.get(getAbilityRuntimeKey(abilityId));
-  const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
-  return now - lastUsedAt >= cooldownMs;
+  return abilityRuntimeTools.canUseAbilityNow(abilityId, now, self);
 }
 
 function markAbilityUsedClient(abilityId, now) {
-  const key = getAbilityRuntimeKey(abilityId);
-  if (!key) {
+  if (!abilityRuntimeTools) {
     return;
   }
-  const existing = abilityRuntime.get(key) || {};
-  existing.lastUsedAt = now;
-  abilityRuntime.set(key, existing);
+  abilityRuntimeTools.markAbilityUsedClient(abilityId, now);
 }
 
 function hasEnoughManaForAbility(self, abilityId) {
-  const def = getActionDefById(abilityId);
-  const manaCost = Math.max(0, Number(def.manaCost) || 0);
-  const mana = Math.max(0, Number(self && self.mana) || 0);
-  return mana + 1e-6 >= manaCost;
+  if (!abilityRuntimeTools) {
+    return true;
+  }
+  return abilityRuntimeTools.hasEnoughManaForAbility(self, abilityId);
 }
 
 function useAbilityAt(abilityId, worldX, worldY) {
-  const self = getCurrentSelf();
-  if (!self || self.hp <= 0) {
+  if (!abilityRuntimeTools) {
     return false;
   }
-  if (abilityChannel.active) {
-    return false;
-  }
-
-  const resolvedAbilityId = String(abilityId || "").trim();
-  const abilityDef = getActionDefById(resolvedAbilityId);
-  if (!resolvedAbilityId || abilityDef.id === "none" || abilityDef.id === "pickup_bag") {
-    return false;
-  }
-  if (!hasEnoughManaForAbility(self, resolvedAbilityId)) {
-    return false;
-  }
-
-  const now = performance.now();
-  if (!canUseAbilityNow(resolvedAbilityId, now, self)) {
-    return false;
-  }
-
-  if (!sendAbilityUse(resolvedAbilityId, worldX, worldY)) {
-    return false;
-  }
-  const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
-  if (castMs > 0) {
-    const dx = worldX - self.x;
-    const dy = worldY - self.y;
-    const len = Math.hypot(dx, dy);
-    if (len > 0) {
-      const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(resolvedAbilityId, self) || len);
-      const distance = castRange > 0 ? Math.min(len, castRange) : len;
-      abilityChannel.targetX = self.x + (dx / len) * distance;
-      abilityChannel.targetY = self.y + (dy / len) * distance;
-    } else {
-      abilityChannel.targetX = self.x;
-      abilityChannel.targetY = self.y;
-    }
-  }
-  if (castMs <= 0) {
-    markAbilityUsedClient(resolvedAbilityId, now);
-    playAbilityAudioEvent(resolvedAbilityId, "cast", now);
-  }
-  if (resolvedAbilityId === "slash") {
-    triggerSwordSwing(worldX, worldY);
-  }
-  return true;
+  return abilityRuntimeTools.useAbilityAt(abilityId, worldX, worldY);
 }
 
 function updateAbilityChannel(now) {
-  if (!abilityChannel.active) {
+  if (!abilityRuntimeTools) {
     return;
   }
-  const progress = getCastProgress(abilityChannel, now);
-  if (!progress) {
-    // Server should send explicit cast-stop, but auto-clean stale local state as safety.
-    const previousSelfCast = captureCastStateSnapshot(abilityChannel);
-    resetAbilityChanneling();
-    syncLocalCastAudio(previousSelfCast, abilityChannel);
-  }
+  abilityRuntimeTools.updateAbilityChannel(now);
 }
 
 function getActionTargetWorld() {
