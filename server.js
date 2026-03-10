@@ -9,6 +9,7 @@ const { createConfigOrchestrator } = require("./server/runtime/config-orchestrat
 const { createProjectileTickSystem } = require("./server/runtime/projectile-tick");
 const { createPlayerTickSystem } = require("./server/runtime/player-tick");
 const { createMobTickSystem } = require("./server/runtime/mob-tick");
+const { createRuntimeBootstrap } = require("./server/runtime/runtime-bootstrap");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
@@ -766,46 +767,13 @@ const mobTickSystem = createMobTickSystem({
 });
 const tickMobs = mobTickSystem.tickMobs;
 
-const buildEntityUpdatePacket = createEntityUpdatePacketBuilder({
-  getPendingHealAmount,
-  getPendingManaAmount,
-  serializeBagItemsForMeta
-});
-
-const broadcastState = createStateBroadcaster({
-  players,
-  projectiles,
-  mobs,
-  lootBags,
-  VISIBILITY_RANGE,
-  inVisibilityRange,
-  serializePlayer,
-  serializeMob,
-  buildEntityUpdatePacket,
-  buildPlayerSwingEventsForRecipient,
-  buildPlayerCastEventsForRecipient,
-  buildPlayerEffectEventsForRecipient,
-  buildMobCastEventsForRecipient,
-  buildMobBiteEventsForRecipient,
-  buildMobEffectEventsForRecipient,
-  buildSelfPlayerEffectUpdate,
-  buildAreaEffectEventsForRecipient,
-  encodeMobMetaPacket,
-  encodeProjectileMetaPacket,
-  encodeMobEffectEventPacket,
-  encodeAreaEffectEventPacket,
-  encodeDamageEventPacket,
-  pendingDamageEvents,
-  pendingExplosionEvents,
-  pendingProjectileHitEvents,
-  pendingMobDeathEvents,
-  sendJson,
-  sendBinary
-});
-
-registerWsConnections({
+const runtimeBootstrap = createRuntimeBootstrap({
+  createEntityUpdatePacketBuilder,
+  createStateBroadcaster,
+  createGameLoop,
+  registerWsConnections,
   wss,
-  deps: {
+  wsDeps: {
     sendJson,
     players,
     CLASS_CONFIG,
@@ -834,26 +802,56 @@ registerWsConnections({
     addHealOverTimeEffect,
     addManaOverTimeEffect,
     allocatePlayerId: () => String(nextPlayerId++)
-  }
-});
-
-const gameLoop = createGameLoop({
+  },
+  entityUpdateDeps: {
+    getPendingHealAmount,
+    getPendingManaAmount,
+    serializeBagItemsForMeta
+  },
+  stateBroadcastDeps: {
+    players,
+    projectiles,
+    mobs,
+    lootBags,
+    VISIBILITY_RANGE,
+    inVisibilityRange,
+    serializePlayer,
+    serializeMob,
+    buildPlayerSwingEventsForRecipient,
+    buildPlayerCastEventsForRecipient,
+    buildPlayerEffectEventsForRecipient,
+    buildMobCastEventsForRecipient,
+    buildMobBiteEventsForRecipient,
+    buildMobEffectEventsForRecipient,
+    buildSelfPlayerEffectUpdate,
+    buildAreaEffectEventsForRecipient,
+    encodeMobMetaPacket,
+    encodeProjectileMetaPacket,
+    encodeMobEffectEventPacket,
+    encodeAreaEffectEventPacket,
+    encodeDamageEventPacket,
+    pendingDamageEvents,
+    pendingExplosionEvents,
+    pendingProjectileHitEvents,
+    pendingMobDeathEvents,
+    sendJson,
+    sendBinary
+  },
   tickMs: TICK_MS,
-  runTick: (now) => {
-  tickPlayers();
-  tickPlayerCasts(now);
-  tickAreaEffects(now);
-  tickMobs();
-  tickProjectiles();
-  tickLootBags(now);
-  broadcastState(now);
+  tickHandlers: {
+    tickPlayers,
+    tickPlayerCasts,
+    tickAreaEffects,
+    tickMobs,
+    tickProjectiles,
+    tickLootBags
+  },
+  initializeMobSpawners,
+  server,
+  port: PORT,
+  onServerListening: () => {
+    console.log(`Server running at http://localhost:${PORT}`);
+    console.log(`Initialized ${mobSpawners.size} mob spawners and ${mobs.size} mobs.`);
   }
 });
-gameLoop.start();
-
-initializeMobSpawners();
-
-server.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-  console.log(`Initialized ${mobSpawners.size} mob spawners and ${mobs.size} mobs.`);
-});
+runtimeBootstrap.start();
