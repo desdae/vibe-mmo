@@ -5,6 +5,7 @@ const { executeAbilityByKind } = require("./server/ability-handlers");
 const { createAreaEffectTools } = require("./server/gameplay/area-effects");
 const { createGameLoop } = require("./server/runtime/game-loop");
 const { createDebouncedFileReloader } = require("./server/runtime/file-reload-watch");
+const { createConfigOrchestrator } = require("./server/runtime/config-orchestrator");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
@@ -256,19 +257,6 @@ const addManaOverTimeEffect = playerResourceTools.addManaOverTimeEffect;
 const tickPlayerHealEffects = playerResourceTools.tickPlayerHealEffects;
 const tickPlayerManaEffects = playerResourceTools.tickPlayerManaEffects;
 
-function reloadServerConfig(reason) {
-  try {
-    const nextConfig = loadServerConfigFromDisk(SERVER_CONFIG_PATH);
-    SERVER_CONFIG = nextConfig;
-    console.log(`[config] Reloaded ${SERVER_CONFIG_PATH} (${reason}): ${formatServerConfigForLog(nextConfig)}`);
-  } catch (error) {
-    const details = error && error.message ? error.message : String(error);
-    console.error(
-      `[config] Failed to reload ${SERVER_CONFIG_PATH} (${reason}). Keeping previous config. Reason: ${details}`
-    );
-  }
-}
-
 function broadcastClassAndAbilityDefs() {
   for (const player of players.values()) {
     sendJson(player.ws, {
@@ -278,171 +266,6 @@ function broadcastClassAndAbilityDefs() {
     });
   }
 }
-
-function reloadAbilityAndClassConfig(reason) {
-  try {
-    const nextAbilityConfig = loadAbilityConfig();
-    const nextClassConfig = loadClassConfigFromDisk(
-      CLASS_CONFIG_PATH,
-      nextAbilityConfig.abilityDefs,
-      ITEM_CONFIG.itemDefs,
-      BASE_PLAYER_SPEED,
-      normalizeItemEntries
-    );
-    ABILITY_CONFIG = nextAbilityConfig;
-    CLASS_CONFIG = nextClassConfig;
-    console.log(`[config] Reloaded ${ABILITY_CONFIG_PATH} (${reason})`);
-    broadcastClassAndAbilityDefs();
-    reloadMobConfig(`ability dependency reload (${reason})`);
-  } catch (error) {
-    const details = error && error.message ? error.message : String(error);
-    console.error(
-      `[config] Failed to reload ${ABILITY_CONFIG_PATH} (${reason}). Keeping previous config. Reason: ${details}`
-    );
-  }
-}
-
-function applyRuntimeMobDefinition(mob, mobDef) {
-  if (!mob || !mobDef) {
-    return false;
-  }
-  const wasAlive = !!mob.alive;
-  const oldMaxHp = Math.max(1, Math.floor(Number(mob.maxHp) || 1));
-  const oldHp = Math.max(0, Number(mob.hp) || 0);
-  const hpRatio = oldMaxHp > 0 ? clamp(oldHp / oldMaxHp, 0, 1) : 1;
-
-  mob.maxHp = clamp(Math.floor(Number(mobDef.health) || 1), 1, 255);
-  if (wasAlive) {
-    const scaledHp = Math.round(hpRatio * mob.maxHp);
-    mob.hp = clamp(scaledHp, 1, mob.maxHp);
-  } else {
-    mob.hp = 0;
-  }
-
-  mob.baseSpeed = clamp(Number(mobDef.baseSpeed) || 0.5, 0.05, 20);
-  mob.damageMin = clamp(Math.floor(Number(mobDef.damageMin) || 0), 0, 255);
-  mob.damageMax = clamp(Math.floor(Number(mobDef.damageMax) || mob.damageMin), mob.damageMin, 255);
-  mob.respawnMinMs = Math.max(1000, Math.floor(Number(mobDef.respawnMinMs) || 1000));
-  mob.respawnMaxMs = Math.max(mob.respawnMinMs, Math.floor(Number(mobDef.respawnMaxMs) || mob.respawnMinMs));
-  mob.dropRules = Array.isArray(mobDef.dropRules) ? mobDef.dropRules.map((entry) => ({ ...entry })) : [];
-  mob.renderStyle = mobDef.renderStyle ? JSON.parse(JSON.stringify(mobDef.renderStyle)) : null;
-  mob.combat = mobDef.combat ? JSON.parse(JSON.stringify(mobDef.combat)) : null;
-
-  if (!(mob.abilityCooldowns instanceof Map)) {
-    mob.abilityCooldowns = new Map();
-  } else {
-    mob.abilityCooldowns.clear();
-  }
-
-  if (mob.activeCast) {
-    clearMobCast(mob);
-  }
-  return true;
-}
-
-function applyRuntimeMobConfig(nextMobConfig) {
-  if (!nextMobConfig || typeof nextMobConfig !== "object") {
-    return { updatedMobs: 0, updatedSpawners: 0 };
-  }
-
-  let updatedSpawners = 0;
-  for (const spawner of mobSpawners.values()) {
-    if (!spawner) {
-      continue;
-    }
-    const existingClusterName = String(spawner.clusterName || "");
-    let nextCluster = nextMobConfig.clusterDefs.find((entry) => String(entry?.name || "") === existingClusterName);
-    if (!nextCluster) {
-      const centerX = MAP_WIDTH / 2;
-      const centerY = MAP_HEIGHT / 2;
-      const spawnerDistance = Math.hypot(
-        (Number(spawner.x) || centerX) - centerX,
-        (Number(spawner.y) || centerY) - centerY
-      );
-      nextCluster = pickClusterDef(nextMobConfig, spawnerDistance);
-      if (!nextCluster) {
-        nextCluster = pickClusterDef(nextMobConfig);
-      }
-      if (!nextCluster) {
-        continue;
-      }
-      spawner.clusterName = nextCluster.name;
-    }
-    spawner.clusterDef = nextCluster;
-    if (!Array.isArray(spawner.mobIds)) {
-      spawner.mobIds = [];
-    } else {
-      spawner.mobIds = spawner.mobIds.filter((mobId) => mobs.has(mobId));
-    }
-    updatedSpawners += 1;
-  }
-
-  let updatedMobs = 0;
-  for (const mob of mobs.values()) {
-    const mobType = String(mob.type || "");
-    if (!mobType) {
-      continue;
-    }
-    const nextDef = nextMobConfig.mobDefs.get(mobType);
-    if (!nextDef) {
-      continue;
-    }
-    if (applyRuntimeMobDefinition(mob, nextDef)) {
-      updatedMobs += 1;
-    }
-  }
-
-  return { updatedMobs, updatedSpawners };
-}
-
-function reloadMobConfig(reason) {
-  try {
-    const nextMobConfig = loadMobConfigFromDisk(
-      MOB_CONFIG_PATH,
-      ITEM_CONFIG.itemDefs,
-      ABILITY_CONFIG.abilityDefs,
-      { width: MAP_WIDTH, height: MAP_HEIGHT },
-      SERVER_CONFIG,
-      {
-        mobAggroRange: MOB_AGGRO_RANGE,
-        mobAttackRange: MOB_ATTACK_RANGE,
-        mobWanderRadius: MOB_WANDER_RADIUS,
-        mobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
-      }
-    );
-    MOB_CONFIG = nextMobConfig;
-    const { updatedMobs, updatedSpawners } = applyRuntimeMobConfig(nextMobConfig);
-    console.log(
-      `[config] Reloaded ${MOB_CONFIG_PATH} (${reason}): updated ${updatedMobs} mobs, ${updatedSpawners} spawners`
-    );
-  } catch (error) {
-    const details = error && error.message ? error.message : String(error);
-    console.error(
-      `[config] Failed to reload ${MOB_CONFIG_PATH} (${reason}). Keeping previous config. Reason: ${details}`
-    );
-  }
-}
-
-const serverConfigReloader = createDebouncedFileReloader({
-  filePath: SERVER_CONFIG_PATH,
-  reloadFn: reloadServerConfig
-});
-const scheduleServerConfigReload = serverConfigReloader.schedule;
-const watchServerConfig = serverConfigReloader.watch;
-
-const abilityConfigReloader = createDebouncedFileReloader({
-  filePath: ABILITY_CONFIG_PATH,
-  reloadFn: reloadAbilityAndClassConfig
-});
-const scheduleAbilityConfigReload = abilityConfigReloader.schedule;
-const watchAbilityConfig = abilityConfigReloader.watch;
-
-const mobConfigReloader = createDebouncedFileReloader({
-  filePath: MOB_CONFIG_PATH,
-  reloadFn: reloadMobConfig
-});
-const scheduleMobConfigReload = mobConfigReloader.schedule;
-const watchMobConfig = mobConfigReloader.watch;
 
 let ABILITY_CONFIG = loadAbilityConfig();
 let CLASS_CONFIG = loadClassConfigFromDisk(
@@ -471,9 +294,6 @@ const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
   MAP_WIDTH,
   MAP_HEIGHT
 );
-watchServerConfig();
-watchAbilityConfig();
-watchMobConfig();
 
 const server = createGameHttpServer({
   http,
@@ -739,6 +559,65 @@ const markAbilityUsed = castingTools.markAbilityUsed;
 const playerHasMovementInput = castingTools.playerHasMovementInput;
 const clearPlayerCast = castingTools.clearPlayerCast;
 const clearMobCast = castingTools.clearMobCast;
+const configOrchestrator = createConfigOrchestrator({
+  paths: {
+    serverConfigPath: SERVER_CONFIG_PATH,
+    abilityConfigPath: ABILITY_CONFIG_PATH,
+    classConfigPath: CLASS_CONFIG_PATH,
+    mobConfigPath: MOB_CONFIG_PATH
+  },
+  loaders: {
+    loadServerConfigFromDisk,
+    formatServerConfigForLog,
+    loadAbilityConfig,
+    loadClassConfigFromDisk,
+    loadMobConfigFromDisk
+  },
+  state: {
+    getServerConfig: () => SERVER_CONFIG,
+    setServerConfig: (nextConfig) => {
+      SERVER_CONFIG = nextConfig;
+    },
+    getAbilityConfig: () => ABILITY_CONFIG,
+    setAbilityConfig: (nextConfig) => {
+      ABILITY_CONFIG = nextConfig;
+    },
+    setClassConfig: (nextConfig) => {
+      CLASS_CONFIG = nextConfig;
+    },
+    setMobConfig: (nextConfig) => {
+      MOB_CONFIG = nextConfig;
+    }
+  },
+  constants: {
+    basePlayerSpeed: BASE_PLAYER_SPEED,
+    itemDefs: ITEM_CONFIG.itemDefs,
+    mapWidth: MAP_WIDTH,
+    mapHeight: MAP_HEIGHT,
+    mobCombatDefaults: {
+      mobAggroRange: MOB_AGGRO_RANGE,
+      mobAttackRange: MOB_ATTACK_RANGE,
+      mobWanderRadius: MOB_WANDER_RADIUS,
+      mobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
+    },
+    normalizeItemEntries,
+    clamp
+  },
+  runtime: {
+    mobSpawners,
+    mobs,
+    pickClusterDef,
+    clearMobCast,
+    broadcastClassAndAbilityDefs
+  },
+  createDebouncedFileReloader
+});
+const watchServerConfig = configOrchestrator.watchServerConfig;
+const watchAbilityConfig = configOrchestrator.watchAbilityConfig;
+const watchMobConfig = configOrchestrator.watchMobConfig;
+watchServerConfig();
+watchAbilityConfig();
+watchMobConfig();
 
 function createMob(spawner) {
   if (!spawner.clusterDef || !spawner.clusterDef.members.length) {
