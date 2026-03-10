@@ -5,6 +5,8 @@ const { WebSocketServer } = require("ws");
 const PROTOCOL = require("./public/shared/protocol");
 const { executeAbilityByKind } = require("./server/ability-handlers");
 const { createGameLoop } = require("./server/runtime/game-loop");
+const { sendJson, sendBinary } = require("./server/network/transport");
+const { registerWsConnections } = require("./server/network/ws-connections");
 
 const PORT = process.env.PORT || 3000;
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
@@ -208,18 +210,6 @@ function buildSoundManifest() {
   return {
     availableUrls: collectSoundUrlPaths(SOUND_DIR_PATH)
   };
-}
-
-function sendJson(ws, payload) {
-  if (ws.readyState === 1) {
-    ws.send(JSON.stringify(payload));
-  }
-}
-
-function sendBinary(ws, buffer) {
-  if (ws.readyState === 1) {
-    ws.send(buffer);
-  }
 }
 
 function clamp(value, min, max) {
@@ -7082,338 +7072,38 @@ function broadcastState() {
   pendingMobDeathEvents.length = 0;
 }
 
-wss.on("connection", (ws) => {
-  let player = null;
-
-  sendJson(ws, {
-    type: "hello",
-    message: "Send join message with name and classType.",
-    classes: CLASS_CONFIG.clientClassDefs,
-    abilities: ABILITY_CONFIG.clientAbilityDefs,
-    sounds: buildSoundManifest()
-  });
-
-  ws.on("message", (rawMessage) => {
-    let msg;
-    try {
-      msg = JSON.parse(String(rawMessage));
-    } catch (_error) {
-      sendJson(ws, { type: "error", message: "Invalid JSON." });
-      return;
-    }
-
-    if (!msg || typeof msg.type !== "string") {
-      sendJson(ws, { type: "error", message: "Invalid message shape." });
-      return;
-    }
-
-    if (msg.type === "join") {
-      if (player) {
-        sendJson(ws, { type: "error", message: "Already joined." });
-        return;
-      }
-
-      const name = String(msg.name || "").trim().slice(0, 24);
-      const classType = String(msg.classType || "").trim();
-      const classDef = CLASS_CONFIG.classDefs.get(classType) || null;
-
-      if (!name || !classDef) {
-        sendJson(ws, {
-          type: "error",
-          message: "Join requires non-empty name and a valid classType from class config."
-        });
-        return;
-      }
-
-      const spawn = randomSpawn();
-      player = {
-        id: String(nextPlayerId++),
-        ws,
-        name,
-        classType,
-        x: spawn.x,
-        y: spawn.y,
-        hp: classDef.baseHealth,
-        maxHp: classDef.baseHealth,
-        mana: classDef.baseMana,
-        maxMana: classDef.baseMana,
-        manaRegen: classDef.manaRegen,
-        moveSpeed: classDef.movementSpeed,
-	        activeHeals: [],
-	        activeManaRestores: [],
-	        activeDots: new Map(),
-	        copper: 0,
-        level: 1,
-        exp: 0,
-        expToNext: expNeededForLevel(1),
-        skillPoints: 0,
-        abilityLevels: new Map(classDef.abilities.map((entry) => [entry.id, entry.level])),
-        abilityLastUsedAt: new Map(),
-	        activeCast: null,
-	        castStateVersion: 0,
-	        invulnerableUntil: 0,
-	        stunnedUntil: 0,
-	        stunAppliedAt: 0,
-	        stunDurationMs: 0,
-	        slowUntil: 0,
-	        slowMultiplier: 1,
-	        slowAppliedAt: 0,
-	        slowDurationMs: 0,
-	        burningUntil: 0,
-	        burnAppliedAt: 0,
-	        burnDurationMs: 0,
-	        inventorySlots: createEmptyInventorySlots(),
-        input: { dx: 0, dy: 0 },
-        lastDirection: { dx: 0, dy: 1 },
-        lastSwingDirection: { dx: 0, dy: 1 },
-        swingCounter: 0,
-        entitySync: {
-          playerSlotsByRealId: new Map(),
-          playerRealIdBySlot: new Map(),
-	          playerStatesBySlot: new Map(),
-	          playerSwingBySlot: new Map(),
-	          playerCastVersionBySlot: new Map(),
-	          playerEffectStatesBySlot: new Map(),
-	          selfCastVersion: null,
-          freePlayerSlots: [],
-          nextPlayerSlot: 1,
-          mobSlotsByRealId: new Map(),
-          mobRealIdBySlot: new Map(),
-          mobStatesBySlot: new Map(),
-          mobBiteBySlot: new Map(),
-          mobCastVersionBySlot: new Map(),
-          mobMetaSignatureBySlot: new Map(),
-          mobEffectStatesBySlot: new Map(),
-          freeMobSlots: [],
-          nextMobSlot: 1,
-          projectileSlotsByRealId: new Map(),
-          projectileRealIdBySlot: new Map(),
-          projectileStatesBySlot: new Map(),
-          projectileMetaBySlot: new Map(),
-          freeProjectileSlots: [],
-          nextProjectileSlot: 1,
-          lootBagSlotsByRealId: new Map(),
-          lootBagRealIdBySlot: new Map(),
-          lootBagStatesBySlot: new Map(),
-          lootBagMetaVersionBySlot: new Map(),
-          freeLootBagSlots: [],
-          nextLootBagSlot: 1,
-	          selfState: null,
-	          selfEffectState: null,
-	          areaEffectStatesById: new Map()
-	        }
-	      };
-
-      const starterItems = normalizeItemEntries(classDef.startingItems);
-      if (starterItems.length) {
-        addItemsToInventory(player, starterItems);
-      }
-      syncPlayerCopperFromInventory(player, false);
-      players.set(player.id, player);
-
-      sendJson(ws, {
-        type: "welcome",
-        id: player.id,
-        selfStatic: {
-          id: player.id,
-          name: player.name,
-          classType: player.classType,
-          mana: player.mana,
-          maxMana: player.maxMana
-        },
-        map: { width: MAP_WIDTH, height: MAP_HEIGHT },
-        visibilityRange: VISIBILITY_RANGE,
-        sounds: buildSoundManifest()
-      });
-      sendJson(ws, {
-        type: "class_defs",
-        classes: CLASS_CONFIG.clientClassDefs,
-        abilities: ABILITY_CONFIG.clientAbilityDefs
-      });
-      sendJson(ws, {
-        type: "item_defs",
-        items: ITEM_CONFIG.clientItemDefs
-      });
-      sendInventoryState(player);
-      sendSelfProgress(player);
-      return;
-    }
-
-    if (!player) {
-      sendJson(ws, { type: "error", message: "Must join first." });
-      return;
-    }
-
-	    if (msg.type === "move") {
-	      if (player.hp <= 0) {
-	        player.input = { dx: 0, dy: 0 };
-	        return;
-	      }
-	      if ((Number(player.stunnedUntil) || 0) > Date.now()) {
-	        player.input = { dx: 0, dy: 0 };
-	        return;
-	      }
-
-      const dx = Number(msg.dx);
-      const dy = Number(msg.dy);
-
-      if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-        sendJson(ws, { type: "error", message: "Move requires numeric dx, dy." });
-        return;
-      }
-
-      const moveX = clamp(dx, -1, 1);
-      const moveY = clamp(dy, -1, 1);
-      const normalized = normalizeDirection(moveX, moveY);
-
-      if (!normalized) {
-        player.input = { dx: 0, dy: 0 };
-        return;
-      }
-
-      if (player.activeCast) {
-        clearPlayerCast(player);
-      }
-      player.input = normalized;
-      player.lastDirection = normalized;
-      return;
-    }
-
-    if (msg.type === "use_ability") {
-      const abilityId = String(msg.abilityId || "").trim();
-      const dx = Number(msg.dx);
-      const dy = Number(msg.dy);
-      const distance = Number(msg.distance);
-      if (!abilityId || !Number.isFinite(dx) || !Number.isFinite(dy)) {
-        return;
-      }
-      usePlayerAbility(player, abilityId, dx, dy, Number.isFinite(distance) ? distance : null);
-      return;
-    }
-
-    if (msg.type === "level_up_ability") {
-      const abilityId = String(msg.abilityId || "").trim();
-      if (!abilityId) {
-        return;
-      }
-      if (levelUpPlayerAbility(player, abilityId)) {
-        sendSelfProgress(player);
-      }
-      return;
-    }
-
-    if (msg.type === "cast") {
-      const dx = Number(msg.dx);
-      const dy = Number(msg.dy);
-      if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-        return;
-      }
-      usePlayerAbility(player, "fireball", dx, dy);
-      return;
-    }
-
-    if (msg.type === "melee_attack") {
-      const dx = Number(msg.dx);
-      const dy = Number(msg.dy);
-      if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
-        return;
-      }
-      usePlayerAbility(player, "slash", dx, dy);
-      return;
-    }
-
-    if (msg.type === "pickup_bag") {
-      if (player.hp <= 0) {
-        return;
-      }
-      const targetX = Number(msg.x);
-      const targetY = Number(msg.y);
-      tryPickupLootBag(player, targetX, targetY);
-      return;
-    }
-
-    if (msg.type === "inventory_move") {
-      const from = Math.floor(Number(msg.from));
-      const to = Math.floor(Number(msg.to));
-      if (!Number.isFinite(from) || !Number.isFinite(to)) {
-        return;
-      }
-      if (mergeOrSwapInventorySlots(player, from, to)) {
-        sendInventoryState(player);
-      }
-      return;
-    }
-
-    if (msg.type === "use_item") {
-      if (player.hp <= 0) {
-        return;
-      }
-
-      const itemId = String(msg.itemId || "").trim();
-      if (!itemId) {
-        return;
-      }
-      const itemDef = ITEM_CONFIG.itemDefs.get(itemId);
-      if (!itemDef || !itemDef.effect || typeof itemDef.effect.type !== "string") {
-        return;
-      }
-      const effectType = String(itemDef.effect.type).trim().toLowerCase();
-      if (effectType !== "heal" && effectType !== "mana") {
-        return;
-      }
-      const effectValue = Math.max(0, Number(itemDef.effect.value) || 0);
-      const effectDuration = Math.max(0, Number(itemDef.effect.duration) || 0);
-      if (effectValue <= 0) {
-        return;
-      }
-      if (!consumeInventoryItem(player, itemId, 1)) {
-        return;
-      }
-
-      let healedNow = 0;
-      let restoredManaNow = 0;
-      let overTime = false;
-      if (effectType === "heal") {
-        if (effectDuration > 0) {
-          overTime = addHealOverTimeEffect(player, effectValue, effectDuration);
-        } else {
-          const beforeHp = player.hp;
-          player.hp = clamp(player.hp + effectValue, 0, player.maxHp);
-          healedNow = Math.max(0, player.hp - beforeHp);
-        }
-      } else {
-        if (effectDuration > 0) {
-          overTime = addManaOverTimeEffect(player, effectValue, effectDuration);
-        } else {
-          const beforeMana = player.mana;
-          player.mana = clamp(player.mana + effectValue, 0, player.maxMana);
-          restoredManaNow = Math.max(0, player.mana - beforeMana);
-        }
-      }
-
-      sendInventoryState(player);
-      syncPlayerCopperFromInventory(player, true);
-      sendJson(player.ws, {
-        type: "item_used",
-        itemId,
-        hp: player.hp,
-        mana: player.mana,
-        effectType,
-        healed: healedNow,
-        restoredMana: restoredManaNow,
-        overTime,
-        effectValue,
-        effectDuration
-      });
-      return;
-    }
-  });
-
-  ws.on("close", () => {
-    if (player) {
-      players.delete(player.id);
-    }
-  });
+registerWsConnections({
+  wss,
+  deps: {
+    sendJson,
+    players,
+    CLASS_CONFIG,
+    ABILITY_CONFIG,
+    ITEM_CONFIG,
+    MAP_WIDTH,
+    MAP_HEIGHT,
+    VISIBILITY_RANGE,
+    buildSoundManifest,
+    randomSpawn,
+    expNeededForLevel,
+    createEmptyInventorySlots,
+    normalizeItemEntries,
+    addItemsToInventory,
+    syncPlayerCopperFromInventory,
+    sendInventoryState,
+    sendSelfProgress,
+    clamp,
+    normalizeDirection,
+    clearPlayerCast,
+    usePlayerAbility,
+    levelUpPlayerAbility,
+    tryPickupLootBag,
+    mergeOrSwapInventorySlots,
+    consumeInventoryItem,
+    addHealOverTimeEffect,
+    addManaOverTimeEffect,
+    allocatePlayerId: () => String(nextPlayerId++)
+  }
 });
 
 const gameLoop = createGameLoop({
