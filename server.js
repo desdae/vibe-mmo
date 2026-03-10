@@ -2462,7 +2462,7 @@ const abilityHandlerContext = {
   getAbilityRangeForLevel,
   getAbilityDamageRange,
   getAbilityDotDamageRange,
-  markAbilityUsed,
+  markAbilityUsed: (...args) => markAbilityUsed(...args),
   applyDamageToMob,
   applyAbilityHitEffectsToMob,
   stunMob,
