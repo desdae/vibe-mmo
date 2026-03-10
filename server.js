@@ -18,6 +18,11 @@ const { createAreaEffectEventBuilder } = require("./server/network/area-effect-e
 const { createPlayerMessageTools } = require("./server/network/player-messages");
 const { createWorldEventQueues } = require("./server/network/world-events");
 const {
+  buildServerConfig,
+  loadServerConfigFromDisk,
+  formatServerConfigForLog
+} = require("./server/config/server-config");
+const {
   getAbilityDamageRange,
   getAbilityDotDamageRange,
   getAbilityRangeForLevel,
@@ -51,7 +56,6 @@ const {
   randomInt,
   parseNumericRange,
   parseBoolean,
-  parseMultiplier,
   parseGameplayInt,
   parseGameplayNumber
 } = require("./server/gameplay/number-utils");
@@ -310,39 +314,6 @@ function loadGameplayConfigFromDisk() {
     throw new Error("gameplay config root must be an object");
   }
   return buildGameplayConfig(parsed);
-}
-
-function buildServerConfig(parsed) {
-  return {
-    expMultiplier: parseMultiplier(parsed?.expMultiplier, 1),
-    mobHealthMultiplier: parseMultiplier(parsed?.mobHealthMultiplier, 1),
-    mobDamageMultiplier: parseMultiplier(parsed?.mobDamageMultiplier, 1),
-    mobSpeedMultiplier: parseMultiplier(parsed?.mobSpeedMultiplier, 1),
-    mobRespawnMultiplier: parseMultiplier(parsed?.mobRespawnMultiplier, 1),
-    dropChanceMultiplier: parseMultiplier(parsed?.dropChanceMultiplier ?? parsed?.dropchanceMultiplier, 1),
-    mobSpawnMultiplier: parseMultiplier(parsed?.mobSpawnMultiplier, 1)
-  };
-}
-
-function loadServerConfigFromDisk() {
-  const raw = fs.readFileSync(SERVER_CONFIG_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("server config root must be an object");
-  }
-  return buildServerConfig(parsed);
-}
-
-function formatServerConfigForLog(config) {
-  return [
-    `expMultiplier=${config.expMultiplier}`,
-    `mobHealthMultiplier=${config.mobHealthMultiplier}`,
-    `mobDamageMultiplier=${config.mobDamageMultiplier}`,
-    `mobSpeedMultiplier=${config.mobSpeedMultiplier}`,
-    `mobRespawnMultiplier=${config.mobRespawnMultiplier}`,
-    `dropChanceMultiplier=${config.dropChanceMultiplier}`,
-    `mobSpawnMultiplier=${config.mobSpawnMultiplier}`
-  ].join(", ");
 }
 
 function loadItemConfig() {
@@ -1856,7 +1827,7 @@ const consumeInventoryItem = inventoryTools.consumeInventoryItem;
 const syncPlayerCopperFromInventory = inventoryTools.syncPlayerCopperFromInventory;
 let SERVER_CONFIG;
 try {
-  SERVER_CONFIG = loadServerConfigFromDisk();
+  SERVER_CONFIG = loadServerConfigFromDisk(SERVER_CONFIG_PATH);
   console.log(`[config] Loaded ${SERVER_CONFIG_PATH}: ${formatServerConfigForLog(SERVER_CONFIG)}`);
 } catch (error) {
   SERVER_CONFIG = buildServerConfig({});
@@ -1889,7 +1860,7 @@ let abilityConfigReloadTimer = null;
 let mobConfigReloadTimer = null;
 function reloadServerConfig(reason) {
   try {
-    const nextConfig = loadServerConfigFromDisk();
+    const nextConfig = loadServerConfigFromDisk(SERVER_CONFIG_PATH);
     SERVER_CONFIG = nextConfig;
     console.log(`[config] Reloaded ${SERVER_CONFIG_PATH} (${reason}): ${formatServerConfigForLog(nextConfig)}`);
   } catch (error) {
