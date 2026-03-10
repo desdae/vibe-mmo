@@ -1,0 +1,203 @@
+(function initVibeClientUiPanels(globalScope) {
+  "use strict";
+
+  function createUiPanelTools(rawDeps) {
+    const deps = rawDeps && typeof rawDeps === "object" ? rawDeps : {};
+    const {
+      inventoryPanel,
+      spellbookPanel,
+      dpsPanel,
+      dpsTabs,
+      dpsValue,
+      debugPanel,
+      debugNet,
+      debugState,
+      dpsState,
+      trafficWindowMs
+    } = deps;
+
+    const updateInventoryUI = typeof deps.updateInventoryUI === "function" ? deps.updateInventoryUI : () => {};
+    const updateSpellbookUI = typeof deps.updateSpellbookUI === "function" ? deps.updateSpellbookUI : () => {};
+    const getCurrentSelf = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf : () => null;
+
+    function setInventoryVisible(visible) {
+      if (!inventoryPanel) {
+        return;
+      }
+      inventoryPanel.classList.toggle("hidden", !visible);
+      if (visible) {
+        updateInventoryUI();
+      }
+    }
+
+    function toggleInventoryPanel() {
+      if (!inventoryPanel) {
+        return;
+      }
+      setInventoryVisible(inventoryPanel.classList.contains("hidden"));
+    }
+
+    function setSpellbookVisible(visible) {
+      if (!spellbookPanel) {
+        return;
+      }
+      spellbookPanel.classList.toggle("hidden", !visible);
+      if (visible) {
+        updateSpellbookUI(getCurrentSelf());
+      }
+    }
+
+    function toggleSpellbookPanel() {
+      if (!spellbookPanel) {
+        return;
+      }
+      setSpellbookVisible(spellbookPanel.classList.contains("hidden"));
+    }
+
+    function formatKbps(bytesInWindow) {
+      const kbps = (bytesInWindow * 8) / (trafficWindowMs / 1000) / 1000;
+      return kbps.toFixed(2);
+    }
+
+    function pruneTraffic(now) {
+      const cutoff = now - trafficWindowMs;
+
+      while (debugState.upEvents.length && debugState.upEvents[0].t < cutoff) {
+        debugState.upBytesWindow -= debugState.upEvents.shift().bytes;
+      }
+      while (debugState.downEvents.length && debugState.downEvents[0].t < cutoff) {
+        debugState.downBytesWindow -= debugState.downEvents.shift().bytes;
+      }
+    }
+
+    function addTrafficEvent(direction, bytes) {
+      if (bytes <= 0) {
+        return;
+      }
+      const now = performance.now();
+      pruneTraffic(now);
+
+      if (direction === "up") {
+        debugState.upEvents.push({ t: now, bytes });
+        debugState.upBytesWindow += bytes;
+        return;
+      }
+
+      debugState.downEvents.push({ t: now, bytes });
+      debugState.downBytesWindow += bytes;
+    }
+
+    function updateDebugPanel() {
+      const now = performance.now();
+      pruneTraffic(now);
+
+      if (!debugState.enabled || !debugNet) {
+        return;
+      }
+
+      debugNet.textContent = `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps`;
+    }
+
+    function setDebugEnabled(enabled) {
+      debugState.enabled = !!enabled;
+      if (debugPanel) {
+        debugPanel.classList.toggle("hidden", !debugState.enabled);
+      }
+      updateDebugPanel();
+    }
+
+    function toggleDebugPanel() {
+      setDebugEnabled(!debugState.enabled);
+    }
+
+    function pruneDpsSamples(now) {
+      const cutoff = now - 60000;
+      while (dpsState.samples.length && dpsState.samples[0].t < cutoff) {
+        dpsState.samples.shift();
+      }
+    }
+
+    function addDpsSample(amount, now = performance.now()) {
+      const dmg = Math.max(0, Number(amount) || 0);
+      if (dmg <= 0) {
+        return;
+      }
+      pruneDpsSamples(now);
+      dpsState.samples.push({ t: now, amount: dmg });
+    }
+
+    function getDpsAverage(windowSec, now = performance.now()) {
+      const windowMs = Math.max(1000, Math.round(windowSec * 1000));
+      const cutoff = now - windowMs;
+      let total = 0;
+      for (const sample of dpsState.samples) {
+        if (sample.t >= cutoff) {
+          total += sample.amount;
+        }
+      }
+      return total / (windowMs / 1000);
+    }
+
+    function updateDpsPanel() {
+      const now = performance.now();
+      pruneDpsSamples(now);
+      if (!dpsState.enabled || !dpsValue) {
+        return;
+      }
+      const dps = getDpsAverage(dpsState.selectedWindowSec, now);
+      dpsValue.textContent = `${dps.toFixed(2)} DPS`;
+    }
+
+    function setDpsWindow(windowSec) {
+      const normalized = Number(windowSec);
+      if (normalized !== 60 && normalized !== 20 && normalized !== 5) {
+        return;
+      }
+      dpsState.selectedWindowSec = normalized;
+      if (dpsTabs) {
+        for (const node of dpsTabs.querySelectorAll(".dps-tab")) {
+          const tabWindow = Number(node.getAttribute("data-window") || 0);
+          node.classList.toggle("active", tabWindow === dpsState.selectedWindowSec);
+        }
+      }
+      updateDpsPanel();
+    }
+
+    function setDpsVisible(visible) {
+      dpsState.enabled = !!visible;
+      if (!dpsPanel) {
+        return;
+      }
+      dpsPanel.classList.toggle("hidden", !dpsState.enabled);
+      updateDpsPanel();
+    }
+
+    function toggleDpsPanel() {
+      setDpsVisible(!dpsState.enabled);
+    }
+
+    return {
+      setInventoryVisible,
+      toggleInventoryPanel,
+      setSpellbookVisible,
+      toggleSpellbookPanel,
+      formatKbps,
+      pruneTraffic,
+      addTrafficEvent,
+      updateDebugPanel,
+      setDebugEnabled,
+      toggleDebugPanel,
+      pruneDpsSamples,
+      addDpsSample,
+      getDpsAverage,
+      setDpsWindow,
+      updateDpsPanel,
+      setDpsVisible,
+      toggleDpsPanel
+    };
+  }
+
+  globalScope.VibeClientUiPanels = Object.freeze({
+    createUiPanelTools
+  });
+})(globalThis);

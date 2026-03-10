@@ -2514,38 +2514,55 @@ function updateInventoryUI() {
   }
 }
 
+const sharedClientUiPanels = globalThis.VibeClientUiPanels || null;
+const sharedCreateUiPanelTools =
+  sharedClientUiPanels && typeof sharedClientUiPanels.createUiPanelTools === "function"
+    ? sharedClientUiPanels.createUiPanelTools
+    : null;
+const uiPanelTools = sharedCreateUiPanelTools
+  ? sharedCreateUiPanelTools({
+      inventoryPanel,
+      spellbookPanel,
+      dpsPanel,
+      dpsTabs,
+      dpsValue,
+      debugPanel,
+      debugNet,
+      debugState,
+      dpsState,
+      trafficWindowMs: TRAFFIC_WINDOW_MS,
+      updateInventoryUI,
+      updateSpellbookUI,
+      getCurrentSelf
+    })
+  : null;
+
 function setInventoryVisible(visible) {
-  if (!inventoryPanel) {
+  if (!uiPanelTools) {
     return;
   }
-  inventoryPanel.classList.toggle("hidden", !visible);
-  if (visible) {
-    updateInventoryUI();
-  }
+  uiPanelTools.setInventoryVisible(visible);
 }
 
 function toggleInventoryPanel() {
-  if (!inventoryPanel) {
+  if (!uiPanelTools) {
     return;
   }
-  setInventoryVisible(inventoryPanel.classList.contains("hidden"));
+  uiPanelTools.toggleInventoryPanel();
 }
 
 function setSpellbookVisible(visible) {
-  if (!spellbookPanel) {
+  if (!uiPanelTools) {
     return;
   }
-  spellbookPanel.classList.toggle("hidden", !visible);
-  if (visible) {
-    updateSpellbookUI(getCurrentSelf());
-  }
+  uiPanelTools.setSpellbookVisible(visible);
 }
 
 function toggleSpellbookPanel() {
-  if (!spellbookPanel) {
+  if (!uiPanelTools) {
     return;
   }
-  setSpellbookVisible(spellbookPanel.classList.contains("hidden"));
+  uiPanelTools.toggleSpellbookPanel();
 }
 
 function ensureActionBarInitialized() {
@@ -2766,123 +2783,94 @@ function byteLengthOfWsData(data) {
 }
 
 function pruneTraffic(now) {
-  const cutoff = now - TRAFFIC_WINDOW_MS;
-
-  while (debugState.upEvents.length && debugState.upEvents[0].t < cutoff) {
-    debugState.upBytesWindow -= debugState.upEvents.shift().bytes;
+  if (!uiPanelTools) {
+    return;
   }
-  while (debugState.downEvents.length && debugState.downEvents[0].t < cutoff) {
-    debugState.downBytesWindow -= debugState.downEvents.shift().bytes;
-  }
+  uiPanelTools.pruneTraffic(now);
 }
 
 function addTrafficEvent(direction, bytes) {
-  if (bytes <= 0) {
+  if (!uiPanelTools) {
     return;
   }
-  const now = performance.now();
-  pruneTraffic(now);
-
-  if (direction === "up") {
-    debugState.upEvents.push({ t: now, bytes });
-    debugState.upBytesWindow += bytes;
-    return;
-  }
-
-  debugState.downEvents.push({ t: now, bytes });
-  debugState.downBytesWindow += bytes;
+  uiPanelTools.addTrafficEvent(direction, bytes);
 }
 
 function formatKbps(bytesInWindow) {
-  const kbps = (bytesInWindow * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
-  return kbps.toFixed(2);
+  if (!uiPanelTools) {
+    return "0.00";
+  }
+  return uiPanelTools.formatKbps(bytesInWindow);
 }
 
 function updateDebugPanel() {
-  const now = performance.now();
-  pruneTraffic(now);
-
-  if (!debugState.enabled) {
+  if (!uiPanelTools) {
     return;
   }
-
-  debugNet.textContent = `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps`;
+  uiPanelTools.updateDebugPanel();
 }
 
 function setDebugEnabled(enabled) {
-  debugState.enabled = enabled;
-  debugPanel.classList.toggle("hidden", !enabled);
-  updateDebugPanel();
+  if (!uiPanelTools) {
+    return;
+  }
+  uiPanelTools.setDebugEnabled(enabled);
 }
 
 function toggleDebugPanel() {
-  setDebugEnabled(!debugState.enabled);
+  if (!uiPanelTools) {
+    return;
+  }
+  uiPanelTools.toggleDebugPanel();
 }
 
 function pruneDpsSamples(now) {
-  const cutoff = now - 60000;
-  while (dpsState.samples.length && dpsState.samples[0].t < cutoff) {
-    dpsState.samples.shift();
+  if (!uiPanelTools) {
+    return;
   }
+  uiPanelTools.pruneDpsSamples(now);
 }
 
 function addDpsSample(amount, now = performance.now()) {
-  const dmg = Math.max(0, Number(amount) || 0);
-  if (dmg <= 0) {
+  if (!uiPanelTools) {
     return;
   }
-  pruneDpsSamples(now);
-  dpsState.samples.push({ t: now, amount: dmg });
+  uiPanelTools.addDpsSample(amount, now);
 }
 
 function getDpsAverage(windowSec, now = performance.now()) {
-  const windowMs = Math.max(1000, Math.round(windowSec * 1000));
-  const cutoff = now - windowMs;
-  let total = 0;
-  for (const sample of dpsState.samples) {
-    if (sample.t >= cutoff) {
-      total += sample.amount;
-    }
+  if (!uiPanelTools) {
+    return 0;
   }
-  return total / (windowMs / 1000);
+  return uiPanelTools.getDpsAverage(windowSec, now);
 }
 
 function setDpsWindow(windowSec) {
-  const normalized = Number(windowSec);
-  if (normalized !== 60 && normalized !== 20 && normalized !== 5) {
+  if (!uiPanelTools) {
     return;
   }
-  dpsState.selectedWindowSec = normalized;
-  if (dpsTabs) {
-    for (const node of dpsTabs.querySelectorAll(".dps-tab")) {
-      const tabWindow = Number(node.getAttribute("data-window") || 0);
-      node.classList.toggle("active", tabWindow === dpsState.selectedWindowSec);
-    }
-  }
-  updateDpsPanel();
+  uiPanelTools.setDpsWindow(windowSec);
 }
 
 function updateDpsPanel() {
-  const now = performance.now();
-  pruneDpsSamples(now);
-  if (!dpsState.enabled || !dpsValue) {
+  if (!uiPanelTools) {
     return;
   }
-  const dps = getDpsAverage(dpsState.selectedWindowSec, now);
-  dpsValue.textContent = `${dps.toFixed(2)} DPS`;
+  uiPanelTools.updateDpsPanel();
 }
 
 function setDpsVisible(visible) {
-  dpsState.enabled = !!visible;
-  if (!dpsPanel) {
+  if (!uiPanelTools) {
     return;
   }
-  dpsPanel.classList.toggle("hidden", !dpsState.enabled);
-  updateDpsPanel();
+  uiPanelTools.setDpsVisible(visible);
 }
 
 function toggleDpsPanel() {
-  setDpsVisible(!dpsState.enabled);
+  if (!uiPanelTools) {
+    return;
+  }
+  uiPanelTools.toggleDpsPanel();
 }
 
 function initializeDpsPanel() {
