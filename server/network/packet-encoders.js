@@ -1,4 +1,5 @@
 const PROTOCOL = require("../../public/shared/protocol");
+const PROTOCOL_CODECS = require("../../public/shared/protocol-codecs");
 
 const {
   MOB_EFFECT_PROTO_TYPE,
@@ -11,25 +12,15 @@ const {
   PROJECTILE_META_PROTO_VERSION,
   DAMAGE_EVENT_PROTO_TYPE,
   DAMAGE_EVENT_PROTO_VERSION,
-  DAMAGE_EVENT_FLAG_TARGET_PLAYER,
-  DAMAGE_EVENT_FLAG_FROM_SELF,
   MOB_EFFECT_FLAG_STUN,
   MOB_EFFECT_FLAG_SLOW,
   MOB_EFFECT_FLAG_BURN,
   AREA_EFFECT_OP_UPSERT,
   AREA_EFFECT_OP_REMOVE,
   AREA_EFFECT_KIND_AREA,
-  AREA_EFFECT_KIND_BEAM,
-  POS_SCALE
+  AREA_EFFECT_KIND_BEAM
 } = PROTOCOL;
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function quantizePos(value) {
-  return clamp(Math.round(Number(value || 0) * POS_SCALE), 0, 65535);
-}
+const { clamp, quantizePos, encodeDamageEventFlags } = PROTOCOL_CODECS;
 
 function encodeMobEffectEventPacket(events) {
   const bytes = [];
@@ -188,13 +179,7 @@ function encodeDamageEventPacket(events) {
     const xQ = quantizePos(Number(event && event.x));
     const yQ = quantizePos(Number(event && event.y));
     const amount = clamp(Math.floor(Number(event && event.amount) || 0), 0, 255);
-    let flags = 0;
-    if (String((event && event.targetType) || "").toLowerCase() === "player") {
-      flags |= DAMAGE_EVENT_FLAG_TARGET_PLAYER;
-    }
-    if (event && event.fromSelf) {
-      flags |= DAMAGE_EVENT_FLAG_FROM_SELF;
-    }
+    const flags = encodeDamageEventFlags(event && event.targetType, event && event.fromSelf);
 
     body.writeUInt16LE(xQ, offset);
     body.writeUInt16LE(yQ, offset + 2);

@@ -153,6 +153,18 @@ const {
   SELF_MODE_FULL,
   SELF_MODE_DELTA
 } = protocol;
+const sharedProtocolCodecs = globalThis.VibeProtocolCodecs || null;
+const dequantizePos =
+  sharedProtocolCodecs && typeof sharedProtocolCodecs.dequantizePos === "function"
+    ? sharedProtocolCodecs.dequantizePos
+    : (valueQ) => (Number(valueQ) || 0) / POS_SCALE;
+const decodeDamageEventFlags =
+  sharedProtocolCodecs && typeof sharedProtocolCodecs.decodeDamageEventFlags === "function"
+    ? sharedProtocolCodecs.decodeDamageEventFlags
+    : (flags) => ({
+        targetType: flags & DAMAGE_EVENT_FLAG_TARGET_PLAYER ? "player" : "mob",
+        fromSelf: !!(flags & DAMAGE_EVENT_FLAG_FROM_SELF)
+      });
 
 let socket = null;
 let myId = null;
@@ -4076,9 +4088,9 @@ function parseAreaEffectBinaryPacket(arrayBuffer) {
       break;
     }
     const kindByte = view.getUint8(offset);
-    const x = view.getUint16(offset + 1, true) / POS_SCALE;
-    const y = view.getUint16(offset + 3, true) / POS_SCALE;
-    const radius = view.getUint16(offset + 5, true) / POS_SCALE;
+    const x = dequantizePos(view.getUint16(offset + 1, true));
+    const y = dequantizePos(view.getUint16(offset + 3, true));
+    const radius = dequantizePos(view.getUint16(offset + 5, true));
     const remainingMs = view.getUint16(offset + 7, true);
     const durationMs = view.getUint16(offset + 9, true);
     const abilityLen = view.getUint8(offset + 11);
@@ -4106,12 +4118,12 @@ function parseAreaEffectBinaryPacket(arrayBuffer) {
       if (offset + 12 > view.byteLength) {
         break;
       }
-      payload.startX = view.getUint16(offset, true) / POS_SCALE;
-      payload.startY = view.getUint16(offset + 2, true) / POS_SCALE;
+      payload.startX = dequantizePos(view.getUint16(offset, true));
+      payload.startY = dequantizePos(view.getUint16(offset + 2, true));
       payload.dx = view.getInt16(offset + 4, true) / 1000;
       payload.dy = view.getInt16(offset + 6, true) / 1000;
-      payload.length = view.getUint16(offset + 8, true) / POS_SCALE;
-      payload.width = view.getUint16(offset + 10, true) / POS_SCALE;
+      payload.length = dequantizePos(view.getUint16(offset + 8, true));
+      payload.width = dequantizePos(view.getUint16(offset + 10, true));
       offset += 12;
     }
 
@@ -4225,17 +4237,18 @@ function parseDamageEventBinaryPacket(arrayBuffer) {
     if (offset + 6 > view.byteLength) {
       break;
     }
-    const x = view.getUint16(offset, true) / POS_SCALE;
-    const y = view.getUint16(offset + 2, true) / POS_SCALE;
+    const x = dequantizePos(view.getUint16(offset, true));
+    const y = dequantizePos(view.getUint16(offset + 2, true));
     const amount = view.getUint8(offset + 4);
     const flags = view.getUint8(offset + 5);
     offset += 6;
+    const decodedFlags = decodeDamageEventFlags(flags);
     events.push({
       x,
       y,
       amount,
-      targetType: flags & DAMAGE_EVENT_FLAG_TARGET_PLAYER ? "player" : "mob",
-      fromSelf: !!(flags & DAMAGE_EVENT_FLAG_FROM_SELF)
+      targetType: decodedFlags.targetType,
+      fromSelf: decodedFlags.fromSelf
     });
   }
 
