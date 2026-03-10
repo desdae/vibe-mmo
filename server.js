@@ -24,6 +24,7 @@ const { serializePlayer, serializeMob, serializeLootBag } = require("./server/ne
 const { createEventBuilders } = require("./server/network/event-builders");
 const { createAreaEffectEventBuilder } = require("./server/network/area-effect-events");
 const { createPlayerMessageTools } = require("./server/network/player-messages");
+const { createWsConnectionDeps } = require("./server/network/ws-deps");
 const { createWorldEventQueues } = require("./server/network/world-events");
 const {
   buildServerConfig,
@@ -774,15 +775,16 @@ const runtimeBootstrap = createRuntimeBootstrap({
   createGameLoop,
   registerWsConnections,
   wss,
-  wsDeps: {
+  wsDeps: createWsConnectionDeps({
+    getClassConfig: () => CLASS_CONFIG,
+    getAbilityConfig: () => ABILITY_CONFIG,
+    getItemConfig: () => ITEM_CONFIG,
+    allocatePlayerId: () => String(nextPlayerId++),
     sendJson,
     players,
-    CLASS_CONFIG,
-    ABILITY_CONFIG,
-    ITEM_CONFIG,
-    MAP_WIDTH,
-    MAP_HEIGHT,
-    VISIBILITY_RANGE,
+    mapWidth: MAP_WIDTH,
+    mapHeight: MAP_HEIGHT,
+    visibilityRange: VISIBILITY_RANGE,
     buildSoundManifest,
     randomSpawn,
     expNeededForLevel,
@@ -801,9 +803,8 @@ const runtimeBootstrap = createRuntimeBootstrap({
     mergeOrSwapInventorySlots,
     consumeInventoryItem,
     addHealOverTimeEffect,
-    addManaOverTimeEffect,
-    allocatePlayerId: () => String(nextPlayerId++)
-  },
+    addManaOverTimeEffect
+  }),
   entityUpdateDeps: {
     getPendingHealAmount,
     getPendingManaAmount,
