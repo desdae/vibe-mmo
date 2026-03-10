@@ -14,6 +14,7 @@ const { createEntityUpdatePacketBuilder } = require("./server/network/entity-upd
 const { createEventBuilders } = require("./server/network/event-builders");
 const { createAreaEffectEventBuilder } = require("./server/network/area-effect-events");
 const { createPlayerMessageTools } = require("./server/network/player-messages");
+const { createWorldEventQueues } = require("./server/network/world-events");
 const {
   encodeMobEffectEventPacket,
   encodeAreaEffectEventPacket,
@@ -2569,10 +2570,20 @@ const mobSpawners = new Map();
 const mobs = new Map();
 const lootBags = new Map();
 const activeAreaEffects = new Map();
-const pendingDamageEvents = [];
-const pendingExplosionEvents = [];
-const pendingProjectileHitEvents = [];
-const pendingMobDeathEvents = [];
+const worldEventQueues = createWorldEventQueues({
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT
+});
+const {
+  pendingDamageEvents,
+  pendingExplosionEvents,
+  pendingProjectileHitEvents,
+  pendingMobDeathEvents,
+  queueDamageEvent,
+  queueExplosionEvent,
+  queueProjectileHitEvent,
+  queueMobDeathEvent
+} = worldEventQueues;
 
 function allocateProjectileId() {
   return nextProjectileId++;
@@ -2861,61 +2872,6 @@ function syncPlayerCopperFromInventory(player, shouldNotify = false) {
     sendSelfProgress(player);
   }
   return true;
-}
-
-function queueDamageEvent(target, amount, targetType, sourcePlayerId = null) {
-  const dmg = Math.max(0, Math.round(Number(amount) || 0));
-  if (!target || !Number.isFinite(target.x) || !Number.isFinite(target.y) || dmg <= 0) {
-    return;
-  }
-
-  pendingDamageEvents.push({
-    x: target.x,
-    y: target.y,
-    amount: dmg,
-    targetType: targetType === "player" ? "player" : "mob",
-    sourcePlayerId: sourcePlayerId ? String(sourcePlayerId) : null
-  });
-}
-
-function queueExplosionEvent(x, y, radius, abilityId = "") {
-  const eventRadius = Math.max(0, Number(radius) || 0);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || eventRadius <= 0) {
-    return;
-  }
-
-  pendingExplosionEvents.push({
-    x: clamp(x, 0, MAP_WIDTH - 1),
-    y: clamp(y, 0, MAP_HEIGHT - 1),
-    radius: eventRadius,
-    abilityId: String(abilityId || "").slice(0, 32)
-  });
-}
-
-function queueProjectileHitEvent(x, y, abilityId = "") {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return;
-  }
-  const normalizedAbilityId = String(abilityId || "").slice(0, 32);
-  if (!normalizedAbilityId) {
-    return;
-  }
-  pendingProjectileHitEvents.push({
-    x: clamp(x, 0, MAP_WIDTH - 1),
-    y: clamp(y, 0, MAP_HEIGHT - 1),
-    abilityId: normalizedAbilityId
-  });
-}
-
-function queueMobDeathEvent(mob) {
-  if (!mob || !Number.isFinite(mob.x) || !Number.isFinite(mob.y)) {
-    return;
-  }
-  pendingMobDeathEvents.push({
-    x: clamp(mob.x, 0, MAP_WIDTH - 1),
-    y: clamp(mob.y, 0, MAP_HEIGHT - 1),
-    mobType: String(mob.type || "Mob").slice(0, 48)
-  });
 }
 
 function markMobProvokedByPlayer(mob, ownerId, now = Date.now()) {
