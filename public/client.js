@@ -43,6 +43,26 @@ const INVENTORY_PANEL_BORDER_PX = 1;
 const protocol = globalThis.VibeProtocol || {
   ENTITY_PROTO_TYPE: 1,
   ENTITY_PROTO_VERSION: 7,
+  MOB_EFFECT_PROTO_TYPE: 2,
+  MOB_EFFECT_PROTO_VERSION: 1,
+  AREA_EFFECT_PROTO_TYPE: 3,
+  AREA_EFFECT_PROTO_VERSION: 1,
+  MOB_META_PROTO_TYPE: 4,
+  MOB_META_PROTO_VERSION: 1,
+  PROJECTILE_META_PROTO_TYPE: 5,
+  PROJECTILE_META_PROTO_VERSION: 1,
+  DAMAGE_EVENT_PROTO_TYPE: 6,
+  DAMAGE_EVENT_PROTO_VERSION: 1,
+  DAMAGE_EVENT_FLAG_TARGET_PLAYER: 1 << 0,
+  DAMAGE_EVENT_FLAG_FROM_SELF: 1 << 1,
+  MOB_EFFECT_FLAG_STUN: 1 << 0,
+  MOB_EFFECT_FLAG_SLOW: 1 << 1,
+  MOB_EFFECT_FLAG_REMOVE: 1 << 2,
+  MOB_EFFECT_FLAG_BURN: 1 << 3,
+  AREA_EFFECT_OP_UPSERT: 1,
+  AREA_EFFECT_OP_REMOVE: 2,
+  AREA_EFFECT_KIND_AREA: 0,
+  AREA_EFFECT_KIND_BEAM: 1,
   POS_SCALE: 64,
   MANA_SCALE: 10,
   HEAL_SCALE: 10,
@@ -62,6 +82,26 @@ const protocol = globalThis.VibeProtocol || {
 const {
   ENTITY_PROTO_TYPE,
   ENTITY_PROTO_VERSION,
+  MOB_EFFECT_PROTO_TYPE,
+  MOB_EFFECT_PROTO_VERSION,
+  AREA_EFFECT_PROTO_TYPE,
+  AREA_EFFECT_PROTO_VERSION,
+  MOB_META_PROTO_TYPE,
+  MOB_META_PROTO_VERSION,
+  PROJECTILE_META_PROTO_TYPE,
+  PROJECTILE_META_PROTO_VERSION,
+  DAMAGE_EVENT_PROTO_TYPE,
+  DAMAGE_EVENT_PROTO_VERSION,
+  DAMAGE_EVENT_FLAG_TARGET_PLAYER,
+  DAMAGE_EVENT_FLAG_FROM_SELF,
+  MOB_EFFECT_FLAG_STUN,
+  MOB_EFFECT_FLAG_SLOW,
+  MOB_EFFECT_FLAG_REMOVE,
+  MOB_EFFECT_FLAG_BURN,
+  AREA_EFFECT_OP_UPSERT,
+  AREA_EFFECT_OP_REMOVE,
+  AREA_EFFECT_KIND_AREA,
+  AREA_EFFECT_KIND_BEAM,
   POS_SCALE,
   MANA_SCALE,
   HEAL_SCALE,
@@ -144,6 +184,7 @@ const remotePlayerCasts = new Map();
 const remoteMobBites = new Map();
 const remoteMobStuns = new Map();
 const remoteMobSlows = new Map();
+const remoteMobBurns = new Map();
 const mobSpriteCache = new Map();
 const projectileVisualRuntime = new Map();
 const zombieWalkFramesCache = new Map();
@@ -184,6 +225,7 @@ const inventoryState = {
   slots: []
 };
 const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 const debugState = {
   enabled: false,
   upEvents: [],
@@ -2298,6 +2340,7 @@ function applyMobEffects(msg) {
   const now = performance.now();
   remoteMobStuns.clear();
   remoteMobSlows.clear();
+  remoteMobBurns.clear();
   if (!Array.isArray(msg && msg.effects)) {
     return;
   }
@@ -2319,6 +2362,12 @@ function applyMobEffects(msg) {
       remoteMobSlows.set(effect.id, {
         endsAt: now + slowedMs,
         multiplier: clamp(slowMultiplierQ / 1000, 0.1, 1)
+      });
+    }
+    const burningMs = Math.max(0, Number(effect.burningMs) || 0);
+    if (burningMs > 0) {
+      remoteMobBurns.set(effect.id, {
+        endsAt: now + burningMs
       });
     }
   }
@@ -2840,6 +2889,8 @@ function parseEntityBinaryPacket(arrayBuffer) {
     if (flags & DELTA_FLAG_REMOVED) {
       entityRuntime.mobs.delete(id);
       remoteMobStuns.delete(id);
+      remoteMobSlows.delete(id);
+      remoteMobBurns.delete(id);
       continue;
     }
 
@@ -2899,7 +2950,6 @@ function parseEntityBinaryPacket(arrayBuffer) {
 
     if (flags & DELTA_FLAG_REMOVED) {
       entityRuntime.projectiles.delete(id);
-      entityRuntime.projectileMeta.delete(id);
       continue;
     }
 
@@ -2979,6 +3029,311 @@ function parseEntityBinaryPacket(arrayBuffer) {
       mobs: gameState.mobs,
       lootBags: gameState.lootBags
     });
+  }
+}
+
+function parseMobEffectBinaryPacket(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.byteLength < 4) {
+    return;
+  }
+  if (view.getUint8(0) !== MOB_EFFECT_PROTO_TYPE || view.getUint8(1) !== MOB_EFFECT_PROTO_VERSION) {
+    return;
+  }
+
+  const eventCount = view.getUint16(2, true);
+  let offset = 4;
+  const now = performance.now();
+  for (let i = 0; i < eventCount; i += 1) {
+    if (offset + 2 > view.byteLength) {
+      break;
+    }
+    const id = view.getUint8(offset);
+    const flags = view.getUint8(offset + 1);
+    offset += 2;
+
+    if (flags & MOB_EFFECT_FLAG_REMOVE) {
+      remoteMobStuns.delete(id);
+      remoteMobSlows.delete(id);
+      remoteMobBurns.delete(id);
+      continue;
+    }
+
+    if (flags & MOB_EFFECT_FLAG_STUN) {
+      if (offset + 2 > view.byteLength) {
+        break;
+      }
+      const stunnedMs = Math.max(1, view.getUint16(offset, true));
+      offset += 2;
+      remoteMobStuns.set(id, {
+        endsAt: now + stunnedMs
+      });
+    } else {
+      remoteMobStuns.delete(id);
+    }
+
+    if (flags & MOB_EFFECT_FLAG_SLOW) {
+      if (offset + 4 > view.byteLength) {
+        break;
+      }
+      const slowedMs = Math.max(1, view.getUint16(offset, true));
+      const slowMultiplierQ = Math.max(1, view.getUint16(offset + 2, true));
+      offset += 4;
+      remoteMobSlows.set(id, {
+        endsAt: now + slowedMs,
+        multiplier: clamp(slowMultiplierQ / 1000, 0.1, 1)
+      });
+    } else {
+      remoteMobSlows.delete(id);
+    }
+
+    if (flags & MOB_EFFECT_FLAG_BURN) {
+      if (offset + 2 > view.byteLength) {
+        break;
+      }
+      const burningMs = Math.max(1, view.getUint16(offset, true));
+      offset += 2;
+      remoteMobBurns.set(id, {
+        endsAt: now + burningMs
+      });
+    } else {
+      remoteMobBurns.delete(id);
+    }
+  }
+}
+
+function parseAreaEffectBinaryPacket(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.byteLength < 4) {
+    return;
+  }
+  if (view.getUint8(0) !== AREA_EFFECT_PROTO_TYPE || view.getUint8(1) !== AREA_EFFECT_PROTO_VERSION) {
+    return;
+  }
+
+  const eventCount = view.getUint16(2, true);
+  let offset = 4;
+  const now = performance.now();
+
+  for (let i = 0; i < eventCount; i += 1) {
+    if (offset + 5 > view.byteLength) {
+      break;
+    }
+    const op = view.getUint8(offset);
+    const numericId = view.getUint32(offset + 1, true);
+    offset += 5;
+    const id = String(numericId);
+
+    if (op === AREA_EFFECT_OP_REMOVE) {
+      activeAreaEffectsById.delete(id);
+      continue;
+    }
+    if (op !== AREA_EFFECT_OP_UPSERT) {
+      continue;
+    }
+
+    if (offset + 12 > view.byteLength) {
+      break;
+    }
+    const kindByte = view.getUint8(offset);
+    const x = view.getUint16(offset + 1, true) / POS_SCALE;
+    const y = view.getUint16(offset + 3, true) / POS_SCALE;
+    const radius = view.getUint16(offset + 5, true) / POS_SCALE;
+    const remainingMs = view.getUint16(offset + 7, true);
+    const durationMs = view.getUint16(offset + 9, true);
+    const abilityLen = view.getUint8(offset + 11);
+    offset += 12;
+
+    if (offset + abilityLen > view.byteLength) {
+      break;
+    }
+    const abilityBytes = new Uint8Array(arrayBuffer, offset, abilityLen);
+    const abilityId = textDecoder.decode(abilityBytes).trim().toLowerCase();
+    offset += abilityLen;
+
+    const payload = {
+      id,
+      x,
+      y,
+      radius,
+      remainingMs,
+      durationMs,
+      abilityId,
+      kind: kindByte === AREA_EFFECT_KIND_BEAM ? "beam" : "area"
+    };
+
+    if (kindByte === AREA_EFFECT_KIND_BEAM) {
+      if (offset + 12 > view.byteLength) {
+        break;
+      }
+      payload.startX = view.getUint16(offset, true) / POS_SCALE;
+      payload.startY = view.getUint16(offset + 2, true) / POS_SCALE;
+      payload.dx = view.getInt16(offset + 4, true) / 1000;
+      payload.dy = view.getInt16(offset + 6, true) / 1000;
+      payload.length = view.getUint16(offset + 8, true) / POS_SCALE;
+      payload.width = view.getUint16(offset + 10, true) / POS_SCALE;
+      offset += 12;
+    }
+
+    upsertAreaEffectState(payload, now);
+  }
+}
+
+function parseMobMetaBinaryPacket(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.byteLength < 4) {
+    return;
+  }
+  if (view.getUint8(0) !== MOB_META_PROTO_TYPE || view.getUint8(1) !== MOB_META_PROTO_VERSION) {
+    return;
+  }
+
+  const count = view.getUint16(2, true);
+  let offset = 4;
+  for (let i = 0; i < count; i += 1) {
+    if (offset + 4 > view.byteLength) {
+      break;
+    }
+    const id = view.getUint8(offset);
+    const nameLen = view.getUint8(offset + 1);
+    const styleLen = view.getUint16(offset + 2, true);
+    offset += 4;
+    if (offset + nameLen + styleLen > view.byteLength) {
+      break;
+    }
+
+    const nameBytes = new Uint8Array(arrayBuffer, offset, nameLen);
+    const name = textDecoder.decode(nameBytes).trim() || `Mob ${id}`;
+    offset += nameLen;
+
+    let renderStyle = null;
+    if (styleLen > 0) {
+      const styleBytes = new Uint8Array(arrayBuffer, offset, styleLen);
+      const styleJson = textDecoder.decode(styleBytes);
+      try {
+        renderStyle = normalizeMobRenderStyle(JSON.parse(styleJson));
+      } catch (_error) {
+        renderStyle = null;
+      }
+      offset += styleLen;
+    }
+
+    entityRuntime.mobMeta.set(id, { name, renderStyle });
+    const existing = entityRuntime.mobs.get(id);
+    if (existing) {
+      existing.name = name;
+      existing.renderStyle = renderStyle;
+      entityRuntime.mobs.set(id, existing);
+    }
+  }
+
+  syncEntityArraysToGameState();
+}
+
+function parseProjectileMetaBinaryPacket(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.byteLength < 4) {
+    return;
+  }
+  if (
+    view.getUint8(0) !== PROJECTILE_META_PROTO_TYPE ||
+    view.getUint8(1) !== PROJECTILE_META_PROTO_VERSION
+  ) {
+    return;
+  }
+
+  const count = view.getUint16(2, true);
+  let offset = 4;
+  for (let i = 0; i < count; i += 1) {
+    if (offset + 2 > view.byteLength) {
+      break;
+    }
+    const id = view.getUint8(offset);
+    const abilityLen = view.getUint8(offset + 1);
+    offset += 2;
+    if (offset + abilityLen > view.byteLength) {
+      break;
+    }
+    const abilityBytes = new Uint8Array(arrayBuffer, offset, abilityLen);
+    const abilityId = textDecoder.decode(abilityBytes).trim().toLowerCase();
+    offset += abilityLen;
+
+    entityRuntime.projectileMeta.set(id, { abilityId });
+    const existing = entityRuntime.projectiles.get(id);
+    if (existing) {
+      existing.abilityId = abilityId;
+      entityRuntime.projectiles.set(id, existing);
+    }
+  }
+
+  syncEntityArraysToGameState();
+}
+
+function parseDamageEventBinaryPacket(arrayBuffer) {
+  const view = new DataView(arrayBuffer);
+  if (view.byteLength < 4) {
+    return;
+  }
+  if (view.getUint8(0) !== DAMAGE_EVENT_PROTO_TYPE || view.getUint8(1) !== DAMAGE_EVENT_PROTO_VERSION) {
+    return;
+  }
+
+  const count = view.getUint16(2, true);
+  let offset = 4;
+  const events = [];
+  for (let i = 0; i < count; i += 1) {
+    if (offset + 6 > view.byteLength) {
+      break;
+    }
+    const x = view.getUint16(offset, true) / POS_SCALE;
+    const y = view.getUint16(offset + 2, true) / POS_SCALE;
+    const amount = view.getUint8(offset + 4);
+    const flags = view.getUint8(offset + 5);
+    offset += 6;
+    events.push({
+      x,
+      y,
+      amount,
+      targetType: flags & DAMAGE_EVENT_FLAG_TARGET_PLAYER ? "player" : "mob",
+      fromSelf: !!(flags & DAMAGE_EVENT_FLAG_FROM_SELF)
+    });
+  }
+
+  if (events.length) {
+    addFloatingDamageEvents(events);
+  }
+}
+
+function parseBinaryPacket(arrayBuffer) {
+  if (!(arrayBuffer instanceof ArrayBuffer)) {
+    return;
+  }
+  if (arrayBuffer.byteLength < 2) {
+    return;
+  }
+  const type = new DataView(arrayBuffer).getUint8(0);
+  if (type === ENTITY_PROTO_TYPE) {
+    parseEntityBinaryPacket(arrayBuffer);
+    return;
+  }
+  if (type === MOB_EFFECT_PROTO_TYPE) {
+    parseMobEffectBinaryPacket(arrayBuffer);
+    return;
+  }
+  if (type === AREA_EFFECT_PROTO_TYPE) {
+    parseAreaEffectBinaryPacket(arrayBuffer);
+    return;
+  }
+  if (type === MOB_META_PROTO_TYPE) {
+    parseMobMetaBinaryPacket(arrayBuffer);
+    return;
+  }
+  if (type === PROJECTILE_META_PROTO_TYPE) {
+    parseProjectileMetaBinaryPacket(arrayBuffer);
+    return;
+  }
+  if (type === DAMAGE_EVENT_PROTO_TYPE) {
+    parseDamageEventBinaryPacket(arrayBuffer);
   }
 }
 
@@ -3069,6 +3424,7 @@ function connectAndJoin(name, classType) {
     remoteMobBites.clear();
     remoteMobStuns.clear();
     remoteMobSlows.clear();
+    remoteMobBurns.clear();
     zombieWalkRuntime.clear();
     creeperWalkRuntime.clear();
     spiderWalkRuntime.clear();
@@ -3094,7 +3450,7 @@ function connectAndJoin(name, classType) {
 
     if (event.data instanceof ArrayBuffer) {
       try {
-        parseEntityBinaryPacket(event.data);
+        parseBinaryPacket(event.data);
       } catch (_error) {
         // Ignore malformed binary packets.
       }
@@ -3134,6 +3490,7 @@ function connectAndJoin(name, classType) {
       remoteMobBites.clear();
       remoteMobStuns.clear();
       remoteMobSlows.clear();
+      remoteMobBurns.clear();
       zombieWalkRuntime.clear();
       creeperWalkRuntime.clear();
       spiderWalkRuntime.clear();
@@ -3727,58 +4084,62 @@ function addExplosionEvents(events) {
   }
 }
 
+function upsertAreaEffectState(raw, now = performance.now()) {
+  if (!raw) {
+    return;
+  }
+  const id = String(raw.id || "").trim();
+  const x = Number(raw.x);
+  const y = Number(raw.y);
+  const radius = Math.max(0, Number(raw.radius) || 0);
+  const remainingMs = Math.max(1, Math.floor(Number(raw.remainingMs) || 0));
+  const durationMs = Math.max(1, Math.floor(Number(raw.durationMs) || remainingMs));
+  const abilityId = String(raw.abilityId || "").toLowerCase();
+  const kind = String(raw.kind || (abilityId === "arcanebeam" ? "beam" : "area")).toLowerCase();
+  if (!id || !Number.isFinite(x) || !Number.isFinite(y) || radius <= 0) {
+    return;
+  }
+  const existing = activeAreaEffectsById.get(id);
+  const parsedDx = Number(raw.dx);
+  const parsedDy = Number(raw.dy);
+  const parsedLength = Math.max(0, Number(raw.length) || 0);
+  const parsedWidth = Math.max(0, Number(raw.width) || 0);
+  const normalizedDir = normalizeDirection(parsedDx, parsedDy);
+  activeAreaEffectsById.set(id, {
+    id,
+    x,
+    y,
+    radius,
+    kind,
+    abilityId,
+    durationMs,
+    startedAt: existing ? existing.startedAt : now - Math.max(0, durationMs - remainingMs),
+    endsAt: now + remainingMs,
+    seed: existing ? existing.seed : hashString(`area:${id}`),
+    startX: Number.isFinite(Number(raw.startX))
+      ? Number(raw.startX)
+      : existing && Number.isFinite(existing.startX)
+        ? existing.startX
+        : x,
+    startY: Number.isFinite(Number(raw.startY))
+      ? Number(raw.startY)
+      : existing && Number.isFinite(existing.startY)
+        ? existing.startY
+        : y,
+    dx: normalizedDir ? normalizedDir.dx : existing && Number.isFinite(existing.dx) ? existing.dx : 0,
+    dy: normalizedDir ? normalizedDir.dy : existing && Number.isFinite(existing.dy) ? existing.dy : 1,
+    length: parsedLength > 0 ? parsedLength : existing && Number.isFinite(existing.length) ? existing.length : 0,
+    width: parsedWidth > 0 ? parsedWidth : existing && Number.isFinite(existing.width) ? existing.width : 0
+  });
+}
+
 function applyAreaEffects(events) {
   if (!Array.isArray(events)) {
     return;
   }
   const now = performance.now();
   for (const raw of events) {
-    if (!raw) {
-      continue;
-    }
-    const id = String(raw.id || "").trim();
-    const x = Number(raw.x);
-    const y = Number(raw.y);
-    const radius = Math.max(0, Number(raw.radius) || 0);
-    const remainingMs = Math.max(1, Math.floor(Number(raw.remainingMs) || 0));
-    const durationMs = Math.max(1, Math.floor(Number(raw.durationMs) || remainingMs));
-    const abilityId = String(raw.abilityId || "").toLowerCase();
-    const kind = String(raw.kind || (abilityId === "arcanebeam" ? "beam" : "area")).toLowerCase();
-    if (!id || !Number.isFinite(x) || !Number.isFinite(y) || radius <= 0) {
-      continue;
-    }
-    const existing = activeAreaEffectsById.get(id);
-    const parsedDx = Number(raw.dx);
-    const parsedDy = Number(raw.dy);
-    const parsedLength = Math.max(0, Number(raw.length) || 0);
-    const parsedWidth = Math.max(0, Number(raw.width) || 0);
-    const normalizedDir = normalizeDirection(parsedDx, parsedDy);
-    activeAreaEffectsById.set(id, {
-      id,
-      x,
-      y,
-      radius,
-      kind,
-      abilityId,
-      durationMs,
-      startedAt: existing ? existing.startedAt : now - Math.max(0, durationMs - remainingMs),
-      endsAt: now + remainingMs,
-      seed: existing ? existing.seed : hashString(`area:${id}`),
-      startX: Number.isFinite(Number(raw.startX))
-        ? Number(raw.startX)
-        : existing && Number.isFinite(existing.startX)
-          ? existing.startX
-          : x,
-      startY: Number.isFinite(Number(raw.startY))
-        ? Number(raw.startY)
-        : existing && Number.isFinite(existing.startY)
-          ? existing.startY
-          : y,
-      dx: normalizedDir ? normalizedDir.dx : existing && Number.isFinite(existing.dx) ? existing.dx : 0,
-      dy: normalizedDir ? normalizedDir.dy : existing && Number.isFinite(existing.dy) ? existing.dy : 1,
-      length: parsedLength > 0 ? parsedLength : existing && Number.isFinite(existing.length) ? existing.length : 0,
-      width: parsedWidth > 0 ? parsedWidth : existing && Number.isFinite(existing.width) ? existing.width : 0
-    });
+    upsertAreaEffectState(raw, now);
   }
 }
 
@@ -5943,6 +6304,51 @@ function drawMobSlowTint(mob, cameraX, cameraY, frameNow) {
   ctx.restore();
 }
 
+function drawMobBurnEffect(mob, cameraX, cameraY, frameNow) {
+  const state = remoteMobBurns.get(mob.id);
+  if (!state) {
+    return;
+  }
+  if (state.endsAt <= frameNow) {
+    remoteMobBurns.delete(mob.id);
+    return;
+  }
+
+  const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
+  const pulse = 0.58 + Math.sin(frameNow * 0.019 + (mob.id % 9)) * 0.42;
+  const alpha = 0.26 + pulse * 0.2;
+  const radius = 14 + pulse * 2.5;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createRadialGradient(p.x, p.y + 1, 1.8, p.x, p.y + 1, radius);
+  grad.addColorStop(0, "rgba(255, 244, 170, 0.95)");
+  grad.addColorStop(0.4, "rgba(255, 153, 69, 0.68)");
+  grad.addColorStop(0.78, "rgba(255, 77, 34, 0.48)");
+  grad.addColorStop(1, "rgba(255, 45, 22, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y + 1, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = 0.55;
+  ctx.strokeStyle = "rgba(255, 190, 98, 0.9)";
+  ctx.lineWidth = 1.1;
+  for (let i = 0; i < 5; i += 1) {
+    const a = frameNow * 0.006 + i * ((Math.PI * 2) / 5) + (mob.id % 5) * 0.3;
+    const up = 9 + (i % 2) * 3;
+    const fx = p.x + Math.cos(a) * (5 + i * 0.7);
+    const fy = p.y - 2 - Math.sin(a * 1.3) * 2.4;
+    ctx.beginPath();
+    ctx.moveTo(fx, fy + 4);
+    ctx.quadraticCurveTo(fx + 1.6, fy - up * 0.3, fx, fy - up);
+    ctx.quadraticCurveTo(fx - 1.4, fy - up * 0.35, fx, fy + 4);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawCreeperIgnitionAnimation(mob, cameraX, cameraY, attackState = null) {
   const attack = attackState || getActiveMobAttackState(mob.id);
   if (!attack) {
@@ -6682,6 +7088,79 @@ function drawFireballProjectile(p, runtime, now) {
   ctx.restore();
 }
 
+function drawFireSparkProjectile(p, runtime, now) {
+  const dirX = runtime.dirX;
+  const dirY = runtime.dirY;
+  const perpX = -dirY;
+  const perpY = dirX;
+  const heading = Math.atan2(dirY, dirX);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  for (let i = 0; i < 10; i += 1) {
+    const t = (i + 1) / 10;
+    const jitter =
+      (seededUnit(runtime.seed, i * 31 + 7) - 0.5) * 2.8 +
+      Math.sin(now * 0.02 + i * 0.7 + runtime.seed * 0.0009) * (1.4 - t);
+    const dist = 4 + t * 20;
+    const px = p.x - dirX * dist + perpX * jitter;
+    const py = p.y - dirY * dist + perpY * jitter;
+    const r = Math.max(0.55, 1.8 - t * 1.25);
+    const alpha = 0.42 * (1 - t) + 0.08;
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(255, 143, 54, ${alpha.toFixed(3)})`;
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const glow = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, 9.5);
+  glow.addColorStop(0, "rgba(255, 250, 195, 0.96)");
+  glow.addColorStop(0.4, "rgba(255, 176, 81, 0.92)");
+  glow.addColorStop(0.72, "rgba(255, 97, 39, 0.62)");
+  glow.addColorStop(1, "rgba(255, 69, 32, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 9.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(heading);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(5.2, 0);
+  ctx.lineTo(-4.4, -2.6);
+  ctx.lineTo(-2.2, 0);
+  ctx.lineTo(-4.4, 2.6);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(255, 131, 48, 0.95)";
+  ctx.strokeStyle = "rgba(255, 213, 134, 0.9)";
+  ctx.lineWidth = 1.1;
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(1.6, 0, 2.2, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(255, 247, 194, 0.96)";
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(255, 92, 42, 0.78)";
+  ctx.lineWidth = 1.2;
+  for (let i = 0; i < 4; i += 1) {
+    const y = -2.4 + i * 1.6;
+    const len = 4.4 + (i % 2) * 1.3;
+    ctx.moveTo(-2.5, y);
+    ctx.lineTo(-2.5 - len, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawFrostboltProjectile(p, runtime, now) {
   const dirX = runtime.dirX;
   const dirY = runtime.dirY;
@@ -6867,6 +7346,7 @@ function drawArcaneMissileProjectile(p, runtime, now) {
 
 const ABILITY_PROJECTILE_RENDERERS = Object.freeze({
   fireball: drawFireballProjectile,
+  fire_spark: drawFireSparkProjectile,
   frostbolt: drawFrostboltProjectile,
   arcane_missiles: drawArcaneMissileProjectile
 });
@@ -6992,6 +7472,7 @@ function render() {
       drawMobBiteAnimation(mob, cameraX, cameraY);
     }
     drawMobSlowTint(mob, cameraX, cameraY, frameNow);
+    drawMobBurnEffect(mob, cameraX, cameraY, frameNow);
     drawMobStunEffect(mob, cameraX, cameraY, frameNow);
   }
   drawFloatingDamageNumbers(cameraX, cameraY);

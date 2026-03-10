@@ -1,98 +1,344 @@
 {
-    "fireball": {
-        "name": "Fireball",
-        "description": "Hurls a fiery ball that explodes upon impact, dealing area damage.",
-        "kind": "projectile",
-        "castTime": 1.5,
-        "manaCost": 5,
-        "range": 10,
-        "speed": 4,
-        "damageRange": [3, 5],
-        "explosionRadius": 2,
-        "explosionDamageMultiplier": 0.3,
-        "damageRangePerLevel": [0.5, 1.0]
+  "fireball": {
+    "id": "fireball",
+    "name": "Fireball",
+    "description": "Hurls a fiery ball that explodes upon impact, dealing area damage and pulsing radial fire shards while traveling.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0.5,
+      "cooldown": 0,
+      "resourceCost": {
+        "mana": 2
+      }
     },
-    "frostbolt": {
-        "name": "Frostbolt",
-        "description": "Launches a shard of ice that slows the target and deals damage.",
-        "kind": "projectile",
-        "castTime": 1.0,
-        "manaCost": 3,
-        "range": 10,
-        "speed": 5,
-        "damageRange": [2, 4],
-        "slowDuration": 5.0,
-        "slowAmount": 0.5,
-        "damageRangePerLevel": [0.4, 0.8]
+    "targeting": {
+      "range": 10,
+      "speed": 4,
+      "targetType": "enemy",
+      "projectileCount": 1
     },
-    "arcaneMissiles": {
-        "name": "Arcane Missiles",
-        "description": "Fires several magical missiles that seek enemies.",
-        "kind": "projectile",
-        "castTime": 1.2,
-        "manaCost": 6,
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [3, 5],
+        "school": "fire",
+        "scalingPerLevel": [0.5, 1.0]
+      },
+      {
+        "type": "explode",
+        "radius": 15,
+        "effects": [
+          {
+            "type": "damage",
+            "mode": "instant",
+            "amountMultiplier": 0.3,
+            "school": "fire"
+          }
+        ]
+      },
+      {
+        "type": "slow",
+        "amount": 0.8,
+        "duration": 15
+      },
+      {
+        "type": "stun",
+        "duration": 5
+      },
+      {
+        "type": "damage",
+        "mode": "overTime",
+        "amountPerSecond": [1, 2],
+        "duration": 12,
+        "school": "fire",
+        "scalingPerSecondPerLevel": [0.2, 0.4]
+      },
+      {
+        "type": "emitProjectiles",
+        "trigger": "whileTraveling",
+        "interval": 1.2,
+        "initialDelay": 1,
+        "maxEmissions": 999,
+        "pattern": {
+          "type": "radial",
+          "count": 32,
+          "startAngle": 0,
+          "angleSpread": 360,
+          "evenSpacing": true
+        },
+        "inherits": {
+          "owner": true,
+          "team": true,
+          "school": true,
+          "critChance": true,
+          "critMultiplier": true
+        },
+        "projectile": {
+          "id": "fireball_pulse_shard",
+          "name": "Fire Pulse Shard",
+          "delivery": {
+            "type": "projectile",
+            "castTime": 0,
+            "cooldown": 0,
+            "resourceCost": {
+              "mana": 0
+            }
+          },
+          "targeting": {
+            "range": 11,
+            "speed": 7,
+            "targetType": "enemy",
+            "pierce": 0,
+            "projectileCount": 1,
+            "homing": {
+                "range": 11,
+                "turnRate": 6.5
+            }
+          },
+          "effects": [
+            {
+              "type": "damage",
+              "mode": "instant",
+              "amount": [1, 2],
+              "school": "fire"
+            },
+            {
+              "type": "damage",
+              "mode": "overTime",
+              "amountPerSecond": [1, 1],
+              "duration": 3,
+              "school": "fire"
+            },
+             {
+            "type": "explode",
+            "radius": 3,
+            "effects": [
+                {
+                    "type": "damage",
+                    "mode": "instant",
+                    "amountMultiplier": 0.3,
+                    "school": "fire"
+                }
+            ]
+            }
+        ],
+          "tags": ["childProjectile", "radial", "fire"]
+        }
+      }
+    ],
+    "tags": ["mage", "fire", "projectile", "aoe", "pulse"]
+  },
+  "frostbolt": {
+    "id": "frostbolt",
+    "name": "Frostbolt",
+    "description": "Launches a shard of ice that slows the target and deals damage.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 1.0,
+      "cooldown": 0,
+      "resourceCost": { "mana": 3 }
+    },
+    "targeting": {
+      "range": 10,
+      "speed": 5,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [2, 4],
+        "school": "frost",
+        "scalingPerLevel": [0.4, 0.8]
+      },
+      {
+        "type": "slow",
+        "amount": 0.5,
+        "duration": 5
+      }
+    ],
+    "tags": ["mage", "frost", "projectile"]
+  },
+  "arcaneMissiles": {
+    "id": "arcaneMissiles",
+    "name": "Arcane Missiles",
+    "description": "Fires several magical missiles that seek enemies.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 1.2,
+      "cooldown": 0,
+      "resourceCost": { "mana": 6 }
+    },
+    "targeting": {
+      "range": 11,
+      "speed": 6,
+      "targetType": "enemy",
+      "projectileCount": 3,
+      "homing": {
         "range": 11,
-        "speed": 6,
-        "projectileCount": 3,
-        "damageRange": [1, 2],
-        "damageRangePerLevel": [0.3, 0.6]
-    },  
-    "blizzard": {
-        "name": "Blizzard",
-        "description": "Summons a freezing storm that damages and slows enemies.",
-        "kind": "area",
-        "castTime": 2.0,
-        "manaCost": 12,
-        "range": 8,
-        "radius": 3,
+        "turnRate": 6.5
+      }
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [1, 2],
+        "school": "arcane",
+        "scalingPerLevel": [0.3, 0.6]
+      }
+    ],
+    "tags": ["mage", "arcane"]
+  },
+  "blizzard": {
+    "id": "blizzard",
+    "name": "Blizzard",
+    "description": "Summons a freezing storm that damages and slows enemies.",
+    "delivery": {
+      "type": "areaTarget",
+      "castTime": 2,
+      "cooldown": 0,
+      "resourceCost": { "mana": 12 }
+    },
+    "targeting": {
+      "range": 8,
+      "radius": 3,
+      "duration": 4,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "overTime",
+        "amountPerSecond": [1, 2],
         "duration": 4,
-        "damagePerSecond": [1, 2],
-        "slowAmount": 0.4,
-        "damageRangePerLevel": [0.2, 0.4]
+        "school": "frost",
+        "scalingPerSecondPerLevel": [0.2, 0.4]
+      },
+      {
+        "type": "slow",
+        "amount": 0.4,
+        "duration": 4
+      }
+    ],
+    "tags": ["mage", "frost", "aoe"]
+  },
+  "blink": {
+    "id": "blink",
+    "name": "Blink",
+    "description": "Instantly teleport a short distance.",
+    "delivery": {
+      "type": "teleport",
+      "castTime": 0.1,
+      "cooldown": 6,
+      "resourceCost": { "mana": 8 }
     },
-    "blink": {
-        "name": "Blink",
-        "description": "Instantly teleport a short distance in the targeted direction.",
-        "kind": "teleport",
-        "castTime": 0.1,
-        "cooldown": 6.0,
-        "manaCost": 8,
-        "range": 6,
-        "invulnerabilityDuration": 0.2,
-        "rangePerLevel": 0.5,
-        "cooldownReductionPerLevel": 0.2
+    "targeting": {
+      "range": 6,
+      "targetType": "position"
     },
-    "arcaneBeam": {
-        "name": "Arcane Beam",
-        "description": "Channels a focused beam of arcane power in a straight line.",
-        "kind": "beam",
-        "castTime": 0.5,
-        "manaCost": 10,
-        "range": 9,
+    "effects": [
+      {
+        "type": "teleport",
+        "distance": 6
+      },
+      {
+        "type": "buff",
+        "duration": 0.2,
+        "stats": {
+          "invulnerable": true
+        }
+      }
+    ],
+    "progression": {
+      "perLevel": {
+        "targeting.range": 0.5,
+        "delivery.cooldown": -0.2
+      }
+    },
+    "tags": ["mage", "mobility"]
+  },
+  "arcaneBeam": {
+    "id": "arcaneBeam",
+    "name": "Arcane Beam",
+    "description": "Channels a beam of arcane energy.",
+    "delivery": {
+      "type": "beam",
+      "castTime": 0.5,
+      "cooldown": 0,
+      "resourceCost": { "mana": 10 }
+    },
+    "targeting": {
+      "range": 9,
+      "duration": 2.5,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "overTime",
+        "amountPerSecond": [2, 4],
         "duration": 2.5,
-        "damagePerSecond": [2, 4],
-        "damageRangePerLevel": [0.4, 0.7]
+        "school": "arcane",
+        "scalingPerSecondPerLevel": [0.4, 0.7]
+      }
+    ],
+    "tags": ["mage", "beam"]
+  },
+  "slash": {
+    "id": "slash",
+    "name": "Slash",
+    "description": "A quick melee attack that strikes in front of the player.",
+    "delivery": {
+      "type": "meleeCone",
+      "castTime": 0,
+      "cooldown": 1,
+      "resourceCost": { "mana": 0 }
     },
-    "slash": {
-        "name": "Slash",
-        "description": "A quick melee attack that strikes in front of the player.",
-        "kind": "meleeCone",
-        "cooldown": 1.0,
-        "manaCost": 0,
-        "range": 1.9,
-        "damageRange": [2, 4],
-        "damageRangePerLevel": [0.3, 0.7],
-        "coneAngle": 120
+    "targeting": {
+      "range": 1.9,
+      "coneAngle": 120,
+      "targetType": "enemy"
     },
-    "warstomp": {
-        "name": "War Stomp",
-        "description": "Stomps the ground, dealing damage and stunning nearby enemies.",
-        "kind": "area",
-        "cooldown": 5.0,
-        "manaCost": 10,
-        "range": 2,
-        "damageRange": [4, 6],
-        "damageRangePerLevel": [0.5, 1.0],
-        "stunDuration": 2.0
-    }
-}   
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [2, 4],
+        "school": "physical",
+        "scalingPerLevel": [0.3, 0.7]
+      }
+    ],
+    "tags": ["warrior", "melee"]
+  },
+  "warstomp": {
+    "id": "warstomp",
+    "name": "War Stomp",
+    "description": "Stomps the ground, damaging and stunning nearby enemies.",
+    "delivery": {
+      "type": "selfArea",
+      "castTime": 0,
+      "cooldown": 5,
+      "resourceCost": { "mana": 10 }
+    },
+    "targeting": {
+      "radius": 2,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [4, 6],
+        "school": "physical",
+        "scalingPerLevel": [0.5, 1.0]
+      },
+      {
+        "type": "stun",
+        "duration": 2
+      }
+    ],
+    "tags": ["warrior", "aoe"]
+  }
+}

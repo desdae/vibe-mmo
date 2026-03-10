@@ -91,6 +91,26 @@ const ITEM_COPPER_ID = GAMEPLAY_CONFIG.loot.copperItemId;
 const {
   ENTITY_PROTO_TYPE,
   ENTITY_PROTO_VERSION,
+  MOB_EFFECT_PROTO_TYPE,
+  MOB_EFFECT_PROTO_VERSION,
+  AREA_EFFECT_PROTO_TYPE,
+  AREA_EFFECT_PROTO_VERSION,
+  MOB_META_PROTO_TYPE,
+  MOB_META_PROTO_VERSION,
+  PROJECTILE_META_PROTO_TYPE,
+  PROJECTILE_META_PROTO_VERSION,
+  DAMAGE_EVENT_PROTO_TYPE,
+  DAMAGE_EVENT_PROTO_VERSION,
+  DAMAGE_EVENT_FLAG_TARGET_PLAYER,
+  DAMAGE_EVENT_FLAG_FROM_SELF,
+  MOB_EFFECT_FLAG_STUN,
+  MOB_EFFECT_FLAG_SLOW,
+  MOB_EFFECT_FLAG_REMOVE,
+  MOB_EFFECT_FLAG_BURN,
+  AREA_EFFECT_OP_UPSERT,
+  AREA_EFFECT_OP_REMOVE,
+  AREA_EFFECT_KIND_AREA,
+  AREA_EFFECT_KIND_BEAM,
   POS_SCALE,
   MANA_SCALE,
   HEAL_SCALE,
@@ -414,6 +434,455 @@ function loadItemConfig() {
   };
 }
 
+const DELIVERY_TYPE_TO_KIND = Object.freeze({
+  projectile: "projectile",
+  meleecone: "meleeCone",
+  areatarget: "area",
+  selfarea: "area",
+  area: "area",
+  beam: "beam",
+  teleport: "teleport"
+});
+
+function getObjectPath(source, pathValue) {
+  if (!source || typeof source !== "object" || !pathValue) {
+    return undefined;
+  }
+  const parts = String(pathValue).split(".");
+  let cursor = source;
+  for (const part of parts) {
+    if (!part || !cursor || typeof cursor !== "object" || !(part in cursor)) {
+      return undefined;
+    }
+    cursor = cursor[part];
+  }
+  return cursor;
+}
+
+function firstFiniteNumber(values, fallback = 0) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) {
+      return n;
+    }
+  }
+  return fallback;
+}
+
+function findAbilityEffect(effects, type, mode = "") {
+  const wantedType = String(type || "").toLowerCase();
+  const wantedMode = String(mode || "").toLowerCase();
+  for (const effect of Array.isArray(effects) ? effects : []) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    if (String(effect.type || "").toLowerCase() !== wantedType) {
+      continue;
+    }
+    if (wantedMode && String(effect.mode || "").toLowerCase() !== wantedMode) {
+      continue;
+    }
+    return effect;
+  }
+  return null;
+}
+
+function getProgressionPerLevelValue(entry, key) {
+  const perLevel = getObjectPath(entry, "progression.perLevel");
+  if (!perLevel || typeof perLevel !== "object") {
+    return undefined;
+  }
+  if (key in perLevel) {
+    return perLevel[key];
+  }
+  return getObjectPath(perLevel, key);
+}
+
+function normalizeAbilityEntry(rawId, entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const id = String(entry.id || rawId || "").trim();
+  if (!id) {
+    return null;
+  }
+
+  const hasExpandedSchema =
+    (entry.delivery && typeof entry.delivery === "object") ||
+    (entry.targeting && typeof entry.targeting === "object") ||
+    Array.isArray(entry.effects);
+  if (!hasExpandedSchema) {
+    return {
+      ...entry,
+      id
+    };
+  }
+
+  const normalized = {
+    id,
+    name: String(entry.name || id),
+    description: String(entry.description || "")
+  };
+
+  const delivery = entry.delivery && typeof entry.delivery === "object" ? entry.delivery : {};
+  const targeting = entry.targeting && typeof entry.targeting === "object" ? entry.targeting : {};
+  const effects = Array.isArray(entry.effects) ? entry.effects : [];
+
+  const deliveryType = String(delivery.type || "").trim().toLowerCase();
+  if (deliveryType && DELIVERY_TYPE_TO_KIND[deliveryType]) {
+    normalized.kind = DELIVERY_TYPE_TO_KIND[deliveryType];
+  } else if (typeof entry.kind === "string" && entry.kind.trim()) {
+    normalized.kind = entry.kind.trim();
+  }
+
+  const castTime = firstFiniteNumber([delivery.castTime, entry.castTime], 0);
+  if (castTime > 0) {
+    normalized.castTime = castTime;
+  }
+
+  const cooldown = firstFiniteNumber([delivery.cooldown, entry.cooldown], 0);
+  if (cooldown > 0) {
+    normalized.cooldown = cooldown;
+  }
+
+  const manaCost = firstFiniteNumber([delivery?.resourceCost?.mana, entry.manaCost], 0);
+  if (manaCost > 0) {
+    normalized.manaCost = manaCost;
+  }
+
+  const teleportEffect = findAbilityEffect(effects, "teleport");
+  const computedRange = firstFiniteNumber(
+    [targeting.range, teleportEffect && teleportEffect.distance, entry.range],
+    0
+  );
+  if (computedRange > 0) {
+    normalized.range = computedRange;
+  } else if (deliveryType === "selfarea") {
+    normalized.range = 0;
+  }
+
+  const speed = firstFiniteNumber([targeting.speed, entry.speed], 0);
+  if (speed > 0) {
+    normalized.speed = speed;
+  }
+
+  const coneAngle = firstFiniteNumber([targeting.coneAngle, entry.coneAngle], 0);
+  if (coneAngle > 0) {
+    normalized.coneAngle = coneAngle;
+  }
+
+  const radius = firstFiniteNumber([targeting.radius, entry.radius, entry.areaRadius], 0);
+  if (radius > 0) {
+    normalized.radius = radius;
+  }
+
+  const projectileCount = Math.floor(firstFiniteNumber([targeting.projectileCount, entry.projectileCount], 0));
+  if (projectileCount > 0) {
+    normalized.projectileCount = projectileCount;
+  }
+
+  const directDamageEffect = findAbilityEffect(effects, "damage", "instant");
+  const dotDamageEffect = findAbilityEffect(effects, "damage", "overtime");
+  const fallbackDamageEffect = findAbilityEffect(effects, "damage");
+  const mainDamageEffect = directDamageEffect || dotDamageEffect || fallbackDamageEffect;
+
+  const damageRangeInput =
+    (mainDamageEffect && (mainDamageEffect.amount || mainDamageEffect.amountPerSecond)) ||
+    entry.damageRange ||
+    entry.damagePerSecond;
+  if (damageRangeInput !== undefined) {
+    normalized.damageRange = damageRangeInput;
+  }
+
+  const damagePerLevelInput =
+    (mainDamageEffect && (mainDamageEffect.scalingPerLevel || mainDamageEffect.scalingPerSecondPerLevel)) ||
+    entry.damageRangePerLevel;
+  if (damagePerLevelInput !== undefined) {
+    normalized.damageRangePerLevel = damagePerLevelInput;
+  }
+
+  const dotDamagePerSecondInput =
+    (dotDamageEffect && (dotDamageEffect.amountPerSecond || dotDamageEffect.amount)) || entry.dotDamagePerSecond;
+  if (dotDamagePerSecondInput !== undefined) {
+    normalized.dotDamagePerSecond = dotDamagePerSecondInput;
+  }
+
+  const dotDamagePerLevelInput =
+    (dotDamageEffect &&
+      (dotDamageEffect.scalingPerSecondPerLevel || dotDamageEffect.scalingPerLevel)) ||
+    entry.dotDamagePerSecondPerLevel;
+  if (dotDamagePerLevelInput !== undefined) {
+    normalized.dotDamagePerSecondPerLevel = dotDamagePerLevelInput;
+  }
+
+  const dotDuration = firstFiniteNumber([dotDamageEffect && dotDamageEffect.duration, entry.dotDuration], 0);
+  if (dotDuration > 0) {
+    normalized.dotDuration = dotDuration;
+  }
+
+  const dotSchool = String((dotDamageEffect && dotDamageEffect.school) || entry.dotSchool || "").trim();
+  if (dotSchool) {
+    normalized.dotSchool = dotSchool.toLowerCase();
+  }
+
+  const effectDuration = firstFiniteNumber(
+    [
+      targeting.duration,
+      dotDamageEffect && dotDamageEffect.duration,
+      entry.duration,
+      entry.durationMs
+    ],
+    0
+  );
+  if (effectDuration > 0) {
+    normalized.duration = effectDuration;
+  }
+
+  const explodeEffect = findAbilityEffect(effects, "explode");
+  const explosionRadius = firstFiniteNumber([explodeEffect && explodeEffect.radius, entry.explosionRadius], 0);
+  if (explosionRadius > 0) {
+    normalized.explosionRadius = explosionRadius;
+  }
+  const nestedExplosionDamage = findAbilityEffect(explodeEffect && explodeEffect.effects, "damage");
+  const explosionDamageMultiplier = firstFiniteNumber(
+    [
+      nestedExplosionDamage && nestedExplosionDamage.amountMultiplier,
+      explodeEffect && explodeEffect.amountMultiplier,
+      entry.explosionDamageMultiplier
+    ],
+    0
+  );
+  if (explosionDamageMultiplier > 0) {
+    normalized.explosionDamageMultiplier = explosionDamageMultiplier;
+  }
+
+  const slowEffect = findAbilityEffect(effects, "slow");
+  const slowAmount = firstFiniteNumber([slowEffect && slowEffect.amount, entry.slowAmount], 0);
+  if (slowAmount > 0) {
+    normalized.slowAmount = slowAmount;
+  }
+  const slowDuration = firstFiniteNumber([slowEffect && slowEffect.duration, entry.slowDuration], 0);
+  if (slowDuration > 0) {
+    normalized.slowDuration = slowDuration;
+  }
+
+  const stunEffect = findAbilityEffect(effects, "stun");
+  const stunDuration = firstFiniteNumber([stunEffect && stunEffect.duration, entry.stunDuration], 0);
+  if (stunDuration > 0) {
+    normalized.stunDuration = stunDuration;
+  }
+
+  const invulnerabilityBuff =
+    (Array.isArray(effects) ? effects : []).find((effect) => {
+      if (!effect || typeof effect !== "object") {
+        return false;
+      }
+      if (String(effect.type || "").toLowerCase() !== "buff") {
+        return false;
+      }
+      return !!(effect.stats && effect.stats.invulnerable);
+    }) || null;
+  const invulnerabilityDuration = firstFiniteNumber(
+    [invulnerabilityBuff && invulnerabilityBuff.duration, entry.invulnerabilityDuration],
+    0
+  );
+  if (invulnerabilityDuration > 0) {
+    normalized.invulnerabilityDuration = invulnerabilityDuration;
+  }
+
+  const rangePerLevel = firstFiniteNumber([getProgressionPerLevelValue(entry, "targeting.range"), entry.rangePerLevel], 0);
+  if (rangePerLevel > 0) {
+    normalized.rangePerLevel = rangePerLevel;
+  }
+  const cooldownPerLevelRaw = Number(getProgressionPerLevelValue(entry, "delivery.cooldown"));
+  if (Number.isFinite(cooldownPerLevelRaw)) {
+    const reduction = cooldownPerLevelRaw < 0 ? Math.abs(cooldownPerLevelRaw) : 0;
+    if (reduction > 0) {
+      normalized.cooldownReductionPerLevel = reduction;
+    }
+  } else if (Number(entry.cooldownReductionPerLevel) > 0) {
+    normalized.cooldownReductionPerLevel = Number(entry.cooldownReductionPerLevel);
+  }
+
+  const beamWidth = firstFiniteNumber([targeting.width, targeting.beamWidth, entry.beamWidth, entry.width], 0);
+  if (beamWidth > 0) {
+    normalized.beamWidth = beamWidth;
+  }
+
+  const spreadDeg = firstFiniteNumber([targeting.spreadDeg, targeting.spreadAngle, entry.spreadDeg, entry.spreadAngle], 0);
+  if (spreadDeg > 0) {
+    normalized.spreadDeg = spreadDeg;
+  }
+
+  const homingRange = firstFiniteNumber(
+    [getObjectPath(targeting, "homing.range"), targeting.homingRange, entry.homingRange],
+    0
+  );
+  if (homingRange > 0) {
+    normalized.homingRange = homingRange;
+  }
+  const homingTurnRate = firstFiniteNumber(
+    [
+      getObjectPath(targeting, "homing.turnRate"),
+      getObjectPath(targeting, "homing.homingTurnRate"),
+      targeting.homingTurnRate,
+      targeting.turnRate,
+      entry.homingTurnRate,
+      entry.turnRate
+    ],
+    0
+  );
+  if (homingTurnRate > 0) {
+    normalized.homingTurnRate = homingTurnRate;
+  }
+
+  if (Array.isArray(entry.tags) && entry.tags.length) {
+    normalized.tags = entry.tags.map((tag) => String(tag || "").trim()).filter(Boolean);
+  }
+
+  normalized.delivery = delivery;
+  normalized.targeting = targeting;
+  normalized.effects = effects;
+  if (entry.progression && typeof entry.progression === "object") {
+    normalized.progression = entry.progression;
+  }
+
+  return normalized;
+}
+
+function buildChildProjectileTemplate(parentAbilityId, rawProjectileEntry) {
+  if (!rawProjectileEntry || typeof rawProjectileEntry !== "object") {
+    return null;
+  }
+  const normalized = normalizeAbilityEntry(`${parentAbilityId}_child_projectile`, rawProjectileEntry);
+  if (!normalized) {
+    return null;
+  }
+
+  const speed = Math.max(0.1, Number(normalized.speed) || 0);
+  const range = Math.max(0.25, Number(normalized.range) || 0);
+  const kind =
+    typeof normalized.kind === "string" && normalized.kind.trim()
+      ? normalized.kind.trim().toLowerCase()
+      : speed > 0
+        ? "projectile"
+        : "";
+  if (kind !== "projectile") {
+    return null;
+  }
+
+  const damageRangeInput =
+    normalized.damageRange !== undefined ? normalized.damageRange : normalized.damagePerSecond;
+  const damageRange = parseNumericRange(damageRangeInput, 1, 1);
+  const damagePerLevel = parseNumericRange(normalized.damageRangePerLevel, 0, 0);
+  const dotDamageRange = parseNumericRange(normalized.dotDamagePerSecond, 0, 0);
+  const dotDamagePerLevel = parseNumericRange(normalized.dotDamagePerSecondPerLevel, 0, 0);
+
+  const dotDurationMsRaw = Number(normalized.dotDurationMs);
+  const dotDurationSecRaw = Number(normalized.dotDuration);
+  const dotDurationMs =
+    Number.isFinite(dotDurationMsRaw) && dotDurationMsRaw > 0
+      ? Math.round(dotDurationMsRaw)
+      : Number.isFinite(dotDurationSecRaw) && dotDurationSecRaw > 0
+        ? Math.round(dotDurationSecRaw * 1000)
+        : 0;
+
+  const slowDurationMsRaw = Number(normalized.slowDurationMs);
+  const slowDurationSecRaw = Number(normalized.slowDuration);
+  const slowDurationMs =
+    Number.isFinite(slowDurationMsRaw) && slowDurationMsRaw > 0
+      ? Math.round(slowDurationMsRaw)
+      : Number.isFinite(slowDurationSecRaw) && slowDurationSecRaw > 0
+        ? Math.round(slowDurationSecRaw * 1000)
+        : 0;
+  let slowMultiplier = 1;
+  if (Number.isFinite(Number(normalized.slowMultiplier)) && Number(normalized.slowMultiplier) > 0) {
+    slowMultiplier = clamp(Number(normalized.slowMultiplier), 0.1, 1);
+  } else if (Number.isFinite(Number(normalized.slowAmount)) && Number(normalized.slowAmount) > 0) {
+    slowMultiplier = clamp(1 - clamp(Number(normalized.slowAmount), 0, 0.95), 0.1, 1);
+  }
+
+  return {
+    id: String(normalized.id || `${parentAbilityId}_child_projectile`),
+    speed,
+    range,
+    damageMin: clamp(Math.floor(Math.min(damageRange[0], damageRange[1])), 0, 255),
+    damageMax: clamp(Math.ceil(Math.max(damageRange[0], damageRange[1])), 0, 255),
+    damagePerLevelMin: Math.max(0, Number(damagePerLevel[0]) || 0),
+    damagePerLevelMax: Math.max(0, Number(damagePerLevel[1]) || 0),
+    hitRadius: clamp(
+      Number(normalized.projectileHitRadius) || Number(normalized.hitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS,
+      0.1,
+      8
+    ),
+    explosionRadius: Math.max(0, Number(normalized.explosionRadius) || 0),
+    explosionDamageMultiplier: clamp(Number(normalized.explosionDamageMultiplier) || 0, 0, 1),
+    slowDurationMs,
+    slowMultiplier,
+    stunDurationMs: Math.max(0, Math.round((Number(normalized.stunDuration) || 0) * 1000)),
+    dotDamageMin: Math.max(0, Number(dotDamageRange[0]) || 0),
+    dotDamageMax: Math.max(0, Number(dotDamageRange[1]) || 0),
+    dotDamagePerLevelMin: Math.max(0, Number(dotDamagePerLevel[0]) || 0),
+    dotDamagePerLevelMax: Math.max(0, Number(dotDamagePerLevel[1]) || 0),
+    dotDurationMs,
+    dotSchool: String(normalized.dotSchool || "generic").trim().toLowerCase() || "generic",
+    homingRange: Math.max(0, Number(normalized.homingRange) || 0),
+    homingTurnRate: Math.max(0, Number(normalized.homingTurnRate) || 0)
+  };
+}
+
+function buildEmitProjectilesConfig(entry, abilityId) {
+  const emitEffect = findAbilityEffect(entry && entry.effects, "emitprojectiles");
+  if (!emitEffect || typeof emitEffect !== "object") {
+    return null;
+  }
+  const trigger = String(emitEffect.trigger || "whileTraveling").trim().toLowerCase();
+  const intervalMsRaw = Number(emitEffect.intervalMs);
+  const intervalSecRaw = Number(emitEffect.interval);
+  const intervalMs =
+    Number.isFinite(intervalMsRaw) && intervalMsRaw > 0
+      ? Math.round(intervalMsRaw)
+      : Number.isFinite(intervalSecRaw) && intervalSecRaw > 0
+        ? Math.round(intervalSecRaw * 1000)
+        : 0;
+  if (intervalMs <= 0) {
+    return null;
+  }
+
+  const initialDelayMsRaw = Number(emitEffect.initialDelayMs);
+  const initialDelaySecRaw = Number(emitEffect.initialDelay);
+  const initialDelayMs =
+    Number.isFinite(initialDelayMsRaw) && initialDelayMsRaw >= 0
+      ? Math.round(initialDelayMsRaw)
+      : Number.isFinite(initialDelaySecRaw) && initialDelaySecRaw >= 0
+        ? Math.round(initialDelaySecRaw * 1000)
+        : 0;
+  const maxEmissions = clamp(Math.floor(Number(emitEffect.maxEmissions) || 1), 1, 1000);
+  const patternRaw = emitEffect.pattern && typeof emitEffect.pattern === "object" ? emitEffect.pattern : {};
+  const patternType = String(patternRaw.type || "radial").trim().toLowerCase();
+  const pattern = {
+    type: patternType || "radial",
+    count: clamp(Math.floor(Number(patternRaw.count) || 1), 1, 64),
+    startAngleDeg: Number(patternRaw.startAngle) || 0,
+    angleSpreadDeg: Number(patternRaw.angleSpread) || 360,
+    evenSpacing: patternRaw.evenSpacing !== false
+  };
+  const childProjectile = buildChildProjectileTemplate(abilityId, emitEffect.projectile);
+  if (!childProjectile) {
+    return null;
+  }
+
+  return {
+    trigger,
+    intervalMs: Math.max(50, intervalMs),
+    initialDelayMs: Math.max(0, initialDelayMs),
+    maxEmissions,
+    pattern,
+    childProjectile
+  };
+}
+
 function loadAbilityConfig() {
   const raw = fs.readFileSync(ABILITY_CONFIG_PATH, "utf8");
   const parsed = JSON.parse(raw);
@@ -422,8 +891,9 @@ function loadAbilityConfig() {
   const abilityDefs = new Map();
   const clientAbilityDefs = [];
 
-  for (const [rawId, entry] of entries) {
-    const id = String(rawId || "").trim();
+  for (const [rawId, rawEntry] of entries) {
+    const entry = normalizeAbilityEntry(rawId, rawEntry);
+    const id = String(entry?.id || rawId || "").trim();
     if (!id || !entry || typeof entry !== "object") {
       continue;
     }
@@ -431,6 +901,8 @@ function loadAbilityConfig() {
     const damageRangeInput = entry.damageRange !== undefined ? entry.damageRange : entry.damagePerSecond;
     const damageRange = parseNumericRange(damageRangeInput, 1, 1);
     const damagePerLevel = parseNumericRange(entry.damageRangePerLevel, 0, 0);
+    const dotDamageRange = parseNumericRange(entry.dotDamagePerSecond, 0, 0);
+    const dotDamagePerLevel = parseNumericRange(entry.dotDamagePerSecondPerLevel, 0, 0);
     const cooldownMs = Math.max(0, Math.round((Number(entry.cooldown) || 0) * 1000));
     const range = Math.max(0, Number(entry.range) || 0);
     const speed = Math.max(0, Number(entry.speed) || 0);
@@ -476,6 +948,15 @@ function loadAbilityConfig() {
         : Number.isFinite(durationSecRaw) && durationSecRaw > 0
           ? Math.round(durationSecRaw * 1000)
           : 0;
+    const dotDurationMsRaw = Number(entry.dotDurationMs);
+    const dotDurationSecRaw = Number(entry.dotDuration);
+    const dotDurationMs =
+      Number.isFinite(dotDurationMsRaw) && dotDurationMsRaw > 0
+        ? Math.round(dotDurationMsRaw)
+        : Number.isFinite(dotDurationSecRaw) && dotDurationSecRaw > 0
+          ? Math.round(dotDurationSecRaw * 1000)
+          : 0;
+    const dotSchool = String(entry.dotSchool || "").trim().toLowerCase();
     const invulnerabilityDurationMs = Math.max(
       0,
       Math.round((Number(entry.invulnerabilityDuration) || 0) * 1000)
@@ -510,7 +991,11 @@ function loadAbilityConfig() {
     const homingRangeDefault = id.toLowerCase() === "arcanemissiles" ? Math.max(6, range) : 0;
     const homingTurnRateDefault = id.toLowerCase() === "arcanemissiles" ? 6.5 : 0;
     const homingRange = Math.max(0, Number(entry.homingRange) || homingRangeDefault);
-    const homingTurnRate = Math.max(0, Number(entry.homingTurnRate) || homingTurnRateDefault);
+    const homingTurnRate = Math.max(
+      0,
+      Number(entry.homingTurnRate ?? entry.turnRate) || homingTurnRateDefault
+    );
+    const emitProjectiles = buildEmitProjectilesConfig(entry, id);
 
     const def = {
       id,
@@ -525,6 +1010,12 @@ function loadAbilityConfig() {
       damageMax: clamp(Math.ceil(Math.max(damageRange[0], damageRange[1])), 0, 255),
       damagePerLevelMin: Math.max(0, Number(damagePerLevel[0]) || 0),
       damagePerLevelMax: Math.max(0, Number(damagePerLevel[1]) || 0),
+      dotDamageMin: Math.max(0, Number(dotDamageRange[0]) || 0),
+      dotDamageMax: Math.max(0, Number(dotDamageRange[1]) || 0),
+      dotDamagePerLevelMin: Math.max(0, Number(dotDamagePerLevel[0]) || 0),
+      dotDamagePerLevelMax: Math.max(0, Number(dotDamagePerLevel[1]) || 0),
+      dotDurationMs,
+      dotSchool,
       coneAngleDeg,
       coneCos,
       projectileHitRadius,
@@ -543,7 +1034,8 @@ function loadAbilityConfig() {
       projectileCount,
       spreadDeg,
       homingRange,
-      homingTurnRate
+      homingTurnRate,
+      emitProjectiles
     };
 
     const extraClientFields = {};
@@ -571,13 +1063,21 @@ function loadAbilityConfig() {
         fieldKey === "duration" ||
         fieldKey === "durationMs" ||
         fieldKey === "damagePerSecond" ||
+        fieldKey === "dotDamagePerSecond" ||
+        fieldKey === "dotDamagePerSecondPerLevel" ||
+        fieldKey === "dotDuration" ||
+        fieldKey === "dotDurationMs" ||
+        fieldKey === "dotSchool" ||
         fieldKey === "beamWidth" ||
         fieldKey === "width" ||
         fieldKey === "stunDuration" ||
         fieldKey === "slowDuration" ||
         fieldKey === "slowDurationMs" ||
         fieldKey === "slowAmount" ||
-        fieldKey === "slowMultiplier"
+        fieldKey === "slowMultiplier" ||
+        fieldKey === "homingRange" ||
+        fieldKey === "homingTurnRate" ||
+        fieldKey === "turnRate"
       ) {
         continue;
       }
@@ -610,6 +1110,12 @@ function loadAbilityConfig() {
       damageMax: def.damageMax,
       damagePerLevelMin: def.damagePerLevelMin,
       damagePerLevelMax: def.damagePerLevelMax,
+      dotDamageMin: def.dotDamageMin,
+      dotDamageMax: def.dotDamageMax,
+      dotDamagePerLevelMin: def.dotDamagePerLevelMin,
+      dotDamagePerLevelMax: def.dotDamagePerLevelMax,
+      dotDurationMs: def.dotDurationMs,
+      dotSchool: def.dotSchool,
       coneAngleDeg: def.coneAngleDeg,
       projectileHitRadius: def.projectileHitRadius,
       explosionRadius: def.explosionRadius,
@@ -1362,6 +1868,7 @@ try {
 }
 
 let serverConfigReloadTimer = null;
+let abilityConfigReloadTimer = null;
 function reloadServerConfig(reason) {
   try {
     const nextConfig = loadServerConfigFromDisk();
@@ -1396,9 +1903,57 @@ function watchServerConfig() {
   console.log(`[config] Watching ${SERVER_CONFIG_PATH} for changes (poll ${watchIntervalMs}ms)`);
 }
 
+function broadcastClassAndAbilityDefs() {
+  for (const player of players.values()) {
+    sendJson(player.ws, {
+      type: "class_defs",
+      classes: CLASS_CONFIG.clientClassDefs,
+      abilities: ABILITY_CONFIG.clientAbilityDefs
+    });
+  }
+}
+
+function reloadAbilityAndClassConfig(reason) {
+  try {
+    const nextAbilityConfig = loadAbilityConfig();
+    const nextClassConfig = loadClassConfig(nextAbilityConfig.abilityDefs, ITEM_CONFIG.itemDefs);
+    ABILITY_CONFIG = nextAbilityConfig;
+    CLASS_CONFIG = nextClassConfig;
+    console.log(`[config] Reloaded ${ABILITY_CONFIG_PATH} (${reason})`);
+    broadcastClassAndAbilityDefs();
+  } catch (error) {
+    const details = error && error.message ? error.message : String(error);
+    console.error(
+      `[config] Failed to reload ${ABILITY_CONFIG_PATH} (${reason}). Keeping previous config. Reason: ${details}`
+    );
+  }
+}
+
+function scheduleAbilityConfigReload(reason) {
+  if (abilityConfigReloadTimer !== null) {
+    clearTimeout(abilityConfigReloadTimer);
+  }
+  abilityConfigReloadTimer = setTimeout(() => {
+    abilityConfigReloadTimer = null;
+    reloadAbilityAndClassConfig(reason);
+  }, 120);
+}
+
+function watchAbilityConfig() {
+  const watchIntervalMs = 1000;
+  fs.watchFile(ABILITY_CONFIG_PATH, { interval: watchIntervalMs }, (curr, prev) => {
+    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) {
+      return;
+    }
+    scheduleAbilityConfigReload("file change");
+  });
+  console.log(`[config] Watching ${ABILITY_CONFIG_PATH} for changes (poll ${watchIntervalMs}ms)`);
+}
+
 watchServerConfig();
-const ABILITY_CONFIG = loadAbilityConfig();
-const CLASS_CONFIG = loadClassConfig(ABILITY_CONFIG.abilityDefs, ITEM_CONFIG.itemDefs);
+watchAbilityConfig();
+let ABILITY_CONFIG = loadAbilityConfig();
+let CLASS_CONFIG = loadClassConfig(ABILITY_CONFIG.abilityDefs, ITEM_CONFIG.itemDefs);
 const MOB_CONFIG = loadMobConfig(ITEM_CONFIG.itemDefs);
 const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfig(ITEM_CONFIG.itemDefs);
 
@@ -1485,8 +2040,10 @@ const abilityHandlerContext = {
   rotateDirection,
   getAbilityRangeForLevel,
   getAbilityDamageRange,
+  getAbilityDotDamageRange,
   markAbilityUsed,
   applyDamageToMob,
+  applyAbilityHitEffectsToMob,
   stunMob,
   queueExplosionEvent,
   getAreaAbilityTargetPosition,
@@ -1940,6 +2497,145 @@ function applySlowToMob(mob, slowMultiplier, durationMs, now = Date.now()) {
   }
 }
 
+function applyDotToMob(
+  mob,
+  ownerId,
+  school,
+  damageMinPerSecond,
+  damageMaxPerSecond,
+  durationMs,
+  now = Date.now()
+) {
+  if (!mob || !mob.alive) {
+    return;
+  }
+  const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+  if (duration <= 0) {
+    return;
+  }
+  const dotMin = Math.max(0, Number(damageMinPerSecond) || 0);
+  const dotMax = Math.max(dotMin, Number(damageMaxPerSecond) || dotMin);
+  if (dotMax <= 0) {
+    return;
+  }
+  const schoolKey = String(school || "generic").trim().toLowerCase() || "generic";
+  if (!(mob.activeDots instanceof Map)) {
+    mob.activeDots = new Map();
+  }
+  const tickIntervalMs = 1000;
+  const nextEndsAt = now + duration;
+  const existing = mob.activeDots.get(schoolKey);
+  if (existing) {
+    existing.ownerId = ownerId ? String(ownerId) : existing.ownerId;
+    existing.damageMin = Math.max(Number(existing.damageMin) || 0, dotMin);
+    existing.damageMax = Math.max(Number(existing.damageMax) || existing.damageMin, dotMax);
+    existing.endsAt = Math.max(Number(existing.endsAt) || 0, nextEndsAt);
+    existing.nextTickAt = Math.min(Number(existing.nextTickAt) || now + tickIntervalMs, now + tickIntervalMs);
+    mob.activeDots.set(schoolKey, existing);
+  } else {
+    mob.activeDots.set(schoolKey, {
+      school: schoolKey,
+      ownerId: ownerId ? String(ownerId) : "",
+      damageMin: dotMin,
+      damageMax: dotMax,
+      tickIntervalMs,
+      nextTickAt: now + tickIntervalMs,
+      endsAt: nextEndsAt
+    });
+  }
+  if (schoolKey === "fire") {
+    mob.burningUntil = Math.max(Number(mob.burningUntil) || 0, nextEndsAt);
+  }
+}
+
+function tickMobDotEffects(mob, now = Date.now()) {
+  if (!mob || !mob.alive) {
+    return;
+  }
+  const dots = mob.activeDots;
+  if (!(dots instanceof Map) || dots.size === 0) {
+    mob.burningUntil = 0;
+    return;
+  }
+
+  let fireEndsAt = 0;
+  for (const [schoolKey, dot] of Array.from(dots.entries())) {
+    const endsAt = Math.max(0, Math.floor(Number(dot.endsAt) || 0));
+    if (endsAt <= now) {
+      dots.delete(schoolKey);
+      continue;
+    }
+    if (schoolKey === "fire") {
+      fireEndsAt = Math.max(fireEndsAt, endsAt);
+    }
+
+    const tickIntervalMs = Math.max(100, Math.floor(Number(dot.tickIntervalMs) || 1000));
+    while (Number(dot.nextTickAt) <= now && Number(dot.nextTickAt) < endsAt + 5) {
+      if (!mob.alive) {
+        break;
+      }
+      const dealt = applyDamageToMob(
+        mob,
+        randomInt(Math.floor(dot.damageMin), Math.ceil(dot.damageMax)),
+        dot.ownerId || null
+      );
+      dot.nextTickAt += tickIntervalMs;
+      if (!mob.alive || dealt <= 0) {
+        break;
+      }
+    }
+
+    if (!mob.alive) {
+      break;
+    }
+    dots.set(schoolKey, dot);
+  }
+
+  if (!mob.alive) {
+    if (dots instanceof Map) {
+      dots.clear();
+    }
+    mob.burningUntil = 0;
+    return;
+  }
+
+  if (dots.size <= 0) {
+    mob.burningUntil = 0;
+  } else if (fireEndsAt > now) {
+    mob.burningUntil = fireEndsAt;
+  } else {
+    mob.burningUntil = 0;
+  }
+}
+
+function applyAbilityHitEffectsToMob(mob, ownerId, abilityDef, abilityLevel, dealtDamage, now = Date.now()) {
+  if (!mob || !mob.alive || dealtDamage <= 0 || !abilityDef) {
+    return;
+  }
+  const slowDurationMs = Math.max(0, Number(abilityDef.slowDurationMs) || 0);
+  const slowMultiplier = clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1);
+  if (slowDurationMs > 0 && slowMultiplier < 1) {
+    applySlowToMob(mob, slowMultiplier, slowDurationMs, now);
+  }
+  const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
+  if (stunDurationMs > 0) {
+    stunMob(mob, stunDurationMs, now);
+  }
+  const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
+  const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
+  if (dotDurationMs > 0 && dotDamageMax > 0) {
+    applyDotToMob(
+      mob,
+      ownerId,
+      String(abilityDef.dotSchool || "generic"),
+      dotDamageMin,
+      dotDamageMax,
+      dotDurationMs,
+      now
+    );
+  }
+}
+
 function applyDamageToMob(mob, damage, ownerId) {
   if (!mob || !mob.alive) {
     return 0;
@@ -2014,6 +2710,17 @@ function getAbilityDamageRange(abilityDef, level) {
   const levelOffset = Math.max(0, lvl - 1);
   const min = Math.max(0, Math.floor(abilityDef.damageMin + abilityDef.damagePerLevelMin * levelOffset));
   const max = Math.max(min, Math.ceil(abilityDef.damageMax + abilityDef.damagePerLevelMax * levelOffset));
+  return [min, max];
+}
+
+function getAbilityDotDamageRange(abilityDef, level) {
+  if (!abilityDef) {
+    return [0, 0];
+  }
+  const lvl = Math.max(1, Math.floor(Number(level) || 1));
+  const levelOffset = Math.max(0, lvl - 1);
+  const min = Math.max(0, Number(abilityDef.dotDamageMin) + Number(abilityDef.dotDamagePerLevelMin) * levelOffset);
+  const max = Math.max(min, Number(abilityDef.dotDamageMax) + Number(abilityDef.dotDamagePerLevelMax) * levelOffset);
   return [min, max];
 }
 
@@ -2178,6 +2885,8 @@ function createMob(spawner) {
     stunnedUntil: 0,
     slowUntil: 0,
     slowMultiplier: 1,
+    burningUntil: 0,
+    activeDots: new Map(),
     returningHome: false
   };
   mobs.set(mob.id, mob);
@@ -2256,6 +2965,8 @@ function killMob(mob, killerPlayerId = null) {
   mob.stunnedUntil = 0;
   mob.slowUntil = 0;
   mob.slowMultiplier = 1;
+  mob.burningUntil = 0;
+  mob.activeDots = new Map();
   queueMobDeathEvent(mob);
   const killer = killerPlayerId ? players.get(String(killerPlayerId)) : null;
   const globalDrops = rollGlobalDropsForPlayer(killer);
@@ -2285,6 +2996,8 @@ function respawnMob(mob) {
   mob.stunnedUntil = 0;
   mob.slowUntil = 0;
   mob.slowMultiplier = 1;
+  mob.burningUntil = 0;
+  mob.activeDots = new Map();
   mob.returningHome = false;
 }
 
@@ -2296,6 +3009,145 @@ function applyProjectileHitEffects(mob, projectile, dealtDamage, now = Date.now(
   const slowMultiplier = clamp(Number(projectile.slowMultiplier) || 1, 0.1, 1);
   if (slowDurationMs > 0 && slowMultiplier < 1) {
     applySlowToMob(mob, slowMultiplier, slowDurationMs, now);
+  }
+  const stunDurationMs = Math.max(0, Number(projectile.stunDurationMs) || 0);
+  if (stunDurationMs > 0) {
+    stunMob(mob, stunDurationMs, now);
+  }
+  const dotDurationMs = Math.max(0, Number(projectile.dotDurationMs) || 0);
+  const dotDamageMin = Math.max(0, Number(projectile.dotDamageMin) || 0);
+  const dotDamageMax = Math.max(dotDamageMin, Number(projectile.dotDamageMax) || dotDamageMin);
+  if (dotDurationMs > 0 && dotDamageMax > 0) {
+    applyDotToMob(
+      mob,
+      projectile.ownerId || null,
+      String(projectile.dotSchool || "generic"),
+      dotDamageMin,
+      dotDamageMax,
+      dotDurationMs,
+      now
+    );
+  }
+}
+
+function spawnProjectileFromTemplate(ownerId, sourceX, sourceY, direction, template, abilityLevel, now = Date.now()) {
+  if (!template || !direction) {
+    return false;
+  }
+  const dir = normalizeDirection(direction.dx, direction.dy);
+  if (!dir) {
+    return false;
+  }
+
+  const level = Math.max(1, Math.floor(Number(abilityLevel) || 1));
+  const levelOffset = Math.max(0, level - 1);
+  const speed = Math.max(0.1, Number(template.speed) || 1);
+  const range = Math.max(0.25, Number(template.range) || 4);
+  const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
+  const damageMin = clamp(
+    Math.floor((Number(template.damageMin) || 0) + (Number(template.damagePerLevelMin) || 0) * levelOffset),
+    0,
+    255
+  );
+  const damageMax = clamp(
+    Math.ceil((Number(template.damageMax) || damageMin) + (Number(template.damagePerLevelMax) || 0) * levelOffset),
+    damageMin,
+    255
+  );
+  const dotDamageMin = Math.max(
+    0,
+    Number(template.dotDamageMin) + (Number(template.dotDamagePerLevelMin) || 0) * levelOffset
+  );
+  const dotDamageMax = Math.max(
+    dotDamageMin,
+    Number(template.dotDamageMax) + (Number(template.dotDamagePerLevelMax) || 0) * levelOffset
+  );
+
+  const projectile = {
+    id: String(nextProjectileId++),
+    ownerId: String(ownerId || ""),
+    x: clamp(Number(sourceX) + dir.dx * 0.35, 0, MAP_WIDTH - 1),
+    y: clamp(Number(sourceY) + dir.dy * 0.35, 0, MAP_HEIGHT - 1),
+    dx: dir.dx,
+    dy: dir.dy,
+    speed,
+    ttlMs,
+    createdAt: now,
+    damageMin,
+    damageMax,
+    hitRadius: clamp(Number(template.hitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8),
+    explosionRadius: Math.max(0, Number(template.explosionRadius) || 0),
+    explosionDamageMultiplier: clamp(Number(template.explosionDamageMultiplier) || 0, 0, 1),
+    slowDurationMs: Math.max(0, Number(template.slowDurationMs) || 0),
+    slowMultiplier: clamp(Number(template.slowMultiplier) || 1, 0.1, 1),
+    stunDurationMs: Math.max(0, Number(template.stunDurationMs) || 0),
+    dotDamageMin,
+    dotDamageMax,
+    dotDurationMs: Math.max(0, Number(template.dotDurationMs) || 0),
+    dotSchool: String(template.dotSchool || "generic"),
+    homingRange: Math.max(0, Number(template.homingRange) || 0),
+    homingTurnRate: Math.max(0, Number(template.homingTurnRate) || 0),
+    abilityId: String(template.id || "child_projectile"),
+    emitProjectiles: null
+  };
+  projectiles.set(projectile.id, projectile);
+  return true;
+}
+
+function emitProjectilesFromEmitter(projectile, now = Date.now()) {
+  const emitter = projectile && projectile.emitProjectiles;
+  if (!emitter || String(emitter.trigger || "").toLowerCase() !== "whiletraveling") {
+    return;
+  }
+  const intervalMs = Math.max(50, Math.floor(Number(emitter.intervalMs) || 0));
+  const maxEmissions = clamp(Math.floor(Number(emitter.maxEmissions) || 0), 0, 1000);
+  if (intervalMs <= 0 || maxEmissions <= 0 || !emitter.childProjectile) {
+    projectile.emitProjectiles = null;
+    return;
+  }
+  if (Number(emitter.emissionsDone) >= maxEmissions) {
+    projectile.emitProjectiles = null;
+    return;
+  }
+
+  const pattern = emitter.pattern && typeof emitter.pattern === "object" ? emitter.pattern : {};
+  const count = clamp(Math.floor(Number(pattern.count) || 1), 1, 64);
+  const startAngleRad = (Number(pattern.startAngleDeg) || 0) * (Math.PI / 180);
+  const angleSpreadRad = (Number(pattern.angleSpreadDeg) || 360) * (Math.PI / 180);
+  const evenSpacing = pattern.evenSpacing !== false;
+  const baseAngle = Math.atan2(Number(projectile.dy) || 0, Number(projectile.dx) || 1);
+  const level = Math.max(1, Math.floor(Number(emitter.abilityLevel) || 1));
+
+  let burstsThisTick = 0;
+  while (now >= Number(emitter.nextEmissionAt) && Number(emitter.emissionsDone) < maxEmissions) {
+    for (let i = 0; i < count; i += 1) {
+      let t = 0;
+      if (count > 1) {
+        t = evenSpacing ? i / count : i / (count - 1);
+      }
+      const angle = baseAngle + startAngleRad + (count === 1 ? 0 : t * angleSpreadRad);
+      spawnProjectileFromTemplate(
+        projectile.ownerId,
+        projectile.x,
+        projectile.y,
+        { dx: Math.cos(angle), dy: Math.sin(angle) },
+        emitter.childProjectile,
+        level,
+        now
+      );
+    }
+
+    emitter.emissionsDone = Math.floor(Number(emitter.emissionsDone) || 0) + 1;
+    emitter.nextEmissionAt = Number(emitter.nextEmissionAt) + intervalMs;
+    burstsThisTick += 1;
+    if (burstsThisTick >= 4) {
+      emitter.nextEmissionAt = now + intervalMs;
+      break;
+    }
+  }
+
+  if (Number(emitter.emissionsDone) >= maxEmissions) {
+    projectile.emitProjectiles = null;
   }
 }
 
@@ -2327,6 +3179,7 @@ function tickProjectiles() {
 
   for (const projectile of projectiles.values()) {
     const dt = TICK_MS / 1000;
+    emitProjectilesFromEmitter(projectile, now);
     const homingRange = Math.max(0, Number(projectile.homingRange) || 0);
     const homingTurnRate = Math.max(0, Number(projectile.homingTurnRate) || 0);
     if (homingRange > 0 && homingTurnRate > 0) {
@@ -2446,7 +3299,18 @@ function tickAreaEffects(now = Date.now()) {
           }
           const tickDamage = rollScaledTickDamage(effect.damageMin, effect.damageMax, tickIntervalMs);
           if (tickDamage > 0) {
-            applyDamageToMob(mob, tickDamage, effect.ownerId);
+            const dealt = applyDamageToMob(mob, tickDamage, effect.ownerId);
+            if (mob.alive && dealt > 0 && effect.dotDurationMs > 0 && effect.dotDamageMax > 0) {
+              applyDotToMob(
+                mob,
+                effect.ownerId || null,
+                String(effect.dotSchool || "generic"),
+                effect.dotDamageMin,
+                effect.dotDamageMax,
+                effect.dotDurationMs,
+                now
+              );
+            }
           }
         }
       } else {
@@ -2459,7 +3323,18 @@ function tickAreaEffects(now = Date.now()) {
             continue;
           }
           if (effect.damageMax > 0) {
-            applyDamageToMob(mob, randomInt(effect.damageMin, effect.damageMax), effect.ownerId);
+            const dealt = applyDamageToMob(mob, randomInt(effect.damageMin, effect.damageMax), effect.ownerId);
+            if (mob.alive && dealt > 0 && effect.dotDurationMs > 0 && effect.dotDamageMax > 0) {
+              applyDotToMob(
+                mob,
+                effect.ownerId || null,
+                String(effect.dotSchool || "generic"),
+                effect.dotDamageMin,
+                effect.dotDamageMax,
+                effect.dotDurationMs,
+                now
+              );
+            }
           }
           if (mob.alive && effect.slowMultiplier < 1 && effect.slowDurationMs > 0) {
             applySlowToMob(mob, effect.slowMultiplier, effect.slowDurationMs, now);
@@ -2776,16 +3651,15 @@ function buildMobBiteEventsForRecipient(recipient, nearbyMobObjects) {
   return events;
 }
 
-function buildMobEffectsForRecipient(recipient, nearbyMobObjects, now = Date.now()) {
-  const effects = [];
+function buildMobEffectEventsForRecipient(recipient, nearbyMobObjects, now = Date.now()) {
+  const events = [];
   const sync = recipient.entitySync;
+  const visibleSlots = new Set();
 
   for (const mob of nearbyMobObjects) {
     if (!mob.alive) {
       continue;
     }
-    const stunnedUntil = Number(mob.stunnedUntil) || 0;
-
     const realId = toEntityRealId(mob.id);
     if (!realId) {
       continue;
@@ -2794,21 +3668,176 @@ function buildMobEffectsForRecipient(recipient, nearbyMobObjects, now = Date.now
     if (!slot) {
       continue;
     }
-    const slowedUntil = Number(mob.slowUntil) || 0;
-    const slowedMs = slowedUntil > now ? clamp(slowedUntil - now, 1, 65535) : 0;
+    visibleSlots.add(slot);
+
+    const stunnedUntil = Math.max(0, Math.floor(Number(mob.stunnedUntil) || 0));
+    const slowUntil = Math.max(0, Math.floor(Number(mob.slowUntil) || 0));
+    const burningUntil = Math.max(0, Math.floor(Number(mob.burningUntil) || 0));
+    const hasStun = stunnedUntil > now;
+    const hasSlow = slowUntil > now;
+    const hasBurn = burningUntil > now;
     const slowMultiplierQ = clamp(Math.round(clamp(Number(mob.slowMultiplier) || 1, 0.1, 1) * 1000), 1, 1000);
-    if (stunnedUntil <= now && slowedMs <= 0) {
+    const previous = sync.mobEffectStatesBySlot.get(slot);
+
+    if (!hasStun && !hasSlow && !hasBurn) {
+      if (previous) {
+        events.push({
+          id: slot,
+          flags: MOB_EFFECT_FLAG_REMOVE
+        });
+        sync.mobEffectStatesBySlot.delete(slot);
+      }
       continue;
     }
-    effects.push({
-      id: slot,
-      stunnedMs: stunnedUntil > now ? clamp(stunnedUntil - now, 1, 65535) : 0,
-      slowedMs,
-      slowMultiplierQ
-    });
+
+    const nextState = {
+      stunnedUntil: hasStun ? stunnedUntil : 0,
+      slowUntil: hasSlow ? slowUntil : 0,
+      burningUntil: hasBurn ? burningUntil : 0,
+      slowMultiplierQ: hasSlow ? slowMultiplierQ : 1000
+    };
+
+    const changed =
+      !previous ||
+      previous.stunnedUntil !== nextState.stunnedUntil ||
+      previous.slowUntil !== nextState.slowUntil ||
+      previous.burningUntil !== nextState.burningUntil ||
+      previous.slowMultiplierQ !== nextState.slowMultiplierQ;
+
+    if (changed) {
+      let flags = 0;
+      if (hasStun) {
+        flags |= MOB_EFFECT_FLAG_STUN;
+      }
+      if (hasSlow) {
+        flags |= MOB_EFFECT_FLAG_SLOW;
+      }
+      if (hasBurn) {
+        flags |= MOB_EFFECT_FLAG_BURN;
+      }
+      events.push({
+        id: slot,
+        flags,
+        stunnedMs: hasStun ? clamp(stunnedUntil - now, 1, 65535) : 0,
+        slowedMs: hasSlow ? clamp(slowUntil - now, 1, 65535) : 0,
+        burningMs: hasBurn ? clamp(burningUntil - now, 1, 65535) : 0,
+        slowMultiplierQ: hasSlow ? slowMultiplierQ : 1000
+      });
+    }
+    sync.mobEffectStatesBySlot.set(slot, nextState);
   }
 
-  return effects;
+  for (const [slot] of Array.from(sync.mobEffectStatesBySlot.entries())) {
+    if (!sync.mobRealIdBySlot.has(slot) || !visibleSlots.has(slot)) {
+      events.push({
+        id: slot,
+        flags: MOB_EFFECT_FLAG_REMOVE
+      });
+      sync.mobEffectStatesBySlot.delete(slot);
+    }
+  }
+
+  return events;
+}
+
+function toAreaEffectState(effect) {
+  const id = Number(effect && effect.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    return null;
+  }
+  const kindRaw = String((effect && effect.kind) || "area").toLowerCase();
+  const kind = kindRaw === "beam" ? AREA_EFFECT_KIND_BEAM : AREA_EFFECT_KIND_AREA;
+  const state = {
+    id: Math.floor(id),
+    kind,
+    abilityId: String((effect && effect.abilityId) || "").trim().toLowerCase().slice(0, 64),
+    xQ: quantizePos(effect && effect.x),
+    yQ: quantizePos(effect && effect.y),
+    radiusQ: quantizePos(Math.max(0.1, Number(effect && effect.radius) || 0.1)),
+    durationMs: clamp(Math.floor(Number(effect && effect.durationMs) || 0), 1, 65535),
+    endsAt: Math.max(0, Math.floor(Number(effect && effect.endsAt) || 0))
+  };
+  if (kind === AREA_EFFECT_KIND_BEAM) {
+    state.startXQ = quantizePos(effect && effect.startX);
+    state.startYQ = quantizePos(effect && effect.startY);
+    state.dxQ = clamp(Math.round((Number(effect && effect.dx) || 0) * 1000), -32767, 32767);
+    state.dyQ = clamp(Math.round((Number(effect && effect.dy) || 0) * 1000), -32767, 32767);
+    state.lengthQ = quantizePos(Math.max(0.1, Number(effect && effect.length) || 0.1));
+    state.widthQ = quantizePos(Math.max(0.1, Number(effect && effect.width) || 0.1));
+  }
+  return state;
+}
+
+function areaEffectStateEquals(a, b) {
+  if (!a || !b) {
+    return false;
+  }
+  if (
+    a.kind !== b.kind ||
+    a.abilityId !== b.abilityId ||
+    a.xQ !== b.xQ ||
+    a.yQ !== b.yQ ||
+    a.radiusQ !== b.radiusQ ||
+    a.durationMs !== b.durationMs ||
+    a.endsAt !== b.endsAt
+  ) {
+    return false;
+  }
+  if (a.kind === AREA_EFFECT_KIND_BEAM) {
+    return (
+      a.startXQ === b.startXQ &&
+      a.startYQ === b.startYQ &&
+      a.dxQ === b.dxQ &&
+      a.dyQ === b.dyQ &&
+      a.lengthQ === b.lengthQ &&
+      a.widthQ === b.widthQ
+    );
+  }
+  return true;
+}
+
+function buildAreaEffectEventsForRecipient(recipient, now = Date.now()) {
+  const events = [];
+  const sync = recipient.entitySync;
+  const visibleIds = new Set();
+
+  for (const effect of activeAreaEffects.values()) {
+    if (!effect || now >= Number(effect.endsAt)) {
+      continue;
+    }
+    const visibility = VISIBILITY_RANGE + Math.max(0, Number(effect.radius) || 0);
+    if (!inVisibilityRange(recipient, effect, visibility)) {
+      continue;
+    }
+
+    const state = toAreaEffectState(effect);
+    if (!state) {
+      continue;
+    }
+    visibleIds.add(state.id);
+
+    const previous = sync.areaEffectStatesById.get(state.id);
+    if (!areaEffectStateEquals(previous, state)) {
+      events.push({
+        op: AREA_EFFECT_OP_UPSERT,
+        ...state,
+        remainingMs: clamp(state.endsAt - now, 1, 65535)
+      });
+      sync.areaEffectStatesById.set(state.id, state);
+    }
+  }
+
+  for (const [id] of Array.from(sync.areaEffectStatesById.entries())) {
+    if (!visibleIds.has(id)) {
+      events.push({
+        op: AREA_EFFECT_OP_REMOVE,
+        id
+      });
+      sync.areaEffectStatesById.delete(id);
+    }
+  }
+
+  return events;
 }
 
 function getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance) {
@@ -2829,8 +3858,20 @@ function getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, tar
   };
 }
 
-function createPersistentAreaEffect(ownerId, abilityDef, centerX, centerY, radius, durationMs, damageMin, damageMax, now) {
+function createPersistentAreaEffect(
+  ownerId,
+  abilityDef,
+  centerX,
+  centerY,
+  radius,
+  durationMs,
+  damageMin,
+  damageMax,
+  statusPayload = null,
+  now
+) {
   const tickIntervalMs = 1000;
+  const payload = statusPayload && typeof statusPayload === "object" ? statusPayload : {};
   const effect = {
     id: String(nextAreaEffectId++),
     ownerId: String(ownerId || ""),
@@ -2841,6 +3882,10 @@ function createPersistentAreaEffect(ownerId, abilityDef, centerX, centerY, radiu
     radius: Math.max(0.1, Number(radius) || 0.1),
     damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
     damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+    dotDamageMin: Math.max(0, Number(payload.dotDamageMin) || 0),
+    dotDamageMax: Math.max(0, Number(payload.dotDamageMax) || 0),
+    dotDurationMs: Math.max(0, Math.floor(Number(payload.dotDurationMs) || 0)),
+    dotSchool: String(payload.dotSchool || "generic").trim().toLowerCase() || "generic",
     slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
     slowDurationMs: Math.max(
       0,
@@ -2868,6 +3913,7 @@ function createPersistentBeamEffect(
   durationMs,
   damageMin,
   damageMax,
+  statusPayload = null,
   now
 ) {
   const beamLength = Math.max(0.2, Number(length) || 0.2);
@@ -2878,6 +3924,7 @@ function createPersistentBeamEffect(
   const clampedEndX = clamp(clampedStartX + normalizedDir.dx * beamLength, 0, MAP_WIDTH - 1);
   const clampedEndY = clamp(clampedStartY + normalizedDir.dy * beamLength, 0, MAP_HEIGHT - 1);
   const tickIntervalMs = 250;
+  const payload = statusPayload && typeof statusPayload === "object" ? statusPayload : {};
 
   const effect = {
     id: String(nextAreaEffectId++),
@@ -2895,6 +3942,10 @@ function createPersistentBeamEffect(
     width: beamWidth,
     damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
     damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+    dotDamageMin: Math.max(0, Number(payload.dotDamageMin) || 0),
+    dotDamageMax: Math.max(0, Number(payload.dotDamageMax) || 0),
+    dotDurationMs: Math.max(0, Math.floor(Number(payload.dotDurationMs) || 0)),
+    dotSchool: String(payload.dotSchool || "generic").trim().toLowerCase() || "generic",
     createdAt: now,
     endsAt: now + durationMs,
     durationMs,
@@ -3103,6 +4154,11 @@ function tickMobs() {
       continue;
     }
 
+    tickMobDotEffects(mob, now);
+    if (!mob.alive) {
+      continue;
+    }
+
     if ((Number(mob.stunnedUntil) || 0) > now) {
       continue;
     }
@@ -3274,6 +4330,18 @@ function toEntityRealId(entityId) {
   return numericId;
 }
 
+function buildMobMetaSignature(name, renderStyle) {
+  let styleJson = "";
+  if (renderStyle && typeof renderStyle === "object") {
+    try {
+      styleJson = JSON.stringify(renderStyle);
+    } catch (_error) {
+      styleJson = "";
+    }
+  }
+  return `${String(name || "Mob")}|${styleJson}`;
+}
+
 function getEntitySyncStore(sync, kind) {
   if (kind === "player") {
     return {
@@ -3366,11 +4434,18 @@ function processVisibleEntities(sync, kind, entities) {
           classType: entity.classType
         });
       } else if (kind === "mob") {
-        meta.push({
-          id: slot,
-          name: entity.name || "Mob",
-          renderStyle: entity.renderStyle || null
-        });
+        const mobName = entity.name || "Mob";
+        const mobStyle = entity.renderStyle || null;
+        const signature = buildMobMetaSignature(mobName, mobStyle);
+        const previousSignature = sync.mobMetaSignatureBySlot.get(slot);
+        if (previousSignature !== signature) {
+          meta.push({
+            id: slot,
+            name: mobName,
+            renderStyle: mobStyle
+          });
+          sync.mobMetaSignatureBySlot.set(slot, signature);
+        }
       }
       continue;
     }
@@ -3465,11 +4540,14 @@ function processVisibleProjectiles(sync, entities) {
       full.push({ id: slot, ...state });
       store.statesBySlot.set(slot, state);
       const abilityId = String(entity.abilityId || "");
-      sync.projectileMetaBySlot.set(slot, abilityId);
-      meta.push({
-        id: slot,
-        abilityId
-      });
+      const previousAbilityId = sync.projectileMetaBySlot.get(slot);
+      if (previousAbilityId !== abilityId) {
+        sync.projectileMetaBySlot.set(slot, abilityId);
+        meta.push({
+          id: slot,
+          abilityId
+        });
+      }
       continue;
     }
 
@@ -3523,7 +4601,6 @@ function processVisibleProjectiles(sync, entities) {
     store.realIdBySlot.delete(entry.slot);
     store.statesBySlot.delete(entry.slot);
     store.freeSlots.push(entry.slot);
-    sync.projectileMetaBySlot.delete(entry.slot);
   }
 
   return { full, delta, meta };
@@ -3681,6 +4758,181 @@ function encodeProjectileDeltaRecords(records) {
     bytes.push(record.flags & 0xff);
   }
   return Buffer.from(bytes);
+}
+
+function encodeMobEffectEventPacket(events) {
+  const bytes = [];
+  const header = Buffer.alloc(4);
+  header.writeUInt8(MOB_EFFECT_PROTO_TYPE, 0);
+  header.writeUInt8(MOB_EFFECT_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+
+  for (const event of events) {
+    const id = clamp(Math.floor(Number(event.id) || 0), 0, 255);
+    const flags = clamp(Math.floor(Number(event.flags) || 0), 0, 255);
+    bytes.push(id & 0xff);
+    bytes.push(flags & 0xff);
+
+    if (flags & MOB_EFFECT_FLAG_STUN) {
+      const stunnedMs = clamp(Math.floor(Number(event.stunnedMs) || 0), 1, 65535);
+      bytes.push(stunnedMs & 0xff, (stunnedMs >> 8) & 0xff);
+    }
+    if (flags & MOB_EFFECT_FLAG_SLOW) {
+      const slowedMs = clamp(Math.floor(Number(event.slowedMs) || 0), 1, 65535);
+      const slowMultiplierQ = clamp(Math.floor(Number(event.slowMultiplierQ) || 1000), 1, 1000);
+      bytes.push(slowedMs & 0xff, (slowedMs >> 8) & 0xff);
+      bytes.push(slowMultiplierQ & 0xff, (slowMultiplierQ >> 8) & 0xff);
+    }
+    if (flags & MOB_EFFECT_FLAG_BURN) {
+      const burningMs = clamp(Math.floor(Number(event.burningMs) || 0), 1, 65535);
+      bytes.push(burningMs & 0xff, (burningMs >> 8) & 0xff);
+    }
+  }
+
+  return Buffer.concat([header, Buffer.from(bytes)]);
+}
+
+function encodeAreaEffectEventPacket(events) {
+  const parts = [];
+  const header = Buffer.alloc(4);
+  header.writeUInt8(AREA_EFFECT_PROTO_TYPE, 0);
+  header.writeUInt8(AREA_EFFECT_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+  parts.push(header);
+
+  for (const event of events) {
+    const op = Number(event.op) === AREA_EFFECT_OP_REMOVE ? AREA_EFFECT_OP_REMOVE : AREA_EFFECT_OP_UPSERT;
+    const id = clamp(Math.floor(Number(event.id) || 0), 0, 0xffffffff);
+    const base = Buffer.alloc(5);
+    base.writeUInt8(op, 0);
+    base.writeUInt32LE(id, 1);
+    parts.push(base);
+    if (op !== AREA_EFFECT_OP_UPSERT) {
+      continue;
+    }
+
+    const abilityBytes = Buffer.from(String(event.abilityId || "").slice(0, 64), "utf8");
+    const details = Buffer.alloc(12);
+    details.writeUInt8(Number(event.kind) === AREA_EFFECT_KIND_BEAM ? AREA_EFFECT_KIND_BEAM : AREA_EFFECT_KIND_AREA, 0);
+    details.writeUInt16LE(clamp(Math.floor(Number(event.xQ) || 0), 0, 65535), 1);
+    details.writeUInt16LE(clamp(Math.floor(Number(event.yQ) || 0), 0, 65535), 3);
+    details.writeUInt16LE(clamp(Math.floor(Number(event.radiusQ) || 0), 1, 65535), 5);
+    details.writeUInt16LE(clamp(Math.floor(Number(event.remainingMs) || 0), 1, 65535), 7);
+    details.writeUInt16LE(clamp(Math.floor(Number(event.durationMs) || 0), 1, 65535), 9);
+    details.writeUInt8(abilityBytes.length, 11);
+    parts.push(details);
+    if (abilityBytes.length) {
+      parts.push(abilityBytes);
+    }
+
+    if (Number(event.kind) === AREA_EFFECT_KIND_BEAM) {
+      const beam = Buffer.alloc(12);
+      beam.writeUInt16LE(clamp(Math.floor(Number(event.startXQ) || 0), 0, 65535), 0);
+      beam.writeUInt16LE(clamp(Math.floor(Number(event.startYQ) || 0), 0, 65535), 2);
+      beam.writeInt16LE(clamp(Math.floor(Number(event.dxQ) || 0), -32767, 32767), 4);
+      beam.writeInt16LE(clamp(Math.floor(Number(event.dyQ) || 0), -32767, 32767), 6);
+      beam.writeUInt16LE(clamp(Math.floor(Number(event.lengthQ) || 0), 1, 65535), 8);
+      beam.writeUInt16LE(clamp(Math.floor(Number(event.widthQ) || 0), 1, 65535), 10);
+      parts.push(beam);
+    }
+  }
+
+  return Buffer.concat(parts);
+}
+
+function encodeMobMetaPacket(mobsMeta) {
+  const parts = [];
+  const header = Buffer.alloc(4);
+  header.writeUInt8(MOB_META_PROTO_TYPE, 0);
+  header.writeUInt8(MOB_META_PROTO_VERSION, 1);
+  header.writeUInt16LE(mobsMeta.length, 2);
+  parts.push(header);
+
+  for (const meta of mobsMeta) {
+    const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
+    const nameBytesRaw = Buffer.from(String((meta && meta.name) || "Mob"), "utf8");
+    const nameBytes = nameBytesRaw.length > 255 ? nameBytesRaw.subarray(0, 255) : nameBytesRaw;
+
+    let styleString = "";
+    if (meta && meta.renderStyle && typeof meta.renderStyle === "object") {
+      try {
+        styleString = JSON.stringify(meta.renderStyle);
+      } catch (_error) {
+        styleString = "";
+      }
+    }
+    const styleBytesRaw = Buffer.from(styleString, "utf8");
+    const styleBytes = styleBytesRaw.length > 65535 ? styleBytesRaw.subarray(0, 65535) : styleBytesRaw;
+
+    const recordHeader = Buffer.alloc(4);
+    recordHeader.writeUInt8(id, 0);
+    recordHeader.writeUInt8(nameBytes.length, 1);
+    recordHeader.writeUInt16LE(styleBytes.length, 2);
+    parts.push(recordHeader);
+    if (nameBytes.length) {
+      parts.push(nameBytes);
+    }
+    if (styleBytes.length) {
+      parts.push(styleBytes);
+    }
+  }
+
+  return Buffer.concat(parts);
+}
+
+function encodeProjectileMetaPacket(projectileMeta) {
+  const parts = [];
+  const header = Buffer.alloc(4);
+  header.writeUInt8(PROJECTILE_META_PROTO_TYPE, 0);
+  header.writeUInt8(PROJECTILE_META_PROTO_VERSION, 1);
+  header.writeUInt16LE(projectileMeta.length, 2);
+  parts.push(header);
+
+  for (const meta of projectileMeta) {
+    const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
+    const abilityBytesRaw = Buffer.from(String((meta && meta.abilityId) || ""), "utf8");
+    const abilityBytes = abilityBytesRaw.length > 255 ? abilityBytesRaw.subarray(0, 255) : abilityBytesRaw;
+    const recordHeader = Buffer.alloc(2);
+    recordHeader.writeUInt8(id, 0);
+    recordHeader.writeUInt8(abilityBytes.length, 1);
+    parts.push(recordHeader);
+    if (abilityBytes.length) {
+      parts.push(abilityBytes);
+    }
+  }
+
+  return Buffer.concat(parts);
+}
+
+function encodeDamageEventPacket(events) {
+  const header = Buffer.alloc(4);
+  header.writeUInt8(DAMAGE_EVENT_PROTO_TYPE, 0);
+  header.writeUInt8(DAMAGE_EVENT_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+
+  const recordSize = 6;
+  const body = Buffer.alloc(events.length * recordSize);
+  let offset = 0;
+  for (const event of events) {
+    const xQ = quantizePos(Number(event && event.x));
+    const yQ = quantizePos(Number(event && event.y));
+    const amount = clamp(Math.floor(Number(event && event.amount) || 0), 0, 255);
+    let flags = 0;
+    if (String(event && event.targetType || "").toLowerCase() === "player") {
+      flags |= DAMAGE_EVENT_FLAG_TARGET_PLAYER;
+    }
+    if (event && event.fromSelf) {
+      flags |= DAMAGE_EVENT_FLAG_FROM_SELF;
+    }
+
+    body.writeUInt16LE(xQ, offset);
+    body.writeUInt16LE(yQ, offset + 2);
+    body.writeUInt8(amount, offset + 4);
+    body.writeUInt8(flags, offset + 5);
+    offset += recordSize;
+  }
+
+  return Buffer.concat([header, body]);
 }
 
 function processSelfUpdate(sync, player) {
@@ -3944,16 +5196,10 @@ function broadcastState() {
       });
     }
     if (entityUpdate.mobMeta.length) {
-      sendJson(player.ws, {
-        type: "mob_meta",
-        mobs: entityUpdate.mobMeta
-      });
+      sendBinary(player.ws, encodeMobMetaPacket(entityUpdate.mobMeta));
     }
     if (entityUpdate.projectileMeta.length) {
-      sendJson(player.ws, {
-        type: "projectile_meta",
-        projectiles: entityUpdate.projectileMeta
-      });
+      sendBinary(player.ws, encodeProjectileMetaPacket(entityUpdate.projectileMeta));
     }
     if (entityUpdate.lootBagMeta.length) {
       sendJson(player.ws, {
@@ -3987,49 +5233,14 @@ function broadcastState() {
       });
     }
 
-    const mobEffects = buildMobEffectsForRecipient(player, nearbyMobObjects, now);
-    sendJson(player.ws, {
-      type: "mob_effects",
-      effects: mobEffects
-    });
+    const mobEffectEvents = buildMobEffectEventsForRecipient(player, nearbyMobObjects, now);
+    if (mobEffectEvents.length) {
+      sendBinary(player.ws, encodeMobEffectEventPacket(mobEffectEvents));
+    }
 
-    if (activeAreaEffects.size) {
-      const visibleAreaEffects = [];
-      for (const effect of activeAreaEffects.values()) {
-        if (!effect || now >= Number(effect.endsAt)) {
-          continue;
-        }
-        const remainingMs = clamp(Math.floor(effect.endsAt - now), 1, 65535);
-        const visibility = VISIBILITY_RANGE + Math.max(0, Number(effect.radius) || 0);
-        if (!inVisibilityRange(player, effect, visibility)) {
-          continue;
-        }
-        const serializedEffect = {
-          id: effect.id,
-          x: effect.x,
-          y: effect.y,
-          radius: effect.radius,
-          kind: String(effect.kind || "area"),
-          abilityId: effect.abilityId,
-          remainingMs,
-          durationMs: clamp(Math.floor(effect.durationMs), 1, 65535)
-        };
-        if (String(effect.kind || "") === "beam") {
-          serializedEffect.startX = Number(effect.startX);
-          serializedEffect.startY = Number(effect.startY);
-          serializedEffect.dx = Number(effect.dx);
-          serializedEffect.dy = Number(effect.dy);
-          serializedEffect.length = Math.max(0.1, Number(effect.length) || 0);
-          serializedEffect.width = Math.max(0.1, Number(effect.width) || 0);
-        }
-        visibleAreaEffects.push(serializedEffect);
-      }
-      if (visibleAreaEffects.length) {
-        sendJson(player.ws, {
-          type: "area_effects",
-          effects: visibleAreaEffects
-        });
-      }
+    const areaEffectEvents = buildAreaEffectEventsForRecipient(player, now);
+    if (areaEffectEvents.length) {
+      sendBinary(player.ws, encodeAreaEffectEventPacket(areaEffectEvents));
     }
 
     if (pendingDamageEvents.length) {
@@ -4046,10 +5257,7 @@ function broadcastState() {
         }
       }
       if (visibleDamageEvents.length) {
-        sendJson(player.ws, {
-          type: "damage_events",
-          events: visibleDamageEvents
-        });
+        sendBinary(player.ws, encodeDamageEventPacket(visibleDamageEvents));
       }
     }
 
@@ -4196,6 +5404,8 @@ wss.on("connection", (ws) => {
           mobRealIdBySlot: new Map(),
           mobStatesBySlot: new Map(),
           mobBiteBySlot: new Map(),
+          mobMetaSignatureBySlot: new Map(),
+          mobEffectStatesBySlot: new Map(),
           freeMobSlots: [],
           nextMobSlot: 1,
           projectileSlotsByRealId: new Map(),
@@ -4210,7 +5420,8 @@ wss.on("connection", (ws) => {
           lootBagMetaVersionBySlot: new Map(),
           freeLootBagSlots: [],
           nextLootBagSlot: 1,
-          selfState: null
+          selfState: null,
+          areaEffectStatesById: new Map()
         }
       };
 

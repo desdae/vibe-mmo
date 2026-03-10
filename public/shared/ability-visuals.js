@@ -46,6 +46,10 @@
         iconRenderer: "fireball",
         projectileRenderer: "fireball"
       },
+      fireball_pulse_shard: {
+        iconRenderer: "fireball",
+        projectileRenderer: "fire_spark"
+      },
       frostbolt: {
         iconRenderer: "frostbolt",
         projectileRenderer: "frostbolt"
@@ -74,4 +78,3 @@
 
   return Object.freeze(registry);
 });
-

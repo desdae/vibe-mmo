@@ -11,6 +11,8 @@ function executeBeamAbility({ player, abilityDef, abilityLevel, targetDx, target
     return false;
   }
   const [damageMin, damageMax] = ctx.getAbilityDamageRange(abilityDef, abilityLevel);
+  const [dotDamageMin, dotDamageMax] = ctx.getAbilityDotDamageRange(abilityDef, abilityLevel);
+  const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
   const beamWidth = Math.max(0.2, Number(abilityDef.beamWidth) || 0.8);
 
   ctx.markAbilityUsed(player, abilityDef, now);
@@ -26,10 +28,15 @@ function executeBeamAbility({ player, abilityDef, abilityLevel, targetDx, target
     beamDurationMs,
     damageMin,
     damageMax,
+    {
+      dotDamageMin,
+      dotDamageMax,
+      dotDurationMs,
+      dotSchool: String(abilityDef.dotSchool || "generic").trim().toLowerCase() || "generic"
+    },
     now
   );
   return true;
 }
 
 module.exports = executeBeamAbility;
-

@@ -1,7 +1,8 @@
 function executeAreaAbility({ player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now, ctx }) {
   const areaRadius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.range) || 2);
   const [damageMin, damageMax] = ctx.getAbilityDamageRange(abilityDef, abilityLevel);
-  const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
+  const [dotDamageMin, dotDamageMax] = ctx.getAbilityDotDamageRange(abilityDef, abilityLevel);
+  const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
   const durationMs = Math.max(0, Number(abilityDef.durationMs) || 0);
   const castRange = ctx.getAbilityRangeForLevel(abilityDef, abilityLevel);
   const target = ctx.getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance);
@@ -18,6 +19,12 @@ function executeAreaAbility({ player, abilityDef, abilityLevel, targetDx, target
       durationMs,
       damageMin,
       damageMax,
+      {
+        dotDamageMin,
+        dotDamageMax,
+        dotDurationMs,
+        dotSchool: String(abilityDef.dotSchool || "generic").trim().toLowerCase() || "generic"
+      },
       now
     );
     return true;
@@ -33,14 +40,11 @@ function executeAreaAbility({ player, abilityDef, abilityLevel, targetDx, target
     if (mobDist > areaRadius) {
       continue;
     }
-    ctx.applyDamageToMob(mob, ctx.randomInt(damageMin, damageMax), player.id);
-    if (mob.alive && stunDurationMs > 0) {
-      ctx.stunMob(mob, stunDurationMs, now);
-    }
+    const dealt = ctx.applyDamageToMob(mob, ctx.randomInt(damageMin, damageMax), player.id);
+    ctx.applyAbilityHitEffectsToMob(mob, player.id, abilityDef, abilityLevel, dealt, now);
   }
 
   return true;
 }
 
 module.exports = executeAreaAbility;
-
