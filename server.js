@@ -41,6 +41,12 @@ const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spa
 const { createPlayerResourceTools } = require("./server/gameplay/player-resources");
 const { createProgressionTools } = require("./server/gameplay/progression");
 const {
+  normalizeDirection,
+  distance,
+  rotateDirection,
+  steerDirectionTowards
+} = require("./server/gameplay/vector-utils");
+const {
   encodeMobEffectEventPacket,
   encodeAreaEffectEventPacket,
   encodeMobMetaPacket,
@@ -147,18 +153,6 @@ const buildSoundManifest = createSoundManifestBuilder({ publicDir });
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
-}
-
-function normalizeDirection(dx, dy) {
-  const length = Math.hypot(dx, dy);
-  if (!length) {
-    return null;
-  }
-  return { dx: dx / length, dy: dy / length };
-}
-
-function distance(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function randomInt(min, max) {
@@ -1855,39 +1849,6 @@ function randomPointInRadius(cx, cy, radius) {
     x: clamp(cx + Math.cos(angle) * r, 0, MAP_WIDTH - 1),
     y: clamp(cy + Math.sin(angle) * r, 0, MAP_HEIGHT - 1)
   };
-}
-
-function rotateDirection(dir, radians) {
-  const c = Math.cos(radians);
-  const s = Math.sin(radians);
-  return {
-    dx: dir.dx * c - dir.dy * s,
-    dy: dir.dx * s + dir.dy * c
-  };
-}
-
-function steerDirectionTowards(currentDir, desiredDir, maxTurnRadians) {
-  const current = normalizeDirection(currentDir.dx, currentDir.dy);
-  const desired = normalizeDirection(desiredDir.dx, desiredDir.dy);
-  if (!current || !desired) {
-    return current || desired || null;
-  }
-  const maxTurn = Math.max(0, Number(maxTurnRadians) || 0);
-  if (maxTurn <= 0) {
-    return current;
-  }
-  const dot = clamp(current.dx * desired.dx + current.dy * desired.dy, -1, 1);
-  const angle = Math.acos(dot);
-  if (!Number.isFinite(angle) || angle <= maxTurn) {
-    return desired;
-  }
-  const t = clamp(maxTurn / Math.max(0.0001, angle), 0, 1);
-  return (
-    normalizeDirection(
-      current.dx + (desired.dx - current.dx) * t,
-      current.dy + (desired.dy - current.dy) * t
-    ) || current
-  );
 }
 
 function clampToSpawnRadius(x, y, spawnX, spawnY, radius) {
