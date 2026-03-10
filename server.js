@@ -16,6 +16,7 @@ const { createAreaEffectEventBuilder } = require("./server/network/area-effect-e
 const { createPlayerMessageTools } = require("./server/network/player-messages");
 const { createWorldEventQueues } = require("./server/network/world-events");
 const { createInventoryTools } = require("./server/gameplay/inventory");
+const { createProgressionTools } = require("./server/gameplay/progression");
 const {
   encodeMobEffectEventPacket,
   encodeAreaEffectEventPacket,
@@ -2025,46 +2026,6 @@ function pickClusterDef(config, distanceFromCenter = null) {
   return weightedClusters[weightedClusters.length - 1].clusterDef;
 }
 
-function expNeededForLevel(level) {
-  return Math.max(1, Math.ceil(BASE_EXP_TO_NEXT * Math.pow(EXP_GROWTH_FACTOR, level - 1)));
-}
-
-function grantPlayerExp(player, amount) {
-  if (!player || amount <= 0) {
-    return;
-  }
-  const scaledAmount = Math.max(0, Math.floor(Number(amount) * SERVER_CONFIG.expMultiplier));
-  if (scaledAmount <= 0) {
-    return;
-  }
-
-  const beforeLevel = player.level;
-  const beforeExp = player.exp;
-  const beforeExpToNext = player.expToNext;
-  const beforeSkillPoints = Math.max(0, Math.floor(Number(player.skillPoints) || 0));
-  let levelsGained = 0;
-
-  player.exp += scaledAmount;
-  while (player.exp >= player.expToNext) {
-    player.exp -= player.expToNext;
-    player.level += 1;
-    player.expToNext = expNeededForLevel(player.level);
-    levelsGained += 1;
-  }
-  if (levelsGained > 0) {
-    player.skillPoints = clamp(beforeSkillPoints + levelsGained, 0, 65535);
-  }
-
-  if (
-    player.level !== beforeLevel ||
-    player.exp !== beforeExp ||
-    player.expToNext !== beforeExpToNext ||
-    Math.floor(Number(player.skillPoints) || 0) !== beforeSkillPoints
-  ) {
-    sendSelfProgress(player);
-  }
-}
-
 function getPendingHealAmount(player) {
   if (!player || !Array.isArray(player.activeHeals) || !player.activeHeals.length) {
     return 0;
@@ -2331,6 +2292,14 @@ try {
     `[config] Failed to load ${SERVER_CONFIG_PATH}, using defaults. Reason: ${reason}`
   );
 }
+const progressionTools = createProgressionTools({
+  baseExpToNext: BASE_EXP_TO_NEXT,
+  expGrowthFactor: EXP_GROWTH_FACTOR,
+  getExpMultiplier: () => Number(SERVER_CONFIG?.expMultiplier) || 1,
+  sendSelfProgress
+});
+const expNeededForLevel = progressionTools.expNeededForLevel;
+const grantPlayerExp = progressionTools.grantPlayerExp;
 
 let serverConfigReloadTimer = null;
 let abilityConfigReloadTimer = null;
