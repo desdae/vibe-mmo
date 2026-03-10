@@ -25,6 +25,7 @@ const {
 } = require("./server/gameplay/ability-stats");
 const { createCastingTools } = require("./server/gameplay/casting");
 const { createInventoryTools } = require("./server/gameplay/inventory");
+const { createLootBagTools } = require("./server/gameplay/loot-bags");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createPlayerResourceTools } = require("./server/gameplay/player-resources");
@@ -2495,6 +2496,18 @@ function normalizeItemEntries(entries) {
   return Array.from(merged.entries()).map(([itemId, qty]) => ({ itemId, qty }));
 }
 
+const lootBagTools = createLootBagTools({
+  normalizeItemEntries,
+  clamp,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  bagDespawnMs: BAG_DESPAWN_MS,
+  lootBags,
+  allocateLootBagId: () => String(nextLootBagId++)
+});
+const createLootBag = lootBagTools.createLootBag;
+const tickLootBags = lootBagTools.tickLootBags;
+
 function rollDropRules(rules) {
   const drops = [];
   const chanceMultiplier = SERVER_CONFIG.dropChanceMultiplier;
@@ -2862,36 +2875,6 @@ const markAbilityUsed = castingTools.markAbilityUsed;
 const playerHasMovementInput = castingTools.playerHasMovementInput;
 const clearPlayerCast = castingTools.clearPlayerCast;
 const clearMobCast = castingTools.clearMobCast;
-
-function createLootBag(x, y, items = []) {
-  const normalizedItems = normalizeItemEntries(items);
-  if (!normalizedItems.length) {
-    return null;
-  }
-  const now = Date.now();
-  const bag = {
-    id: String(nextLootBagId++),
-    x: clamp(x, 0, MAP_WIDTH - 1),
-    y: clamp(y, 0, MAP_HEIGHT - 1),
-    items: normalizedItems,
-    metaVersion: 1,
-    createdAt: now,
-    expiresAt: BAG_DESPAWN_MS > 0 ? now + BAG_DESPAWN_MS : 0
-  };
-  lootBags.set(bag.id, bag);
-  return bag;
-}
-
-function tickLootBags(now = Date.now()) {
-  if (BAG_DESPAWN_MS <= 0 || lootBags.size === 0) {
-    return;
-  }
-  for (const bag of lootBags.values()) {
-    if (bag.expiresAt > 0 && now >= bag.expiresAt) {
-      lootBags.delete(bag.id);
-    }
-  }
-}
 
 function createMob(spawner) {
   if (!spawner.clusterDef || !spawner.clusterDef.members.length) {
