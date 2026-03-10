@@ -9,6 +9,10 @@ const { createConfigOrchestrator } = require("./server/runtime/config-orchestrat
 const { createProjectileTickSystem } = require("./server/runtime/projectile-tick");
 const { createPlayerTickSystem } = require("./server/runtime/player-tick");
 const { createMobTickSystem } = require("./server/runtime/mob-tick");
+const {
+  createAbilityConfigLoader,
+  createClassAbilityDefsBroadcaster
+} = require("./server/runtime/config-helpers");
 const { createRuntimeBootstrap } = require("./server/runtime/runtime-bootstrap");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
@@ -183,14 +187,14 @@ const abilityNormalizationTools = createAbilityNormalizationTools({
 });
 const normalizeAbilityEntry = abilityNormalizationTools.normalizeAbilityEntry;
 const buildEmitProjectilesConfig = abilityNormalizationTools.buildEmitProjectilesConfig;
-
-function loadAbilityConfig() {
-  return loadAbilityConfigFromDisk(ABILITY_CONFIG_PATH, {
-    defaultAbilityKind: DEFAULT_ABILITY_KIND,
-    normalizeAbilityEntry,
-    buildEmitProjectilesConfig
-  });
-}
+const abilityConfigLoader = createAbilityConfigLoader({
+  loadAbilityConfigFromDisk,
+  abilityConfigPath: ABILITY_CONFIG_PATH,
+  defaultAbilityKind: DEFAULT_ABILITY_KIND,
+  normalizeAbilityEntry,
+  buildEmitProjectilesConfig
+});
+const loadAbilityConfig = abilityConfigLoader.loadAbilityConfig;
 
 const mobAbilityOverrideTools = createMobAbilityOverrideResolver({
   clamp,
@@ -266,16 +270,6 @@ const addHealOverTimeEffect = playerResourceTools.addHealOverTimeEffect;
 const addManaOverTimeEffect = playerResourceTools.addManaOverTimeEffect;
 const tickPlayerHealEffects = playerResourceTools.tickPlayerHealEffects;
 const tickPlayerManaEffects = playerResourceTools.tickPlayerManaEffects;
-
-function broadcastClassAndAbilityDefs() {
-  for (const player of players.values()) {
-    sendJson(player.ws, {
-      type: "class_defs",
-      classes: CLASS_CONFIG.clientClassDefs,
-      abilities: ABILITY_CONFIG.clientAbilityDefs
-    });
-  }
-}
 
 let ABILITY_CONFIG = loadAbilityConfig();
 let CLASS_CONFIG = loadClassConfigFromDisk(
@@ -360,6 +354,13 @@ const {
   queueProjectileHitEvent,
   queueMobDeathEvent
 } = worldEventQueues;
+const classAbilityDefsBroadcaster = createClassAbilityDefsBroadcaster({
+  players,
+  sendJson,
+  classConfigProvider: () => CLASS_CONFIG,
+  abilityConfigProvider: () => ABILITY_CONFIG
+});
+const broadcastClassAndAbilityDefs = classAbilityDefsBroadcaster.broadcastClassAndAbilityDefs;
 
 function allocateProjectileId() {
   return nextProjectileId++;
