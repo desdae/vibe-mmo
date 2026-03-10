@@ -7,6 +7,7 @@ const { executeAbilityByKind } = require("./server/ability-handlers");
 const { createGameLoop } = require("./server/runtime/game-loop");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
+const { createStateBroadcaster } = require("./server/network/state-broadcast");
 
 const PORT = process.env.PORT || 3000;
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
@@ -6871,206 +6872,36 @@ function buildEntityUpdatePacket(player, visiblePlayers, visibleMobs, visiblePro
   };
 }
 
-function broadcastState() {
-  for (const player of players.values()) {
-    const now = Date.now();
-    const nearbyPlayers = [];
-    const nearbyPlayerObjects = [];
-    const nearbyMobs = [];
-    const nearbyMobObjects = [];
-    const nearbyProjectiles = [];
-    const nearbyLootBags = [];
-
-    for (const other of players.values()) {
-      if (other.id === player.id) {
-        continue;
-      }
-      if (inVisibilityRange(player, other, VISIBILITY_RANGE)) {
-        nearbyPlayers.push(serializePlayer(other));
-        nearbyPlayerObjects.push(other);
-      }
-    }
-
-    for (const projectile of projectiles.values()) {
-      if (inVisibilityRange(player, projectile, VISIBILITY_RANGE)) {
-        nearbyProjectiles.push({
-          id: projectile.id,
-          ownerId: projectile.ownerId,
-          abilityId: projectile.abilityId,
-          x: projectile.x,
-          y: projectile.y
-        });
-      }
-    }
-
-    for (const mob of mobs.values()) {
-      if (!mob.alive) {
-        continue;
-      }
-      if (inVisibilityRange(player, mob, VISIBILITY_RANGE)) {
-        nearbyMobs.push(serializeMob(mob));
-        nearbyMobObjects.push(mob);
-      }
-    }
-
-    for (const bag of lootBags.values()) {
-      if (inVisibilityRange(player, bag, VISIBILITY_RANGE)) {
-        nearbyLootBags.push(bag);
-      }
-    }
-
-    const entityUpdate = buildEntityUpdatePacket(player, nearbyPlayers, nearbyMobs, nearbyProjectiles, nearbyLootBags);
-
-    if (entityUpdate.playerMeta.length) {
-      sendJson(player.ws, {
-        type: "player_meta",
-        players: entityUpdate.playerMeta
-      });
-    }
-    if (entityUpdate.mobMeta.length) {
-      sendBinary(player.ws, encodeMobMetaPacket(entityUpdate.mobMeta));
-    }
-    if (entityUpdate.projectileMeta.length) {
-      sendBinary(player.ws, encodeProjectileMetaPacket(entityUpdate.projectileMeta));
-    }
-    if (entityUpdate.lootBagMeta.length) {
-      sendJson(player.ws, {
-        type: "lootbag_meta",
-        bags: entityUpdate.lootBagMeta
-      });
-    }
-
-    const swingEvents = buildPlayerSwingEventsForRecipient(player, nearbyPlayerObjects);
-    if (swingEvents.length) {
-      sendJson(player.ws, {
-        type: "player_swings",
-        swings: swingEvents
-      });
-    }
-
-	    const castEvents = buildPlayerCastEventsForRecipient(player, nearbyPlayerObjects, now);
-	    if (castEvents.casts.length || castEvents.self) {
-	      sendJson(player.ws, {
-	        type: "player_casts",
-        casts: castEvents.casts,
-        self: castEvents.self
-	      });
-	    }
-	    const nearbyPlayerEffects = buildPlayerEffectEventsForRecipient(player, nearbyPlayerObjects, now);
-	    if (nearbyPlayerEffects.length) {
-	      sendJson(player.ws, {
-	        type: "player_effects_nearby",
-	        effects: nearbyPlayerEffects
-	      });
-	    }
-
-	    const mobCastEvents = buildMobCastEventsForRecipient(player, nearbyMobObjects, now);
-    if (mobCastEvents.length) {
-      sendJson(player.ws, {
-        type: "mob_casts",
-        casts: mobCastEvents
-      });
-    }
-
-    const biteEvents = buildMobBiteEventsForRecipient(player, nearbyMobObjects);
-    if (biteEvents.length) {
-      sendJson(player.ws, {
-        type: "mob_bites",
-        bites: biteEvents
-      });
-    }
-
-	    const mobEffectEvents = buildMobEffectEventsForRecipient(player, nearbyMobObjects, now);
-	    if (mobEffectEvents.length) {
-	      sendBinary(player.ws, encodeMobEffectEventPacket(mobEffectEvents));
-	    }
-	    const selfEffectUpdate = buildSelfPlayerEffectUpdate(player, now);
-	    if (selfEffectUpdate) {
-	      sendJson(player.ws, {
-	        type: "player_effects",
-	        ...selfEffectUpdate
-	      });
-	    }
-
-	    const areaEffectEvents = buildAreaEffectEventsForRecipient(player, now);
-    if (areaEffectEvents.length) {
-      sendBinary(player.ws, encodeAreaEffectEventPacket(areaEffectEvents));
-    }
-
-    if (pendingDamageEvents.length) {
-      const visibleDamageEvents = [];
-      for (const event of pendingDamageEvents) {
-        if (inVisibilityRange(player, event, VISIBILITY_RANGE)) {
-          visibleDamageEvents.push({
-            x: event.x,
-            y: event.y,
-            amount: event.amount,
-            targetType: event.targetType,
-            fromSelf: !!(event.sourcePlayerId && event.sourcePlayerId === player.id)
-          });
-        }
-      }
-      if (visibleDamageEvents.length) {
-        sendBinary(player.ws, encodeDamageEventPacket(visibleDamageEvents));
-      }
-    }
-
-    if (pendingExplosionEvents.length) {
-      const visibleExplosionEvents = [];
-      for (const event of pendingExplosionEvents) {
-        const range = VISIBILITY_RANGE + Math.max(0, Number(event.radius) || 0);
-        if (inVisibilityRange(player, event, range)) {
-          visibleExplosionEvents.push(event);
-        }
-      }
-      if (visibleExplosionEvents.length) {
-        sendJson(player.ws, {
-          type: "explosion_events",
-          events: visibleExplosionEvents
-        });
-      }
-    }
-
-    if (pendingProjectileHitEvents.length) {
-      const visibleProjectileHitEvents = [];
-      for (const event of pendingProjectileHitEvents) {
-        if (inVisibilityRange(player, event, VISIBILITY_RANGE + 2)) {
-          visibleProjectileHitEvents.push(event);
-        }
-      }
-      if (visibleProjectileHitEvents.length) {
-        sendJson(player.ws, {
-          type: "projectile_hit_events",
-          events: visibleProjectileHitEvents
-        });
-      }
-    }
-
-    if (pendingMobDeathEvents.length) {
-      const visibleMobDeathEvents = [];
-      for (const event of pendingMobDeathEvents) {
-        if (inVisibilityRange(player, event, VISIBILITY_RANGE + 2)) {
-          visibleMobDeathEvents.push(event);
-        }
-      }
-      if (visibleMobDeathEvents.length) {
-        sendJson(player.ws, {
-          type: "mob_death_events",
-          events: visibleMobDeathEvents
-        });
-      }
-    }
-
-    if (entityUpdate.packet) {
-      sendBinary(player.ws, entityUpdate.packet);
-    }
-  }
-
-  pendingDamageEvents.length = 0;
-  pendingExplosionEvents.length = 0;
-  pendingProjectileHitEvents.length = 0;
-  pendingMobDeathEvents.length = 0;
-}
+const broadcastState = createStateBroadcaster({
+  players,
+  projectiles,
+  mobs,
+  lootBags,
+  VISIBILITY_RANGE,
+  inVisibilityRange,
+  serializePlayer,
+  serializeMob,
+  buildEntityUpdatePacket,
+  buildPlayerSwingEventsForRecipient,
+  buildPlayerCastEventsForRecipient,
+  buildPlayerEffectEventsForRecipient,
+  buildMobCastEventsForRecipient,
+  buildMobBiteEventsForRecipient,
+  buildMobEffectEventsForRecipient,
+  buildSelfPlayerEffectUpdate,
+  buildAreaEffectEventsForRecipient,
+  encodeMobMetaPacket,
+  encodeProjectileMetaPacket,
+  encodeMobEffectEventPacket,
+  encodeAreaEffectEventPacket,
+  encodeDamageEventPacket,
+  pendingDamageEvents,
+  pendingExplosionEvents,
+  pendingProjectileHitEvents,
+  pendingMobDeathEvents,
+  sendJson,
+  sendBinary
+});
 
 registerWsConnections({
   wss,
@@ -7115,7 +6946,7 @@ const gameLoop = createGameLoop({
   tickMobs();
   tickProjectiles();
   tickLootBags(now);
-  broadcastState();
+  broadcastState(now);
   }
 });
 gameLoop.start();
