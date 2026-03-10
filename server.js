@@ -38,6 +38,7 @@ const {
 } = require("./server/gameplay/ability-stats");
 const { createCastingTools } = require("./server/gameplay/casting");
 const { createDamageTools } = require("./server/gameplay/damage");
+const { createNormalizeItemEntries, createDropRollTools } = require("./server/gameplay/drops");
 const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createLootBagTools } = require("./server/gameplay/loot-bags");
 const { createMobAbilityOverrideResolver } = require("./server/gameplay/mob-ability-overrides");
@@ -206,6 +207,9 @@ const randomSpawn = spatialTools.randomSpawn;
 const inVisibilityRange = spatialTools.inVisibilityRange;
 
 const ITEM_CONFIG = loadItemConfigFromDisk(ITEM_CONFIG_PATH);
+const normalizeItemEntries = createNormalizeItemEntries({
+  itemDefs: ITEM_CONFIG.itemDefs
+});
 const playerMessageTools = createPlayerMessageTools({
   sendJson,
   itemDefs: ITEM_CONFIG.itemDefs,
@@ -295,6 +299,19 @@ const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
   MAP_WIDTH,
   MAP_HEIGHT
 );
+const dropRollTools = createDropRollTools({
+  clamp,
+  randomInt,
+  normalizeItemEntries,
+  getServerConfig: () => SERVER_CONFIG,
+  getGlobalDropConfig: () => GLOBAL_DROP_CONFIG,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT
+});
+const rollDropRules = dropRollTools.rollDropRules;
+const getDistanceFromCenter = dropRollTools.getDistanceFromCenter;
+const rollGlobalDropsForPlayer = dropRollTools.rollGlobalDropsForPlayer;
+const rollMobDrops = dropRollTools.rollMobDrops;
 
 const server = createGameHttpServer({
   http,
@@ -382,26 +399,6 @@ const abilityHandlerContext = {
   getAbilityInvulnerabilityDurationMs
 };
 
-function normalizeItemEntries(entries) {
-  const merged = new Map();
-  for (const entry of Array.isArray(entries) ? entries : []) {
-    if (!entry) {
-      continue;
-    }
-    const itemId = String(entry.itemId || "").trim();
-    const qty = Math.max(0, Math.floor(Number(entry.qty) || 0));
-    if (!itemId || qty <= 0) {
-      continue;
-    }
-    if (!ITEM_CONFIG.itemDefs.has(itemId)) {
-      continue;
-    }
-    merged.set(itemId, (merged.get(itemId) || 0) + qty);
-  }
-
-  return Array.from(merged.entries()).map(([itemId, qty]) => ({ itemId, qty }));
-}
-
 const lootBagTools = createLootBagTools({
   normalizeItemEntries,
   clamp,
@@ -413,63 +410,6 @@ const lootBagTools = createLootBagTools({
 });
 const createLootBag = lootBagTools.createLootBag;
 const tickLootBags = lootBagTools.tickLootBags;
-
-function rollDropRules(rules) {
-  const drops = [];
-  const chanceMultiplier = SERVER_CONFIG.dropChanceMultiplier;
-  for (const rule of Array.isArray(rules) ? rules : []) {
-    if (!rule || !ITEM_CONFIG.itemDefs.has(rule.itemId)) {
-      continue;
-    }
-
-    if (rule.kind === "range") {
-      const qty = randomInt(Math.max(0, rule.min || 0), Math.max(0, rule.max || 0));
-      if (qty > 0) {
-        drops.push({ itemId: rule.itemId, qty });
-      }
-      continue;
-    }
-
-    if (rule.kind === "chance") {
-      const chance = clamp((Number(rule.chance) || 0) * chanceMultiplier, 0, 1);
-      if (Math.random() < chance) {
-        drops.push({ itemId: rule.itemId, qty: 1 });
-      }
-    }
-  }
-
-  return normalizeItemEntries(drops);
-}
-
-function getDistanceFromCenter(x, y) {
-  const centerX = MAP_WIDTH / 2;
-  const centerY = MAP_HEIGHT / 2;
-  return Math.hypot((Number(x) || 0) - centerX, (Number(y) || 0) - centerY);
-}
-
-function rollGlobalDropsForPlayer(player) {
-  if (!player) {
-    return [];
-  }
-
-  const dist = getDistanceFromCenter(player.x, player.y);
-  const allDrops = [];
-  for (const entry of GLOBAL_DROP_CONFIG.entries) {
-    if (!entry || dist < entry.rangeMin || dist > entry.rangeMax) {
-      continue;
-    }
-    const rolled = rollDropRules(entry.rules);
-    if (rolled.length) {
-      allDrops.push(...rolled);
-    }
-  }
-  return normalizeItemEntries(allDrops);
-}
-
-function rollMobDrops(mob) {
-  const rules = Array.isArray(mob?.dropRules) ? mob.dropRules : [];
-  return rollDropRules(rules);
-}
 
 const mobLifecycleTools = createMobLifecycleTools({
   clamp,
