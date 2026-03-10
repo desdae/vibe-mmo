@@ -27,6 +27,7 @@ const { createCastingTools } = require("./server/gameplay/casting");
 const { createDamageTools } = require("./server/gameplay/damage");
 const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createLootBagTools } = require("./server/gameplay/loot-bags");
+const { createMobBehaviorTools } = require("./server/gameplay/mob-behavior");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createMobCombatEffectTools } = require("./server/gameplay/mob-combat-effects");
@@ -2567,62 +2568,21 @@ function rollMobDrops(mob) {
   return rollDropRules(rules);
 }
 
-function markMobProvokedByPlayer(mob, ownerId, now = Date.now()) {
-  if (!mob || !ownerId) {
-    return;
-  }
-  const ownerKey = String(ownerId);
-  const owner = players.get(ownerKey);
-  if (!owner || owner.hp <= 0) {
-    return;
-  }
-  mob.chaseTargetPlayerId = ownerKey;
-  mob.chaseUntil = Math.max(Number(mob.chaseUntil) || 0, now + MOB_PROVOKED_CHASE_MS);
-  mob.wanderTarget = null;
-  mob.returningHome = false;
-}
-
-function hasActiveProvokedChase(mob, now = Date.now()) {
-  return !!(mob && mob.chaseTargetPlayerId && Number(mob.chaseUntil) > now);
-}
-
-function getMobDistanceFromSpawn(mob) {
-  if (!mob) {
-    return 0;
-  }
-  return Math.hypot((mob.x || 0) - (mob.spawnX || 0), (mob.y || 0) - (mob.spawnY || 0));
-}
-
-function getMobLeashRadius(mob, now = Date.now()) {
-  const combat = getMobCombatProfile(mob);
-  const configuredLeash = Math.max(1, Number(combat.leashRange) || MOB_WANDER_RADIUS);
-  if (hasActiveProvokedChase(mob, now)) {
-    return Math.max(configuredLeash, MOB_PROVOKED_LEASH_RADIUS);
-  }
-  return Math.max(configuredLeash, getMobDistanceFromSpawn(mob));
-}
-
-function startMobReturnToSpawn(mob) {
-  if (!mob) {
-    return;
-  }
-  mob.chaseTargetPlayerId = null;
-  mob.chaseUntil = 0;
-  mob.wanderTarget = null;
-  mob.returningHome = true;
-}
-
-function getMobMoveSpeed(mob) {
-  const baseSpeed = clamp(Number(mob?.baseSpeed) || Number(mob?.speed) || 0.5, 0.05, 20);
-  let slowMultiplier = 1;
-  if (mob && Number(mob.slowUntil) > Date.now()) {
-    slowMultiplier = clamp(Number(mob.slowMultiplier) || 1, 0.1, 1);
-  } else if (mob && (mob.slowUntil || mob.slowMultiplier !== 1)) {
-    mob.slowUntil = 0;
-    mob.slowMultiplier = 1;
-  }
-  return clamp(baseSpeed * SERVER_CONFIG.mobSpeedMultiplier * slowMultiplier, 0.05, 20);
-}
+const mobBehaviorTools = createMobBehaviorTools({
+  players,
+  clamp,
+  getMobCombatProfile,
+  getMobSpeedMultiplier: () => Number(SERVER_CONFIG.mobSpeedMultiplier) || 1,
+  mobProvokedChaseMs: MOB_PROVOKED_CHASE_MS,
+  mobProvokedLeashRadius: MOB_PROVOKED_LEASH_RADIUS,
+  mobWanderRadius: MOB_WANDER_RADIUS
+});
+const markMobProvokedByPlayer = mobBehaviorTools.markMobProvokedByPlayer;
+const hasActiveProvokedChase = mobBehaviorTools.hasActiveProvokedChase;
+const getMobDistanceFromSpawn = mobBehaviorTools.getMobDistanceFromSpawn;
+const getMobLeashRadius = mobBehaviorTools.getMobLeashRadius;
+const startMobReturnToSpawn = mobBehaviorTools.startMobReturnToSpawn;
+const getMobMoveSpeed = mobBehaviorTools.getMobMoveSpeed;
 
 const damageTools = createDamageTools({
   queueDamageEvent,
