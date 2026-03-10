@@ -49,11 +49,17 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
   loot: {
     bagPickupRange: 2.25,
     bagClickRange: 1.8,
+    bagDespawnMs: 300000,
     copperItemId: "copperCoin"
   },
   inventory: {
     cols: 5,
     rows: 2
+  },
+  audio: {
+    abilitySpatialMaxDistance: 15,
+    abilityPanDistance: 15,
+    projectileMaxConcurrent: 10
   }
 });
 
@@ -83,6 +89,7 @@ const EXP_GROWTH_FACTOR = GAMEPLAY_CONFIG.player.expGrowthFactor;
 const DEFAULT_PROJECTILE_HIT_RADIUS = GAMEPLAY_CONFIG.projectile.defaultHitRadius;
 const BAG_PICKUP_RANGE = GAMEPLAY_CONFIG.loot.bagPickupRange;
 const BAG_CLICK_RANGE = GAMEPLAY_CONFIG.loot.bagClickRange;
+const BAG_DESPAWN_MS = GAMEPLAY_CONFIG.loot.bagDespawnMs;
 const INVENTORY_COLS = GAMEPLAY_CONFIG.inventory.cols;
 const INVENTORY_ROWS = GAMEPLAY_CONFIG.inventory.rows;
 const INVENTORY_SLOT_COUNT = INVENTORY_COLS * INVENTORY_ROWS;
@@ -135,11 +142,72 @@ const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
+  ".m4a": "audio/mp4",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".svg": "image/svg+xml"
 };
+
+const SOUND_DIR_PATH = path.join(publicDir, "sounds");
+const SOUND_EXTENSIONS = new Set([".mp3", ".ogg", ".wav", ".m4a"]);
+
+function toPublicUrlPath(absolutePath) {
+  const relative = path.relative(publicDir, absolutePath);
+  if (!relative || relative.startsWith("..")) {
+    return "";
+  }
+  const normalized = relative.split(path.sep).filter(Boolean).map(encodeURIComponent).join("/");
+  return normalized ? `/${normalized}` : "";
+}
+
+function collectSoundUrlPaths(rootDir) {
+  const urls = [];
+  if (!fs.existsSync(rootDir)) {
+    return urls;
+  }
+
+  const stack = [rootDir];
+  while (stack.length) {
+    const currentDir = stack.pop();
+    let entries = [];
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    } catch (_error) {
+      continue;
+    }
+    for (const entry of entries) {
+      const absolutePath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      const ext = path.extname(entry.name).toLowerCase();
+      if (!SOUND_EXTENSIONS.has(ext)) {
+        continue;
+      }
+      const urlPath = toPublicUrlPath(absolutePath);
+      if (urlPath) {
+        urls.push(urlPath);
+      }
+    }
+  }
+
+  urls.sort();
+  return urls;
+}
+
+function buildSoundManifest() {
+  return {
+    availableUrls: collectSoundUrlPaths(SOUND_DIR_PATH)
+  };
+}
 
 function sendJson(ws, payload) {
   if (ws.readyState === 1) {
@@ -190,6 +258,28 @@ function parseNumericRange(value, fallbackMin, fallbackMax) {
   return [fallbackMin, fallbackMax];
 }
 
+function parseBoolean(value, fallback = undefined) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (value === 1 || value === "1") {
+    return true;
+  }
+  if (value === 0 || value === "0") {
+    return false;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") {
+      return true;
+    }
+    if (normalized === "false") {
+      return false;
+    }
+  }
+  return fallback;
+}
+
 function parseMultiplier(value, fallback = 1) {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0) {
@@ -224,6 +314,7 @@ function buildGameplayConfig(parsed) {
   const mob = src.mob && typeof src.mob === "object" ? src.mob : {};
   const loot = src.loot && typeof src.loot === "object" ? src.loot : {};
   const inventory = src.inventory && typeof src.inventory === "object" ? src.inventory : {};
+  const audio = src.audio && typeof src.audio === "object" ? src.audio : {};
 
   return {
     map: {
@@ -325,12 +416,33 @@ function buildGameplayConfig(parsed) {
     loot: {
       bagPickupRange: parseGameplayNumber(loot.bagPickupRange, DEFAULT_GAMEPLAY_CONFIG.loot.bagPickupRange, 0, 50),
       bagClickRange: parseGameplayNumber(loot.bagClickRange, DEFAULT_GAMEPLAY_CONFIG.loot.bagClickRange, 0, 50),
+      bagDespawnMs: parseGameplayInt(loot.bagDespawnMs, DEFAULT_GAMEPLAY_CONFIG.loot.bagDespawnMs, 0, 86400000),
       copperItemId: String(loot.copperItemId || DEFAULT_GAMEPLAY_CONFIG.loot.copperItemId).trim() ||
         DEFAULT_GAMEPLAY_CONFIG.loot.copperItemId
     },
     inventory: {
       cols: parseGameplayInt(inventory.cols, DEFAULT_GAMEPLAY_CONFIG.inventory.cols, 1, 20),
       rows: parseGameplayInt(inventory.rows, DEFAULT_GAMEPLAY_CONFIG.inventory.rows, 1, 20)
+    },
+    audio: {
+      abilitySpatialMaxDistance: parseGameplayNumber(
+        audio.abilitySpatialMaxDistance,
+        DEFAULT_GAMEPLAY_CONFIG.audio.abilitySpatialMaxDistance,
+        1,
+        200
+      ),
+      abilityPanDistance: parseGameplayNumber(
+        audio.abilityPanDistance,
+        DEFAULT_GAMEPLAY_CONFIG.audio.abilityPanDistance,
+        1,
+        200
+      ),
+      projectileMaxConcurrent: parseGameplayInt(
+        audio.projectileMaxConcurrent,
+        DEFAULT_GAMEPLAY_CONFIG.audio.projectileMaxConcurrent,
+        1,
+        64
+      )
     }
   };
 }
@@ -715,6 +827,14 @@ function normalizeAbilityEntry(rawId, entry) {
     normalized.spreadDeg = spreadDeg;
   }
 
+  const explodeOnExpire = parseBoolean(
+    getObjectPath(targeting, "explodeOnExpire"),
+    parseBoolean(entry.explodeOnExpire, undefined)
+  );
+  if (explodeOnExpire !== undefined) {
+    normalized.explodeOnExpire = explodeOnExpire;
+  }
+
   const homingRange = firstFiniteNumber(
     [getObjectPath(targeting, "homing.range"), targeting.homingRange, entry.homingRange],
     0
@@ -827,6 +947,7 @@ function buildChildProjectileTemplate(parentAbilityId, rawProjectileEntry) {
     dotDamagePerLevelMax: Math.max(0, Number(dotDamagePerLevel[1]) || 0),
     dotDurationMs,
     dotSchool: String(normalized.dotSchool || "generic").trim().toLowerCase() || "generic",
+    explodeOnExpire: normalized.explodeOnExpire !== false,
     homingRange: Math.max(0, Number(normalized.homingRange) || 0),
     homingTurnRate: Math.max(0, Number(normalized.homingTurnRate) || 0)
   };
@@ -1033,6 +1154,7 @@ function loadAbilityConfig() {
       slowMultiplier,
       projectileCount,
       spreadDeg,
+      explodeOnExpire: entry.explodeOnExpire !== false,
       homingRange,
       homingTurnRate,
       emitProjectiles
@@ -1400,6 +1522,353 @@ function parseMobRenderStyle(rawStyle) {
   return Object.keys(style).length ? style : null;
 }
 
+function parseMobCombatConfig(rawCombat, abilityDefs, fallbackDamageMin, fallbackDamageMax) {
+  const raw = rawCombat && typeof rawCombat === "object" ? rawCombat : {};
+  const behaviorRaw = String(raw.behavior || "").trim().toLowerCase();
+  const behavior = behaviorRaw === "ranged" ? "ranged" : "melee";
+  const aggroRange = clamp(Number(raw.aggroRange) || MOB_AGGRO_RANGE, 0.5, 100);
+  const preferredRange = clamp(
+    Number(raw.preferredRange) || (behavior === "ranged" ? Math.max(2, MOB_ATTACK_RANGE * 2) : MOB_ATTACK_RANGE),
+    0.2,
+    100
+  );
+  const leashRange = clamp(Number(raw.leashRange) || MOB_WANDER_RADIUS, 1, 500);
+
+  const basicRaw = raw.basicAttack && typeof raw.basicAttack === "object" ? raw.basicAttack : {};
+  const [basicDamageMinParsed, basicDamageMaxParsed] = parseNumericRange(
+    basicRaw.damage,
+    Math.max(0, Number(fallbackDamageMin) || 0),
+    Math.max(0, Number(fallbackDamageMax) || Math.max(0, Number(fallbackDamageMin) || 0))
+  );
+  const basicCooldownMs = Math.max(
+    50,
+    Math.round(
+      (
+        Math.max(
+          0,
+          Number.isFinite(Number(basicRaw.cooldown))
+            ? Number(basicRaw.cooldown)
+            : Number(getObjectPath(basicRaw, "delivery.cooldown")) || MOB_ATTACK_COOLDOWN_MS / 1000
+        )
+      ) * 1000
+    )
+  );
+  const basicRange = clamp(
+    Number.isFinite(Number(basicRaw.range))
+      ? Number(basicRaw.range)
+      : Number(getObjectPath(basicRaw, "targeting.range")) || MOB_ATTACK_RANGE,
+    0.2,
+    30
+  );
+  const basicAbilityId = String(
+    basicRaw.abilityId || basicRaw.id || (abilityDefs && abilityDefs.has("mobMeleeSwing") ? "mobMeleeSwing" : "")
+  ).trim();
+  const basicAttackTypeRaw = String(basicRaw.type || "").trim().toLowerCase();
+  const hasBasicAbility = !!(basicAbilityId && abilityDefs && abilityDefs.has(basicAbilityId));
+  const basicAttackType = hasBasicAbility || basicAttackTypeRaw === "ability" ? "ability" : "melee";
+  const basicTargeting =
+    basicRaw.targeting && typeof basicRaw.targeting === "object"
+      ? JSON.parse(JSON.stringify(basicRaw.targeting))
+      : null;
+  const basicDelivery =
+    basicRaw.delivery && typeof basicRaw.delivery === "object"
+      ? JSON.parse(JSON.stringify(basicRaw.delivery))
+      : null;
+  const basicEffects = Array.isArray(basicRaw.effects) ? JSON.parse(JSON.stringify(basicRaw.effects)) : null;
+  const basicConfig = JSON.parse(JSON.stringify(basicRaw));
+
+  const abilities = [];
+  for (const entry of Array.isArray(raw.abilities) ? raw.abilities : []) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const abilityId = String(entry.abilityId || entry.id || "").trim();
+    if (!abilityId || !abilityDefs || !abilityDefs.has(abilityId)) {
+      continue;
+    }
+    const abilityDef = abilityDefs.get(abilityId);
+    const configuredRange = firstFiniteNumber(
+      [getObjectPath(entry, "targeting.range"), entry.range],
+      Number.NaN
+    );
+    const abilityRangeDefault = Number.isFinite(configuredRange)
+      ? Math.max(0.2, configuredRange)
+      : Math.max(0.2, Number(abilityDef?.range) || 0.2);
+    const minRange = clamp(Number(entry.minRange) || 0, 0, 100);
+    const maxRange = clamp(Number(entry.maxRange) || abilityRangeDefault, minRange, 100);
+    const weight = clamp(Number(entry.weight) || 1, 0.01, 1000);
+    const castChance = clamp(Number(entry.castChance), 0, 1);
+    const level = clamp(Math.floor(Number(entry.level) || 1), 1, 255);
+    const cooldownMs = Math.max(
+      0,
+      Math.round(
+        (Number.isFinite(Number(entry.cooldown))
+          ? Number(entry.cooldown)
+          : Number.isFinite(Number(getObjectPath(entry, "delivery.cooldown")))
+            ? Number(getObjectPath(entry, "delivery.cooldown"))
+          : (Math.max(0, Number(abilityDef?.cooldownMs) || 0) / 1000)) * 1000
+      )
+    );
+    const targeting =
+      entry.targeting && typeof entry.targeting === "object"
+        ? JSON.parse(JSON.stringify(entry.targeting))
+        : null;
+    const delivery =
+      entry.delivery && typeof entry.delivery === "object"
+        ? JSON.parse(JSON.stringify(entry.delivery))
+        : null;
+    const effects = Array.isArray(entry.effects) ? JSON.parse(JSON.stringify(entry.effects)) : null;
+    const config = JSON.parse(JSON.stringify(entry));
+    abilities.push({
+      abilityId,
+      weight,
+      minRange,
+      maxRange,
+      cooldownMs,
+      castChance: Number.isFinite(castChance) ? castChance : 1,
+      level,
+      targeting,
+      delivery,
+      effects,
+      config
+    });
+  }
+
+  return {
+    behavior,
+    aggroRange,
+    preferredRange,
+    leashRange,
+    basicAttack: {
+      type: basicAttackType,
+      abilityId: hasBasicAbility ? basicAbilityId : "",
+      damageMin: clamp(Math.floor(Math.min(basicDamageMinParsed, basicDamageMaxParsed)), 0, 255),
+      damageMax: clamp(Math.ceil(Math.max(basicDamageMinParsed, basicDamageMaxParsed)), 0, 255),
+      cooldownMs: basicCooldownMs,
+      range: basicRange,
+      targeting: basicTargeting,
+      delivery: basicDelivery,
+      effects: basicEffects,
+      config: basicConfig
+    },
+    abilities
+  };
+}
+
+function resolveMobAbilityOverrideDef(baseAbilityDef, abilityEntry) {
+  if (!baseAbilityDef || !abilityEntry || typeof abilityEntry !== "object") {
+    return baseAbilityDef;
+  }
+
+  const source =
+    abilityEntry.config && typeof abilityEntry.config === "object"
+      ? abilityEntry.config
+      : abilityEntry;
+  const targeting = source.targeting && typeof source.targeting === "object" ? source.targeting : {};
+  const delivery = source.delivery && typeof source.delivery === "object" ? source.delivery : {};
+  const effects = Array.isArray(source.effects) ? source.effects : [];
+  const resolved = { ...baseAbilityDef };
+
+  const pickNumber = (...values) => {
+    for (const value of values) {
+      if (value === null || value === undefined) {
+        continue;
+      }
+      if (typeof value === "string" && value.trim() === "") {
+        continue;
+      }
+      const n = Number(value);
+      if (Number.isFinite(n)) {
+        return n;
+      }
+    }
+    return null;
+  };
+
+  const setRange = pickNumber(targeting.range, source.range);
+  if (setRange !== null) {
+    resolved.range = Math.max(0, setRange);
+  }
+
+  const setSpeed = pickNumber(targeting.speed, source.speed);
+  if (setSpeed !== null && setSpeed > 0) {
+    resolved.speed = Math.max(0.1, setSpeed);
+  }
+
+  const setProjectileCount = pickNumber(targeting.projectileCount, source.projectileCount);
+  if (setProjectileCount !== null) {
+    resolved.projectileCount = clamp(Math.floor(setProjectileCount), 1, 12);
+  }
+
+  const setSpreadDeg = pickNumber(targeting.spreadDeg, targeting.spreadAngle, source.spreadDeg, source.spreadAngle);
+  if (setSpreadDeg !== null && setSpreadDeg >= 0) {
+    resolved.spreadDeg = Math.max(0, setSpreadDeg);
+  }
+
+  const setHomingRange = pickNumber(getObjectPath(targeting, "homing.range"), targeting.homingRange, source.homingRange);
+  if (setHomingRange !== null && setHomingRange >= 0) {
+    resolved.homingRange = Math.max(0, setHomingRange);
+  }
+
+  const setHomingTurnRate = pickNumber(
+    getObjectPath(targeting, "homing.turnRate"),
+    getObjectPath(targeting, "homing.homingTurnRate"),
+    targeting.homingTurnRate,
+    targeting.turnRate,
+    source.homingTurnRate,
+    source.turnRate
+  );
+  if (setHomingTurnRate !== null && setHomingTurnRate >= 0) {
+    resolved.homingTurnRate = Math.max(0, setHomingTurnRate);
+  }
+
+  const setHitRadius = pickNumber(
+    targeting.projectileHitRadius,
+    targeting.hitRadius,
+    source.projectileHitRadius,
+    source.hitRadius
+  );
+  if (setHitRadius !== null && setHitRadius > 0) {
+    resolved.projectileHitRadius = clamp(setHitRadius, 0.1, 8);
+  }
+
+  const setAreaRadius = pickNumber(targeting.radius, targeting.areaRadius, source.radius, source.areaRadius);
+  if (setAreaRadius !== null && setAreaRadius > 0) {
+    resolved.areaRadius = Math.max(0.1, setAreaRadius);
+  }
+
+  const setBeamWidth = pickNumber(targeting.width, targeting.beamWidth, source.width, source.beamWidth);
+  if (setBeamWidth !== null && setBeamWidth > 0) {
+    resolved.beamWidth = Math.max(0.2, setBeamWidth);
+  }
+
+  const setExplosionRadius = pickNumber(targeting.explosionRadius, source.explosionRadius);
+  if (setExplosionRadius !== null && setExplosionRadius >= 0) {
+    resolved.explosionRadius = Math.max(0, setExplosionRadius);
+  }
+
+  const setExplosionMultiplier = pickNumber(
+    targeting.explosionDamageMultiplier,
+    source.explosionDamageMultiplier
+  );
+  if (setExplosionMultiplier !== null) {
+    resolved.explosionDamageMultiplier = clamp(setExplosionMultiplier, 0, 1);
+  }
+
+  const castMsDirect = pickNumber(source.castMs, delivery.castMs);
+  if (castMsDirect !== null) {
+    resolved.castMs = Math.max(0, Math.round(castMsDirect));
+  } else {
+    const castSeconds = pickNumber(source.castTime, delivery.castTime);
+    if (castSeconds !== null) {
+      resolved.castMs = Math.max(0, Math.round(castSeconds * 1000));
+    }
+  }
+
+  const explodeOnExpire = parseBoolean(
+    getObjectPath(targeting, "explodeOnExpire"),
+    parseBoolean(source.explodeOnExpire, undefined)
+  );
+  if (explodeOnExpire !== undefined) {
+    resolved.explodeOnExpire = explodeOnExpire !== false;
+  }
+
+  const instantDamageEffect = findAbilityEffect(effects, "damage", "instant");
+  const instantDamageRange = instantDamageEffect
+    ? parseNumericRange(instantDamageEffect.amount, resolved.damageMin, resolved.damageMax)
+    : source.damageRange !== undefined
+      ? parseNumericRange(source.damageRange, resolved.damageMin, resolved.damageMax)
+      : null;
+  if (instantDamageRange) {
+    resolved.damageMin = clamp(Math.floor(Math.min(instantDamageRange[0], instantDamageRange[1])), 0, 255);
+    resolved.damageMax = clamp(Math.ceil(Math.max(instantDamageRange[0], instantDamageRange[1])), resolved.damageMin, 255);
+  }
+  const instantScaling = instantDamageEffect
+    ? parseNumericRange(instantDamageEffect.scalingPerLevel, resolved.damagePerLevelMin, resolved.damagePerLevelMax)
+    : source.damageRangePerLevel !== undefined
+      ? parseNumericRange(source.damageRangePerLevel, resolved.damagePerLevelMin, resolved.damagePerLevelMax)
+      : null;
+  if (instantScaling) {
+    resolved.damagePerLevelMin = Math.max(0, Number(instantScaling[0]) || 0);
+    resolved.damagePerLevelMax = Math.max(0, Number(instantScaling[1]) || 0);
+  }
+
+  const dotDamageEffect = findAbilityEffect(effects, "damage", "overtime");
+  const dotRange = dotDamageEffect
+    ? parseNumericRange(dotDamageEffect.amountPerSecond || dotDamageEffect.amount, resolved.dotDamageMin, resolved.dotDamageMax)
+    : source.dotDamagePerSecond !== undefined
+      ? parseNumericRange(source.dotDamagePerSecond, resolved.dotDamageMin, resolved.dotDamageMax)
+      : null;
+  if (dotRange) {
+    resolved.dotDamageMin = Math.max(0, Number(dotRange[0]) || 0);
+    resolved.dotDamageMax = Math.max(resolved.dotDamageMin, Number(dotRange[1]) || resolved.dotDamageMin);
+  }
+  const dotScaling = dotDamageEffect
+    ? parseNumericRange(
+        dotDamageEffect.scalingPerSecondPerLevel || dotDamageEffect.scalingPerLevel,
+        resolved.dotDamagePerLevelMin,
+        resolved.dotDamagePerLevelMax
+      )
+    : source.dotDamagePerSecondPerLevel !== undefined
+      ? parseNumericRange(source.dotDamagePerSecondPerLevel, resolved.dotDamagePerLevelMin, resolved.dotDamagePerLevelMax)
+      : null;
+  if (dotScaling) {
+    resolved.dotDamagePerLevelMin = Math.max(0, Number(dotScaling[0]) || 0);
+    resolved.dotDamagePerLevelMax = Math.max(0, Number(dotScaling[1]) || 0);
+  }
+
+  const dotDurationMs = pickNumber(source.dotDurationMs);
+  if (dotDurationMs !== null && dotDurationMs >= 0) {
+    resolved.dotDurationMs = Math.max(0, Math.round(dotDurationMs));
+  } else {
+    const dotDurationSec = pickNumber(source.dotDuration, dotDamageEffect && dotDamageEffect.duration);
+    if (dotDurationSec !== null && dotDurationSec >= 0) {
+      resolved.dotDurationMs = Math.max(0, Math.round(dotDurationSec * 1000));
+    }
+  }
+
+  const dotSchool = String(
+    source.dotSchool ||
+      (dotDamageEffect && dotDamageEffect.school) ||
+      resolved.dotSchool ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
+  if (dotSchool) {
+    resolved.dotSchool = dotSchool;
+  }
+
+  const slowEffect = findAbilityEffect(effects, "slow");
+  const slowDurationMs = pickNumber(source.slowDurationMs);
+  if (slowDurationMs !== null && slowDurationMs >= 0) {
+    resolved.slowDurationMs = Math.max(0, Math.round(slowDurationMs));
+  } else {
+    const slowSeconds = pickNumber(source.slowDuration, slowEffect && slowEffect.duration);
+    if (slowSeconds !== null && slowSeconds >= 0) {
+      resolved.slowDurationMs = Math.max(0, Math.round(slowSeconds * 1000));
+    }
+  }
+
+  const directSlowMultiplier = pickNumber(source.slowMultiplier);
+  if (directSlowMultiplier !== null && directSlowMultiplier > 0) {
+    resolved.slowMultiplier = clamp(directSlowMultiplier, 0.1, 1);
+  } else {
+    const slowAmount = pickNumber(source.slowAmount, slowEffect && slowEffect.amount);
+    if (slowAmount !== null && slowAmount > 0) {
+      resolved.slowMultiplier = clamp(1 - clamp(slowAmount, 0, 0.95), 0.1, 1);
+    }
+  }
+
+  const stunEffect = findAbilityEffect(effects, "stun");
+  const stunSeconds = pickNumber(source.stunDuration, stunEffect && stunEffect.duration);
+  if (stunSeconds !== null && stunSeconds >= 0) {
+    resolved.stunDurationMs = Math.max(0, Math.round(stunSeconds * 1000));
+  }
+
+  return resolved;
+}
+
 function flattenGlobalDropEntries(node, out) {
   if (Array.isArray(node)) {
     for (const item of node) {
@@ -1444,7 +1913,7 @@ function loadGlobalDropTableConfig(itemDefs) {
   };
 }
 
-function loadMobConfig(itemDefs) {
+function loadMobConfig(itemDefs, abilityDefs) {
   const raw = fs.readFileSync(MOB_CONFIG_PATH, "utf8");
   const parsed = JSON.parse(raw);
   const maxMapRadius = Math.hypot(MAP_WIDTH / 2, MAP_HEIGHT / 2);
@@ -1472,6 +1941,7 @@ function loadMobConfig(itemDefs) {
     const respawnMaxMs = Math.max(respawnMinMs, Math.round(respawnMaxRaw * 1000 * respawnMultiplier));
     const dropRules = parseMobDropRules(mobEntry.drops, itemDefs);
     const renderStyle = parseMobRenderStyle(mobEntry.renderStyle);
+    const combat = parseMobCombatConfig(mobEntry.combat, abilityDefs, damageMin, damageMax);
 
     mobDefs.set(name, {
       name,
@@ -1484,7 +1954,8 @@ function loadMobConfig(itemDefs) {
       respawnMinMs,
       respawnMaxMs,
       dropRules,
-      renderStyle
+      renderStyle,
+      combat
     });
   }
 
@@ -1869,6 +2340,7 @@ try {
 
 let serverConfigReloadTimer = null;
 let abilityConfigReloadTimer = null;
+let mobConfigReloadTimer = null;
 function reloadServerConfig(reason) {
   try {
     const nextConfig = loadServerConfigFromDisk();
@@ -1921,6 +2393,7 @@ function reloadAbilityAndClassConfig(reason) {
     CLASS_CONFIG = nextClassConfig;
     console.log(`[config] Reloaded ${ABILITY_CONFIG_PATH} (${reason})`);
     broadcastClassAndAbilityDefs();
+    reloadMobConfig(`ability dependency reload (${reason})`);
   } catch (error) {
     const details = error && error.message ? error.message : String(error);
     console.error(
@@ -1950,12 +2423,134 @@ function watchAbilityConfig() {
   console.log(`[config] Watching ${ABILITY_CONFIG_PATH} for changes (poll ${watchIntervalMs}ms)`);
 }
 
-watchServerConfig();
-watchAbilityConfig();
+function applyRuntimeMobDefinition(mob, mobDef) {
+  if (!mob || !mobDef) {
+    return false;
+  }
+  const wasAlive = !!mob.alive;
+  const oldMaxHp = Math.max(1, Math.floor(Number(mob.maxHp) || 1));
+  const oldHp = Math.max(0, Number(mob.hp) || 0);
+  const hpRatio = oldMaxHp > 0 ? clamp(oldHp / oldMaxHp, 0, 1) : 1;
+
+  mob.maxHp = clamp(Math.floor(Number(mobDef.health) || 1), 1, 255);
+  if (wasAlive) {
+    const scaledHp = Math.round(hpRatio * mob.maxHp);
+    mob.hp = clamp(scaledHp, 1, mob.maxHp);
+  } else {
+    mob.hp = 0;
+  }
+
+  mob.baseSpeed = clamp(Number(mobDef.baseSpeed) || 0.5, 0.05, 20);
+  mob.damageMin = clamp(Math.floor(Number(mobDef.damageMin) || 0), 0, 255);
+  mob.damageMax = clamp(Math.floor(Number(mobDef.damageMax) || mob.damageMin), mob.damageMin, 255);
+  mob.respawnMinMs = Math.max(1000, Math.floor(Number(mobDef.respawnMinMs) || 1000));
+  mob.respawnMaxMs = Math.max(mob.respawnMinMs, Math.floor(Number(mobDef.respawnMaxMs) || mob.respawnMinMs));
+  mob.dropRules = Array.isArray(mobDef.dropRules) ? mobDef.dropRules.map((entry) => ({ ...entry })) : [];
+  mob.renderStyle = mobDef.renderStyle ? JSON.parse(JSON.stringify(mobDef.renderStyle)) : null;
+  mob.combat = mobDef.combat ? JSON.parse(JSON.stringify(mobDef.combat)) : null;
+
+  if (!(mob.abilityCooldowns instanceof Map)) {
+    mob.abilityCooldowns = new Map();
+  } else {
+    mob.abilityCooldowns.clear();
+  }
+
+  if (mob.activeCast) {
+    clearMobCast(mob);
+  }
+  return true;
+}
+
+function applyRuntimeMobConfig(nextMobConfig) {
+  if (!nextMobConfig || typeof nextMobConfig !== "object") {
+    return { updatedMobs: 0, updatedSpawners: 0 };
+  }
+
+  let updatedSpawners = 0;
+  for (const spawner of mobSpawners.values()) {
+    if (!spawner) {
+      continue;
+    }
+    const existingClusterName = String(spawner.clusterName || "");
+    let nextCluster = nextMobConfig.clusterDefs.find((entry) => String(entry?.name || "") === existingClusterName);
+    if (!nextCluster) {
+      nextCluster = pickClusterDef(nextMobConfig);
+      if (!nextCluster) {
+        continue;
+      }
+      spawner.clusterName = nextCluster.name;
+    }
+    spawner.clusterDef = nextCluster;
+    if (!Array.isArray(spawner.mobIds)) {
+      spawner.mobIds = [];
+    } else {
+      spawner.mobIds = spawner.mobIds.filter((mobId) => mobs.has(mobId));
+    }
+    updatedSpawners += 1;
+  }
+
+  let updatedMobs = 0;
+  for (const mob of mobs.values()) {
+    const mobType = String(mob.type || "");
+    if (!mobType) {
+      continue;
+    }
+    const nextDef = nextMobConfig.mobDefs.get(mobType);
+    if (!nextDef) {
+      continue;
+    }
+    if (applyRuntimeMobDefinition(mob, nextDef)) {
+      updatedMobs += 1;
+    }
+  }
+
+  return { updatedMobs, updatedSpawners };
+}
+
+function reloadMobConfig(reason) {
+  try {
+    const nextMobConfig = loadMobConfig(ITEM_CONFIG.itemDefs, ABILITY_CONFIG.abilityDefs);
+    MOB_CONFIG = nextMobConfig;
+    const { updatedMobs, updatedSpawners } = applyRuntimeMobConfig(nextMobConfig);
+    console.log(
+      `[config] Reloaded ${MOB_CONFIG_PATH} (${reason}): updated ${updatedMobs} mobs, ${updatedSpawners} spawners`
+    );
+  } catch (error) {
+    const details = error && error.message ? error.message : String(error);
+    console.error(
+      `[config] Failed to reload ${MOB_CONFIG_PATH} (${reason}). Keeping previous config. Reason: ${details}`
+    );
+  }
+}
+
+function scheduleMobConfigReload(reason) {
+  if (mobConfigReloadTimer !== null) {
+    clearTimeout(mobConfigReloadTimer);
+  }
+  mobConfigReloadTimer = setTimeout(() => {
+    mobConfigReloadTimer = null;
+    reloadMobConfig(reason);
+  }, 120);
+}
+
+function watchMobConfig() {
+  const watchIntervalMs = 1000;
+  fs.watchFile(MOB_CONFIG_PATH, { interval: watchIntervalMs }, (curr, prev) => {
+    if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) {
+      return;
+    }
+    scheduleMobConfigReload("file change");
+  });
+  console.log(`[config] Watching ${MOB_CONFIG_PATH} for changes (poll ${watchIntervalMs}ms)`);
+}
+
 let ABILITY_CONFIG = loadAbilityConfig();
 let CLASS_CONFIG = loadClassConfig(ABILITY_CONFIG.abilityDefs, ITEM_CONFIG.itemDefs);
-const MOB_CONFIG = loadMobConfig(ITEM_CONFIG.itemDefs);
+let MOB_CONFIG = loadMobConfig(ITEM_CONFIG.itemDefs, ABILITY_CONFIG.abilityDefs);
 const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfig(ITEM_CONFIG.itemDefs);
+watchServerConfig();
+watchAbilityConfig();
+watchMobConfig();
 
 const server = http.createServer((req, res) => {
   const reqPath = req.url || "/";
@@ -1963,6 +2558,7 @@ const server = http.createServer((req, res) => {
   const decodedPath = decodeURIComponent(pathOnly);
 
   if (decodedPath === "/api/game-config") {
+    const soundManifest = buildSoundManifest();
     res.writeHead(200, {
       "Content-Type": "application/json; charset=utf-8",
       "Cache-Control": "no-store"
@@ -1971,7 +2567,11 @@ const server = http.createServer((req, res) => {
       JSON.stringify({
         classes: CLASS_CONFIG.clientClassDefs,
         abilities: ABILITY_CONFIG.clientAbilityDefs,
-        items: ITEM_CONFIG.clientItemDefs
+        items: ITEM_CONFIG.clientItemDefs,
+        gameplay: {
+          audio: GAMEPLAY_CONFIG.audio
+        },
+        sounds: soundManifest
       })
     );
     return;
@@ -2446,10 +3046,12 @@ function getMobDistanceFromSpawn(mob) {
 }
 
 function getMobLeashRadius(mob, now = Date.now()) {
+  const combat = getMobCombatProfile(mob);
+  const configuredLeash = Math.max(1, Number(combat.leashRange) || MOB_WANDER_RADIUS);
   if (hasActiveProvokedChase(mob, now)) {
-    return MOB_PROVOKED_LEASH_RADIUS;
+    return Math.max(configuredLeash, MOB_PROVOKED_LEASH_RADIUS);
   }
-  return Math.max(MOB_WANDER_RADIUS, getMobDistanceFromSpawn(mob));
+  return Math.max(configuredLeash, getMobDistanceFromSpawn(mob));
 }
 
 function startMobReturnToSpawn(mob) {
@@ -2636,6 +3238,227 @@ function applyAbilityHitEffectsToMob(mob, ownerId, abilityDef, abilityLevel, dea
   }
 }
 
+function clearPlayerCombatEffects(player) {
+  if (!player) {
+    return;
+  }
+  player.stunnedUntil = 0;
+  player.stunAppliedAt = 0;
+  player.stunDurationMs = 0;
+  player.slowUntil = 0;
+  player.slowMultiplier = 1;
+  player.slowAppliedAt = 0;
+  player.slowDurationMs = 0;
+  player.burningUntil = 0;
+  player.burnAppliedAt = 0;
+  player.burnDurationMs = 0;
+  if (player.activeDots instanceof Map) {
+    player.activeDots.clear();
+  } else {
+    player.activeDots = new Map();
+  }
+}
+
+function stunPlayer(player, durationMs, now = Date.now()) {
+  if (!player || player.hp <= 0) {
+    return;
+  }
+  const duration = Math.max(0, Math.floor(Number(durationMs) || 0));
+  if (duration <= 0) {
+    return;
+  }
+  const nextUntil = Math.max(Number(player.stunnedUntil) || 0, now + duration);
+  player.stunnedUntil = nextUntil;
+  player.stunAppliedAt = now;
+  player.stunDurationMs = Math.max(1, nextUntil - now);
+}
+
+function applySlowToPlayer(player, slowMultiplier, durationMs, now = Date.now()) {
+  if (!player || player.hp <= 0) {
+    return;
+  }
+  const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+  if (duration <= 0) {
+    return;
+  }
+  const multiplier = clamp(Number(slowMultiplier) || 1, 0.1, 1);
+  if (multiplier >= 1) {
+    return;
+  }
+  const nextUntil = Math.max(Number(player.slowUntil) || 0, now + duration);
+  const active = Number(player.slowUntil) > now;
+  if (active) {
+    player.slowMultiplier = Math.min(clamp(Number(player.slowMultiplier) || 1, 0.1, 1), multiplier);
+  } else {
+    player.slowMultiplier = multiplier;
+  }
+  player.slowUntil = nextUntil;
+  player.slowAppliedAt = now;
+  player.slowDurationMs = Math.max(1, nextUntil - now);
+}
+
+function applyDotToPlayer(
+  player,
+  ownerId,
+  school,
+  damageMinPerSecond,
+  damageMaxPerSecond,
+  durationMs,
+  now = Date.now()
+) {
+  if (!player || player.hp <= 0) {
+    return;
+  }
+  const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+  if (duration <= 0) {
+    return;
+  }
+  const dotMin = Math.max(0, Number(damageMinPerSecond) || 0);
+  const dotMax = Math.max(dotMin, Number(damageMaxPerSecond) || dotMin);
+  if (dotMax <= 0) {
+    return;
+  }
+  const schoolKey = String(school || "generic").trim().toLowerCase() || "generic";
+  if (!(player.activeDots instanceof Map)) {
+    player.activeDots = new Map();
+  }
+  const tickIntervalMs = 1000;
+  const nextEndsAt = now + duration;
+  const existing = player.activeDots.get(schoolKey);
+  if (existing) {
+    existing.ownerId = ownerId ? String(ownerId) : existing.ownerId;
+    existing.damageMin = Math.max(Number(existing.damageMin) || 0, dotMin);
+    existing.damageMax = Math.max(Number(existing.damageMax) || existing.damageMin, dotMax);
+    existing.endsAt = Math.max(Number(existing.endsAt) || 0, nextEndsAt);
+    existing.nextTickAt = Math.min(Number(existing.nextTickAt) || now + tickIntervalMs, now + tickIntervalMs);
+    player.activeDots.set(schoolKey, existing);
+  } else {
+    player.activeDots.set(schoolKey, {
+      school: schoolKey,
+      ownerId: ownerId ? String(ownerId) : "",
+      damageMin: dotMin,
+      damageMax: dotMax,
+      tickIntervalMs,
+      nextTickAt: now + tickIntervalMs,
+      endsAt: nextEndsAt
+    });
+  }
+  if (schoolKey === "fire") {
+    const fireUntil = Math.max(Number(player.burningUntil) || 0, nextEndsAt);
+    player.burningUntil = fireUntil;
+    player.burnAppliedAt = now;
+    player.burnDurationMs = Math.max(1, fireUntil - now);
+  }
+}
+
+function tickPlayerDotEffects(player, now = Date.now()) {
+  if (!player || player.hp <= 0) {
+    return;
+  }
+  const dots = player.activeDots;
+  if (!(dots instanceof Map) || dots.size === 0) {
+    player.burningUntil = 0;
+    return;
+  }
+
+  let fireEndsAt = 0;
+  for (const [schoolKey, dot] of Array.from(dots.entries())) {
+    const endsAt = Math.max(0, Math.floor(Number(dot.endsAt) || 0));
+    if (endsAt <= now) {
+      dots.delete(schoolKey);
+      continue;
+    }
+    if (schoolKey === "fire") {
+      fireEndsAt = Math.max(fireEndsAt, endsAt);
+    }
+    const tickIntervalMs = Math.max(100, Math.floor(Number(dot.tickIntervalMs) || 1000));
+    while (Number(dot.nextTickAt) <= now && Number(dot.nextTickAt) < endsAt + 5) {
+      if (player.hp <= 0) {
+        break;
+      }
+      const dealt = applyDamageToPlayer(player, randomInt(Math.floor(dot.damageMin), Math.ceil(dot.damageMax)), now);
+      dot.nextTickAt += tickIntervalMs;
+      if (player.hp <= 0 || dealt <= 0) {
+        break;
+      }
+    }
+    if (player.hp <= 0) {
+      break;
+    }
+    dots.set(schoolKey, dot);
+  }
+
+  if (player.hp <= 0) {
+    dots.clear();
+    player.burningUntil = 0;
+    return;
+  }
+  if (dots.size <= 0) {
+    player.burningUntil = 0;
+  } else if (fireEndsAt > now) {
+    player.burningUntil = fireEndsAt;
+  } else {
+    player.burningUntil = 0;
+  }
+}
+
+function applyAbilityHitEffectsToPlayer(player, ownerId, abilityDef, abilityLevel, dealtDamage, now = Date.now()) {
+  if (!player || player.hp <= 0 || dealtDamage <= 0 || !abilityDef) {
+    return;
+  }
+  const slowDurationMs = Math.max(0, Number(abilityDef.slowDurationMs) || 0);
+  const slowMultiplier = clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1);
+  if (slowDurationMs > 0 && slowMultiplier < 1) {
+    applySlowToPlayer(player, slowMultiplier, slowDurationMs, now);
+  }
+  const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
+  if (stunDurationMs > 0) {
+    stunPlayer(player, stunDurationMs, now);
+  }
+  const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
+  const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
+  if (dotDurationMs > 0 && dotDamageMax > 0) {
+    applyDotToPlayer(
+      player,
+      ownerId,
+      String(abilityDef.dotSchool || "generic"),
+      dotDamageMin,
+      dotDamageMax,
+      dotDurationMs,
+      now
+    );
+  }
+}
+
+function applyProjectileHitEffectsToPlayer(player, projectile, dealtDamage, now = Date.now()) {
+  if (!player || player.hp <= 0 || dealtDamage <= 0 || !projectile) {
+    return;
+  }
+  const slowDurationMs = Math.max(0, Number(projectile.slowDurationMs) || 0);
+  const slowMultiplier = clamp(Number(projectile.slowMultiplier) || 1, 0.1, 1);
+  if (slowDurationMs > 0 && slowMultiplier < 1) {
+    applySlowToPlayer(player, slowMultiplier, slowDurationMs, now);
+  }
+  const stunDurationMs = Math.max(0, Number(projectile.stunDurationMs) || 0);
+  if (stunDurationMs > 0) {
+    stunPlayer(player, stunDurationMs, now);
+  }
+  const dotDurationMs = Math.max(0, Number(projectile.dotDurationMs) || 0);
+  const dotDamageMin = Math.max(0, Number(projectile.dotDamageMin) || 0);
+  const dotDamageMax = Math.max(dotDamageMin, Number(projectile.dotDamageMax) || dotDamageMin);
+  if (dotDurationMs > 0 && dotDamageMax > 0) {
+    applyDotToPlayer(
+      player,
+      projectile.ownerId || null,
+      String(projectile.dotSchool || "generic"),
+      dotDamageMin,
+      dotDamageMax,
+      dotDurationMs,
+      now
+    );
+  }
+}
+
 function applyDamageToMob(mob, damage, ownerId) {
   if (!mob || !mob.alive) {
     return 0;
@@ -2683,6 +3506,7 @@ function applyDamageToPlayer(player, damage, now = Date.now()) {
   if (player.hp <= 0) {
     player.input = { dx: 0, dy: 0 };
     clearPlayerCast(player);
+    clearPlayerCombatEffects(player);
   }
   return dealt;
 }
@@ -2800,6 +3624,15 @@ function clearPlayerCast(player) {
   return true;
 }
 
+function clearMobCast(mob) {
+  if (!mob || !mob.activeCast) {
+    return false;
+  }
+  mob.activeCast = null;
+  mob.castStateVersion = (Number(mob.castStateVersion) + 1) & 0xffff;
+  return true;
+}
+
 function serializePlayer(player) {
   return {
     id: player.id,
@@ -2837,15 +3670,29 @@ function createLootBag(x, y, items = []) {
   if (!normalizedItems.length) {
     return null;
   }
+  const now = Date.now();
   const bag = {
     id: String(nextLootBagId++),
     x: clamp(x, 0, MAP_WIDTH - 1),
     y: clamp(y, 0, MAP_HEIGHT - 1),
     items: normalizedItems,
-    metaVersion: 1
+    metaVersion: 1,
+    createdAt: now,
+    expiresAt: BAG_DESPAWN_MS > 0 ? now + BAG_DESPAWN_MS : 0
   };
   lootBags.set(bag.id, bag);
   return bag;
+}
+
+function tickLootBags(now = Date.now()) {
+  if (BAG_DESPAWN_MS <= 0 || lootBags.size === 0) {
+    return;
+  }
+  for (const bag of lootBags.values()) {
+    if (bag.expiresAt > 0 && now >= bag.expiresAt) {
+      lootBags.delete(bag.id);
+    }
+  }
 }
 
 function createMob(spawner) {
@@ -2873,8 +3720,20 @@ function createMob(spawner) {
     respawnMaxMs: mobDef.respawnMaxMs,
     dropRules: Array.isArray(mobDef.dropRules) ? mobDef.dropRules.map((entry) => ({ ...entry })) : [],
     renderStyle: mobDef.renderStyle ? { ...mobDef.renderStyle } : null,
-    lastBiteDirection: { dx: 0, dy: -1 },
-    biteCounter: 0,
+    combat: mobDef.combat
+      ? {
+          ...mobDef.combat,
+          basicAttack: mobDef.combat.basicAttack ? { ...mobDef.combat.basicAttack } : null,
+          abilities: Array.isArray(mobDef.combat.abilities)
+            ? mobDef.combat.abilities.map((entry) => ({ ...entry }))
+            : []
+        }
+      : null,
+	    lastBiteDirection: { dx: 0, dy: -1 },
+	    lastAttackAbilityId: "",
+	    biteCounter: 0,
+    activeCast: null,
+    castStateVersion: 0,
     alive: true,
     respawnAt: 0,
     wanderTarget: null,
@@ -2887,7 +3746,8 @@ function createMob(spawner) {
     slowMultiplier: 1,
     burningUntil: 0,
     activeDots: new Map(),
-    returningHome: false
+    returningHome: false,
+    abilityCooldowns: new Map()
   };
   mobs.set(mob.id, mob);
   spawner.mobIds.push(mob.id);
@@ -2967,6 +3827,8 @@ function killMob(mob, killerPlayerId = null) {
   mob.slowMultiplier = 1;
   mob.burningUntil = 0;
   mob.activeDots = new Map();
+  mob.abilityCooldowns = new Map();
+  clearMobCast(mob);
   queueMobDeathEvent(mob);
   const killer = killerPlayerId ? players.get(String(killerPlayerId)) : null;
   const globalDrops = rollGlobalDropsForPlayer(killer);
@@ -2985,8 +3847,9 @@ function respawnMob(mob) {
   mob.y = spawnPos.y;
   mob.hp = mob.maxHp;
   mob.alive = true;
-  mob.lastBiteDirection = { dx: 0, dy: -1 };
-  mob.biteCounter = 0;
+	  mob.lastBiteDirection = { dx: 0, dy: -1 };
+	  mob.lastAttackAbilityId = "";
+	  mob.biteCounter = 0;
   mob.respawnAt = 0;
   mob.wanderTarget = null;
   mob.nextWanderAt = Date.now() + randomInt(500, 1800);
@@ -2999,6 +3862,8 @@ function respawnMob(mob) {
   mob.burningUntil = 0;
   mob.activeDots = new Map();
   mob.returningHome = false;
+  mob.abilityCooldowns = new Map();
+  clearMobCast(mob);
 }
 
 function applyProjectileHitEffects(mob, projectile, dealtDamage, now = Date.now()) {
@@ -3030,7 +3895,35 @@ function applyProjectileHitEffects(mob, projectile, dealtDamage, now = Date.now(
   }
 }
 
-function spawnProjectileFromTemplate(ownerId, sourceX, sourceY, direction, template, abilityLevel, now = Date.now()) {
+function normalizeProjectileTargetType(targetType, fallback = "mob") {
+  const normalized = String(targetType || "").trim().toLowerCase();
+  if (normalized === "player") {
+    return "player";
+  }
+  if (normalized === "mob") {
+    return "mob";
+  }
+  return fallback === "player" ? "player" : "mob";
+}
+
+function inferProjectileTargetTypeFromOwner(ownerId) {
+  const ownerKey = String(ownerId || "").trim().toLowerCase();
+  if (ownerKey.startsWith("mob:")) {
+    return "player";
+  }
+  return "mob";
+}
+
+function spawnProjectileFromTemplate(
+  ownerId,
+  sourceX,
+  sourceY,
+  direction,
+  template,
+  abilityLevel,
+  now = Date.now(),
+  defaultTargetType = ""
+) {
   if (!template || !direction) {
     return false;
   }
@@ -3066,6 +3959,7 @@ function spawnProjectileFromTemplate(ownerId, sourceX, sourceY, direction, templ
   const projectile = {
     id: String(nextProjectileId++),
     ownerId: String(ownerId || ""),
+    targetType: normalizeProjectileTargetType(defaultTargetType, inferProjectileTargetTypeFromOwner(ownerId)),
     x: clamp(Number(sourceX) + dir.dx * 0.35, 0, MAP_WIDTH - 1),
     y: clamp(Number(sourceY) + dir.dy * 0.35, 0, MAP_HEIGHT - 1),
     dx: dir.dx,
@@ -3085,6 +3979,7 @@ function spawnProjectileFromTemplate(ownerId, sourceX, sourceY, direction, templ
     dotDamageMax,
     dotDurationMs: Math.max(0, Number(template.dotDurationMs) || 0),
     dotSchool: String(template.dotSchool || "generic"),
+    explodeOnExpire: template.explodeOnExpire !== false,
     homingRange: Math.max(0, Number(template.homingRange) || 0),
     homingTurnRate: Math.max(0, Number(template.homingTurnRate) || 0),
     abilityId: String(template.id || "child_projectile"),
@@ -3133,7 +4028,8 @@ function emitProjectilesFromEmitter(projectile, now = Date.now()) {
         { dx: Math.cos(angle), dy: Math.sin(angle) },
         emitter.childProjectile,
         level,
-        now
+        now,
+        projectile.targetType
       );
     }
 
@@ -3155,10 +4051,51 @@ function getNearestProjectileTarget(projectile, maxRange) {
   if (!projectile || maxRange <= 0) {
     return null;
   }
+  const projectileTargetType = normalizeProjectileTargetType(projectile.targetType, "mob");
+  const ownerId = String(projectile.ownerId || "");
+  const ownerIsMob = ownerId.toLowerCase().startsWith("mob:");
+  const ownerPlayer = !ownerIsMob ? players.get(ownerId) || null : null;
+  const ownerTeam =
+    ownerPlayer && ownerPlayer.team !== undefined && ownerPlayer.team !== null
+      ? String(ownerPlayer.team).trim().toLowerCase()
+      : "";
+
   let best = null;
   let bestDistSq = maxRange * maxRange;
+
+  if (projectileTargetType === "player") {
+    for (const player of players.values()) {
+      if (!player || player.hp <= 0) {
+        continue;
+      }
+      if (!ownerIsMob && String(player.id || "") === ownerId) {
+        continue;
+      }
+      if (ownerTeam) {
+        const candidateTeam =
+          player.team !== undefined && player.team !== null ? String(player.team).trim().toLowerCase() : "";
+        if (candidateTeam && candidateTeam === ownerTeam) {
+          continue;
+        }
+      }
+      const dx = player.x - projectile.x;
+      const dy = player.y - projectile.y;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > bestDistSq) {
+        continue;
+      }
+      best = player;
+      bestDistSq = distSq;
+    }
+    return best;
+  }
+
   for (const mob of mobs.values()) {
     if (!mob.alive) {
+      continue;
+    }
+    const sourceMobId = String(projectile.sourceMobId || "");
+    if (sourceMobId && String(mob.id || "") === sourceMobId) {
       continue;
     }
     const dx = mob.x - projectile.x;
@@ -3198,17 +4135,33 @@ function tickProjectiles() {
     projectile.x += projectile.dx * projectile.speed * dt;
     projectile.y += projectile.dy * projectile.speed * dt;
 
+    const projectileTargetType =
+      String(projectile.targetType || "").trim().toLowerCase() === "player" ? "player" : "mob";
     let hitMob = null;
-    for (const mob of mobs.values()) {
-      if (!mob.alive) {
-        continue;
+    let hitPlayer = null;
+    const hitRadius = clamp(Number(projectile.hitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8);
+    if (projectileTargetType === "player") {
+      for (const player of players.values()) {
+        if (!player || player.hp <= 0) {
+          continue;
+        }
+        if (distance(projectile, player) > hitRadius) {
+          continue;
+        }
+        hitPlayer = player;
+        break;
       }
-      const hitRadius = clamp(Number(projectile.hitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8);
-      if (distance(projectile, mob) > hitRadius) {
-        continue;
+    } else {
+      for (const mob of mobs.values()) {
+        if (!mob.alive) {
+          continue;
+        }
+        if (distance(projectile, mob) > hitRadius) {
+          continue;
+        }
+        hitMob = mob;
+        break;
       }
-      hitMob = mob;
-      break;
     }
 
     const expired = now - projectile.createdAt > projectile.ttlMs;
@@ -3218,8 +4171,10 @@ function tickProjectiles() {
       projectile.y < 0 ||
       projectile.y > MAP_HEIGHT - 1;
 
-    if (hitMob) {
-      queueProjectileHitEvent(hitMob.x, hitMob.y, projectile.abilityId);
+    if (hitMob || hitPlayer) {
+      const impactX = hitMob ? hitMob.x : hitPlayer.x;
+      const impactY = hitMob ? hitMob.y : hitPlayer.y;
+      queueProjectileHitEvent(impactX, impactY, projectile.abilityId);
       const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
       const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 255);
       const baseDamage = randomInt(damageMin, damageMax);
@@ -3227,12 +4182,79 @@ function tickProjectiles() {
       const minMultiplier = clamp(Number(projectile.explosionDamageMultiplier) || 0, 0, 1);
 
       if (explosionRadius > 0) {
-        queueExplosionEvent(hitMob.x, hitMob.y, explosionRadius, projectile.abilityId);
+        queueExplosionEvent(impactX, impactY, explosionRadius, projectile.abilityId);
+        if (projectileTargetType === "player") {
+          for (const player of players.values()) {
+            if (!player || player.hp <= 0) {
+              continue;
+            }
+            const dist = Math.hypot(player.x - impactX, player.y - impactY);
+            if (dist > explosionRadius) {
+              continue;
+            }
+            const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
+            const scale = 1 - t * (1 - minMultiplier);
+            const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
+            const dealt = applyDamageToPlayer(player, scaledDamage, now);
+            applyProjectileHitEffectsToPlayer(player, projectile, dealt, now);
+          }
+        } else {
+          for (const mob of mobs.values()) {
+            if (!mob.alive) {
+              continue;
+            }
+            const dist = Math.hypot(mob.x - impactX, mob.y - impactY);
+            if (dist > explosionRadius) {
+              continue;
+            }
+            const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
+            const scale = 1 - t * (1 - minMultiplier);
+            const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
+            const dealt = applyDamageToMob(mob, scaledDamage, projectile.ownerId);
+            applyProjectileHitEffects(mob, projectile, dealt, now);
+          }
+        }
+      } else {
+        if (projectileTargetType === "player") {
+          const dealt = applyDamageToPlayer(hitPlayer, baseDamage, now);
+          applyProjectileHitEffectsToPlayer(hitPlayer, projectile, dealt, now);
+        } else {
+          const dealt = applyDamageToMob(hitMob, baseDamage, projectile.ownerId);
+          applyProjectileHitEffects(hitMob, projectile, dealt, now);
+        }
+      }
+    } else if (
+      (expired || outOfMap) &&
+      (Number(projectile.explosionRadius) || 0) > 0 &&
+      projectile.explodeOnExpire !== false
+    ) {
+      const explosionRadius = Math.max(0, Number(projectile.explosionRadius) || 0);
+      const minMultiplier = clamp(Number(projectile.explosionDamageMultiplier) || 0, 0, 1);
+      const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
+      const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 255);
+      const baseDamage = randomInt(damageMin, damageMax);
+      queueExplosionEvent(projectile.x, projectile.y, explosionRadius, projectile.abilityId);
+      if (projectileTargetType === "player") {
+        for (const player of players.values()) {
+          if (!player || player.hp <= 0) {
+            continue;
+          }
+          const dist = Math.hypot(player.x - projectile.x, player.y - projectile.y);
+          if (dist > explosionRadius) {
+            continue;
+          }
+          const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
+          const scale = 1 - t * (1 - minMultiplier);
+          const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
+          const dealt = applyDamageToPlayer(player, scaledDamage, now);
+          applyProjectileHitEffectsToPlayer(player, projectile, dealt, now);
+        }
+      } else {
         for (const mob of mobs.values()) {
           if (!mob.alive) {
             continue;
           }
-          const dist = Math.hypot(mob.x - hitMob.x, mob.y - hitMob.y);
+          const dist = Math.hypot(mob.x - projectile.x, mob.y - projectile.y);
           if (dist > explosionRadius) {
             continue;
           }
@@ -3242,38 +4264,10 @@ function tickProjectiles() {
           const dealt = applyDamageToMob(mob, scaledDamage, projectile.ownerId);
           applyProjectileHitEffects(mob, projectile, dealt, now);
         }
-      } else {
-        const dealt = applyDamageToMob(hitMob, baseDamage, projectile.ownerId);
-        applyProjectileHitEffects(hitMob, projectile, dealt, now);
-      }
-    } else if (
-      (expired || outOfMap) &&
-      (Number(projectile.explosionRadius) || 0) > 0 &&
-      String(projectile.abilityId || "").toLowerCase() !== "fireball"
-    ) {
-      const explosionRadius = Math.max(0, Number(projectile.explosionRadius) || 0);
-      const minMultiplier = clamp(Number(projectile.explosionDamageMultiplier) || 0, 0, 1);
-      const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
-      const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 255);
-      const baseDamage = randomInt(damageMin, damageMax);
-      queueExplosionEvent(projectile.x, projectile.y, explosionRadius, projectile.abilityId);
-      for (const mob of mobs.values()) {
-        if (!mob.alive) {
-          continue;
-        }
-        const dist = Math.hypot(mob.x - projectile.x, mob.y - projectile.y);
-        if (dist > explosionRadius) {
-          continue;
-        }
-        const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
-        const scale = 1 - t * (1 - minMultiplier);
-        const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
-        const dealt = applyDamageToMob(mob, scaledDamage, projectile.ownerId);
-        applyProjectileHitEffects(mob, projectile, dealt, now);
       }
     }
 
-    if (expired || outOfMap || hitMob) {
+    if (expired || outOfMap || hitMob || hitPlayer) {
       toDelete.push(projectile.id);
     }
   }
@@ -3348,6 +4342,7 @@ function tickAreaEffects(now = Date.now()) {
 
 function tickPlayers() {
   const dt = TICK_MS / 1000;
+  const now = Date.now();
 
   for (const player of players.values()) {
     if (player.hp > 0 && player.mana < player.maxMana && player.manaRegen > 0) {
@@ -3355,8 +4350,12 @@ function tickPlayers() {
     }
     tickPlayerHealEffects(player);
     tickPlayerManaEffects(player);
+    tickPlayerDotEffects(player, now);
 
-    if (player.activeCast && playerHasMovementInput(player)) {
+    const stunned = (Number(player.stunnedUntil) || 0) > now;
+    if (stunned && player.activeCast) {
+      clearPlayerCast(player);
+    } else if (player.activeCast && playerHasMovementInput(player)) {
       const activeDef = ABILITY_CONFIG.abilityDefs.get(String(player.activeCast.abilityId || ""));
       if (!activeDef || activeDef.kind !== "teleport") {
         clearPlayerCast(player);
@@ -3368,6 +4367,26 @@ function tickPlayers() {
       clearPlayerCast(player);
       player.activeHeals = [];
       player.activeManaRestores = [];
+      clearPlayerCombatEffects(player);
+      continue;
+    }
+
+    if (!stunned && (player.stunnedUntil || player.stunDurationMs)) {
+      player.stunnedUntil = 0;
+      player.stunDurationMs = 0;
+    }
+    if ((Number(player.slowUntil) || 0) <= now && (player.slowUntil || player.slowMultiplier !== 1)) {
+      player.slowUntil = 0;
+      player.slowMultiplier = 1;
+      player.slowDurationMs = 0;
+    }
+    if ((Number(player.burningUntil) || 0) <= now && player.burningUntil) {
+      player.burningUntil = 0;
+      player.burnDurationMs = 0;
+    }
+
+    if (stunned) {
+      player.input = { dx: 0, dy: 0 };
       continue;
     }
 
@@ -3375,7 +4394,8 @@ function tickPlayers() {
       continue;
     }
 
-    const moveSpeed = Math.max(0.1, Number(player.moveSpeed) || BASE_PLAYER_SPEED);
+    const slowMultiplier = (Number(player.slowUntil) || 0) > now ? clamp(Number(player.slowMultiplier) || 1, 0.1, 1) : 1;
+    const moveSpeed = Math.max(0.1, Number(player.moveSpeed) || BASE_PLAYER_SPEED) * slowMultiplier;
     player.x = clamp(player.x + player.input.dx * moveSpeed * dt, 0, MAP_WIDTH - 1);
     player.y = clamp(player.y + player.input.dy * moveSpeed * dt, 0, MAP_HEIGHT - 1);
     resolvePlayerMobCollisions(player);
@@ -3609,6 +4629,66 @@ function buildPlayerCastEventsForRecipient(recipient, nearbyPlayerObjects, now) 
   return { casts, self };
 }
 
+function buildMobCastEventsForRecipient(recipient, nearbyMobObjects, now) {
+  const sync = recipient.entitySync;
+  const casts = [];
+
+  for (const mob of nearbyMobObjects) {
+    const realId = toEntityRealId(mob.id);
+    if (!realId) {
+      continue;
+    }
+    const slot = sync.mobSlotsByRealId.get(realId);
+    if (!slot) {
+      continue;
+    }
+
+    const currentVersion = Number(mob.castStateVersion) & 0xffff;
+    const previousVersion = sync.mobCastVersionBySlot.get(slot);
+    const activeCast = mob.activeCast && now < mob.activeCast.endsAt ? mob.activeCast : null;
+
+    if (previousVersion === undefined) {
+      sync.mobCastVersionBySlot.set(slot, currentVersion);
+      if (activeCast) {
+        casts.push({
+          id: slot,
+          active: true,
+          abilityId: String(activeCast.abilityId || ""),
+          durationMs: Math.max(1, Math.floor(Number(activeCast.durationMs) || 0)),
+          elapsedMs: clamp(now - activeCast.startedAt, 0, activeCast.durationMs)
+        });
+      }
+      continue;
+    }
+
+    if (previousVersion !== currentVersion) {
+      sync.mobCastVersionBySlot.set(slot, currentVersion);
+      if (activeCast) {
+        casts.push({
+          id: slot,
+          active: true,
+          abilityId: String(activeCast.abilityId || ""),
+          durationMs: Math.max(1, Math.floor(Number(activeCast.durationMs) || 0)),
+          elapsedMs: clamp(now - activeCast.startedAt, 0, activeCast.durationMs)
+        });
+      } else {
+        casts.push({
+          id: slot,
+          active: false
+        });
+      }
+    }
+  }
+
+  for (const slot of Array.from(sync.mobCastVersionBySlot.keys())) {
+    if (!sync.mobRealIdBySlot.has(slot)) {
+      sync.mobCastVersionBySlot.delete(slot);
+    }
+  }
+
+  return casts;
+}
+
 function buildMobBiteEventsForRecipient(recipient, nearbyMobObjects) {
   const sync = recipient.entitySync;
   const events = [];
@@ -3634,13 +4714,15 @@ function buildMobBiteEventsForRecipient(recipient, nearbyMobObjects) {
       continue;
     }
 
-    sync.mobBiteBySlot.set(slot, currentBiteCounter);
-    events.push({
-      id: slot,
-      dx: Number(mob.lastBiteDirection.dx.toFixed(2)),
-      dy: Number(mob.lastBiteDirection.dy.toFixed(2))
-    });
-  }
+	    sync.mobBiteBySlot.set(slot, currentBiteCounter);
+	    const abilityId = String(mob.lastAttackAbilityId || "").trim().slice(0, 64);
+	    events.push({
+	      id: slot,
+	      dx: Number(mob.lastBiteDirection.dx.toFixed(2)),
+	      dy: Number(mob.lastBiteDirection.dy.toFixed(2)),
+	      abilityId
+	    });
+	  }
 
   for (const slot of Array.from(sync.mobBiteBySlot.keys())) {
     if (!sync.mobRealIdBySlot.has(slot)) {
@@ -3734,6 +4816,123 @@ function buildMobEffectEventsForRecipient(recipient, nearbyMobObjects, now = Dat
         flags: MOB_EFFECT_FLAG_REMOVE
       });
       sync.mobEffectStatesBySlot.delete(slot);
+    }
+  }
+
+  return events;
+}
+
+function buildSelfPlayerEffectUpdate(player, now = Date.now()) {
+  if (!player || !player.entitySync) {
+    return null;
+  }
+  const sync = player.entitySync;
+  const stunnedUntil = Math.max(0, Math.floor(Number(player.stunnedUntil) || 0));
+  const slowUntil = Math.max(0, Math.floor(Number(player.slowUntil) || 0));
+  const burningUntil = Math.max(0, Math.floor(Number(player.burningUntil) || 0));
+  const hasStun = stunnedUntil > now;
+  const hasSlow = slowUntil > now;
+  const hasBurn = burningUntil > now;
+
+  const nextState = {
+    stunnedUntil: hasStun ? stunnedUntil : 0,
+    stunDurationMs: hasStun ? clamp(Math.floor(Number(player.stunDurationMs) || stunnedUntil - now), 1, 65535) : 0,
+    slowUntil: hasSlow ? slowUntil : 0,
+    slowDurationMs: hasSlow ? clamp(Math.floor(Number(player.slowDurationMs) || slowUntil - now), 1, 65535) : 0,
+    slowMultiplierQ: hasSlow
+      ? clamp(Math.round(clamp(Number(player.slowMultiplier) || 1, 0.1, 1) * 1000), 1, 1000)
+      : 1000,
+    burningUntil: hasBurn ? burningUntil : 0,
+    burnDurationMs: hasBurn ? clamp(Math.floor(Number(player.burnDurationMs) || burningUntil - now), 1, 65535) : 0
+  };
+
+  const previous = sync.selfEffectState;
+  const changed =
+    !previous ||
+    previous.stunnedUntil !== nextState.stunnedUntil ||
+    previous.stunDurationMs !== nextState.stunDurationMs ||
+    previous.slowUntil !== nextState.slowUntil ||
+    previous.slowDurationMs !== nextState.slowDurationMs ||
+    previous.slowMultiplierQ !== nextState.slowMultiplierQ ||
+    previous.burningUntil !== nextState.burningUntil ||
+    previous.burnDurationMs !== nextState.burnDurationMs;
+
+  if (!changed) {
+    return null;
+  }
+  sync.selfEffectState = nextState;
+  return {
+    stunnedMs: hasStun ? clamp(stunnedUntil - now, 1, 65535) : 0,
+    stunDurationMs: nextState.stunDurationMs,
+    slowedMs: hasSlow ? clamp(slowUntil - now, 1, 65535) : 0,
+    slowDurationMs: nextState.slowDurationMs,
+    slowMultiplierQ: nextState.slowMultiplierQ,
+    burningMs: hasBurn ? clamp(burningUntil - now, 1, 65535) : 0,
+    burnDurationMs: nextState.burnDurationMs
+  };
+}
+
+function buildPlayerEffectEventsForRecipient(recipient, nearbyPlayerObjects, now = Date.now()) {
+  const sync = recipient.entitySync;
+  const events = [];
+  const visibleSlots = new Set();
+
+  for (const other of nearbyPlayerObjects) {
+    const realId = toEntityRealId(other.id);
+    if (!realId) {
+      continue;
+    }
+    const slot = sync.playerSlotsByRealId.get(realId);
+    if (!slot) {
+      continue;
+    }
+    visibleSlots.add(slot);
+
+    const stunnedUntil = Math.max(0, Math.floor(Number(other.stunnedUntil) || 0));
+    const slowUntil = Math.max(0, Math.floor(Number(other.slowUntil) || 0));
+    const burningUntil = Math.max(0, Math.floor(Number(other.burningUntil) || 0));
+    const hasStun = stunnedUntil > now;
+    const hasSlow = slowUntil > now;
+    const hasBurn = burningUntil > now;
+    const slowMultiplierQ = hasSlow
+      ? clamp(Math.round(clamp(Number(other.slowMultiplier) || 1, 0.1, 1) * 1000), 1, 1000)
+      : 1000;
+    const nextState = {
+      stunnedUntil: hasStun ? stunnedUntil : 0,
+      slowUntil: hasSlow ? slowUntil : 0,
+      burningUntil: hasBurn ? burningUntil : 0,
+      slowMultiplierQ
+    };
+    const previous = sync.playerEffectStatesBySlot.get(slot);
+    const changed =
+      !previous ||
+      previous.stunnedUntil !== nextState.stunnedUntil ||
+      previous.slowUntil !== nextState.slowUntil ||
+      previous.burningUntil !== nextState.burningUntil ||
+      previous.slowMultiplierQ !== nextState.slowMultiplierQ;
+    if (!changed) {
+      continue;
+    }
+    sync.playerEffectStatesBySlot.set(slot, nextState);
+    events.push({
+      id: slot,
+      stunnedMs: hasStun ? clamp(stunnedUntil - now, 1, 65535) : 0,
+      slowedMs: hasSlow ? clamp(slowUntil - now, 1, 65535) : 0,
+      burningMs: hasBurn ? clamp(burningUntil - now, 1, 65535) : 0,
+      slowMultiplierQ
+    });
+  }
+
+  for (const [slot] of Array.from(sync.playerEffectStatesBySlot.entries())) {
+    if (!sync.playerRealIdBySlot.has(slot) || !visibleSlots.has(slot)) {
+      events.push({
+        id: slot,
+        stunnedMs: 0,
+        slowedMs: 0,
+        burningMs: 0,
+        slowMultiplierQ: 1000
+      });
+      sync.playerEffectStatesBySlot.delete(slot);
     }
   }
 
@@ -4000,6 +5199,9 @@ function usePlayerAbility(player, abilityId, targetDx, targetDy, targetDistance 
   if (!player || player.hp <= 0) {
     return false;
   }
+  if ((Number(player.stunnedUntil) || 0) > Date.now()) {
+    return false;
+  }
 
   if (player.activeCast) {
     return false;
@@ -4124,22 +5326,415 @@ function tickPlayerCasts(now) {
   }
 }
 
-function getNearestAggroPlayer(mob) {
+function getMobCombatProfile(mob) {
+  const combat = mob && mob.combat && typeof mob.combat === "object" ? mob.combat : null;
+  if (combat) {
+    return combat;
+  }
+  const fallbackDamageMin = clamp(Math.floor(Number(mob?.damageMin) || 1), 0, 255);
+  const fallbackDamageMax = clamp(Math.floor(Number(mob?.damageMax) || fallbackDamageMin), fallbackDamageMin, 255);
+  return {
+    behavior: "melee",
+    aggroRange: MOB_AGGRO_RANGE,
+    preferredRange: MOB_ATTACK_RANGE,
+    leashRange: MOB_WANDER_RADIUS,
+    basicAttack: {
+      type: "melee",
+      abilityId: "",
+      damageMin: fallbackDamageMin,
+      damageMax: fallbackDamageMax,
+      cooldownMs: MOB_ATTACK_COOLDOWN_MS,
+      range: MOB_ATTACK_RANGE
+    },
+    abilities: []
+  };
+}
+
+function getNearestAggroPlayer(mob, maxAggroRange = MOB_AGGRO_RANGE) {
   let nearest = null;
   let nearestDistance = Infinity;
+  const rangeLimit = Math.max(0.25, Number(maxAggroRange) || MOB_AGGRO_RANGE);
 
   for (const player of players.values()) {
     if (player.hp <= 0) {
       continue;
     }
     const d = distance(mob, player);
-    if (d <= MOB_AGGRO_RANGE && d < nearestDistance) {
+    if (d <= rangeLimit && d < nearestDistance) {
       nearest = player;
       nearestDistance = d;
     }
   }
 
   return { player: nearest, dist: nearestDistance };
+}
+
+function triggerMobAttackAnimation(mob, targetDir, now = Date.now(), abilityId = "") {
+  if (!mob) {
+    return;
+  }
+  const normalized = normalizeDirection(Number(targetDir?.dx) || 0, Number(targetDir?.dy) || 0);
+  if (normalized) {
+    mob.lastBiteDirection = normalized;
+  }
+  mob.lastAttackAbilityId = String(abilityId || "").trim().slice(0, 64);
+  mob.lastAttackAt = now;
+  mob.biteCounter = (Number(mob.biteCounter) + 1) & 0xff;
+}
+
+function spawnMobProjectileAbility(mob, abilityDef, abilityLevel, targetDir, now = Date.now()) {
+  if (!mob || !abilityDef || !targetDir) {
+    return false;
+  }
+  const normalized = normalizeDirection(targetDir.dx, targetDir.dy);
+  if (!normalized) {
+    return false;
+  }
+
+  const speed = Math.max(0.1, Number(abilityDef.speed) || 1);
+  const range = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 6);
+  const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
+  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
+  const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
+  const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
+  const dotSchool = String(abilityDef.dotSchool || "generic").trim().toLowerCase() || "generic";
+  const projectileCount = clamp(Math.floor(Number(abilityDef.projectileCount) || 1), 1, 12);
+  const spreadDeg =
+    Number(abilityDef.spreadDeg) > 0 ? Number(abilityDef.spreadDeg) : projectileCount > 1 ? 16 : 0;
+  const spreadTotalRad = (spreadDeg * Math.PI) / 180;
+
+  for (let i = 0; i < projectileCount; i += 1) {
+    const ratio = projectileCount <= 1 ? 0.5 : i / (projectileCount - 1);
+    const angleOffset = projectileCount <= 1 ? 0 : (ratio - 0.5) * spreadTotalRad;
+    const dir = projectileCount <= 1 ? normalized : rotateDirection(normalized, angleOffset);
+    const startOffset = 0.9 + i * 0.04;
+    const projectile = {
+      id: String(nextProjectileId++),
+      ownerId: `mob:${String(mob.id)}`,
+      sourceMobId: String(mob.id),
+      targetType: "player",
+      x: clamp(mob.x + dir.dx * startOffset, 0, MAP_WIDTH - 1),
+      y: clamp(mob.y + dir.dy * startOffset, 0, MAP_HEIGHT - 1),
+      dx: dir.dx,
+      dy: dir.dy,
+      speed,
+      ttlMs,
+      createdAt: now,
+      damageMin,
+      damageMax,
+      hitRadius: clamp(Number(abilityDef.projectileHitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8),
+      explosionRadius: Math.max(0, Number(abilityDef.explosionRadius) || 0),
+      explosionDamageMultiplier: clamp(Number(abilityDef.explosionDamageMultiplier) || 0, 0, 1),
+      slowDurationMs: Math.max(0, Number(abilityDef.slowDurationMs) || 0),
+      slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
+      stunDurationMs: Math.max(0, Number(abilityDef.stunDurationMs) || 0),
+      dotDamageMin: Math.max(0, Number(dotDamageMin) || 0),
+      dotDamageMax: Math.max(0, Number(dotDamageMax) || 0),
+      dotDurationMs,
+      dotSchool,
+      explodeOnExpire: abilityDef.explodeOnExpire !== false,
+      homingRange: Math.max(0, Number(abilityDef.homingRange) || 0),
+      homingTurnRate: Math.max(0, Number(abilityDef.homingTurnRate) || 0),
+      abilityId: abilityDef.id,
+      emitProjectiles: null
+    };
+    projectiles.set(projectile.id, projectile);
+  }
+
+  return true;
+}
+
+function executeMobAbilityAgainstPlayer(mob, player, abilityEntry, now = Date.now()) {
+  if (!mob || !player || !abilityEntry) {
+    return false;
+  }
+  const abilityId = String(abilityEntry.abilityId || "").trim();
+  if (!abilityId) {
+    return false;
+  }
+  const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(abilityId);
+  if (!baseAbilityDef) {
+    return false;
+  }
+  const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, abilityEntry);
+  const abilityLevel = clamp(Math.floor(Number(abilityEntry.level) || 1), 1, 255);
+  const dir = normalizeDirection(player.x - mob.x, player.y - mob.y);
+  if (!dir) {
+    return false;
+  }
+  const dist = distance(mob, player);
+  const kind = String(abilityDef.kind || "").trim().toLowerCase();
+
+  if (kind === "projectile") {
+    const casted = spawnMobProjectileAbility(mob, abilityDef, abilityLevel, dir, now);
+    if (casted) {
+      triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
+    }
+    return casted;
+  }
+
+  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
+  const rollDamage = () => randomInt(clamp(damageMin, 0, 255), clamp(Math.max(damageMin, damageMax), 0, 255));
+
+  if (kind === "meleecone") {
+    const range = Math.max(0.2, getAbilityRangeForLevel(abilityDef, abilityLevel) || MOB_ATTACK_RANGE);
+    if (dist > range) {
+      return false;
+    }
+    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
+    const dealt = applyDamageToPlayer(player, rollDamage(), now);
+    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
+    return true;
+  }
+
+  if (kind === "selfarea") {
+    const radius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.radius) || 0.2);
+    if (dist > radius) {
+      return false;
+    }
+    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
+    queueExplosionEvent(mob.x, mob.y, radius, abilityDef.id);
+    const dealt = applyDamageToPlayer(player, rollDamage(), now);
+    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
+    return true;
+  }
+
+  if (kind === "area") {
+    const castRange = Math.max(0, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+    const radius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.radius) || 0.2);
+    if (dist > castRange + radius) {
+      return false;
+    }
+    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
+    const impactDistance = castRange > 0 ? clamp(dist, 0, castRange) : 0;
+    const impactX = clamp(mob.x + dir.dx * impactDistance, 0, MAP_WIDTH - 1);
+    const impactY = clamp(mob.y + dir.dy * impactDistance, 0, MAP_HEIGHT - 1);
+    queueExplosionEvent(impactX, impactY, radius, abilityDef.id);
+    const dealt = applyDamageToPlayer(player, rollDamage(), now);
+    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
+    return true;
+  }
+
+  if (kind === "beam") {
+    const beamRange = Math.max(0.5, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0.5);
+    const halfWidth = Math.max(0.15, (Number(abilityDef.beamWidth) || 0.8) * 0.5);
+    const relX = player.x - mob.x;
+    const relY = player.y - mob.y;
+    const along = relX * dir.dx + relY * dir.dy;
+    const perpendicular = Math.abs(relX * dir.dy - relY * dir.dx);
+    if (along < 0 || along > beamRange || perpendicular > halfWidth + 0.4) {
+      return false;
+    }
+    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
+    const dealt = applyDamageToPlayer(player, rollDamage(), now);
+    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
+    return true;
+  }
+
+  return false;
+}
+
+function startMobAbilityCast(mob, targetPlayer, abilityEntry, now = Date.now()) {
+  if (!mob || !targetPlayer || !abilityEntry || mob.activeCast) {
+    return false;
+  }
+  const abilityId = String(abilityEntry.abilityId || "").trim();
+  if (!abilityId) {
+    return false;
+  }
+  const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(abilityId);
+  if (!baseAbilityDef) {
+    return false;
+  }
+  const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, abilityEntry);
+  const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
+  if (castMs <= 0) {
+    return false;
+  }
+  const dir = normalizeDirection(targetPlayer.x - mob.x, targetPlayer.y - mob.y);
+  if (!dir) {
+    return false;
+  }
+
+  mob.activeCast = {
+    abilityId,
+    abilityLevel: clamp(Math.floor(Number(abilityEntry.level) || 1), 1, 255),
+    abilityEntry:
+      abilityEntry && typeof abilityEntry === "object"
+        ? JSON.parse(JSON.stringify(abilityEntry))
+        : null,
+    targetPlayerId: String(targetPlayer.id),
+    dx: dir.dx,
+    dy: dir.dy,
+    durationMs: castMs,
+    startedAt: now,
+    endsAt: now + castMs
+  };
+  mob.castStateVersion = (Number(mob.castStateVersion) + 1) & 0xffff;
+  return true;
+}
+
+function completeMobAbilityCast(mob, now = Date.now()) {
+  if (!mob || !mob.activeCast) {
+    return false;
+  }
+  const cast = mob.activeCast;
+  const targetPlayer = players.get(String(cast.targetPlayerId || ""));
+  const abilityEntry =
+    cast.abilityEntry && typeof cast.abilityEntry === "object"
+      ? cast.abilityEntry
+      : {
+          abilityId: String(cast.abilityId || ""),
+          level: clamp(Math.floor(Number(cast.abilityLevel) || 1), 1, 255)
+        };
+  clearMobCast(mob);
+  if (!targetPlayer || targetPlayer.hp <= 0) {
+    return false;
+  }
+  return executeMobAbilityAgainstPlayer(mob, targetPlayer, abilityEntry, now);
+}
+
+function pickMobAbilityToCast(mob, targetPlayer, dist, now = Date.now()) {
+  const combat = getMobCombatProfile(mob);
+  const entries = Array.isArray(combat.abilities) ? combat.abilities : [];
+  if (!entries.length) {
+    return null;
+  }
+
+  const candidates = [];
+  let totalWeight = 0;
+  for (const entry of entries) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const abilityId = String(entry.abilityId || "").trim();
+    if (!abilityId || !ABILITY_CONFIG.abilityDefs.has(abilityId)) {
+      continue;
+    }
+    const minRange = Math.max(0, Number(entry.minRange) || 0);
+    const maxRange = Math.max(minRange, Number(entry.maxRange) || minRange);
+    if (dist < minRange || dist > maxRange) {
+      continue;
+    }
+    const castChance = clamp(Number(entry.castChance), 0, 1);
+    if (Number.isFinite(castChance) && castChance < 1 && Math.random() > castChance) {
+      continue;
+    }
+    const cooldownMs = Math.max(0, Math.floor(Number(entry.cooldownMs) || 0));
+    const cooldownKey = `ability:${abilityId}`;
+    const readyAt = mob.abilityCooldowns instanceof Map ? Number(mob.abilityCooldowns.get(cooldownKey) || 0) : 0;
+    if (readyAt > now) {
+      continue;
+    }
+    const weight = Math.max(0.01, Number(entry.weight) || 1);
+    totalWeight += weight;
+    candidates.push({ entry, weight, cooldownKey, cooldownMs });
+  }
+
+  if (!candidates.length) {
+    return null;
+  }
+  let roll = Math.random() * totalWeight;
+  for (const candidate of candidates) {
+    roll -= candidate.weight;
+    if (roll <= 0) {
+      return candidate;
+    }
+  }
+  return candidates[candidates.length - 1];
+}
+
+function tryMobCastConfiguredAbility(mob, targetPlayer, dist, now = Date.now()) {
+  const picked = pickMobAbilityToCast(mob, targetPlayer, dist, now);
+  if (!picked) {
+    return false;
+  }
+
+  if (!(mob.abilityCooldowns instanceof Map)) {
+    mob.abilityCooldowns = new Map();
+  }
+  const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(String(picked.entry.abilityId || ""));
+  const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, picked.entry);
+  const castMs = Math.max(0, Number(abilityDef?.castMs) || 0);
+  if (castMs > 0) {
+    const started = startMobAbilityCast(mob, targetPlayer, picked.entry, now);
+    if (!started) {
+      return false;
+    }
+    mob.abilityCooldowns.set(picked.cooldownKey, now + Math.max(0, picked.cooldownMs));
+    return true;
+  }
+
+  const used = executeMobAbilityAgainstPlayer(mob, targetPlayer, picked.entry, now);
+  if (!used) {
+    return false;
+  }
+
+  mob.abilityCooldowns.set(picked.cooldownKey, now + Math.max(0, picked.cooldownMs));
+  return true;
+}
+
+function tryMobBasicAttack(mob, targetPlayer, dist, now = Date.now()) {
+  if (!mob || !targetPlayer || targetPlayer.hp <= 0) {
+    return false;
+  }
+  const combat = getMobCombatProfile(mob);
+  const basic = combat.basicAttack && typeof combat.basicAttack === "object" ? combat.basicAttack : null;
+  if (!basic) {
+    return false;
+  }
+
+  const range = Math.max(0.2, Number(basic.range) || MOB_ATTACK_RANGE);
+  if (dist > range) {
+    return false;
+  }
+  const cooldownMs = Math.max(50, Math.floor(Number(basic.cooldownMs) || MOB_ATTACK_COOLDOWN_MS));
+  if (now - Number(mob.lastAttackAt || 0) < cooldownMs) {
+    return false;
+  }
+
+  if (String(basic.type || "melee").toLowerCase() === "ability" && String(basic.abilityId || "").trim()) {
+    const abilityId = String(basic.abilityId || "").trim();
+    const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(abilityId);
+    const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, basic);
+    const castMs = Math.max(0, Number(abilityDef?.castMs) || 0);
+    if (castMs > 0) {
+      const started = startMobAbilityCast(
+        mob,
+        targetPlayer,
+        {
+          abilityId,
+          level: 1
+        },
+        now
+      );
+      if (started) {
+        mob.lastAttackAt = now;
+      }
+      return started;
+    }
+
+    const used = executeMobAbilityAgainstPlayer(
+      mob,
+      targetPlayer,
+      {
+        abilityId,
+        level: 1
+      },
+      now
+    );
+    if (used) {
+      mob.lastAttackAt = now;
+    }
+    return used;
+  }
+
+  const dir = normalizeDirection(targetPlayer.x - mob.x, targetPlayer.y - mob.y);
+  triggerMobAttackAnimation(mob, dir, now);
+  const damageMin = clamp(Math.floor(Number(basic.damageMin) || Number(mob.damageMin) || 1), 0, 255);
+  const damageMax = clamp(Math.floor(Number(basic.damageMax) || Number(mob.damageMax) || damageMin), damageMin, 255);
+  applyDamageToPlayer(targetPlayer, randomInt(damageMin, damageMax), now);
+  return true;
 }
 
 function tickMobs() {
@@ -4157,6 +5752,19 @@ function tickMobs() {
     tickMobDotEffects(mob, now);
     if (!mob.alive) {
       continue;
+    }
+
+    if (mob.activeCast) {
+      if ((Number(mob.stunnedUntil) || 0) > now) {
+        clearMobCast(mob);
+        continue;
+      }
+      if (now >= (Number(mob.activeCast.endsAt) || 0)) {
+        completeMobAbilityCast(mob, now);
+        continue;
+      } else {
+        continue;
+      }
     }
 
     if ((Number(mob.stunnedUntil) || 0) > now) {
@@ -4207,35 +5815,55 @@ function tickMobs() {
       continue;
     }
 
-    const nearestAggro = forcedTarget ? null : getNearestAggroPlayer(mob);
+    const combat = getMobCombatProfile(mob);
+    const behavior = String(combat.behavior || "melee").toLowerCase() === "ranged" ? "ranged" : "melee";
+    const aggroRange = Math.max(0.5, Number(combat.aggroRange) || MOB_AGGRO_RANGE);
+    const nearestAggro = forcedTarget ? null : getNearestAggroPlayer(mob, aggroRange);
     const aggroPlayer = forcedTarget || (nearestAggro ? nearestAggro.player : null);
     const dist = aggroPlayer ? distance(mob, aggroPlayer) : Infinity;
 
     if (aggroPlayer) {
-      if (dist > MOB_ATTACK_RANGE) {
-        const dir = normalizeDirection(aggroPlayer.x - mob.x, aggroPlayer.y - mob.y);
-        if (dir) {
+      const castedAbility = tryMobCastConfiguredAbility(mob, aggroPlayer, dist, now);
+      if (castedAbility) {
+        if (aggroPlayer.hp <= 0) {
+          startMobReturnToSpawn(mob);
+        }
+        continue;
+      }
+
+      const basicAttack = combat.basicAttack && typeof combat.basicAttack === "object" ? combat.basicAttack : null;
+      const basicRange = Math.max(0.2, Number(basicAttack?.range) || MOB_ATTACK_RANGE);
+      const preferredRange =
+        behavior === "ranged"
+          ? Math.max(basicRange, Number(combat.preferredRange) || basicRange)
+          : basicRange;
+      const rangeBand = Math.max(0.3, preferredRange * 0.14);
+      const shouldMoveCloser =
+        behavior === "ranged" ? dist > preferredRange + rangeBand : dist > basicRange;
+      const shouldRetreat = behavior === "ranged" ? dist < Math.max(0.2, preferredRange - rangeBand) : false;
+
+      if (tryMobBasicAttack(mob, aggroPlayer, dist, now)) {
+        if (aggroPlayer.hp <= 0) {
+          startMobReturnToSpawn(mob);
+        }
+        continue;
+      }
+
+      if (shouldMoveCloser || shouldRetreat) {
+        const chaseDir = normalizeDirection(aggroPlayer.x - mob.x, aggroPlayer.y - mob.y);
+        if (chaseDir) {
+          const moveDir = shouldRetreat ? { dx: -chaseDir.dx, dy: -chaseDir.dy } : chaseDir;
           const leashRadius = forcedTarget ? MOB_PROVOKED_LEASH_RADIUS : getMobLeashRadius(mob, now);
+          const speedScale = shouldRetreat ? 0.92 : 1;
           const nextPos = clampToSpawnRadius(
-            mob.x + dir.dx * mobSpeed * dt,
-            mob.y + dir.dy * mobSpeed * dt,
+            mob.x + moveDir.dx * mobSpeed * speedScale * dt,
+            mob.y + moveDir.dy * mobSpeed * speedScale * dt,
             mob.spawnX,
             mob.spawnY,
             leashRadius
           );
           mob.x = nextPos.x;
           mob.y = nextPos.y;
-        }
-      } else if (now - mob.lastAttackAt >= MOB_ATTACK_COOLDOWN_MS) {
-        mob.lastAttackAt = now;
-        const biteDir = normalizeDirection(aggroPlayer.x - mob.x, aggroPlayer.y - mob.y);
-        if (biteDir) {
-          mob.lastBiteDirection = biteDir;
-        }
-        mob.biteCounter = (mob.biteCounter + 1) & 0xff;
-        applyDamageToPlayer(aggroPlayer, randomInt(mob.damageMin, mob.damageMax), now);
-        if (aggroPlayer.hp <= 0) {
-          startMobReturnToSpawn(mob);
         }
       }
       continue;
@@ -5216,12 +6844,27 @@ function broadcastState() {
       });
     }
 
-    const castEvents = buildPlayerCastEventsForRecipient(player, nearbyPlayerObjects, now);
-    if (castEvents.casts.length || castEvents.self) {
-      sendJson(player.ws, {
-        type: "player_casts",
+	    const castEvents = buildPlayerCastEventsForRecipient(player, nearbyPlayerObjects, now);
+	    if (castEvents.casts.length || castEvents.self) {
+	      sendJson(player.ws, {
+	        type: "player_casts",
         casts: castEvents.casts,
         self: castEvents.self
+	      });
+	    }
+	    const nearbyPlayerEffects = buildPlayerEffectEventsForRecipient(player, nearbyPlayerObjects, now);
+	    if (nearbyPlayerEffects.length) {
+	      sendJson(player.ws, {
+	        type: "player_effects_nearby",
+	        effects: nearbyPlayerEffects
+	      });
+	    }
+
+	    const mobCastEvents = buildMobCastEventsForRecipient(player, nearbyMobObjects, now);
+    if (mobCastEvents.length) {
+      sendJson(player.ws, {
+        type: "mob_casts",
+        casts: mobCastEvents
       });
     }
 
@@ -5233,12 +6876,19 @@ function broadcastState() {
       });
     }
 
-    const mobEffectEvents = buildMobEffectEventsForRecipient(player, nearbyMobObjects, now);
-    if (mobEffectEvents.length) {
-      sendBinary(player.ws, encodeMobEffectEventPacket(mobEffectEvents));
-    }
+	    const mobEffectEvents = buildMobEffectEventsForRecipient(player, nearbyMobObjects, now);
+	    if (mobEffectEvents.length) {
+	      sendBinary(player.ws, encodeMobEffectEventPacket(mobEffectEvents));
+	    }
+	    const selfEffectUpdate = buildSelfPlayerEffectUpdate(player, now);
+	    if (selfEffectUpdate) {
+	      sendJson(player.ws, {
+	        type: "player_effects",
+	        ...selfEffectUpdate
+	      });
+	    }
 
-    const areaEffectEvents = buildAreaEffectEventsForRecipient(player, now);
+	    const areaEffectEvents = buildAreaEffectEventsForRecipient(player, now);
     if (areaEffectEvents.length) {
       sendBinary(player.ws, encodeAreaEffectEventPacket(areaEffectEvents));
     }
@@ -5325,7 +6975,8 @@ wss.on("connection", (ws) => {
     type: "hello",
     message: "Send join message with name and classType.",
     classes: CLASS_CONFIG.clientClassDefs,
-    abilities: ABILITY_CONFIG.clientAbilityDefs
+    abilities: ABILITY_CONFIG.clientAbilityDefs,
+    sounds: buildSoundManifest()
   });
 
   ws.on("message", (rawMessage) => {
@@ -5374,19 +7025,30 @@ wss.on("connection", (ws) => {
         maxMana: classDef.baseMana,
         manaRegen: classDef.manaRegen,
         moveSpeed: classDef.movementSpeed,
-        activeHeals: [],
-        activeManaRestores: [],
-        copper: 0,
+	        activeHeals: [],
+	        activeManaRestores: [],
+	        activeDots: new Map(),
+	        copper: 0,
         level: 1,
         exp: 0,
         expToNext: expNeededForLevel(1),
         skillPoints: 0,
         abilityLevels: new Map(classDef.abilities.map((entry) => [entry.id, entry.level])),
         abilityLastUsedAt: new Map(),
-        activeCast: null,
-        castStateVersion: 0,
-        invulnerableUntil: 0,
-        inventorySlots: createEmptyInventorySlots(),
+	        activeCast: null,
+	        castStateVersion: 0,
+	        invulnerableUntil: 0,
+	        stunnedUntil: 0,
+	        stunAppliedAt: 0,
+	        stunDurationMs: 0,
+	        slowUntil: 0,
+	        slowMultiplier: 1,
+	        slowAppliedAt: 0,
+	        slowDurationMs: 0,
+	        burningUntil: 0,
+	        burnAppliedAt: 0,
+	        burnDurationMs: 0,
+	        inventorySlots: createEmptyInventorySlots(),
         input: { dx: 0, dy: 0 },
         lastDirection: { dx: 0, dy: 1 },
         lastSwingDirection: { dx: 0, dy: 1 },
@@ -5394,16 +7056,18 @@ wss.on("connection", (ws) => {
         entitySync: {
           playerSlotsByRealId: new Map(),
           playerRealIdBySlot: new Map(),
-          playerStatesBySlot: new Map(),
-          playerSwingBySlot: new Map(),
-          playerCastVersionBySlot: new Map(),
-          selfCastVersion: null,
+	          playerStatesBySlot: new Map(),
+	          playerSwingBySlot: new Map(),
+	          playerCastVersionBySlot: new Map(),
+	          playerEffectStatesBySlot: new Map(),
+	          selfCastVersion: null,
           freePlayerSlots: [],
           nextPlayerSlot: 1,
           mobSlotsByRealId: new Map(),
           mobRealIdBySlot: new Map(),
           mobStatesBySlot: new Map(),
           mobBiteBySlot: new Map(),
+          mobCastVersionBySlot: new Map(),
           mobMetaSignatureBySlot: new Map(),
           mobEffectStatesBySlot: new Map(),
           freeMobSlots: [],
@@ -5420,10 +7084,11 @@ wss.on("connection", (ws) => {
           lootBagMetaVersionBySlot: new Map(),
           freeLootBagSlots: [],
           nextLootBagSlot: 1,
-          selfState: null,
-          areaEffectStatesById: new Map()
-        }
-      };
+	          selfState: null,
+	          selfEffectState: null,
+	          areaEffectStatesById: new Map()
+	        }
+	      };
 
       const starterItems = normalizeItemEntries(classDef.startingItems);
       if (starterItems.length) {
@@ -5443,7 +7108,8 @@ wss.on("connection", (ws) => {
           maxMana: player.maxMana
         },
         map: { width: MAP_WIDTH, height: MAP_HEIGHT },
-        visibilityRange: VISIBILITY_RANGE
+        visibilityRange: VISIBILITY_RANGE,
+        sounds: buildSoundManifest()
       });
       sendJson(ws, {
         type: "class_defs",
@@ -5464,11 +7130,15 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    if (msg.type === "move") {
-      if (player.hp <= 0) {
-        player.input = { dx: 0, dy: 0 };
-        return;
-      }
+	    if (msg.type === "move") {
+	      if (player.hp <= 0) {
+	        player.input = { dx: 0, dy: 0 };
+	        return;
+	      }
+	      if ((Number(player.stunnedUntil) || 0) > Date.now()) {
+	        player.input = { dx: 0, dy: 0 };
+	        return;
+	      }
 
       const dx = Number(msg.dx);
       const dy = Number(msg.dy);
@@ -5633,11 +7303,13 @@ wss.on("connection", (ws) => {
 });
 
 setInterval(() => {
+  const now = Date.now();
   tickPlayers();
-  tickPlayerCasts(Date.now());
-  tickAreaEffects(Date.now());
+  tickPlayerCasts(now);
+  tickAreaEffects(now);
   tickMobs();
   tickProjectiles();
+  tickLootBags(now);
   broadcastState();
 }, TICK_MS);
 

@@ -33,10 +33,16 @@
   "loot": {
     "bagPickupRange": 2.25,
     "bagClickRange": 1.8,
+    "bagDespawnMs": 300000,
     "copperItemId": "copperCoin"
   },
   "inventory": {
     "cols": 8,
     "rows": 2
+  },
+  "audio": {
+    "abilitySpatialMaxDistance": 15,
+    "abilityPanDistance": 15,
+    "projectileMaxConcurrent": 10
   }
 }

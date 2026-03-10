@@ -10,6 +10,7 @@ const hudPos = document.getElementById("hud-pos");
 const classTypeSelect = document.getElementById("classType");
 const actionUi = document.getElementById("action-ui");
 const resourceBars = document.getElementById("resource-bars");
+const debuffIcons = document.getElementById("debuff-icons");
 const hpPredictFill = document.getElementById("hp-predict-fill");
 const hpFill = document.getElementById("hp-fill");
 const hpText = document.getElementById("hp-text");
@@ -154,12 +155,35 @@ const movementSync = {
   lastSentAt: 0
 };
 const ABILITY_AUDIO_EVENTS = ["channel", "cast", "hit"];
+const ABILITY_SPATIAL_LEGACY_FLYING = Object.freeze({
+  arcanemissiles: "arcane_missile_flying",
+  frostbolt: "frostbolt_flying"
+});
+const DEFAULT_SPATIAL_AUDIO_CONFIG = Object.freeze({
+  abilitySpatialMaxDistance: 15,
+  abilityPanDistance: 15,
+  projectileMaxConcurrent: 10
+});
+const SPATIAL_AUDIO_MISSING_RETRY_MS = 2500;
+const spatialAudioConfig = {
+  ...DEFAULT_SPATIAL_AUDIO_CONFIG
+};
 const abilityAudioRegistry = new Map();
-const orcBerserkerAudio = {
-  attack: null,
-  death: null,
-  lastDeathPlayedAt: 0,
-  attackByMob: new Map()
+const availableSoundUrls = new Set();
+let soundManifestLoaded = false;
+const mobEventAudioState = {
+  resolvedUrlByEvent: new Map(),
+  lastPlayedAtByEventKey: new Map()
+};
+const spatialAudioState = {
+  context: null,
+  masterGain: null,
+  resolvedUrlByEvent: new Map(),
+  oneShotCache: new Map(),
+  loopSources: new Map(),
+  loopPending: new Set(),
+  loopSlotSet: new Set(),
+  lastEventAtByKey: new Map()
 };
 const swordSwing = {
   activeUntil: 0,
@@ -182,6 +206,7 @@ const mouseState = {
 const remotePlayerSwings = new Map();
 const remotePlayerCasts = new Map();
 const remoteMobBites = new Map();
+const remoteMobCasts = new Map();
 const remoteMobStuns = new Map();
 const remoteMobSlows = new Map();
 const remoteMobBurns = new Map();
@@ -199,6 +224,9 @@ const orcWalkRuntime = new Map();
 const skeletonWalkFramesCache = new Map();
 const skeletonNoSwordWalkFramesCache = new Map();
 const skeletonWalkRuntime = new Map();
+const skeletonArcherWalkFramesCache = new Map();
+const skeletonArcherNoBowWalkFramesCache = new Map();
+const skeletonArcherWalkRuntime = new Map();
 const warriorAnimRuntime = new Map();
 const snapshots = [];
 const floatingDamageNumbers = [];
@@ -238,6 +266,14 @@ const dpsState = {
   selectedWindowSec: 60,
   samples: []
 };
+const selfNegativeEffects = {
+  stun: null,
+  slow: null,
+  burn: null
+};
+const remotePlayerStuns = new Map();
+const remotePlayerSlows = new Map();
+const remotePlayerBurns = new Map();
 const entityRuntime = {
   self: null,
   players: new Map(),
@@ -273,9 +309,15 @@ function normalizeDirection(dx, dy) {
   };
 }
 
-function isOrcBerserkerMobName(name) {
-  const lower = String(name || "").toLowerCase();
-  return lower.includes("orc") && lower.includes("berserker");
+function normalizeMobAudioId(value) {
+  return String(value || "")
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/\s+/g, "_")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function sanitizeCssColor(value) {
@@ -350,6 +392,9 @@ function normalizeMobRenderStyle(rawStyle) {
 
 function detectMobSpriteTypeFromName(name) {
   const lower = String(name || "").toLowerCase();
+  if (lower.includes("skeleton") && lower.includes("archer")) {
+    return "skeleton_archer";
+  }
   if (lower.includes("skeleton")) {
     return "skeleton";
   }
@@ -384,7 +429,15 @@ function getMobSpriteType(mob) {
   const configured = String((style && style.spriteType) || "").toLowerCase();
   const normalized =
     configured === "orcberserker" || configured === "orc_berserker" ? "orc" : configured;
-  if (normalized === "zombie" || normalized === "skeleton" || normalized === "creeper" || normalized === "spider" || normalized === "orc" || normalized === "basic") {
+  if (
+    normalized === "zombie" ||
+    normalized === "skeleton" ||
+    normalized === "skeleton_archer" ||
+    normalized === "creeper" ||
+    normalized === "spider" ||
+    normalized === "orc" ||
+    normalized === "basic"
+  ) {
     return normalized;
   }
   return detectMobSpriteTypeFromName(mob && mob.name);
@@ -393,10 +446,20 @@ function getMobSpriteType(mob) {
 function getMobAttackVisualType(mob) {
   const style = getMobRenderStyle(mob);
   const configured = String((style && style.attackVisual) || "").toLowerCase();
-  if (configured === "bite" || configured === "sword" || configured === "dual_axes" || configured === "ignition" || configured === "none") {
+  if (
+    configured === "bite" ||
+    configured === "sword" ||
+    configured === "dual_axes" ||
+    configured === "ignition" ||
+    configured === "bow" ||
+    configured === "none"
+  ) {
     return configured;
   }
   const spriteType = getMobSpriteType(mob);
+  if (spriteType === "skeleton_archer") {
+    return "bow";
+  }
   if (spriteType === "skeleton") {
     return "sword";
   }
@@ -583,7 +646,8 @@ function getAbilityAudioState(abilityId, eventType, createIfMissing = true) {
       audio: null,
       status: "idle",
       playing: false,
-      lastPlayedAt: 0
+      lastPlayedAt: 0,
+      missingAt: 0
     };
   }
   return bundle[eventName] || null;
@@ -591,6 +655,77 @@ function getAbilityAudioState(abilityId, eventType, createIfMissing = true) {
 
 function getAbilityAudioUrl(abilityId, eventType) {
   return `/sounds/abilities/${encodeURIComponent(String(abilityId || "").trim())}/${eventType}.mp3`;
+}
+
+function normalizeSoundUrlKey(url) {
+  const raw = String(url || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const withoutQuery = raw.split("?")[0];
+  const withoutOrigin = withoutQuery.replace(/^https?:\/\/[^/]+/i, "");
+  return withoutOrigin.toLowerCase();
+}
+
+function isSoundUrlAvailable(url) {
+  const key = normalizeSoundUrlKey(url);
+  if (!key) {
+    return false;
+  }
+  if (!soundManifestLoaded) {
+    return true;
+  }
+  return availableSoundUrls.has(key);
+}
+
+function filterAvailableSoundUrls(candidates) {
+  const filtered = [];
+  const seen = new Set();
+  for (const url of Array.isArray(candidates) ? candidates : []) {
+    const key = normalizeSoundUrlKey(url);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    if (!isSoundUrlAvailable(url)) {
+      continue;
+    }
+    filtered.push(url);
+  }
+  return filtered;
+}
+
+function applySoundManifest(payload) {
+  if (!payload || !Array.isArray(payload.availableUrls)) {
+    return;
+  }
+  const urls = payload.availableUrls;
+  soundManifestLoaded = true;
+  availableSoundUrls.clear();
+  for (const url of urls) {
+    const key = normalizeSoundUrlKey(url);
+    if (!key) {
+      continue;
+    }
+    availableSoundUrls.add(key);
+  }
+  spatialAudioState.resolvedUrlByEvent.clear();
+  mobEventAudioState.resolvedUrlByEvent.clear();
+  for (const bundle of abilityAudioRegistry.values()) {
+    if (!bundle || typeof bundle !== "object") {
+      continue;
+    }
+    for (const eventName of ABILITY_AUDIO_EVENTS) {
+      const state = bundle[eventName];
+      if (!state || typeof state !== "object") {
+        continue;
+      }
+      if (state.status === "missing") {
+        state.status = "idle";
+      }
+      state.missingAt = 0;
+    }
+  }
 }
 
 function applyAbilityAudioDefaults(audio, eventType) {
@@ -608,14 +743,481 @@ function applyAbilityAudioDefaults(audio, eventType) {
   }
 }
 
+function applyGameplayClientConfig(payload) {
+  const gameplay = payload && typeof payload === "object" ? payload : {};
+  const audio = gameplay.audio && typeof gameplay.audio === "object" ? gameplay.audio : {};
+  spatialAudioConfig.abilitySpatialMaxDistance = clamp(
+    Number(audio.abilitySpatialMaxDistance) || DEFAULT_SPATIAL_AUDIO_CONFIG.abilitySpatialMaxDistance,
+    1,
+    200
+  );
+  spatialAudioConfig.abilityPanDistance = clamp(
+    Number(audio.abilityPanDistance) || DEFAULT_SPATIAL_AUDIO_CONFIG.abilityPanDistance,
+    1,
+    200
+  );
+  spatialAudioConfig.projectileMaxConcurrent = clamp(
+    Math.floor(Number(audio.projectileMaxConcurrent) || DEFAULT_SPATIAL_AUDIO_CONFIG.projectileMaxConcurrent),
+    1,
+    64
+  );
+}
+
+function ensureSpatialAudioContext() {
+  if (spatialAudioState.context) {
+    return spatialAudioState.context;
+  }
+  const Ctx = globalThis.AudioContext || globalThis.webkitAudioContext;
+  if (!Ctx) {
+    return null;
+  }
+  const context = new Ctx();
+  const masterGain = context.createGain();
+  masterGain.gain.value = 1;
+  masterGain.connect(context.destination);
+  spatialAudioState.context = context;
+  spatialAudioState.masterGain = masterGain;
+  return context;
+}
+
+function resumeSpatialAudioContext() {
+  const context = ensureSpatialAudioContext();
+  if (!context) {
+    return;
+  }
+  if (context.state === "suspended") {
+    context.resume().catch(() => {});
+  }
+}
+
+function getSpatialListenerPosition() {
+  const self = getCurrentSelf();
+  if (!self) {
+    return null;
+  }
+  return {
+    x: Number(self.x) + 0.5,
+    y: Number(self.y) + 0.5
+  };
+}
+
+function computeSpatialMix(sourceX, sourceY) {
+  const listener = getSpatialListenerPosition();
+  if (!listener) {
+    return null;
+  }
+  const dx = Number(sourceX) + 0.5 - listener.x;
+  const dy = Number(sourceY) + 0.5 - listener.y;
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    return null;
+  }
+  const maxDistance = Math.max(0.5, Number(spatialAudioConfig.abilitySpatialMaxDistance) || 15);
+  const distance = Math.hypot(dx, dy);
+  const linear = clamp(1 - distance / maxDistance, 0, 1);
+  if (linear <= 0) {
+    return null;
+  }
+  const panDistance = Math.max(0.5, Number(spatialAudioConfig.abilityPanDistance) || maxDistance);
+  return {
+    gain: linear * linear,
+    pan: clamp(dx / panDistance, -1, 1)
+  };
+}
+
+function getSpatialAudioBufferRecord(url, createIfMissing = true) {
+  const key = String(url || "");
+  if (!key) {
+    return null;
+  }
+  let record = spatialAudioState.oneShotCache.get(key);
+  if (!record && createIfMissing) {
+    record = {
+      status: "idle",
+      buffer: null,
+      promise: null,
+      missingAt: 0
+    };
+    spatialAudioState.oneShotCache.set(key, record);
+  }
+  return record || null;
+}
+
+function loadSpatialAudioBuffer(url) {
+  const key = String(url || "");
+  if (!key) {
+    return Promise.resolve(null);
+  }
+  const context = ensureSpatialAudioContext();
+  if (!context) {
+    return Promise.resolve(null);
+  }
+  const record = getSpatialAudioBufferRecord(key, true);
+  if (!record) {
+    return Promise.resolve(null);
+  }
+  if (record.status === "ready" && record.buffer) {
+    return Promise.resolve(record.buffer);
+  }
+  if (record.status === "missing") {
+    const now = performance.now();
+    if (now - Number(record.missingAt || 0) < SPATIAL_AUDIO_MISSING_RETRY_MS) {
+      return Promise.resolve(null);
+    }
+    record.status = "idle";
+  }
+  if (record.status === "loading" && record.promise) {
+    return record.promise;
+  }
+
+  record.status = "loading";
+  record.missingAt = 0;
+  record.promise = fetch(key, { cache: "force-cache" })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`missing:${response.status}`);
+      }
+      return response.arrayBuffer();
+    })
+    .then((arrayBuffer) => context.decodeAudioData(arrayBuffer.slice(0)))
+    .then((buffer) => {
+      record.status = "ready";
+      record.buffer = buffer || null;
+      record.promise = null;
+      return record.buffer;
+    })
+    .catch(() => {
+      record.status = "missing";
+      record.buffer = null;
+      record.promise = null;
+      record.missingAt = performance.now();
+      return null;
+    });
+  return record.promise;
+}
+
+function setSpatialNodeMix(runtime, mix, baseGain) {
+  if (!runtime || !runtime.gainNode) {
+    return;
+  }
+  const gain = mix ? mix.gain : 0;
+  runtime.gainNode.gain.value = Math.max(0, Number(baseGain) || 1) * gain;
+  if (runtime.pannerNode) {
+    runtime.pannerNode.pan.value = mix ? mix.pan : 0;
+  }
+}
+
+function stopSpatialLoop(loopKey) {
+  const key = String(loopKey || "");
+  if (!key) {
+    return;
+  }
+  const runtime = spatialAudioState.loopSources.get(key);
+  if (!runtime) {
+    return;
+  }
+  spatialAudioState.loopSources.delete(key);
+  spatialAudioState.loopPending.delete(key);
+  try {
+    runtime.source.stop();
+  } catch (_error) {
+    // Ignore stop race conditions.
+  }
+  try {
+    runtime.source.disconnect();
+  } catch (_error) {
+    // Ignore disconnect race conditions.
+  }
+  try {
+    runtime.gainNode.disconnect();
+  } catch (_error) {
+    // Ignore disconnect race conditions.
+  }
+  if (runtime.pannerNode) {
+    try {
+      runtime.pannerNode.disconnect();
+    } catch (_error) {
+      // Ignore disconnect race conditions.
+    }
+  }
+}
+
+function stopAllSpatialLoops() {
+  for (const key of Array.from(spatialAudioState.loopSources.keys())) {
+    stopSpatialLoop(key);
+  }
+  spatialAudioState.loopPending.clear();
+}
+
+function getAbilityAudioUrlCandidates(abilityId, eventType) {
+  const id = toAbilityAudioId(abilityId);
+  const eventName = String(eventType || "").trim().toLowerCase();
+  if (!id) {
+    return [];
+  }
+  let candidates = [];
+  if (eventName === "flying") {
+    candidates = [`/sounds/abilities/${encodeURIComponent(id)}/flying.mp3`];
+    const legacy = ABILITY_SPATIAL_LEGACY_FLYING[id];
+    if (legacy) {
+      candidates.push(`/sounds/${encodeURIComponent(legacy)}.mp3`);
+    }
+    candidates.push(`/sounds/abilities/${encodeURIComponent(id)}/cast.mp3`);
+    return filterAvailableSoundUrls(candidates);
+  }
+  candidates = [getAbilityAudioUrl(id, eventName)];
+  if (eventName === "hit") {
+    // Some instant abilities only provide cast audio; allow hit->cast fallback.
+    candidates.push(getAbilityAudioUrl(id, "cast"));
+  }
+  return filterAvailableSoundUrls(candidates);
+}
+
+async function resolveAbilityAudioUrl(abilityId, eventType) {
+  const id = toAbilityAudioId(abilityId);
+  const eventName = String(eventType || "").trim().toLowerCase();
+  if (!id || !eventName) {
+    return null;
+  }
+  const cacheKey = `${id}:${eventName}`;
+  if (spatialAudioState.resolvedUrlByEvent.has(cacheKey)) {
+    return spatialAudioState.resolvedUrlByEvent.get(cacheKey);
+  }
+
+  const candidates = getAbilityAudioUrlCandidates(id, eventName);
+  for (const url of candidates) {
+    const buffer = await loadSpatialAudioBuffer(url);
+    if (buffer) {
+      spatialAudioState.resolvedUrlByEvent.set(cacheKey, url);
+      return url;
+    }
+  }
+
+  spatialAudioState.resolvedUrlByEvent.set(cacheKey, null);
+  return null;
+}
+
+function playSpatialAbilityAudioEvent(
+  abilityId,
+  eventType,
+  sourceX,
+  sourceY,
+  now = performance.now(),
+  baseGain = 1,
+  throttleKey = "",
+  throttleMs = 0
+) {
+  const mix = computeSpatialMix(sourceX, sourceY);
+  if (!mix) {
+    return;
+  }
+
+  const key = String(throttleKey || "");
+  if (key && throttleMs > 0) {
+    const last = Number(spatialAudioState.lastEventAtByKey.get(key) || 0);
+    if (now - last < throttleMs) {
+      return;
+    }
+    spatialAudioState.lastEventAtByKey.set(key, now);
+  }
+
+  resumeSpatialAudioContext();
+  const context = ensureSpatialAudioContext();
+  if (!context || !spatialAudioState.masterGain) {
+    return;
+  }
+
+  resolveAbilityAudioUrl(abilityId, eventType).then((url) => {
+    if (!url) {
+      return;
+    }
+    const record = getSpatialAudioBufferRecord(url, false);
+    const buffer = record && record.buffer;
+    if (!buffer) {
+      return;
+    }
+    const currentMix = computeSpatialMix(sourceX, sourceY);
+    if (!currentMix) {
+      return;
+    }
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = false;
+    const gainNode = context.createGain();
+    gainNode.gain.value = Math.max(0, Number(baseGain) || 1) * currentMix.gain;
+
+    if (typeof context.createStereoPanner === "function") {
+      const pannerNode = context.createStereoPanner();
+      pannerNode.pan.value = currentMix.pan;
+      source.connect(gainNode);
+      gainNode.connect(pannerNode);
+      pannerNode.connect(spatialAudioState.masterGain);
+    } else {
+      source.connect(gainNode);
+      gainNode.connect(spatialAudioState.masterGain);
+    }
+
+    try {
+      source.start();
+    } catch (_error) {
+      // Ignore aborted starts.
+    }
+  });
+}
+
+function ensureSpatialAbilityLoop(loopKey, abilityId, eventType, sourceX, sourceY, baseGain, frameNow) {
+  const key = String(loopKey || "");
+  if (!key) {
+    return;
+  }
+
+  const mix = computeSpatialMix(sourceX, sourceY);
+  if (!mix) {
+    stopSpatialLoop(key);
+    return;
+  }
+
+  const existing = spatialAudioState.loopSources.get(key);
+  if (existing) {
+    const normalizedAbilityId = toAbilityAudioId(abilityId);
+    const normalizedEvent = String(eventType || "").toLowerCase();
+    if (existing.abilityId !== normalizedAbilityId || existing.eventType !== normalizedEvent) {
+      stopSpatialLoop(key);
+    } else {
+      existing.worldX = sourceX;
+      existing.worldY = sourceY;
+      existing.lastSeenAt = frameNow;
+      setSpatialNodeMix(existing, mix, baseGain);
+      return;
+    }
+  }
+  if (spatialAudioState.loopPending.has(key)) {
+    return;
+  }
+
+  spatialAudioState.loopPending.add(key);
+  resumeSpatialAudioContext();
+  const context = ensureSpatialAudioContext();
+  if (!context || !spatialAudioState.masterGain) {
+    spatialAudioState.loopPending.delete(key);
+    return;
+  }
+
+  resolveAbilityAudioUrl(abilityId, eventType).then((url) => {
+    spatialAudioState.loopPending.delete(key);
+    if (!url || spatialAudioState.loopSources.has(key)) {
+      return;
+    }
+    const record = getSpatialAudioBufferRecord(url, false);
+    const buffer = record && record.buffer;
+    if (!buffer) {
+      return;
+    }
+    const currentMix = computeSpatialMix(sourceX, sourceY);
+    if (!currentMix) {
+      return;
+    }
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gainNode = context.createGain();
+    let pannerNode = null;
+    if (typeof context.createStereoPanner === "function") {
+      pannerNode = context.createStereoPanner();
+      source.connect(gainNode);
+      gainNode.connect(pannerNode);
+      pannerNode.connect(spatialAudioState.masterGain);
+    } else {
+      source.connect(gainNode);
+      gainNode.connect(spatialAudioState.masterGain);
+    }
+    const runtime = {
+      key,
+      abilityId: toAbilityAudioId(abilityId),
+      eventType: String(eventType || "").toLowerCase(),
+      url,
+      source,
+      gainNode,
+      pannerNode,
+      baseGain: Math.max(0, Number(baseGain) || 1),
+      worldX: sourceX,
+      worldY: sourceY,
+      lastSeenAt: frameNow
+    };
+    setSpatialNodeMix(runtime, currentMix, runtime.baseGain);
+    spatialAudioState.loopSources.set(key, runtime);
+    source.onended = () => {
+      const active = spatialAudioState.loopSources.get(key);
+      if (active && active.source === source) {
+        spatialAudioState.loopSources.delete(key);
+      }
+    };
+    try {
+      source.start();
+    } catch (_error) {
+      spatialAudioState.loopSources.delete(key);
+    }
+  });
+}
+
+function updateSpatialAbilityLoop(loopKey, sourceX, sourceY, baseGain, frameNow) {
+  const runtime = spatialAudioState.loopSources.get(String(loopKey || ""));
+  if (!runtime) {
+    return;
+  }
+  runtime.worldX = sourceX;
+  runtime.worldY = sourceY;
+  runtime.lastSeenAt = frameNow;
+  setSpatialNodeMix(runtime, computeSpatialMix(sourceX, sourceY), baseGain);
+}
+
+function getMobCastLoopKey(mobId) {
+  return `mobcast:${String(mobId || "")}`;
+}
+
+function getProjectileFlightLoopKey(projectileId) {
+  return `projectile:${String(projectileId || "")}`;
+}
+
+function stopMobCastSpatialLoop(mobId) {
+  stopSpatialLoop(getMobCastLoopKey(mobId));
+}
+
+function stopProjectileFlightSpatialLoop(projectileId) {
+  stopSpatialLoop(getProjectileFlightLoopKey(projectileId));
+}
+
+function getRuntimeMobPosition(mobId) {
+  const mob = entityRuntime.mobs.get(Number(mobId));
+  if (!mob) {
+    return null;
+  }
+  return { x: Number(mob.x), y: Number(mob.y) };
+}
+
 function ensureAbilityAudioClip(abilityId, eventType) {
   const state = getAbilityAudioState(abilityId, eventType, true);
-  if (!state || state.status === "ready" || state.status === "loading" || state.status === "missing") {
+  if (!state || state.status === "ready" || state.status === "loading") {
     return state;
+  }
+  if (state.status === "missing") {
+    const now = performance.now();
+    if (now - Number(state.missingAt || 0) < SPATIAL_AUDIO_MISSING_RETRY_MS) {
+      return state;
+    }
+    state.status = "idle";
   }
 
   const normalizedAbilityId = toAbilityAudioId(abilityId);
-  const audio = new Audio(getAbilityAudioUrl(normalizedAbilityId, eventType));
+  const candidates = getAbilityAudioUrlCandidates(normalizedAbilityId, eventType);
+  const audioUrl = candidates.length ? candidates[0] : "";
+  if (!isSoundUrlAvailable(audioUrl)) {
+    state.status = "missing";
+    state.playing = false;
+    return state;
+  }
+  const audio = new Audio(audioUrl);
   applyAbilityAudioDefaults(audio, eventType);
   state.audio = audio;
   state.status = "loading";
@@ -624,11 +1226,13 @@ function ensureAbilityAudioClip(abilityId, eventType) {
   const markReady = () => {
     if (state.status !== "missing") {
       state.status = "ready";
+      state.missingAt = 0;
     }
   };
   const markMissing = () => {
     state.status = "missing";
     state.playing = false;
+    state.missingAt = performance.now();
   };
 
   audio.addEventListener("canplaythrough", markReady, { once: true });
@@ -658,58 +1262,107 @@ function preloadAllAbilityAudio() {
   }
 }
 
-function ensureOrcBerserkerAudioLoaded() {
-  if (!orcBerserkerAudio.attack) {
-    const attack = new Audio("/sounds/mobs/orc_berserker/attack.mp3");
-    attack.preload = "auto";
-    attack.volume = 0.48;
-    orcBerserkerAudio.attack = attack;
+function getMobEventAudioUrlCandidates(mobType, eventType) {
+  const mobId = normalizeMobAudioId(mobType);
+  const eventId = normalizeMobAudioId(eventType);
+  if (!mobId || !eventId) {
+    return [];
   }
-  if (!orcBerserkerAudio.death) {
-    const death = new Audio("/sounds/mobs/orc_berserker/death.mp3");
-    death.preload = "auto";
-    death.volume = 0.58;
-    orcBerserkerAudio.death = death;
-  }
+  return filterAvailableSoundUrls([
+    `/sounds/mobs/${encodeURIComponent(mobId)}/${encodeURIComponent(eventId)}.mp3`
+  ]);
 }
 
-function playOrcBerserkerAttackAudio(mobId, now = performance.now()) {
-  ensureOrcBerserkerAudioLoaded();
-  if (!orcBerserkerAudio.attack) {
-    return;
+async function resolveMobEventAudioUrl(mobType, eventType) {
+  const mobId = normalizeMobAudioId(mobType);
+  const eventId = normalizeMobAudioId(eventType);
+  if (!mobId || !eventId) {
+    return null;
   }
-  const idKey = String(mobId || "");
-  if (!idKey) {
-    return;
+  const cacheKey = `${mobId}:${eventId}`;
+  if (mobEventAudioState.resolvedUrlByEvent.has(cacheKey)) {
+    const cached = mobEventAudioState.resolvedUrlByEvent.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+    mobEventAudioState.resolvedUrlByEvent.delete(cacheKey);
   }
-  const lastPlayedAt = Number(orcBerserkerAudio.attackByMob.get(idKey) || 0);
-  if (now - lastPlayedAt < 150) {
-    return;
+  const candidates = getMobEventAudioUrlCandidates(mobType, eventType);
+  for (const url of candidates) {
+    const buffer = await loadSpatialAudioBuffer(url);
+    if (buffer) {
+      mobEventAudioState.resolvedUrlByEvent.set(cacheKey, url);
+      return url;
+    }
   }
-  orcBerserkerAudio.attackByMob.set(idKey, now);
-  const clip = orcBerserkerAudio.attack.cloneNode();
-  clip.volume = orcBerserkerAudio.attack.volume;
-  const playback = clip.play();
-  if (playback && typeof playback.catch === "function") {
-    playback.catch(() => {});
-  }
+  return null;
 }
 
-function playOrcBerserkerDeathAudio(now = performance.now()) {
-  ensureOrcBerserkerAudioLoaded();
-  if (!orcBerserkerAudio.death) {
+function playSpatialAudioByUrl(
+  url,
+  sourceX,
+  sourceY,
+  now = performance.now(),
+  baseGain = 1,
+  throttleKey = "",
+  throttleMs = 0
+) {
+  const mix = computeSpatialMix(sourceX, sourceY);
+  if (!mix) {
     return;
   }
-  if (now - orcBerserkerAudio.lastDeathPlayedAt < 90) {
+  const key = String(throttleKey || "");
+  if (key && throttleMs > 0) {
+    const last = Number(spatialAudioState.lastEventAtByKey.get(key) || 0);
+    if (now - last < throttleMs) {
+      return;
+    }
+    spatialAudioState.lastEventAtByKey.set(key, now);
+  }
+  resumeSpatialAudioContext();
+  const context = ensureSpatialAudioContext();
+  if (!context || !spatialAudioState.masterGain) {
     return;
   }
-  orcBerserkerAudio.lastDeathPlayedAt = now;
-  const clip = orcBerserkerAudio.death.cloneNode();
-  clip.volume = orcBerserkerAudio.death.volume;
-  const playback = clip.play();
-  if (playback && typeof playback.catch === "function") {
-    playback.catch(() => {});
-  }
+  loadSpatialAudioBuffer(url).then((buffer) => {
+    if (!buffer) {
+      return;
+    }
+    const currentMix = computeSpatialMix(sourceX, sourceY);
+    if (!currentMix) {
+      return;
+    }
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = false;
+    const gainNode = context.createGain();
+    gainNode.gain.value = Math.max(0, Number(baseGain) || 1) * currentMix.gain;
+    if (typeof context.createStereoPanner === "function") {
+      const pannerNode = context.createStereoPanner();
+      pannerNode.pan.value = currentMix.pan;
+      source.connect(gainNode);
+      gainNode.connect(pannerNode);
+      pannerNode.connect(spatialAudioState.masterGain);
+    } else {
+      source.connect(gainNode);
+      gainNode.connect(spatialAudioState.masterGain);
+    }
+    try {
+      source.start();
+    } catch (_error) {
+      // Ignore aborted start.
+    }
+  });
+}
+
+function playMobEventSound(mobType, eventType, sourceX, sourceY, now = performance.now(), baseGain = 0.7, throttleMs = 90) {
+  resolveMobEventAudioUrl(mobType, eventType).then((url) => {
+    if (!url) {
+      return;
+    }
+    const key = `mob:${normalizeMobAudioId(mobType)}:${normalizeMobAudioId(eventType)}:${Math.round(sourceX * 4)}:${Math.round(sourceY * 4)}`;
+    playSpatialAudioByUrl(url, sourceX, sourceY, now, baseGain, key, throttleMs);
+  });
 }
 
 function getAbilityAudioMinIntervalMs(eventType) {
@@ -1096,6 +1749,152 @@ function getDefaultClassId() {
   return "warrior";
 }
 
+function clearSelfNegativeEffects() {
+  selfNegativeEffects.stun = null;
+  selfNegativeEffects.slow = null;
+  selfNegativeEffects.burn = null;
+  if (debuffIcons) {
+    debuffIcons.innerHTML = "";
+    debuffIcons.classList.add("hidden");
+  }
+}
+
+function setSelfNegativeEffectState(key, remainingMs, durationMs, now, extra = {}) {
+  const remaining = Math.max(0, Math.floor(Number(remainingMs) || 0));
+  if (remaining <= 0) {
+    selfNegativeEffects[key] = null;
+    return;
+  }
+  const duration = Math.max(1, Math.floor(Number(durationMs) || remaining));
+  selfNegativeEffects[key] = {
+    startedAt: now - Math.max(0, duration - remaining),
+    endsAt: now + remaining,
+    durationMs: duration,
+    ...extra
+  };
+}
+
+function applyPlayerEffects(msg) {
+  const now = performance.now();
+  setSelfNegativeEffectState("stun", msg && msg.stunnedMs, msg && msg.stunDurationMs, now);
+  setSelfNegativeEffectState("slow", msg && msg.slowedMs, msg && msg.slowDurationMs, now, {
+    multiplierQ: Math.max(1, Math.floor(Number(msg && msg.slowMultiplierQ) || 1000))
+  });
+  setSelfNegativeEffectState("burn", msg && msg.burningMs, msg && msg.burnDurationMs, now);
+}
+
+function applyNearbyPlayerEffects(msg) {
+  if (!Array.isArray(msg && msg.effects)) {
+    return;
+  }
+  const now = performance.now();
+  for (const effect of msg.effects) {
+    if (!effect || typeof effect.id !== "number") {
+      continue;
+    }
+    const id = effect.id;
+    const stunnedMs = Math.max(0, Number(effect.stunnedMs) || 0);
+    const slowedMs = Math.max(0, Number(effect.slowedMs) || 0);
+    const burningMs = Math.max(0, Number(effect.burningMs) || 0);
+    const slowMultiplierQ = Math.max(1, Math.floor(Number(effect.slowMultiplierQ) || 1000));
+
+    if (stunnedMs > 0) {
+      remotePlayerStuns.set(id, { endsAt: now + stunnedMs });
+    } else {
+      remotePlayerStuns.delete(id);
+    }
+    if (slowedMs > 0) {
+      remotePlayerSlows.set(id, {
+        endsAt: now + slowedMs,
+        multiplier: clamp(slowMultiplierQ / 1000, 0.1, 1)
+      });
+    } else {
+      remotePlayerSlows.delete(id);
+    }
+    if (burningMs > 0) {
+      remotePlayerBurns.set(id, { endsAt: now + burningMs });
+    } else {
+      remotePlayerBurns.delete(id);
+    }
+  }
+}
+
+function updateNegativeEffectIcons(now = performance.now()) {
+  if (!debuffIcons) {
+    return;
+  }
+  const defs = [
+    {
+      key: "stun",
+      label: "ST",
+      color: "rgba(252, 219, 95, 0.95)",
+      title: "Stunned"
+    },
+    {
+      key: "slow",
+      label: "SL",
+      color: "rgba(114, 196, 255, 0.95)",
+      title: "Slowed"
+    },
+    {
+      key: "burn",
+      label: "BR",
+      color: "rgba(255, 136, 69, 0.95)",
+      title: "Burning"
+    }
+  ];
+  const entries = [];
+
+  for (const def of defs) {
+    const state = selfNegativeEffects[def.key];
+    if (!state) {
+      continue;
+    }
+    const remainingMs = Math.max(0, Number(state.endsAt) - now);
+    if (remainingMs <= 0) {
+      selfNegativeEffects[def.key] = null;
+      continue;
+    }
+    const durationMs = Math.max(1, Number(state.durationMs) || remainingMs);
+    const ratio = clamp(remainingMs / durationMs, 0, 1);
+    let title = `${def.title} (${(remainingMs / 1000).toFixed(1)}s)`;
+    if (def.key === "slow") {
+      const multiplier = clamp((Number(state.multiplierQ) || 1000) / 1000, 0.1, 1);
+      const slowPct = Math.round((1 - multiplier) * 100);
+      title = `${def.title} ${slowPct}% (${(remainingMs / 1000).toFixed(1)}s)`;
+    }
+    entries.push({
+      ...def,
+      ratio,
+      title
+    });
+  }
+
+  if (!entries.length) {
+    debuffIcons.innerHTML = "";
+    debuffIcons.classList.add("hidden");
+    return;
+  }
+
+  debuffIcons.classList.remove("hidden");
+  debuffIcons.innerHTML = "";
+  for (const entry of entries) {
+    const node = document.createElement("div");
+    node.className = "debuff-icon";
+    node.title = entry.title;
+    const ring = document.createElement("div");
+    ring.className = "debuff-ring";
+    ring.style.setProperty("--ratio", entry.ratio.toFixed(4));
+    ring.style.setProperty("--ring-color", entry.color);
+    const core = document.createElement("div");
+    core.className = "debuff-core";
+    core.textContent = entry.label;
+    node.appendChild(ring);
+    node.appendChild(core);
+    debuffIcons.appendChild(node);
+  }
+}
+
 function updateResourceBars(self) {
   if (!actionUi || !resourceBars || !hpFill || !manaFill || !expFill || !hpText || !manaText || !expText) {
     return;
@@ -1115,6 +1914,7 @@ function updateResourceBars(self) {
     hpText.textContent = "";
     manaText.textContent = "";
     expText.textContent = "";
+    clearSelfNegativeEffects();
     return;
   }
 
@@ -1149,6 +1949,7 @@ function updateResourceBars(self) {
   const expRatio = clamp(exp / expToNext, 0, 1);
   expFill.style.transform = `scaleX(${expRatio})`;
   expText.textContent = `EXP ${Math.floor(exp)}/${Math.floor(expToNext)} (Lv ${Math.max(1, Math.floor(Number(self.level) || 1))})`;
+  updateNegativeEffectIcons(performance.now());
 }
 
 function getSelfAbilityLevel(self, abilityId, fallbackLevel = 1) {
@@ -2211,7 +3012,7 @@ function triggerRemotePlayerSwing(playerId, dx, dy) {
   });
 }
 
-function triggerRemoteMobBite(mobId, dx, dy) {
+function triggerRemoteMobBite(mobId, dx, dy, abilityId = "") {
   const angle = Math.atan2(dy, dx);
   const previous = remoteMobBites.get(mobId);
   const sequence = previous ? (((Number(previous.sequence) || 0) + 1) & 0xff) : 0;
@@ -2224,13 +3025,25 @@ function triggerRemoteMobBite(mobId, dx, dy) {
   const mob = entityRuntime.mobs.get(mobId);
   const meta = entityRuntime.mobMeta.get(mobId);
   const mobName = (mob && mob.name) || (meta && meta.name) || "";
-  const spriteType = getMobSpriteType({
-    id: mobId,
-    name: mobName,
-    renderStyle: (mob && mob.renderStyle) || (meta && meta.renderStyle) || null
-  });
-  if (spriteType === "orc") {
-    playOrcBerserkerAttackAudio(mobId);
+  const mobX = Number((mob && mob.x) ?? 0);
+  const mobY = Number((mob && mob.y) ?? 0);
+  const resolvedAbilityId = toAbilityAudioId(abilityId);
+  if (resolvedAbilityId) {
+    const abilityDef = getActionDefById(resolvedAbilityId);
+    if (Math.max(0, Number(abilityDef.castMs) || 0) <= 0) {
+      playSpatialAbilityAudioEvent(
+        resolvedAbilityId,
+        "cast",
+        mobX,
+        mobY,
+        performance.now(),
+        0.64,
+        `mob-attack:${mobId}:${resolvedAbilityId}`,
+        80
+      );
+    }
+  } else if (mobName) {
+    playMobEventSound(mobName, "attack", mobX, mobY, performance.now(), 0.66, 100);
   }
 }
 
@@ -2259,6 +3072,12 @@ function clearEntityRuntime() {
   entityRuntime.lootBags.clear();
   entityRuntime.lootBagMeta.clear();
   entityRuntime.playerMeta.clear();
+  remoteMobCasts.clear();
+  stopAllSpatialLoops();
+  clearSelfNegativeEffects();
+  remotePlayerStuns.clear();
+  remotePlayerSlows.clear();
+  remotePlayerBurns.clear();
 }
 
 function syncEntityArraysToGameState() {
@@ -2333,6 +3152,67 @@ function applyPlayerCastStates(msg) {
     };
     applyServerCastState(existing, cast);
     remotePlayerCasts.set(cast.id, existing);
+  }
+}
+
+function applyMobCastStates(msg) {
+  if (!Array.isArray(msg && msg.casts)) {
+    return;
+  }
+  const now = performance.now();
+
+  for (const cast of msg.casts) {
+    if (!cast || typeof cast.id !== "number") {
+      continue;
+    }
+    const previous = remoteMobCasts.get(cast.id) || null;
+    if (!cast.active) {
+      if (previous && previous.active) {
+        const completion =
+          previous.durationMs > 0 ? clamp((now - previous.startedAt) / previous.durationMs, 0, 1) : 0;
+        if (completion >= 0.85 && previous.abilityId) {
+          const pos = getRuntimeMobPosition(cast.id);
+          if (pos) {
+            playSpatialAbilityAudioEvent(
+              previous.abilityId,
+              "cast",
+              pos.x,
+              pos.y,
+              now,
+              0.9,
+              `mobcast-finish:${cast.id}`,
+              40
+            );
+            playSpatialAbilityAudioEvent(
+              previous.abilityId,
+              "flying",
+              pos.x,
+              pos.y,
+              now,
+              0.52,
+              `mobcast-flying:${cast.id}`,
+              60
+            );
+          }
+        }
+      }
+      stopMobCastSpatialLoop(cast.id);
+      remoteMobCasts.delete(cast.id);
+      continue;
+    }
+    const existing = previous || {
+      active: false,
+      abilityId: "",
+      startedAt: 0,
+      durationMs: 0
+    };
+    const previousAbilityId = String(existing.abilityId || "");
+    const previousActive = !!existing.active;
+    applyServerCastState(existing, cast);
+    if (previousActive && previousAbilityId && previousAbilityId !== String(existing.abilityId || "")) {
+      stopMobCastSpatialLoop(cast.id);
+    }
+    remoteMobCasts.set(cast.id, existing);
   }
 }
 
@@ -2624,7 +3504,13 @@ async function loadInitialGameConfig() {
       return false;
     }
     const payload = await response.json();
+    if (payload && typeof payload === "object" && payload.sounds) {
+      applySoundManifest(payload.sounds);
+    }
     applyClassAndAbilityDefs(payload.classes, payload.abilities);
+    if (payload && typeof payload === "object" && payload.gameplay) {
+      applyGameplayClientConfig(payload.gameplay);
+    }
     if (Array.isArray(payload.items)) {
       applyItemDefs(payload.items);
     }
@@ -2824,11 +3710,14 @@ function parseEntityBinaryPacket(arrayBuffer) {
     const flags = view.getUint8(offset + 3);
     offset += 4;
 
-    if (flags & DELTA_FLAG_REMOVED) {
-      entityRuntime.players.delete(id);
-      remotePlayerCasts.delete(id);
-      continue;
-    }
+	    if (flags & DELTA_FLAG_REMOVED) {
+	      entityRuntime.players.delete(id);
+	      remotePlayerCasts.delete(id);
+	      remotePlayerStuns.delete(id);
+	      remotePlayerSlows.delete(id);
+	      remotePlayerBurns.delete(id);
+	      continue;
+	    }
 
     const meta = entityRuntime.playerMeta.get(id);
     const entity = entityRuntime.players.get(id) || {
@@ -2888,6 +3777,8 @@ function parseEntityBinaryPacket(arrayBuffer) {
 
     if (flags & DELTA_FLAG_REMOVED) {
       entityRuntime.mobs.delete(id);
+      stopMobCastSpatialLoop(id);
+      remoteMobCasts.delete(id);
       remoteMobStuns.delete(id);
       remoteMobSlows.delete(id);
       remoteMobBurns.delete(id);
@@ -2950,6 +3841,7 @@ function parseEntityBinaryPacket(arrayBuffer) {
 
     if (flags & DELTA_FLAG_REMOVED) {
       entityRuntime.projectiles.delete(id);
+      stopProjectileFlightSpatialLoop(id);
       continue;
     }
 
@@ -3419,8 +4311,12 @@ function connectAndJoin(name, classType) {
     setInventoryVisible(false);
     setSpellbookVisible(false);
     updateInventoryUI();
-    remotePlayerSwings.clear();
-    remotePlayerCasts.clear();
+	    remotePlayerSwings.clear();
+	    remotePlayerCasts.clear();
+	    remotePlayerStuns.clear();
+	    remotePlayerSlows.clear();
+	    remotePlayerBurns.clear();
+	    remoteMobCasts.clear();
     remoteMobBites.clear();
     remoteMobStuns.clear();
     remoteMobSlows.clear();
@@ -3430,7 +4326,7 @@ function connectAndJoin(name, classType) {
     spiderWalkRuntime.clear();
     orcWalkRuntime.clear();
     skeletonWalkRuntime.clear();
-    orcBerserkerAudio.attackByMob.clear();
+    skeletonArcherWalkRuntime.clear();
     warriorAnimRuntime.clear();
     floatingDamageNumbers.length = 0;
     activeExplosions.length = 0;
@@ -3470,6 +4366,9 @@ function connectAndJoin(name, classType) {
     }
 
     if (msg.type === "hello") {
+      if (msg && typeof msg === "object" && msg.sounds) {
+        applySoundManifest(msg.sounds);
+      }
       applyClassAndAbilityDefs(msg.classes, msg.abilities);
       return;
     }
@@ -3481,12 +4380,19 @@ function connectAndJoin(name, classType) {
         name: (pendingJoinInfo && pendingJoinInfo.name) || "You",
         classType: (pendingJoinInfo && pendingJoinInfo.classType) || getDefaultClassId()
       };
+      if (msg && typeof msg === "object" && msg.sounds) {
+        applySoundManifest(msg.sounds);
+      }
       gameState.map = msg.map || gameState.map;
       gameState.visibilityRange = msg.visibilityRange || gameState.visibilityRange;
       snapshots.length = 0;
       lastRenderState = null;
-      remotePlayerSwings.clear();
-      remotePlayerCasts.clear();
+	      remotePlayerSwings.clear();
+	      remotePlayerCasts.clear();
+	      remotePlayerStuns.clear();
+	      remotePlayerSlows.clear();
+	      remotePlayerBurns.clear();
+	      remoteMobCasts.clear();
       remoteMobBites.clear();
       remoteMobStuns.clear();
       remoteMobSlows.clear();
@@ -3496,7 +4402,7 @@ function connectAndJoin(name, classType) {
       spiderWalkRuntime.clear();
       orcWalkRuntime.clear();
       skeletonWalkRuntime.clear();
-      orcBerserkerAudio.attackByMob.clear();
+      skeletonArcherWalkRuntime.clear();
       warriorAnimRuntime.clear();
       floatingDamageNumbers.length = 0;
       activeExplosions.length = 0;
@@ -3579,17 +4485,37 @@ function connectAndJoin(name, classType) {
       return;
     }
 
-    if (msg.type === "mob_bites") {
-      if (Array.isArray(msg.bites)) {
-        for (const bite of msg.bites) {
-          if (!bite || typeof bite.id !== "number") {
-            continue;
-          }
-          triggerRemoteMobBite(bite.id, Number(bite.dx) || 0, Number(bite.dy) || 0);
-        }
-      }
+    if (msg.type === "mob_casts") {
+      applyMobCastStates(msg);
       return;
     }
+
+	    if (msg.type === "player_effects") {
+	      applyPlayerEffects(msg);
+	      return;
+	    }
+
+	    if (msg.type === "player_effects_nearby") {
+	      applyNearbyPlayerEffects(msg);
+	      return;
+	    }
+
+	    if (msg.type === "mob_bites") {
+	      if (Array.isArray(msg.bites)) {
+	        for (const bite of msg.bites) {
+	          if (!bite || typeof bite.id !== "number") {
+	            continue;
+	          }
+	          triggerRemoteMobBite(
+	            bite.id,
+	            Number(bite.dx) || 0,
+	            Number(bite.dy) || 0,
+	            String(bite.abilityId || "")
+	          );
+	        }
+	      }
+	      return;
+	    }
 
     if (msg.type === "mob_effects") {
       applyMobEffects(msg);
@@ -3924,6 +4850,7 @@ function useAbilityAt(abilityId, worldX, worldY) {
   }
   if (castMs <= 0) {
     markAbilityUsedClient(resolvedAbilityId, now);
+    playAbilityAudioEvent(resolvedAbilityId, "cast", now);
   }
   if (resolvedAbilityId === "slash") {
     triggerSwordSwing(worldX, worldY);
@@ -4172,8 +5099,84 @@ function addMobDeathEvents(events) {
     if (!event) {
       continue;
     }
-    if (isOrcBerserkerMobName(event.mobType)) {
-      playOrcBerserkerDeathAudio(now);
+    const mobType = String(event.mobType || "").trim();
+    const x = Number(event.x);
+    const y = Number(event.y);
+    if (!mobType || !Number.isFinite(x) || !Number.isFinite(y)) {
+      continue;
+    }
+    playMobEventSound(mobType, "death", x, y, now, 0.8, 60);
+  }
+}
+
+function updateMobCastSpatialAudio(mobs, frameNow) {
+  const activeMobKeys = new Set();
+  const mobsById = new Map();
+  for (const mob of Array.isArray(mobs) ? mobs : []) {
+    mobsById.set(Number(mob.id), mob);
+  }
+
+  for (const [mobId, castState] of remoteMobCasts.entries()) {
+    const cast = getCastProgress(castState, frameNow);
+    if (!cast) {
+      stopMobCastSpatialLoop(mobId);
+      continue;
+    }
+    const mob = mobsById.get(Number(mobId));
+    if (!mob) {
+      continue;
+    }
+    const abilityId = String(castState.abilityId || "");
+    if (!abilityId) {
+      continue;
+    }
+    const loopKey = getMobCastLoopKey(mobId);
+    activeMobKeys.add(loopKey);
+    ensureSpatialAbilityLoop(loopKey, abilityId, "channel", mob.x, mob.y, 0.55, frameNow);
+    updateSpatialAbilityLoop(loopKey, mob.x, mob.y, 0.55, frameNow);
+  }
+
+  for (const key of Array.from(spatialAudioState.loopSources.keys())) {
+    if (key.startsWith("mobcast:") && !activeMobKeys.has(key)) {
+      stopSpatialLoop(key);
+    }
+  }
+}
+
+function updateProjectileSpatialAudio(projectiles, frameNow) {
+  const candidates = [];
+  for (const projectile of Array.isArray(projectiles) ? projectiles : []) {
+    const abilityId = toAbilityAudioId(projectile.abilityId);
+    if (!abilityId) {
+      continue;
+    }
+    const mix = computeSpatialMix(projectile.x, projectile.y);
+    if (!mix || mix.gain <= 0) {
+      continue;
+    }
+    candidates.push({
+      projectile,
+      abilityId,
+      mix
+    });
+  }
+
+  candidates.sort((a, b) => b.mix.gain - a.mix.gain);
+  const maxConcurrent = Math.max(1, Number(spatialAudioConfig.projectileMaxConcurrent) || 10);
+  const selected = candidates.slice(0, maxConcurrent);
+  const activeProjectileKeys = new Set();
+
+  for (const candidate of selected) {
+    const projectile = candidate.projectile;
+    const loopKey = getProjectileFlightLoopKey(projectile.id);
+    activeProjectileKeys.add(loopKey);
+    ensureSpatialAbilityLoop(loopKey, candidate.abilityId, "flying", projectile.x, projectile.y, 0.58, frameNow);
+    updateSpatialAbilityLoop(loopKey, projectile.x, projectile.y, 0.58, frameNow);
+  }
+
+  for (const key of Array.from(spatialAudioState.loopSources.keys())) {
+    if (key.startsWith("projectile:") && !activeProjectileKeys.has(key)) {
+      stopSpatialLoop(key);
     }
   }
 }
@@ -5873,6 +6876,286 @@ function pruneSkeletonWalkRuntime() {
   }
 }
 
+function drawSkeletonArcherSpriteFrame(targetCtx, palette, pose, options = {}) {
+  const drawBow = options.drawBow !== false;
+  const bob = Math.abs(pose) * 0.8;
+  const legSwing = pose * 2.1;
+  const armSwing = pose * 1.35;
+  const hoodShift = Math.sin(pose * 0.9) * 0.4;
+
+  // Legs.
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 2.6;
+  targetCtx.lineCap = "round";
+  targetCtx.beginPath();
+  targetCtx.moveTo(-2.1, 9.7 + bob);
+  targetCtx.lineTo(-5.3 - legSwing * 0.5, 16 + bob);
+  targetCtx.moveTo(2.1, 9.7 + bob);
+  targetCtx.lineTo(5.3 + legSwing * 0.5, 16 + bob);
+  targetCtx.stroke();
+
+  targetCtx.fillStyle = palette.boneDark;
+  targetCtx.beginPath();
+  targetCtx.arc(-5.3 - legSwing * 0.5, 16 + bob, 1.8, 0, Math.PI * 2);
+  targetCtx.arc(5.3 + legSwing * 0.5, 16 + bob, 1.8, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  // Cloak and torso.
+  targetCtx.fillStyle = palette.cloak;
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 2.1;
+  targetCtx.beginPath();
+  targetCtx.ellipse(0, 5 + bob, 8.6, 7.3, 0, 0, Math.PI * 2);
+  targetCtx.fill();
+  targetCtx.stroke();
+
+  targetCtx.fillStyle = palette.hoodDark;
+  targetCtx.beginPath();
+  targetCtx.ellipse(0, 9 + bob, 5.8, 2.4, 0, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  // Hood.
+  targetCtx.fillStyle = palette.hood;
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 2.2;
+  targetCtx.beginPath();
+  targetCtx.moveTo(-8.8, -3.5 + hoodShift);
+  targetCtx.quadraticCurveTo(0, -15.6 + hoodShift, 8.8, -3.5 + hoodShift);
+  targetCtx.lineTo(6.1, 4.1 + hoodShift);
+  targetCtx.quadraticCurveTo(0, 8.4 + hoodShift, -6.1, 4.1 + hoodShift);
+  targetCtx.closePath();
+  targetCtx.fill();
+  targetCtx.stroke();
+
+  // Skull face.
+  targetCtx.fillStyle = palette.bone;
+  targetCtx.beginPath();
+  targetCtx.arc(0, -3.9 + hoodShift, 6.5, 0, Math.PI * 2);
+  targetCtx.fill();
+  targetCtx.stroke();
+
+  targetCtx.fillStyle = palette.eye;
+  targetCtx.beginPath();
+  targetCtx.ellipse(-2.4, -4.8 + hoodShift, 1.8, 1.2, -0.2, 0, Math.PI * 2);
+  targetCtx.ellipse(2.4, -4.8 + hoodShift, 1.8, 1.2, 0.2, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  targetCtx.beginPath();
+  targetCtx.moveTo(0, -2.5 + hoodShift);
+  targetCtx.lineTo(-0.9, -0.9 + hoodShift);
+  targetCtx.lineTo(0.9, -0.9 + hoodShift);
+  targetCtx.closePath();
+  targetCtx.fill();
+
+  targetCtx.strokeStyle = palette.boneDark;
+  targetCtx.lineWidth = 1.1;
+  targetCtx.beginPath();
+  targetCtx.moveTo(-2.8, 0.2 + hoodShift);
+  targetCtx.lineTo(2.8, 0.2 + hoodShift);
+  targetCtx.stroke();
+
+  // Arms.
+  const leftShoulderX = -5.4;
+  const rightShoulderX = 5.4;
+  const armY = 0.2 + bob * 0.4;
+  const leftHandX = -11.5 - armSwing * 0.65;
+  const leftHandY = 0 + bob - armSwing * 0.3;
+  const rightHandX = 11.7 + armSwing * 0.72;
+  const rightHandY = 1.2 + bob + armSwing * 0.24;
+
+  targetCtx.strokeStyle = palette.outline;
+  targetCtx.lineWidth = 2.3;
+  targetCtx.beginPath();
+  targetCtx.moveTo(leftShoulderX, armY);
+  targetCtx.lineTo(leftHandX, leftHandY);
+  targetCtx.moveTo(rightShoulderX, armY + 0.1);
+  targetCtx.lineTo(rightHandX, rightHandY);
+  targetCtx.stroke();
+
+  targetCtx.fillStyle = palette.boneDark;
+  targetCtx.beginPath();
+  targetCtx.arc(leftHandX, leftHandY, 1.5, 0, Math.PI * 2);
+  targetCtx.arc(rightHandX, rightHandY, 1.5, 0, Math.PI * 2);
+  targetCtx.fill();
+
+  if (drawBow) {
+    // Bow.
+    const bowCx = leftHandX - 0.3;
+    const bowCy = leftHandY - 0.6;
+    targetCtx.strokeStyle = palette.bowDark;
+    targetCtx.lineWidth = 2.1;
+    targetCtx.beginPath();
+    targetCtx.moveTo(bowCx - 0.6, bowCy - 10.2);
+    targetCtx.quadraticCurveTo(bowCx - 6.4, bowCy, bowCx - 0.6, bowCy + 10.2);
+    targetCtx.stroke();
+
+    targetCtx.strokeStyle = palette.bow;
+    targetCtx.lineWidth = 1.4;
+    targetCtx.beginPath();
+    targetCtx.moveTo(bowCx - 0.4, bowCy - 9.5);
+    targetCtx.quadraticCurveTo(bowCx - 4.7, bowCy, bowCx - 0.4, bowCy + 9.5);
+    targetCtx.stroke();
+
+    targetCtx.strokeStyle = "rgba(228, 232, 238, 0.88)";
+    targetCtx.lineWidth = 1;
+    targetCtx.beginPath();
+    targetCtx.moveTo(bowCx - 0.6, bowCy - 9.4);
+    targetCtx.lineTo(bowCx - 0.6, bowCy + 9.4);
+    targetCtx.stroke();
+
+    // Arrow nocked.
+    targetCtx.strokeStyle = palette.arrowShaft;
+    targetCtx.lineWidth = 1.2;
+    targetCtx.beginPath();
+    targetCtx.moveTo(rightHandX - 1.8, rightHandY - 0.1);
+    targetCtx.lineTo(leftHandX - 2.9, leftHandY + 0.2);
+    targetCtx.stroke();
+
+    targetCtx.fillStyle = palette.arrowHead;
+    targetCtx.beginPath();
+    targetCtx.moveTo(leftHandX - 3.9, leftHandY + 0.2);
+    targetCtx.lineTo(leftHandX - 2.5, leftHandY - 0.9);
+    targetCtx.lineTo(leftHandX - 2.6, leftHandY + 1.3);
+    targetCtx.closePath();
+    targetCtx.fill();
+
+    targetCtx.fillStyle = palette.fletch;
+    targetCtx.beginPath();
+    targetCtx.moveTo(rightHandX - 0.8, rightHandY - 0.4);
+    targetCtx.lineTo(rightHandX + 0.8, rightHandY - 1.2);
+    targetCtx.lineTo(rightHandX + 0.3, rightHandY + 0.3);
+    targetCtx.closePath();
+    targetCtx.moveTo(rightHandX - 0.8, rightHandY + 0.4);
+    targetCtx.lineTo(rightHandX + 0.8, rightHandY + 1.2);
+    targetCtx.lineTo(rightHandX + 0.3, rightHandY - 0.3);
+    targetCtx.closePath();
+    targetCtx.fill();
+  }
+}
+
+function getSkeletonArcherWalkFrames(typeName, style = null, includeBow = true) {
+  const styleKey = getMobStyleCacheKey(style);
+  const key = `${String(typeName || "Skeleton Archer")}|${styleKey}`;
+  const cache = includeBow ? skeletonArcherWalkFramesCache : skeletonArcherNoBowWalkFramesCache;
+  const cached = cache.get(key);
+  if (cached) {
+    return cached;
+  }
+
+  const seed = hashString(String(typeName || "Skeleton Archer"));
+  const palettes = [
+    {
+      bone: "#eceff3",
+      boneDark: "#c5ccd7",
+      outline: "#1a1f28",
+      eye: "#0f1015",
+      hood: "#3a3f46",
+      hoodDark: "#242a31",
+      cloak: "#2a2e35",
+      bow: "#916f49",
+      bowDark: "#624a31",
+      arrowShaft: "#d8dde6",
+      arrowHead: "#c4ccd8",
+      fletch: "#6f7786"
+    },
+    {
+      bone: "#edf0f4",
+      boneDark: "#c4cbd6",
+      outline: "#1b2029",
+      eye: "#11131b",
+      hood: "#414751",
+      hoodDark: "#2a3039",
+      cloak: "#2f3540",
+      bow: "#8b6a46",
+      bowDark: "#5a432c",
+      arrowShaft: "#d7dce3",
+      arrowHead: "#bdc6d3",
+      fletch: "#707886"
+    },
+    {
+      bone: "#f2f4f7",
+      boneDark: "#ccd2dd",
+      outline: "#1e242d",
+      eye: "#12141c",
+      hood: "#363b44",
+      hoodDark: "#222831",
+      cloak: "#262b33",
+      bow: "#866744",
+      bowDark: "#5a422c",
+      arrowShaft: "#d4d9e1",
+      arrowHead: "#bac3d0",
+      fletch: "#6b7382"
+    }
+  ];
+  const palette = applyMobPaletteOverrides(palettes[(seed >>> 6) % palettes.length], style);
+  const frames = [];
+
+  for (let i = 0; i < 6; i += 1) {
+    const phase = (i / 6) * Math.PI * 2;
+    const pose = Math.sin(phase);
+    const frame = document.createElement("canvas");
+    frame.width = MOB_SPRITE_SIZE;
+    frame.height = MOB_SPRITE_SIZE;
+    const fctx = frame.getContext("2d");
+    fctx.translate(MOB_SPRITE_SIZE / 2, MOB_SPRITE_SIZE / 2);
+    drawSkeletonArcherSpriteFrame(fctx, palette, pose, { drawBow: includeBow });
+    frames.push(frame);
+  }
+
+  cache.set(key, frames);
+  return frames;
+}
+
+function getSkeletonArcherWalkSprite(mob, includeBow = true) {
+  const style = getMobRenderStyle(mob);
+  const mobName = String(mob.name || "Skeleton Archer");
+  const frames = getSkeletonArcherWalkFrames(mobName, style, includeBow);
+  const now = performance.now();
+  const existing = skeletonArcherWalkRuntime.get(mob.id);
+  const state =
+    existing ||
+    {
+      lastX: mob.x,
+      lastY: mob.y,
+      lastT: now,
+      phase: ((Number(mob.id) || hashString(mobName)) % 628) / 100,
+      lastSeenAt: now
+    };
+
+  const dt = Math.max(0.001, (now - state.lastT) / 1000);
+  const moved = Math.hypot(mob.x - state.lastX, mob.y - state.lastY);
+  const speed = moved / dt;
+  const moving = speed > getMobStyleNumber(style, "moveThreshold", 0.022, 0, 2);
+  const walkCycleSpeed = getMobStyleNumber(style, "walkCycleSpeed", 2.7, 0.1, 10);
+
+  if (moving) {
+    state.phase = (state.phase + dt * walkCycleSpeed) % (Math.PI * 2);
+  }
+
+  state.lastX = mob.x;
+  state.lastY = mob.y;
+  state.lastT = now;
+  state.lastSeenAt = now;
+  skeletonArcherWalkRuntime.set(mob.id, state);
+
+  if (!moving) {
+    return frames[0];
+  }
+
+  const cycle = state.phase / (Math.PI * 2);
+  const index = clamp(Math.floor(cycle * frames.length), 0, frames.length - 1);
+  return frames[index];
+}
+
+function pruneSkeletonArcherWalkRuntime() {
+  const now = performance.now();
+  for (const [mobId, state] of skeletonArcherWalkRuntime.entries()) {
+    if (now - state.lastSeenAt > 3000) {
+      skeletonArcherWalkRuntime.delete(mobId);
+    }
+  }
+}
+
 function createMobSprite(typeName, style = null) {
   const styleKey = getMobStyleCacheKey(style);
   const key = `${String(typeName || "Mob")}|${styleKey}`;
@@ -5901,6 +7184,12 @@ function createMobSprite(typeName, style = null) {
   sctx.translate(cx, cy);
 
   if (keyLower.includes("skeleton")) {
+    if (keyLower.includes("archer")) {
+      const frames = getSkeletonArcherWalkFrames(typeName, style);
+      const idle = frames[0];
+      mobSpriteCache.set(key, idle);
+      return idle;
+    }
     const frames = getSkeletonWalkFrames(typeName, style);
     const idle = frames[0];
     mobSpriteCache.set(key, idle);
@@ -6198,6 +7487,162 @@ function drawPlayerCastBar(player, cameraX, cameraY, isSelf, frameNow) {
   ctx.strokeRect(x - 0.5, y - 0.5, width + 1, height + 1);
 }
 
+function getSelfVisualEffectState(effectKey, frameNow) {
+  const state = selfNegativeEffects[effectKey];
+  if (!state) {
+    return null;
+  }
+  if ((Number(state.endsAt) || 0) <= frameNow) {
+    selfNegativeEffects[effectKey] = null;
+    return null;
+  }
+  return state;
+}
+
+function drawPlayerStunEffect(player, cameraX, cameraY, isSelf, frameNow) {
+  const state = isSelf ? getSelfVisualEffectState("stun", frameNow) : remotePlayerStuns.get(player.id);
+  if (!state) {
+    return;
+  }
+  if ((Number(state.endsAt) || 0) <= frameNow) {
+    if (!isSelf) {
+      remotePlayerStuns.delete(player.id);
+    }
+    return;
+  }
+
+  const p = worldToScreen(player.x + 0.5, player.y + 0.5, cameraX, cameraY);
+  const centerX = p.x;
+  const centerY = p.y - 18;
+  const t = frameNow * 0.0065;
+
+  ctx.save();
+  ctx.strokeStyle = "rgba(243, 252, 255, 0.92)";
+  ctx.lineWidth = 1.4;
+  ctx.lineCap = "round";
+  for (let i = 0; i < 3; i += 1) {
+    const a = t + i * ((Math.PI * 2) / 3);
+    const baseX = centerX + Math.cos(a) * 7;
+    const baseY = centerY + Math.sin(a) * 3.2;
+    ctx.beginPath();
+    for (let s = 0; s <= 20; s += 1) {
+      const u = s / 20;
+      const ang = a + u * Math.PI * 2.2;
+      const r = 2.2 * (1 - u);
+      const x = baseX + Math.cos(ang) * r;
+      const y = baseY + Math.sin(ang) * r;
+      if (s === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawPlayerSlowTint(player, cameraX, cameraY, isSelf, frameNow) {
+  const state = isSelf ? getSelfVisualEffectState("slow", frameNow) : remotePlayerSlows.get(player.id);
+  if (!state) {
+    return;
+  }
+  if ((Number(state.endsAt) || 0) <= frameNow) {
+    if (!isSelf) {
+      remotePlayerSlows.delete(player.id);
+    }
+    return;
+  }
+
+  const p = worldToScreen(player.x + 0.5, player.y + 0.5, cameraX, cameraY);
+  const multiplier = isSelf
+    ? clamp((Number(state.multiplierQ) || 1000) / 1000, 0.1, 1)
+    : clamp(Number(state.multiplier) || 1, 0.1, 1);
+  const strength = clamp(1 - multiplier, 0, 1);
+  const phaseSeed = Number.isFinite(Number(player.id)) ? Number(player.id) : 0;
+  const pulse = 0.6 + Math.sin(frameNow * 0.016 + (phaseSeed % 7)) * 0.4;
+  const alpha = clamp(0.16 + strength * 0.28, 0.12, 0.42) * (0.75 + pulse * 0.25);
+  const radius = 14 + strength * 3;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createRadialGradient(p.x, p.y, 2, p.x, p.y, radius);
+  grad.addColorStop(0, "rgba(214, 247, 255, 0.86)");
+  grad.addColorStop(0.52, "rgba(118, 194, 255, 0.56)");
+  grad.addColorStop(1, "rgba(78, 155, 235, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPlayerBurnEffect(player, cameraX, cameraY, isSelf, frameNow) {
+  const state = isSelf ? getSelfVisualEffectState("burn", frameNow) : remotePlayerBurns.get(player.id);
+  if (!state) {
+    return;
+  }
+  if ((Number(state.endsAt) || 0) <= frameNow) {
+    if (!isSelf) {
+      remotePlayerBurns.delete(player.id);
+    }
+    return;
+  }
+
+  const p = worldToScreen(player.x + 0.5, player.y + 0.5, cameraX, cameraY);
+  const phaseSeed = Number.isFinite(Number(player.id)) ? Number(player.id) : 0;
+  const pulse = 0.58 + Math.sin(frameNow * 0.019 + (phaseSeed % 9)) * 0.42;
+  const alpha = 0.24 + pulse * 0.2;
+  const radius = 12 + pulse * 2.2;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = alpha;
+  const grad = ctx.createRadialGradient(p.x, p.y + 1, 1.8, p.x, p.y + 1, radius);
+  grad.addColorStop(0, "rgba(255, 244, 170, 0.95)");
+  grad.addColorStop(0.4, "rgba(255, 153, 69, 0.68)");
+  grad.addColorStop(0.78, "rgba(255, 77, 34, 0.48)");
+  grad.addColorStop(1, "rgba(255, 45, 22, 0)");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y + 1, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawPlayerEffectAnimations(player, cameraX, cameraY, isSelf, frameNow) {
+  drawPlayerSlowTint(player, cameraX, cameraY, isSelf, frameNow);
+  drawPlayerBurnEffect(player, cameraX, cameraY, isSelf, frameNow);
+  drawPlayerStunEffect(player, cameraX, cameraY, isSelf, frameNow);
+}
+
+function drawMobCastBar(mob, cameraX, cameraY, frameNow) {
+  const castState = remoteMobCasts.get(mob.id);
+  const cast = getCastProgress(castState, frameNow);
+  if (!cast) {
+    if (castState && castState.active) {
+      remoteMobCasts.delete(mob.id);
+    }
+    return;
+  }
+
+  const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
+  const width = 30;
+  const height = 4;
+  const x = Math.round(p.x - width / 2);
+  const y = Math.round(p.y + 17);
+  const fillWidth = Math.round(width * cast.ratio);
+
+  ctx.fillStyle = "rgba(5, 12, 19, 0.9)";
+  ctx.fillRect(x, y, width, height);
+  ctx.fillStyle = "rgba(117, 204, 255, 0.95)";
+  ctx.fillRect(x, y, fillWidth, height);
+  ctx.strokeStyle = "rgba(181, 228, 255, 0.76)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - 0.5, y - 0.5, width + 1, height + 1);
+}
+
 function drawMobBiteAnimation(mob, cameraX, cameraY) {
   const attack = getActiveMobAttackState(mob.id);
   if (!attack) {
@@ -6475,6 +7920,108 @@ function drawSkeletonSwordSwing(mob, cameraX, cameraY, attackState = null) {
   ctx.moveTo(handX + Math.cos(guardAngle) * guardHalf, handY + Math.sin(guardAngle) * guardHalf);
   ctx.lineTo(handX - Math.cos(guardAngle) * guardHalf, handY - Math.sin(guardAngle) * guardHalf);
   ctx.stroke();
+}
+
+function drawSkeletonArcherBowShot(mob, cameraX, cameraY, attackState = null) {
+  const attack = attackState || getActiveMobAttackState(mob.id);
+  if (!attack) {
+    return;
+  }
+
+  const p = worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
+  const style = getMobRenderStyle(mob);
+  const speedMul = getMobStyleNumber(style, "attackAnimSpeed", 1, 0.1, 4);
+  const progress = clamp(attack.progress * speedMul, 0, 1);
+  const releasePhase = clamp((progress - 0.55) / 0.45, 0, 1);
+  const pullPhase = progress < 0.55 ? progress / 0.55 : 1;
+
+  const angle = attack.angle;
+  const dirX = Math.cos(angle);
+  const dirY = Math.sin(angle);
+  const perpX = -dirY;
+  const perpY = dirX;
+
+  const shoulderX = p.x - dirX * 2.1;
+  const shoulderY = p.y - dirY * 1.9;
+  const bowX = shoulderX + dirX * (4.8 + pullPhase * 0.9);
+  const bowY = shoulderY + dirY * (4.8 + pullPhase * 0.9);
+  const bowSpan = 8.6;
+  const bowCurve = 4.9 + Math.sin(progress * Math.PI) * 1.2;
+  const drawPull = 4.8 + pullPhase * 5.6 - releasePhase * 4.9;
+
+  // Rear arm pulling string.
+  const handPullX = shoulderX - dirX * drawPull + perpX * 0.5;
+  const handPullY = shoulderY - dirY * drawPull + perpY * 0.5;
+  ctx.strokeStyle = "rgba(33, 38, 46, 0.96)";
+  ctx.lineWidth = 2.3;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(shoulderX, shoulderY);
+  ctx.lineTo(handPullX, handPullY);
+  ctx.stroke();
+
+  // Front arm.
+  const handFrontX = bowX - dirX * 1 + perpX * 0.2;
+  const handFrontY = bowY - dirY * 1 + perpY * 0.2;
+  ctx.beginPath();
+  ctx.moveTo(shoulderX, shoulderY);
+  ctx.lineTo(handFrontX, handFrontY);
+  ctx.stroke();
+
+  // Bow arc.
+  const bowTopX = bowX + perpX * bowSpan;
+  const bowTopY = bowY + perpY * bowSpan;
+  const bowBotX = bowX - perpX * bowSpan;
+  const bowBotY = bowY - perpY * bowSpan;
+  const bowCtrlX = bowX + dirX * bowCurve;
+  const bowCtrlY = bowY + dirY * bowCurve;
+  ctx.strokeStyle = "rgba(93, 72, 49, 0.98)";
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(bowTopX, bowTopY);
+  ctx.quadraticCurveTo(bowCtrlX, bowCtrlY, bowBotX, bowBotY);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(218, 223, 232, 0.9)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(bowTopX, bowTopY);
+  ctx.lineTo(handPullX, handPullY);
+  ctx.lineTo(bowBotX, bowBotY);
+  ctx.stroke();
+
+  // Nocked arrow.
+  const arrowLen = 12.4;
+  const arrowBackX = handPullX;
+  const arrowBackY = handPullY;
+  const arrowTipX = arrowBackX + dirX * arrowLen;
+  const arrowTipY = arrowBackY + dirY * arrowLen;
+  ctx.strokeStyle = "rgba(221, 226, 236, 0.96)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(arrowBackX, arrowBackY);
+  ctx.lineTo(arrowTipX, arrowTipY);
+  ctx.stroke();
+
+  ctx.fillStyle = "rgba(189, 198, 211, 0.96)";
+  ctx.beginPath();
+  ctx.moveTo(arrowTipX + dirX * 2.1, arrowTipY + dirY * 2.1);
+  ctx.lineTo(arrowTipX - perpX * 1.3, arrowTipY - perpY * 1.3);
+  ctx.lineTo(arrowTipX + perpX * 1.3, arrowTipY + perpY * 1.3);
+  ctx.closePath();
+  ctx.fill();
+
+  if (releasePhase > 0) {
+    const streakLen = 10 + releasePhase * 9;
+    const startX = arrowTipX + dirX * 2.4;
+    const startY = arrowTipY + dirY * 2.4;
+    ctx.strokeStyle = `rgba(231, 236, 246, ${(0.42 * (1 - releasePhase)).toFixed(3)})`;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.lineTo(startX + dirX * streakLen, startY + dirY * streakLen);
+    ctx.stroke();
+  }
 }
 
 function drawOrcDualAxeSwing(mob, cameraX, cameraY, attackState = null) {
@@ -7344,11 +8891,78 @@ function drawArcaneMissileProjectile(p, runtime, now) {
   }
 }
 
+function drawBoneArrowProjectile(p, runtime, now) {
+  const dirX = runtime.dirX;
+  const dirY = runtime.dirY;
+  const perpX = -dirY;
+  const perpY = dirX;
+  const heading = Math.atan2(dirY, dirX);
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (let i = 0; i < 5; i += 1) {
+    const t = (i + 1) / 5;
+    const dist = 4 + t * 14;
+    const wobble = Math.sin(now * 0.012 + i * 1.1 + runtime.seed * 0.0007) * (1.2 - t * 0.7);
+    const px = p.x - dirX * dist + perpX * wobble;
+    const py = p.y - dirY * dist + perpY * wobble;
+    const r = Math.max(0.45, 1.5 - t * 1.1);
+    const alpha = 0.2 * (1 - t) + 0.06;
+    ctx.beginPath();
+    ctx.fillStyle = `rgba(226, 233, 242, ${alpha.toFixed(3)})`;
+    ctx.arc(px, py, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(heading);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  // Shaft.
+  ctx.strokeStyle = "rgba(216, 221, 230, 0.98)";
+  ctx.lineWidth = 2.1;
+  ctx.beginPath();
+  ctx.moveTo(-11.5, 0);
+  ctx.lineTo(11, 0);
+  ctx.stroke();
+
+  // Head.
+  ctx.fillStyle = "rgba(189, 199, 212, 0.98)";
+  ctx.strokeStyle = "rgba(128, 138, 154, 0.95)";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(13.8, 0);
+  ctx.lineTo(9.2, -2.7);
+  ctx.lineTo(10.2, 0);
+  ctx.lineTo(9.2, 2.7);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Fletching.
+  ctx.fillStyle = "rgba(109, 117, 129, 0.95)";
+  ctx.beginPath();
+  ctx.moveTo(-11.3, 0);
+  ctx.lineTo(-15.1, -2.5);
+  ctx.lineTo(-13.3, -0.2);
+  ctx.closePath();
+  ctx.moveTo(-11.3, 0);
+  ctx.lineTo(-15.1, 2.5);
+  ctx.lineTo(-13.3, 0.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
 const ABILITY_PROJECTILE_RENDERERS = Object.freeze({
   fireball: drawFireballProjectile,
   fire_spark: drawFireSparkProjectile,
   frostbolt: drawFrostboltProjectile,
-  arcane_missiles: drawArcaneMissileProjectile
+  arcane_missiles: drawArcaneMissileProjectile,
+  bone_arrow: drawBoneArrowProjectile
 });
 
 function drawProjectile(projectile, cameraX, cameraY, frameNow) {
@@ -7376,10 +8990,13 @@ function drawMob(mob, cameraX, cameraY, attackState = null) {
   const mobStyle = getMobRenderStyle(mob);
   const mobName = String(mob.name || "Mob");
   const spriteType = getMobSpriteType(mob);
+  const skeletonArcherIncludeBow = !attackState;
   const skeletonIncludeSword = !attackState;
   const orcIncludeAxes = !attackState;
-  const sprite = spriteType === "skeleton"
-    ? getSkeletonWalkSprite(mob, skeletonIncludeSword)
+  const sprite = spriteType === "skeleton_archer"
+    ? getSkeletonArcherWalkSprite(mob, skeletonArcherIncludeBow)
+    : spriteType === "skeleton"
+      ? getSkeletonWalkSprite(mob, skeletonIncludeSword)
     : spriteType === "creeper"
       ? getCreeperWalkSprite(mob)
       : spriteType === "spider"
@@ -7437,6 +9054,8 @@ function render() {
 
   const cameraX = interpolatedState.self.x + 0.5;
   const cameraY = interpolatedState.self.y + 0.5;
+  updateMobCastSpatialAudio(interpolatedState.mobs, frameNow);
+  updateProjectileSpatialAudio(interpolatedState.projectiles, frameNow);
 
   drawGrid(cameraX, cameraY);
   drawAbilityCastPreview(interpolatedState.self, cameraX, cameraY, frameNow);
@@ -7459,6 +9078,9 @@ function render() {
     if (attackVisual === "sword") {
       drawMob(mob, cameraX, cameraY, attackState);
       drawSkeletonSwordSwing(mob, cameraX, cameraY, attackState);
+    } else if (attackVisual === "bow") {
+      drawMob(mob, cameraX, cameraY, attackState);
+      drawSkeletonArcherBowShot(mob, cameraX, cameraY, attackState);
     } else if (attackVisual === "ignition") {
       drawMob(mob, cameraX, cameraY, attackState);
       drawCreeperIgnitionAnimation(mob, cameraX, cameraY, attackState);
@@ -7471,6 +9093,7 @@ function render() {
       drawMob(mob, cameraX, cameraY, attackState);
       drawMobBiteAnimation(mob, cameraX, cameraY);
     }
+    drawMobCastBar(mob, cameraX, cameraY, frameNow);
     drawMobSlowTint(mob, cameraX, cameraY, frameNow);
     drawMobBurnEffect(mob, cameraX, cameraY, frameNow);
     drawMobStunEffect(mob, cameraX, cameraY, frameNow);
@@ -7481,15 +9104,18 @@ function render() {
   pruneZombieWalkRuntime();
   pruneSpiderWalkRuntime();
   pruneOrcWalkRuntime();
+  pruneSkeletonArcherWalkRuntime();
   pruneWarriorAnimRuntime();
   pruneProjectileVisualRuntime(frameNow);
 
   for (const other of interpolatedState.players) {
     drawPlayer(other, cameraX, cameraY, false);
+    drawPlayerEffectAnimations(other, cameraX, cameraY, false, frameNow);
     drawPlayerCastBar(other, cameraX, cameraY, false, frameNow);
   }
 
   drawPlayer(interpolatedState.self, cameraX, cameraY, true);
+  drawPlayerEffectAnimations(interpolatedState.self, cameraX, cameraY, true, frameNow);
   drawPlayerCastBar(interpolatedState.self, cameraX, cameraY, true, frameNow);
 
   if (hoveredMob) {
@@ -7510,6 +9136,7 @@ window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
 document.addEventListener("keydown", (event) => {
+  resumeSpatialAudioContext();
   if (event.code === "F3") {
     toggleDebugPanel();
     event.preventDefault();
@@ -7572,6 +9199,7 @@ window.addEventListener("blur", () => {
   mouseState.leftDown = false;
   clearDragState();
   resetAbilityChanneling();
+  stopAllSpatialLoops();
 });
 
 canvas.addEventListener("mousemove", (event) => {
@@ -7579,6 +9207,7 @@ canvas.addEventListener("mousemove", (event) => {
 });
 
 canvas.addEventListener("mousedown", (event) => {
+  resumeSpatialAudioContext();
   if (event.button !== 0) {
     return;
   }
@@ -7595,6 +9224,7 @@ window.addEventListener("mouseup", (event) => {
 });
 
 canvas.addEventListener("contextmenu", (event) => {
+  resumeSpatialAudioContext();
   event.preventDefault();
   updateMouseScreenPosition(event);
   executeBoundAction("mouse_right");
@@ -7602,6 +9232,7 @@ canvas.addEventListener("contextmenu", (event) => {
 
 joinForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  resumeSpatialAudioContext();
   const formData = new FormData(joinForm);
   const name = String(formData.get("name") || "").trim();
   const selectedClass = String(formData.get("classType") || "").trim();

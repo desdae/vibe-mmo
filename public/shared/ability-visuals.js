@@ -72,6 +72,13 @@
       },
       warstomp: {
         iconRenderer: "warstomp"
+      },
+      bonearrow: {
+        iconRenderer: "melee_slash",
+        projectileRenderer: "bone_arrow"
+      },
+      mobmeleeswing: {
+        iconRenderer: "melee_slash"
       }
     }
   };

@@ -1,166 +1,362 @@
 {
-    "mobs": [
-        {
-        "name": "Zombie",
-        "health": 20,
-        "damage": 1,
-        "spawnRange": [10, 30],
-        "speed": 0.5,
-        "respawnTime": [25,50],
-        "drops": [{"copperCoin": [0, 2], "healthPotion01": [0.05]}],
-        "renderStyle": {
-            "spriteType": "zombie",
-            "sizeScale": 1.0,
-            "walkCycleSpeed": 2.1,
-            "attackVisual": "bite",
-            "attackAnimSpeed": 1.0,
-            "biteRadius": 15,
-            "palette": {
-                "skin": "#7fae67",
-                "skinDark": "#557740",
-                "cloth": "#6e5a40",
-                "clothDark": "#4c3d2b",
-                "brain": "#9fb37e",
-                "outline": "#1d2516",
-                "eye": "#131710"
+  "mobs": [
+    {
+      "name": "Zombie",
+      "health": 20,
+      "damage": [1, 2],
+      "spawnRange": [10, 30],
+      "speed": 0.5,
+      "respawnTime": [25, 50],
+      "drops": [{ "copperCoin": [0, 2], "healthPotion01": [0.05] }],
+      "combat": {
+        "behavior": "melee",
+        "aggroRange": 6,
+        "preferredRange": 1.25,
+        "leashRange": 12,
+        "basicAttack": {
+          "type": "ability",
+          "abilityId": "mobMeleeSwing",
+          "damage": [1, 2],
+          "cooldown": 1.6,
+          "range": 1.4
+        },
+        "abilities": [
+          {
+            "abilityId": "mobMeleeSwing",
+            "weight": 1,
+            "minRange": 0,
+            "maxRange": 1.6,
+            "cooldown": 1.6,
+            "castChance": 1
+          }
+        ]
+      },
+      "renderStyle": {
+        "spriteType": "zombie",
+        "sizeScale": 1,
+        "walkCycleSpeed": 2.1,
+        "attackVisual": "bite",
+        "attackAnimSpeed": 1,
+        "biteRadius": 15,
+        "palette": {
+          "skin": "#7fae67",
+          "skinDark": "#557740",
+          "cloth": "#6e5a40",
+          "clothDark": "#4c3d2b",
+          "brain": "#9fb37e",
+          "outline": "#1d2516",
+          "eye": "#131710"
+        }
+      }
+    },
+    {
+      "name": "Skeleton",
+      "health": 30,
+      "damage": [2, 3],
+      "spawnRange": [20, 40],
+      "speed": 0.8,
+      "respawnTime": [20, 40],
+      "drops": [{ "copperCoin": [0, 3], "healthPotion01": [0.1] }],
+      "combat": {
+        "behavior": "melee",
+        "aggroRange": 7,
+        "preferredRange": 1.35,
+        "leashRange": 14,
+        "basicAttack": {
+          "type": "ability",
+          "abilityId": "mobMeleeSwing",
+          "damage": [2, 3],
+          "cooldown": 1.4,
+          "range": 1.6
+        },
+        "abilities": [
+          {
+            "abilityId": "mobMeleeSwing",
+            "weight": 1,
+            "minRange": 0,
+            "maxRange": 1.9,
+            "cooldown": 1.4,
+            "castChance": 1
+          }
+        ]
+      },
+      "renderStyle": {
+        "spriteType": "skeleton",
+        "sizeScale": 1,
+        "walkCycleSpeed": 2.7,
+        "attackVisual": "sword",
+        "attackAnimSpeed": 1.1,
+        "weaponOffsetX": 0,
+        "weaponOffsetY": 0,
+        "weaponAngleOffsetDeg": 0,
+        "palette": {
+          "bone": "#eef1f4",
+          "boneDark": "#c8ced7",
+          "outline": "#1d2129",
+          "eye": "#101116",
+          "metal": "#d7dce5",
+          "metalDark": "#8f98a8",
+          "shield": "#e6ebf2",
+          "shieldCrack": "#a4adbc"
+        }
+      }
+    },
+    {
+      "name": "Skeleton Archer",
+      "health": 28,
+      "damage": [1, 2],
+      "spawnRange": [12, 28],
+      "speed": 1,
+      "respawnTime": [25, 45],
+      "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.14], "manaPotion01": [0.08] }],
+      "combat": {
+        "behavior": "ranged",
+        "aggroRange": 12,
+        "preferredRange": 7,
+        "leashRange": 22,
+        "basicAttack": {
+          "type": "ability",
+          "abilityId": "mobMeleeSwing",
+          "damage": 1,
+          "cooldown": 1.5,
+          "range": 1.5
+        },
+        "abilities": [
+          {
+            "abilityId": "frostbolt",
+            "weight": 1,
+            "minRange": 3,
+            "maxRange": 12,
+            "cooldown": 2.2,
+            "castChance": 1,
+            "targeting": {
+                "projectileCount": 2      
+
             }
+          },
+          {
+            "abilityId": "mobMeleeSwing",
+            "weight": 0.35,
+            "minRange": 0,
+            "maxRange": 1.6,
+            "cooldown": 1.8,
+            "castChance": 0.7
+          }
+        ]
+      },
+      "renderStyle": {
+        "spriteType": "skeleton_archer",
+        "sizeScale": 1,
+        "walkCycleSpeed": 2.6,
+        "attackVisual": "bow",
+        "attackAnimSpeed": 1,
+        "weaponOffsetX": 0,
+        "weaponOffsetY": 0,
+        "palette": {
+          "bone": "#eceff3",
+          "boneDark": "#c5ccd7",
+          "outline": "#1a1f28",
+          "eye": "#0f1015",
+          "hood": "#3b3f46",
+          "hoodDark": "#262a31",
+          "cloak": "#2b2f36",
+          "bow": "#8d6d48",
+          "bowDark": "#5f472f",
+          "arrowShaft": "#d4d8df",
+          "arrowHead": "#c4ccd8",
+          "fletch": "#6f7786"
         }
+      }
+    },
+    {
+      "name": "Creeper",
+      "health": 20,
+      "damage": [3, 5],
+      "spawnRange": [30, 50],
+      "speed": 0.9,
+      "respawnTime": [30, 60],
+      "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.2] }],
+      "combat": {
+        "behavior": "melee",
+        "aggroRange": 6.5,
+        "preferredRange": 1.2,
+        "leashRange": 13,
+        "basicAttack": {
+          "type": "ability",
+          "abilityId": "mobMeleeSwing",
+          "damage": [3, 5],
+          "cooldown": 1.2,
+          "range": 1.35
         },
-        {
-        "name": "Skeleton",
-        "health": 30,
-        "damage": 2,
-        "spawnRange": [20, 40],
-        "speed": 0.8, 
-        "respawnTime": [20, 40],
-        "drops": [{"copperCoin": [0, 3], "healthPotion01": [0.1]}],
-        "renderStyle": {
-            "spriteType": "skeleton",
-            "sizeScale": 1.0,
-            "walkCycleSpeed": 2.7,
-            "attackVisual": "sword",
-            "attackAnimSpeed": 1.1,
-            "weaponOffsetX": 0.0,
-            "weaponOffsetY": 0.0,
-            "weaponAngleOffsetDeg": 0,
-            "palette": {
-                "bone": "#eef1f4",
-                "boneDark": "#c8ced7",
-                "outline": "#1d2129",
-                "eye": "#101116",
-                "metal": "#d7dce5",
-                "metalDark": "#8f98a8",
-                "shield": "#e6ebf2",
-                "shieldCrack": "#a4adbc"
-            }
+        "abilities": [
+          {
+            "abilityId": "mobMeleeSwing",
+            "weight": 1,
+            "minRange": 0,
+            "maxRange": 1.5,
+            "cooldown": 1.2,
+            "castChance": 1
+          }
+        ]
+      },
+      "renderStyle": {
+        "spriteType": "creeper",
+        "sizeScale": 1,
+        "walkCycleSpeed": 2.5,
+        "attackVisual": "ignition",
+        "attackAnimSpeed": 1.2,
+        "weaponOffsetX": 0,
+        "weaponOffsetY": 0,
+        "palette": {
+          "body": "#f0f3f8",
+          "bodyShade": "#cfd6df",
+          "outline": "#1d2430",
+          "face": "#101722",
+          "explosive": "#c93c3c",
+          "strap": "#7d2121",
+          "fuse": "#46392d"
         }
+      }
+    },
+    {
+      "name": "Spider",
+      "health": 16,
+      "damage": [2, 3],
+      "spawnRange": [25, 45],
+      "speed": 1,
+      "respawnTime": [20, 40],
+      "combat": {
+        "behavior": "melee",
+        "aggroRange": 6.5,
+        "preferredRange": 1.1,
+        "leashRange": 14,
+        "basicAttack": {
+          "type": "ability",
+          "abilityId": "mobMeleeSwing",
+          "damage": [2, 3],
+          "cooldown": 1.1,
+          "range": 1.35
         },
-        {
-        "name": "Creeper",
-        "health": 20,
-        "damage": 4,
-        "spawnRange": [30, 50],
-        "speed": 0.9,
-        "respawnTime": [30, 60],
-        "drops": [{"copperCoin": [0, 4], "healthPotion01": [0.2]}],
-        "renderStyle": {
-            "spriteType": "creeper",
-            "sizeScale": 1.0,
-            "walkCycleSpeed": 2.5,
-            "attackVisual": "ignition",
-            "attackAnimSpeed": 1.2,
-            "weaponOffsetX": 0.0,
-            "weaponOffsetY": 0.0,
-            "palette": {
-                "body": "#f0f3f8",
-                "bodyShade": "#cfd6df",
-                "outline": "#1d2430",
-                "face": "#101722",
-                "explosive": "#c93c3c",
-                "strap": "#7d2121",
-                "fuse": "#46392d"
-            }
+        "abilities": [
+          {
+            "abilityId": "mobMeleeSwing",
+            "weight": 1,
+            "minRange": 0,
+            "maxRange": 1.5,
+            "cooldown": 1.1,
+            "castChance": 1
+          }
+        ]
+      },
+      "renderStyle": {
+        "spriteType": "spider",
+        "sizeScale": 1,
+        "walkCycleSpeed": 3.4,
+        "attackVisual": "bite",
+        "attackAnimSpeed": 1,
+        "biteRadius": 14,
+        "palette": {
+          "shell": "#39508f",
+          "skull": "#d5def6",
+          "outline": "#1a2442",
+          "eye": "#1a1020",
+          "eyeGlow": "#de5f76",
+          "fang": "#e8edf8",
+          "joint": "#88a6e2",
+          "web": "rgba(143, 164, 222, 0.45)"
         }
+      }
+    },
+    {
+      "name": "Orc Berserker",
+      "health": 40,
+      "damage": [5, 7],
+      "spawnRange": [10, 20],
+      "speed": 2,
+      "respawnTime": [40, 80],
+      "drops": [{ "copperCoin": [0, 5], "healthPotion01": [0.3] }],
+      "combat": {
+        "behavior": "melee",
+        "aggroRange": 8,
+        "preferredRange": 1.4,
+        "leashRange": 18,
+        "basicAttack": {
+          "type": "ability",
+          "abilityId": "mobMeleeSwing",
+          "damage": [5, 7],
+          "cooldown": 1,
+          "range": 1.7
         },
-        {
-        "name": "Spider",
-        "health": 16,
-        "damage": 2,
-        "spawnRange": [25, 45],
-        "speed": 1.0, 
-        "respawnTime": [20, 40],
-        "renderStyle": {
-            "spriteType": "spider",
-            "sizeScale": 1.0,
-            "walkCycleSpeed": 3.4,
-            "attackVisual": "bite",
-            "attackAnimSpeed": 1.0,
-            "biteRadius": 14,
-            "palette": {
-                "shell": "#39508f",
-                "skull": "#d5def6",
-                "outline": "#1a2442",
-                "eye": "#1a1020",
-                "eyeGlow": "#de5f76",
-                "fang": "#e8edf8",
-                "joint": "#88a6e2",
-                "web": "rgba(143, 164, 222, 0.45)"
-            }
+        "abilities": [
+          {
+            "abilityId": "mobMeleeSwing",
+            "weight": 1,
+            "minRange": 0,
+            "maxRange": 1.8,
+            "cooldown": 1,
+            "castChance": 1
+          },
+          {
+            "abilityId": "warstomp",
+            "weight": 0.35,
+            "minRange": 0,
+            "maxRange": 2.5,
+            "cooldown": 5,
+            "castChance": 0.32
+          }
+        ]
+      },
+      "renderStyle": {
+        "spriteType": "orc",
+        "sizeScale": 1.05,
+        "walkCycleSpeed": 2.8,
+        "idleCycleSpeed": 1,
+        "attackVisual": "dual_axes",
+        "attackAnimSpeed": 1.15,
+        "weaponOffsetX": 0,
+        "weaponOffsetY": 0,
+        "weaponAngleOffsetDeg": 0,
+        "palette": {
+          "skin": "#8bbf63",
+          "skinDark": "#5f8242",
+          "outline": "#1b2416",
+          "eye": "#150e0f",
+          "mouth": "#2a1413",
+          "tusk": "#ece5cf",
+          "spike": "#d9c4a4",
+          "handle": "#6f4c33",
+          "axeBladeA": "#d98272",
+          "axeBladeB": "#e17f66",
+          "leather": "#7b4b3f",
+          "boot": "#352520"
         }
-        },
-        {
-        "name": "Orc Berserker",
-        "health": 40,
-        "damage": 6,
-        "spawnRange": [10, 20], 
-        "speed": 2.0,
-        "respawnTime": [40, 80],
-        "drops": [{"copperCoin": [0, 5], "healthPotion01": [0.3]}],
-        "renderStyle": {
-            "spriteType": "orc",
-            "sizeScale": 1.05,
-            "walkCycleSpeed": 2.8,
-            "idleCycleSpeed": 1.0,
-            "attackVisual": "dual_axes",
-            "attackAnimSpeed": 1.15,
-            "weaponOffsetX": 0.0,
-            "weaponOffsetY": 0.0,
-            "weaponAngleOffsetDeg": 0,
-            "palette": {
-                "skin": "#8bbf63",
-                "skinDark": "#5f8242",
-                "outline": "#1b2416",
-                "eye": "#150e0f",
-                "mouth": "#2a1413",
-                "tusk": "#ece5cf",
-                "spike": "#d9c4a4",
-                "handle": "#6f4c33",
-                "axeBladeA": "#d98272",
-                "axeBladeB": "#e17f66",
-                "leather": "#7b4b3f",
-                "boot": "#352520"
-            }
-        }  
-        }
-    ],
-    "mobClusters": [
-        {
-        "name": "Undead Horde",
-        "mobs": ["Zombie", "Skeleton", "Orc Berserker"],
-        "spawnChance": 0.3,
-        "maxSize": 5
-        },
-        {
-        "name": "Explosive Threat",
-        "mobs": ["Creeper"],
-        "spawnChance": 0.2, 
-        "maxSize": 3 
-        },
-        {
-        "name": "Arachnid Swarm",
-        "mobs": ["Spider"],
-        "spawnChance": 0.1,
-        "maxSize": 7
-        }
-    ]
+      }
+    }
+  ],
+  "mobClusters": [
+    {
+      "name": "Undead Horde",
+      "mobs": ["Zombie", "Skeleton"],
+      "spawnChance": 0.28,
+      "maxSize": 5
+    },
+    {
+      "name": "Berserker Patrol",
+      "mobs": ["Skeleton Archer", "Orc Berserker"],
+      "spawnChance": 0.3,
+      "maxSize": 5
+    },
+    {
+      "name": "Explosive Threat",
+      "mobs": ["Creeper"],
+      "spawnChance": 0.2,
+      "maxSize": 3
+    },
+    {
+      "name": "Arachnid Swarm",
+      "mobs": ["Spider"],
+      "spawnChance": 0.1,
+      "maxSize": 7
+    }
+  ]
 }

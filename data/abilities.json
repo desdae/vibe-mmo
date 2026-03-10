@@ -15,7 +15,8 @@
       "range": 10,
       "speed": 4,
       "targetType": "enemy",
-      "projectileCount": 1
+      "projectileCount": 1,
+      "explodeOnExpire": false
     },
     "effects": [
       {
@@ -62,7 +63,7 @@
         "maxEmissions": 999,
         "pattern": {
           "type": "radial",
-          "count": 32,
+          "count": 64,
           "startAngle": 0,
           "angleSpread": 360,
           "evenSpacing": true
@@ -91,6 +92,7 @@
             "targetType": "enemy",
             "pierce": 0,
             "projectileCount": 1,
+            "explodeOnExpire": false,
             "homing": {
                 "range": 11,
                 "turnRate": 6.5
@@ -142,7 +144,7 @@
     "targeting": {
       "range": 10,
       "speed": 5,
-      "targetType": "enemy"
+      "targetType": "enemy"    
     },
     "effects": [
       {
@@ -340,5 +342,60 @@
       }
     ],
     "tags": ["warrior", "aoe"]
+  },
+  "mobMeleeSwing": {
+    "id": "mobMeleeSwing",
+    "name": "Melee Swing",
+    "description": "A quick close-range swing used by melee mobs.",
+    "delivery": {
+      "type": "meleeCone",
+      "castTime": 0,
+      "cooldown": 1,
+      "resourceCost": {
+        "mana": 0
+      }
+    },
+    "targeting": {
+      "range": 1.7,
+      "coneAngle": 130,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [1, 3],
+        "school": "physical"
+      }
+    ],
+    "tags": ["mob", "melee"]
+  },
+  "boneArrow": {
+    "id": "boneArrow",
+    "name": "Bone Arrow",
+    "description": "Fires a sharp bone projectile.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0.4,
+      "cooldown": 0,
+      "resourceCost": {
+        "mana": 0
+      }
+    },
+    "targeting": {
+      "range": 12,
+      "speed": 6,
+      "targetType": "enemy",
+      "projectileCount": 1
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [2, 4],
+        "school": "physical"
+      }
+    ],
+    "tags": ["mob", "ranged", "projectile"]
   }
 }
