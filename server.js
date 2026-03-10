@@ -48,6 +48,12 @@ const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createMobCombatEffectTools } = require("./server/gameplay/mob-combat-effects");
 const { parseMobRenderStyle } = require("./server/gameplay/mob-render-style");
+const {
+  getObjectPath,
+  firstFiniteNumber,
+  findAbilityEffect,
+  getProgressionPerLevelValue
+} = require("./server/gameplay/object-utils");
 const { createProjectileEffectTools } = require("./server/gameplay/projectile-effects");
 const { createProjectileRuntimeTools } = require("./server/gameplay/projectile-runtime");
 const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spawn");
@@ -179,60 +185,6 @@ const DELIVERY_TYPE_TO_KIND = Object.freeze({
   beam: "beam",
   teleport: "teleport"
 });
-
-function getObjectPath(source, pathValue) {
-  if (!source || typeof source !== "object" || !pathValue) {
-    return undefined;
-  }
-  const parts = String(pathValue).split(".");
-  let cursor = source;
-  for (const part of parts) {
-    if (!part || !cursor || typeof cursor !== "object" || !(part in cursor)) {
-      return undefined;
-    }
-    cursor = cursor[part];
-  }
-  return cursor;
-}
-
-function firstFiniteNumber(values, fallback = 0) {
-  for (const value of values) {
-    const n = Number(value);
-    if (Number.isFinite(n)) {
-      return n;
-    }
-  }
-  return fallback;
-}
-
-function findAbilityEffect(effects, type, mode = "") {
-  const wantedType = String(type || "").toLowerCase();
-  const wantedMode = String(mode || "").toLowerCase();
-  for (const effect of Array.isArray(effects) ? effects : []) {
-    if (!effect || typeof effect !== "object") {
-      continue;
-    }
-    if (String(effect.type || "").toLowerCase() !== wantedType) {
-      continue;
-    }
-    if (wantedMode && String(effect.mode || "").toLowerCase() !== wantedMode) {
-      continue;
-    }
-    return effect;
-  }
-  return null;
-}
-
-function getProgressionPerLevelValue(entry, key) {
-  const perLevel = getObjectPath(entry, "progression.perLevel");
-  if (!perLevel || typeof perLevel !== "object") {
-    return undefined;
-  }
-  if (key in perLevel) {
-    return perLevel[key];
-  }
-  return getObjectPath(perLevel, key);
-}
 
 function normalizeAbilityEntry(rawId, entry) {
   if (!entry || typeof entry !== "object") {
