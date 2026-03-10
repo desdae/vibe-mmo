@@ -41,6 +41,9 @@ const INVENTORY_SLOT_SIZE_PX = 50;
 const INVENTORY_SLOT_GAP_PX = 6;
 const INVENTORY_PANEL_PADDING_PX = 10;
 const INVENTORY_PANEL_BORDER_PX = 1;
+const sharedNumberUtils = globalThis.VibeNumberUtils || null;
+const sharedClamp =
+  sharedNumberUtils && typeof sharedNumberUtils.clamp === "function" ? sharedNumberUtils.clamp : null;
 const sharedVectorUtils = globalThis.VibeVectorUtils || null;
 const sharedNormalizeDirection =
   sharedVectorUtils && typeof sharedVectorUtils.normalizeDirection === "function"
@@ -296,6 +299,9 @@ const spellbookState = {
 };
 
 function clamp(value, min, max) {
+  if (sharedClamp) {
+    return sharedClamp(value, min, max);
+  }
   return Math.max(min, Math.min(max, value));
 }
 
