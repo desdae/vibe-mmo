@@ -12,6 +12,7 @@ const { createGameHttpServer } = require("./server/network/http-server");
 const { createSoundManifestBuilder } = require("./server/network/sound-manifest");
 const { createEntityUpdatePacketBuilder } = require("./server/network/entity-update-packet");
 const { createEventBuilders } = require("./server/network/event-builders");
+const { createAreaEffectEventBuilder } = require("./server/network/area-effect-events");
 const {
   encodeMobEffectEventPacket,
   encodeAreaEffectEventPacket,
@@ -111,10 +112,6 @@ const INVENTORY_SLOT_COUNT = INVENTORY_COLS * INVENTORY_ROWS;
 const ITEM_COPPER_ID = GAMEPLAY_CONFIG.loot.copperItemId;
 
 const {
-  AREA_EFFECT_OP_UPSERT,
-  AREA_EFFECT_OP_REMOVE,
-  AREA_EFFECT_KIND_AREA,
-  AREA_EFFECT_KIND_BEAM,
   POS_SCALE
 } = PROTOCOL;
 
@@ -4483,105 +4480,11 @@ const {
   buildPlayerEffectEventsForRecipient
 } = createEventBuilders();
 
-function toAreaEffectState(effect) {
-  const id = Number(effect && effect.id);
-  if (!Number.isFinite(id) || id <= 0) {
-    return null;
-  }
-  const kindRaw = String((effect && effect.kind) || "area").toLowerCase();
-  const kind = kindRaw === "beam" ? AREA_EFFECT_KIND_BEAM : AREA_EFFECT_KIND_AREA;
-  const state = {
-    id: Math.floor(id),
-    kind,
-    abilityId: String((effect && effect.abilityId) || "").trim().toLowerCase().slice(0, 64),
-    xQ: quantizePos(effect && effect.x),
-    yQ: quantizePos(effect && effect.y),
-    radiusQ: quantizePos(Math.max(0.1, Number(effect && effect.radius) || 0.1)),
-    durationMs: clamp(Math.floor(Number(effect && effect.durationMs) || 0), 1, 65535),
-    endsAt: Math.max(0, Math.floor(Number(effect && effect.endsAt) || 0))
-  };
-  if (kind === AREA_EFFECT_KIND_BEAM) {
-    state.startXQ = quantizePos(effect && effect.startX);
-    state.startYQ = quantizePos(effect && effect.startY);
-    state.dxQ = clamp(Math.round((Number(effect && effect.dx) || 0) * 1000), -32767, 32767);
-    state.dyQ = clamp(Math.round((Number(effect && effect.dy) || 0) * 1000), -32767, 32767);
-    state.lengthQ = quantizePos(Math.max(0.1, Number(effect && effect.length) || 0.1));
-    state.widthQ = quantizePos(Math.max(0.1, Number(effect && effect.width) || 0.1));
-  }
-  return state;
-}
-
-function areaEffectStateEquals(a, b) {
-  if (!a || !b) {
-    return false;
-  }
-  if (
-    a.kind !== b.kind ||
-    a.abilityId !== b.abilityId ||
-    a.xQ !== b.xQ ||
-    a.yQ !== b.yQ ||
-    a.radiusQ !== b.radiusQ ||
-    a.durationMs !== b.durationMs ||
-    a.endsAt !== b.endsAt
-  ) {
-    return false;
-  }
-  if (a.kind === AREA_EFFECT_KIND_BEAM) {
-    return (
-      a.startXQ === b.startXQ &&
-      a.startYQ === b.startYQ &&
-      a.dxQ === b.dxQ &&
-      a.dyQ === b.dyQ &&
-      a.lengthQ === b.lengthQ &&
-      a.widthQ === b.widthQ
-    );
-  }
-  return true;
-}
-
-function buildAreaEffectEventsForRecipient(recipient, now = Date.now()) {
-  const events = [];
-  const sync = recipient.entitySync;
-  const visibleIds = new Set();
-
-  for (const effect of activeAreaEffects.values()) {
-    if (!effect || now >= Number(effect.endsAt)) {
-      continue;
-    }
-    const visibility = VISIBILITY_RANGE + Math.max(0, Number(effect.radius) || 0);
-    if (!inVisibilityRange(recipient, effect, visibility)) {
-      continue;
-    }
-
-    const state = toAreaEffectState(effect);
-    if (!state) {
-      continue;
-    }
-    visibleIds.add(state.id);
-
-    const previous = sync.areaEffectStatesById.get(state.id);
-    if (!areaEffectStateEquals(previous, state)) {
-      events.push({
-        op: AREA_EFFECT_OP_UPSERT,
-        ...state,
-        remainingMs: clamp(state.endsAt - now, 1, 65535)
-      });
-      sync.areaEffectStatesById.set(state.id, state);
-    }
-  }
-
-  for (const [id] of Array.from(sync.areaEffectStatesById.entries())) {
-    if (!visibleIds.has(id)) {
-      events.push({
-        op: AREA_EFFECT_OP_REMOVE,
-        id
-      });
-      sync.areaEffectStatesById.delete(id);
-    }
-  }
-
-  return events;
-}
+const buildAreaEffectEventsForRecipient = createAreaEffectEventBuilder({
+  activeAreaEffects,
+  inVisibilityRange,
+  visibilityRange: VISIBILITY_RANGE
+});
 
 function getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance) {
   const targetDir =
