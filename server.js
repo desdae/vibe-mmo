@@ -7,6 +7,7 @@ const { createGameLoop } = require("./server/runtime/game-loop");
 const { createDebouncedFileReloader } = require("./server/runtime/file-reload-watch");
 const { createConfigOrchestrator } = require("./server/runtime/config-orchestrator");
 const { createProjectileTickSystem } = require("./server/runtime/projectile-tick");
+const { createPlayerTickSystem } = require("./server/runtime/player-tick");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
@@ -397,7 +398,7 @@ const abilityHandlerContext = {
   getAreaAbilityTargetPosition: (...args) => getAreaAbilityTargetPosition(...args),
   createPersistentAreaEffect: (...args) => createPersistentAreaEffect(...args),
   createPersistentBeamEffect: (...args) => createPersistentBeamEffect(...args),
-  resolvePlayerMobCollisions,
+  resolvePlayerMobCollisions: (...args) => resolvePlayerMobCollisions(...args),
   getAbilityInvulnerabilityDurationMs
 };
 
@@ -645,109 +646,33 @@ const projectileTickSystem = createProjectileTickSystem({
 });
 const tickProjectiles = projectileTickSystem.tickProjectiles;
 
-function tickPlayers() {
-  const dt = TICK_MS / 1000;
-  const now = Date.now();
-
-  for (const player of players.values()) {
-    if (player.hp > 0 && player.mana < player.maxMana && player.manaRegen > 0) {
-      player.mana = clamp(player.mana + player.manaRegen * dt, 0, player.maxMana);
-    }
-    tickPlayerHealEffects(player);
-    tickPlayerManaEffects(player);
-    tickPlayerDotEffects(player, now);
-
-    const stunned = (Number(player.stunnedUntil) || 0) > now;
-    if (stunned && player.activeCast) {
-      clearPlayerCast(player);
-    } else if (player.activeCast && playerHasMovementInput(player)) {
-      const activeDef = ABILITY_CONFIG.abilityDefs.get(String(player.activeCast.abilityId || ""));
-      if (!activeDef || activeDef.kind !== "teleport") {
-        clearPlayerCast(player);
-      }
-    }
-
-    if (player.hp <= 0) {
-      player.input = { dx: 0, dy: 0 };
-      clearPlayerCast(player);
-      player.activeHeals = [];
-      player.activeManaRestores = [];
-      clearPlayerCombatEffects(player);
-      continue;
-    }
-
-    if (!stunned && (player.stunnedUntil || player.stunDurationMs)) {
-      player.stunnedUntil = 0;
-      player.stunDurationMs = 0;
-    }
-    if ((Number(player.slowUntil) || 0) <= now && (player.slowUntil || player.slowMultiplier !== 1)) {
-      player.slowUntil = 0;
-      player.slowMultiplier = 1;
-      player.slowDurationMs = 0;
-    }
-    if ((Number(player.burningUntil) || 0) <= now && player.burningUntil) {
-      player.burningUntil = 0;
-      player.burnDurationMs = 0;
-    }
-
-    if (stunned) {
-      player.input = { dx: 0, dy: 0 };
-      continue;
-    }
-
-    if (!player.input || (!player.input.dx && !player.input.dy)) {
-      continue;
-    }
-
-    const slowMultiplier = (Number(player.slowUntil) || 0) > now ? clamp(Number(player.slowMultiplier) || 1, 0.1, 1) : 1;
-    const moveSpeed = Math.max(0.1, Number(player.moveSpeed) || BASE_PLAYER_SPEED) * slowMultiplier;
-    player.x = clamp(player.x + player.input.dx * moveSpeed * dt, 0, MAP_WIDTH - 1);
-    player.y = clamp(player.y + player.input.dy * moveSpeed * dt, 0, MAP_HEIGHT - 1);
-    resolvePlayerMobCollisions(player);
-  }
-}
-
-function resolvePlayerMobCollisions(player) {
-  if (!player || player.hp <= 0) {
-    return;
-  }
-
-  for (let iter = 0; iter < PLAYER_MOB_SEPARATION_ITERATIONS; iter += 1) {
-    for (const mob of mobs.values()) {
-      if (!mob.alive) {
-        continue;
-      }
-      let dx = player.x - mob.x;
-      let dy = player.y - mob.y;
-      let dist = Math.hypot(dx, dy);
-      if (dist >= PLAYER_MOB_MIN_SEPARATION) {
-        continue;
-      }
-
-      if (dist < 0.0001) {
-        const fallback =
-          normalizeDirection(player.input && player.input.dx, player.input && player.input.dy) ||
-          normalizeDirection(player.lastDirection && player.lastDirection.dx, player.lastDirection && player.lastDirection.dy) ||
-          { dx: 1, dy: 0 };
-        dx = fallback.dx;
-        dy = fallback.dy;
-        dist = 1;
-      }
-
-      const overlap = PLAYER_MOB_MIN_SEPARATION - dist;
-      const nx = dx / dist;
-      const ny = dy / dist;
-      player.x = clamp(player.x + nx * overlap, 0, MAP_WIDTH - 1);
-      player.y = clamp(player.y + ny * overlap, 0, MAP_HEIGHT - 1);
-    }
-  }
-}
-
-function resolveAllPlayersAgainstMobs() {
-  for (const player of players.values()) {
-    resolvePlayerMobCollisions(player);
-  }
-}
+const playerTickSystem = createPlayerTickSystem({
+  players,
+  mobs,
+  tickMs: TICK_MS,
+  clamp,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  basePlayerSpeed: BASE_PLAYER_SPEED,
+  tickPlayerHealEffects,
+  tickPlayerManaEffects,
+  tickPlayerDotEffects,
+  clearPlayerCast,
+  playerHasMovementInput,
+  clearPlayerCombatEffects,
+  abilityDefsProvider: () => ABILITY_CONFIG.abilityDefs,
+  getPlayerAbilityLevel,
+  getAbilityCooldownPassed,
+  executeAbilityByKind,
+  abilityHandlerContext,
+  normalizeDirection,
+  playerMobMinSeparation: PLAYER_MOB_MIN_SEPARATION,
+  playerMobSeparationIterations: PLAYER_MOB_SEPARATION_ITERATIONS
+});
+const tickPlayers = playerTickSystem.tickPlayers;
+const tickPlayerCasts = playerTickSystem.tickPlayerCasts;
+const resolvePlayerMobCollisions = playerTickSystem.resolvePlayerMobCollisions;
+const resolveAllPlayersAgainstMobs = playerTickSystem.resolveAllPlayersAgainstMobs;
 
 const {
   buildPlayerSwingEventsForRecipient,
@@ -764,61 +689,6 @@ const buildAreaEffectEventsForRecipient = createAreaEffectEventBuilder({
   inVisibilityRange,
   visibilityRange: VISIBILITY_RANGE
 });
-
-function tickPlayerCasts(now) {
-  for (const player of players.values()) {
-    const cast = player.activeCast;
-    if (!cast) {
-      continue;
-    }
-
-    const abilityDef = ABILITY_CONFIG.abilityDefs.get(String(cast.abilityId || ""));
-    if (!abilityDef) {
-      clearPlayerCast(player);
-      continue;
-    }
-
-    if (player.hp <= 0 || (abilityDef.kind !== "teleport" && playerHasMovementInput(player))) {
-      clearPlayerCast(player);
-      continue;
-    }
-
-    if (now < cast.endsAt) {
-      continue;
-    }
-
-    const abilityLevel = getPlayerAbilityLevel(player, abilityDef.id);
-    if (abilityLevel <= 0) {
-      clearPlayerCast(player);
-      continue;
-    }
-
-    const manaCost = Math.max(0, Number(abilityDef.manaCost) || 0);
-    if (player.mana + 1e-6 < manaCost) {
-      clearPlayerCast(player);
-      continue;
-    }
-    if (!getAbilityCooldownPassed(player, abilityDef, abilityLevel, now)) {
-      clearPlayerCast(player);
-      continue;
-    }
-
-    const used = executeAbilityByKind({
-      player,
-      abilityDef,
-      abilityLevel,
-      targetDx: cast.dx,
-      targetDy: cast.dy,
-      targetDistance: cast.targetDistance,
-      now,
-      ctx: abilityHandlerContext
-    });
-    if (used && manaCost > 0) {
-      player.mana = clamp(player.mana - manaCost, 0, player.maxMana);
-    }
-    clearPlayerCast(player);
-  }
-}
 
 const mobCombatTools = createMobCombatTools({
   players,
