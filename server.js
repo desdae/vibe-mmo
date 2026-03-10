@@ -27,6 +27,7 @@ const { createCastingTools } = require("./server/gameplay/casting");
 const { createDamageTools } = require("./server/gameplay/damage");
 const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createLootBagTools } = require("./server/gameplay/loot-bags");
+const { createMobAbilityTools } = require("./server/gameplay/mob-abilities");
 const { createMobBehaviorTools } = require("./server/gameplay/mob-behavior");
 const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
@@ -3754,360 +3755,35 @@ const getMobCombatProfile = mobCombatTools.getMobCombatProfile;
 const getNearestAggroPlayer = mobCombatTools.getNearestAggroPlayer;
 const triggerMobAttackAnimation = mobCombatTools.triggerMobAttackAnimation;
 
-function spawnMobProjectileAbility(mob, abilityDef, abilityLevel, targetDir, now = Date.now()) {
-  if (!mob || !abilityDef || !targetDir) {
-    return false;
-  }
-  const normalized = normalizeDirection(targetDir.dx, targetDir.dy);
-  if (!normalized) {
-    return false;
-  }
-
-  const speed = Math.max(0.1, Number(abilityDef.speed) || 1);
-  const range = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 6);
-  const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
-  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-  const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
-  const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
-  const dotSchool = String(abilityDef.dotSchool || "generic").trim().toLowerCase() || "generic";
-  const projectileCount = clamp(Math.floor(Number(abilityDef.projectileCount) || 1), 1, 12);
-  const spreadDeg =
-    Number(abilityDef.spreadDeg) > 0 ? Number(abilityDef.spreadDeg) : projectileCount > 1 ? 16 : 0;
-  const spreadTotalRad = (spreadDeg * Math.PI) / 180;
-
-  for (let i = 0; i < projectileCount; i += 1) {
-    const ratio = projectileCount <= 1 ? 0.5 : i / (projectileCount - 1);
-    const angleOffset = projectileCount <= 1 ? 0 : (ratio - 0.5) * spreadTotalRad;
-    const dir = projectileCount <= 1 ? normalized : rotateDirection(normalized, angleOffset);
-    const startOffset = 0.9 + i * 0.04;
-    const projectile = {
-      id: String(nextProjectileId++),
-      ownerId: `mob:${String(mob.id)}`,
-      sourceMobId: String(mob.id),
-      targetType: "player",
-      x: clamp(mob.x + dir.dx * startOffset, 0, MAP_WIDTH - 1),
-      y: clamp(mob.y + dir.dy * startOffset, 0, MAP_HEIGHT - 1),
-      dx: dir.dx,
-      dy: dir.dy,
-      speed,
-      ttlMs,
-      createdAt: now,
-      damageMin,
-      damageMax,
-      hitRadius: clamp(Number(abilityDef.projectileHitRadius) || DEFAULT_PROJECTILE_HIT_RADIUS, 0.1, 8),
-      explosionRadius: Math.max(0, Number(abilityDef.explosionRadius) || 0),
-      explosionDamageMultiplier: clamp(Number(abilityDef.explosionDamageMultiplier) || 0, 0, 1),
-      slowDurationMs: Math.max(0, Number(abilityDef.slowDurationMs) || 0),
-      slowMultiplier: clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
-      stunDurationMs: Math.max(0, Number(abilityDef.stunDurationMs) || 0),
-      dotDamageMin: Math.max(0, Number(dotDamageMin) || 0),
-      dotDamageMax: Math.max(0, Number(dotDamageMax) || 0),
-      dotDurationMs,
-      dotSchool,
-      explodeOnExpire: abilityDef.explodeOnExpire !== false,
-      homingRange: Math.max(0, Number(abilityDef.homingRange) || 0),
-      homingTurnRate: Math.max(0, Number(abilityDef.homingTurnRate) || 0),
-      abilityId: abilityDef.id,
-      emitProjectiles: null
-    };
-    projectiles.set(projectile.id, projectile);
-  }
-
-  return true;
-}
-
-function executeMobAbilityAgainstPlayer(mob, player, abilityEntry, now = Date.now()) {
-  if (!mob || !player || !abilityEntry) {
-    return false;
-  }
-  const abilityId = String(abilityEntry.abilityId || "").trim();
-  if (!abilityId) {
-    return false;
-  }
-  const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(abilityId);
-  if (!baseAbilityDef) {
-    return false;
-  }
-  const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, abilityEntry);
-  const abilityLevel = clamp(Math.floor(Number(abilityEntry.level) || 1), 1, 255);
-  const dir = normalizeDirection(player.x - mob.x, player.y - mob.y);
-  if (!dir) {
-    return false;
-  }
-  const dist = distance(mob, player);
-  const kind = String(abilityDef.kind || "").trim().toLowerCase();
-
-  if (kind === "projectile") {
-    const casted = spawnMobProjectileAbility(mob, abilityDef, abilityLevel, dir, now);
-    if (casted) {
-      triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
-    }
-    return casted;
-  }
-
-  const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-  const rollDamage = () => randomInt(clamp(damageMin, 0, 255), clamp(Math.max(damageMin, damageMax), 0, 255));
-
-  if (kind === "meleecone") {
-    const range = Math.max(0.2, getAbilityRangeForLevel(abilityDef, abilityLevel) || MOB_ATTACK_RANGE);
-    if (dist > range) {
-      return false;
-    }
-    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
-    const dealt = applyDamageToPlayer(player, rollDamage(), now);
-    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
-    return true;
-  }
-
-  if (kind === "selfarea") {
-    const radius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.radius) || 0.2);
-    if (dist > radius) {
-      return false;
-    }
-    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
-    queueExplosionEvent(mob.x, mob.y, radius, abilityDef.id);
-    const dealt = applyDamageToPlayer(player, rollDamage(), now);
-    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
-    return true;
-  }
-
-  if (kind === "area") {
-    const castRange = Math.max(0, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
-    const radius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.radius) || 0.2);
-    if (dist > castRange + radius) {
-      return false;
-    }
-    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
-    const impactDistance = castRange > 0 ? clamp(dist, 0, castRange) : 0;
-    const impactX = clamp(mob.x + dir.dx * impactDistance, 0, MAP_WIDTH - 1);
-    const impactY = clamp(mob.y + dir.dy * impactDistance, 0, MAP_HEIGHT - 1);
-    queueExplosionEvent(impactX, impactY, radius, abilityDef.id);
-    const dealt = applyDamageToPlayer(player, rollDamage(), now);
-    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
-    return true;
-  }
-
-  if (kind === "beam") {
-    const beamRange = Math.max(0.5, getAbilityRangeForLevel(abilityDef, abilityLevel) || 0.5);
-    const halfWidth = Math.max(0.15, (Number(abilityDef.beamWidth) || 0.8) * 0.5);
-    const relX = player.x - mob.x;
-    const relY = player.y - mob.y;
-    const along = relX * dir.dx + relY * dir.dy;
-    const perpendicular = Math.abs(relX * dir.dy - relY * dir.dx);
-    if (along < 0 || along > beamRange || perpendicular > halfWidth + 0.4) {
-      return false;
-    }
-    triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
-    const dealt = applyDamageToPlayer(player, rollDamage(), now);
-    applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
-    return true;
-  }
-
-  return false;
-}
-
-function startMobAbilityCast(mob, targetPlayer, abilityEntry, now = Date.now()) {
-  if (!mob || !targetPlayer || !abilityEntry || mob.activeCast) {
-    return false;
-  }
-  const abilityId = String(abilityEntry.abilityId || "").trim();
-  if (!abilityId) {
-    return false;
-  }
-  const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(abilityId);
-  if (!baseAbilityDef) {
-    return false;
-  }
-  const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, abilityEntry);
-  const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
-  if (castMs <= 0) {
-    return false;
-  }
-  const dir = normalizeDirection(targetPlayer.x - mob.x, targetPlayer.y - mob.y);
-  if (!dir) {
-    return false;
-  }
-
-  mob.activeCast = {
-    abilityId,
-    abilityLevel: clamp(Math.floor(Number(abilityEntry.level) || 1), 1, 255),
-    abilityEntry:
-      abilityEntry && typeof abilityEntry === "object"
-        ? JSON.parse(JSON.stringify(abilityEntry))
-        : null,
-    targetPlayerId: String(targetPlayer.id),
-    dx: dir.dx,
-    dy: dir.dy,
-    durationMs: castMs,
-    startedAt: now,
-    endsAt: now + castMs
-  };
-  mob.castStateVersion = (Number(mob.castStateVersion) + 1) & 0xffff;
-  return true;
-}
-
-function completeMobAbilityCast(mob, now = Date.now()) {
-  if (!mob || !mob.activeCast) {
-    return false;
-  }
-  const cast = mob.activeCast;
-  const targetPlayer = players.get(String(cast.targetPlayerId || ""));
-  const abilityEntry =
-    cast.abilityEntry && typeof cast.abilityEntry === "object"
-      ? cast.abilityEntry
-      : {
-          abilityId: String(cast.abilityId || ""),
-          level: clamp(Math.floor(Number(cast.abilityLevel) || 1), 1, 255)
-        };
-  clearMobCast(mob);
-  if (!targetPlayer || targetPlayer.hp <= 0) {
-    return false;
-  }
-  return executeMobAbilityAgainstPlayer(mob, targetPlayer, abilityEntry, now);
-}
-
-function pickMobAbilityToCast(mob, targetPlayer, dist, now = Date.now()) {
-  const combat = getMobCombatProfile(mob);
-  const entries = Array.isArray(combat.abilities) ? combat.abilities : [];
-  if (!entries.length) {
-    return null;
-  }
-
-  const candidates = [];
-  let totalWeight = 0;
-  for (const entry of entries) {
-    if (!entry || typeof entry !== "object") {
-      continue;
-    }
-    const abilityId = String(entry.abilityId || "").trim();
-    if (!abilityId || !ABILITY_CONFIG.abilityDefs.has(abilityId)) {
-      continue;
-    }
-    const minRange = Math.max(0, Number(entry.minRange) || 0);
-    const maxRange = Math.max(minRange, Number(entry.maxRange) || minRange);
-    if (dist < minRange || dist > maxRange) {
-      continue;
-    }
-    const castChance = clamp(Number(entry.castChance), 0, 1);
-    if (Number.isFinite(castChance) && castChance < 1 && Math.random() > castChance) {
-      continue;
-    }
-    const cooldownMs = Math.max(0, Math.floor(Number(entry.cooldownMs) || 0));
-    const cooldownKey = `ability:${abilityId}`;
-    const readyAt = mob.abilityCooldowns instanceof Map ? Number(mob.abilityCooldowns.get(cooldownKey) || 0) : 0;
-    if (readyAt > now) {
-      continue;
-    }
-    const weight = Math.max(0.01, Number(entry.weight) || 1);
-    totalWeight += weight;
-    candidates.push({ entry, weight, cooldownKey, cooldownMs });
-  }
-
-  if (!candidates.length) {
-    return null;
-  }
-  let roll = Math.random() * totalWeight;
-  for (const candidate of candidates) {
-    roll -= candidate.weight;
-    if (roll <= 0) {
-      return candidate;
-    }
-  }
-  return candidates[candidates.length - 1];
-}
-
-function tryMobCastConfiguredAbility(mob, targetPlayer, dist, now = Date.now()) {
-  const picked = pickMobAbilityToCast(mob, targetPlayer, dist, now);
-  if (!picked) {
-    return false;
-  }
-
-  if (!(mob.abilityCooldowns instanceof Map)) {
-    mob.abilityCooldowns = new Map();
-  }
-  const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(String(picked.entry.abilityId || ""));
-  const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, picked.entry);
-  const castMs = Math.max(0, Number(abilityDef?.castMs) || 0);
-  if (castMs > 0) {
-    const started = startMobAbilityCast(mob, targetPlayer, picked.entry, now);
-    if (!started) {
-      return false;
-    }
-    mob.abilityCooldowns.set(picked.cooldownKey, now + Math.max(0, picked.cooldownMs));
-    return true;
-  }
-
-  const used = executeMobAbilityAgainstPlayer(mob, targetPlayer, picked.entry, now);
-  if (!used) {
-    return false;
-  }
-
-  mob.abilityCooldowns.set(picked.cooldownKey, now + Math.max(0, picked.cooldownMs));
-  return true;
-}
-
-function tryMobBasicAttack(mob, targetPlayer, dist, now = Date.now()) {
-  if (!mob || !targetPlayer || targetPlayer.hp <= 0) {
-    return false;
-  }
-  const combat = getMobCombatProfile(mob);
-  const basic = combat.basicAttack && typeof combat.basicAttack === "object" ? combat.basicAttack : null;
-  if (!basic) {
-    return false;
-  }
-
-  const range = Math.max(0.2, Number(basic.range) || MOB_ATTACK_RANGE);
-  if (dist > range) {
-    return false;
-  }
-  const cooldownMs = Math.max(50, Math.floor(Number(basic.cooldownMs) || MOB_ATTACK_COOLDOWN_MS));
-  if (now - Number(mob.lastAttackAt || 0) < cooldownMs) {
-    return false;
-  }
-
-  if (String(basic.type || "melee").toLowerCase() === "ability" && String(basic.abilityId || "").trim()) {
-    const abilityId = String(basic.abilityId || "").trim();
-    const baseAbilityDef = ABILITY_CONFIG.abilityDefs.get(abilityId);
-    const abilityDef = resolveMobAbilityOverrideDef(baseAbilityDef, basic);
-    const castMs = Math.max(0, Number(abilityDef?.castMs) || 0);
-    if (castMs > 0) {
-      const started = startMobAbilityCast(
-        mob,
-        targetPlayer,
-        {
-          abilityId,
-          level: 1
-        },
-        now
-      );
-      if (started) {
-        mob.lastAttackAt = now;
-      }
-      return started;
-    }
-
-    const used = executeMobAbilityAgainstPlayer(
-      mob,
-      targetPlayer,
-      {
-        abilityId,
-        level: 1
-      },
-      now
-    );
-    if (used) {
-      mob.lastAttackAt = now;
-    }
-    return used;
-  }
-
-  const dir = normalizeDirection(targetPlayer.x - mob.x, targetPlayer.y - mob.y);
-  triggerMobAttackAnimation(mob, dir, now);
-  const damageMin = clamp(Math.floor(Number(basic.damageMin) || Number(mob.damageMin) || 1), 0, 255);
-  const damageMax = clamp(Math.floor(Number(basic.damageMax) || Number(mob.damageMax) || damageMin), damageMin, 255);
-  applyDamageToPlayer(targetPlayer, randomInt(damageMin, damageMax), now);
-  return true;
-}
+const mobAbilityTools = createMobAbilityTools({
+  players,
+  projectiles,
+  getAbilityDefs: () => ABILITY_CONFIG.abilityDefs,
+  resolveMobAbilityOverrideDef,
+  normalizeDirection,
+  rotateDirection,
+  distance,
+  clamp,
+  randomInt,
+  getAbilityRangeForLevel,
+  getAbilityDamageRange,
+  getAbilityDotDamageRange,
+  applyDamageToPlayer,
+  applyAbilityHitEffectsToPlayer,
+  triggerMobAttackAnimation,
+  queueExplosionEvent,
+  clearMobCast: (...args) => clearMobCast(...args),
+  getMobCombatProfile: (...args) => getMobCombatProfile(...args),
+  allocateProjectileId,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  defaultProjectileHitRadius: DEFAULT_PROJECTILE_HIT_RADIUS,
+  defaultMobAttackRange: MOB_ATTACK_RANGE,
+  defaultMobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
+});
+const completeMobAbilityCast = mobAbilityTools.completeMobAbilityCast;
+const tryMobCastConfiguredAbility = mobAbilityTools.tryMobCastConfiguredAbility;
+const tryMobBasicAttack = mobAbilityTools.tryMobBasicAttack;
 
 function tickMobs() {
   const now = Date.now();
