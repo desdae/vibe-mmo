@@ -22,6 +22,7 @@ const {
   loadServerConfigFromDisk,
   formatServerConfigForLog
 } = require("./server/config/server-config");
+const { loadGameplayConfigFromDisk } = require("./server/config/gameplay-config");
 const {
   getAbilityDamageRange,
   getAbilityDotDamageRange,
@@ -55,9 +56,7 @@ const {
   clamp,
   randomInt,
   parseNumericRange,
-  parseBoolean,
-  parseGameplayInt,
-  parseGameplayNumber
+  parseBoolean
 } = require("./server/gameplay/number-utils");
 const {
   encodeMobEffectEventPacket,
@@ -125,7 +124,7 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
   }
 });
 
-const GAMEPLAY_CONFIG = loadGameplayConfigFromDisk();
+const GAMEPLAY_CONFIG = loadGameplayConfigFromDisk(GAMEPLAY_CONFIG_PATH, DEFAULT_GAMEPLAY_CONFIG);
 const MAP_WIDTH = GAMEPLAY_CONFIG.map.width;
 const MAP_HEIGHT = GAMEPLAY_CONFIG.map.height;
 const VISIBILITY_RANGE = GAMEPLAY_CONFIG.map.visibilityRange;
@@ -163,158 +162,6 @@ const {
 
 const publicDir = path.join(__dirname, "public");
 const buildSoundManifest = createSoundManifestBuilder({ publicDir });
-
-function buildGameplayConfig(parsed) {
-  const src = parsed && typeof parsed === "object" ? parsed : {};
-  const map = src.map && typeof src.map === "object" ? src.map : {};
-  const player = src.player && typeof src.player === "object" ? src.player : {};
-  const projectile = src.projectile && typeof src.projectile === "object" ? src.projectile : {};
-  const clusterSpawning =
-    src.clusterSpawning && typeof src.clusterSpawning === "object" ? src.clusterSpawning : {};
-  const mob = src.mob && typeof src.mob === "object" ? src.mob : {};
-  const loot = src.loot && typeof src.loot === "object" ? src.loot : {};
-  const inventory = src.inventory && typeof src.inventory === "object" ? src.inventory : {};
-  const audio = src.audio && typeof src.audio === "object" ? src.audio : {};
-
-  return {
-    map: {
-      width: parseGameplayInt(map.width, DEFAULT_GAMEPLAY_CONFIG.map.width, 10, 10000),
-      height: parseGameplayInt(map.height, DEFAULT_GAMEPLAY_CONFIG.map.height, 10, 10000),
-      visibilityRange: parseGameplayNumber(
-        map.visibilityRange,
-        DEFAULT_GAMEPLAY_CONFIG.map.visibilityRange,
-        1,
-        100
-      )
-    },
-    tickMs: parseGameplayInt(src.tickMs, DEFAULT_GAMEPLAY_CONFIG.tickMs, 10, 1000),
-    player: {
-      baseSpeed: parseGameplayNumber(player.baseSpeed, DEFAULT_GAMEPLAY_CONFIG.player.baseSpeed, 0.1, 50),
-      baseExpToNext: parseGameplayInt(
-        player.baseExpToNext,
-        DEFAULT_GAMEPLAY_CONFIG.player.baseExpToNext,
-        1,
-        1000000
-      ),
-      expGrowthFactor: parseGameplayNumber(
-        player.expGrowthFactor,
-        DEFAULT_GAMEPLAY_CONFIG.player.expGrowthFactor,
-        1,
-        5
-      ),
-      mobMinSeparation: parseGameplayNumber(
-        player.mobMinSeparation,
-        DEFAULT_GAMEPLAY_CONFIG.player.mobMinSeparation,
-        0,
-        10
-      ),
-      mobSeparationIterations: parseGameplayInt(
-        player.mobSeparationIterations,
-        DEFAULT_GAMEPLAY_CONFIG.player.mobSeparationIterations,
-        0,
-        20
-      )
-    },
-    projectile: {
-      defaultHitRadius: parseGameplayNumber(
-        projectile.defaultHitRadius,
-        DEFAULT_GAMEPLAY_CONFIG.projectile.defaultHitRadius,
-        0,
-        20
-      )
-    },
-    clusterSpawning: {
-      targetClusters: parseGameplayInt(
-        clusterSpawning.targetClusters,
-        DEFAULT_GAMEPLAY_CONFIG.clusterSpawning.targetClusters,
-        1,
-        1000
-      ),
-      clusterAreaSize: parseGameplayNumber(
-        clusterSpawning.clusterAreaSize,
-        DEFAULT_GAMEPLAY_CONFIG.clusterSpawning.clusterAreaSize,
-        1,
-        1000
-      ),
-      maxClustersPerArea: parseGameplayInt(
-        clusterSpawning.maxClustersPerArea,
-        DEFAULT_GAMEPLAY_CONFIG.clusterSpawning.maxClustersPerArea,
-        1,
-        100
-      )
-    },
-    mob: {
-      wanderRadius: parseGameplayNumber(mob.wanderRadius, DEFAULT_GAMEPLAY_CONFIG.mob.wanderRadius, 0, 1000),
-      provokedLeashRadius: parseGameplayNumber(
-        mob.provokedLeashRadius,
-        DEFAULT_GAMEPLAY_CONFIG.mob.provokedLeashRadius,
-        1,
-        5000
-      ),
-      provokedChaseMs: parseGameplayInt(
-        mob.provokedChaseMs,
-        DEFAULT_GAMEPLAY_CONFIG.mob.provokedChaseMs,
-        0,
-        3600000
-      ),
-      aggroRange: parseGameplayNumber(mob.aggroRange, DEFAULT_GAMEPLAY_CONFIG.mob.aggroRange, 0, 1000),
-      attackRange: parseGameplayNumber(mob.attackRange, DEFAULT_GAMEPLAY_CONFIG.mob.attackRange, 0, 1000),
-      attackCooldownMs: parseGameplayInt(
-        mob.attackCooldownMs,
-        DEFAULT_GAMEPLAY_CONFIG.mob.attackCooldownMs,
-        50,
-        600000
-      ),
-      minSeparation: parseGameplayNumber(mob.minSeparation, DEFAULT_GAMEPLAY_CONFIG.mob.minSeparation, 0, 10),
-      separationIterations: parseGameplayInt(
-        mob.separationIterations,
-        DEFAULT_GAMEPLAY_CONFIG.mob.separationIterations,
-        0,
-        20
-      )
-    },
-    loot: {
-      bagPickupRange: parseGameplayNumber(loot.bagPickupRange, DEFAULT_GAMEPLAY_CONFIG.loot.bagPickupRange, 0, 50),
-      bagClickRange: parseGameplayNumber(loot.bagClickRange, DEFAULT_GAMEPLAY_CONFIG.loot.bagClickRange, 0, 50),
-      bagDespawnMs: parseGameplayInt(loot.bagDespawnMs, DEFAULT_GAMEPLAY_CONFIG.loot.bagDespawnMs, 0, 86400000),
-      copperItemId: String(loot.copperItemId || DEFAULT_GAMEPLAY_CONFIG.loot.copperItemId).trim() ||
-        DEFAULT_GAMEPLAY_CONFIG.loot.copperItemId
-    },
-    inventory: {
-      cols: parseGameplayInt(inventory.cols, DEFAULT_GAMEPLAY_CONFIG.inventory.cols, 1, 20),
-      rows: parseGameplayInt(inventory.rows, DEFAULT_GAMEPLAY_CONFIG.inventory.rows, 1, 20)
-    },
-    audio: {
-      abilitySpatialMaxDistance: parseGameplayNumber(
-        audio.abilitySpatialMaxDistance,
-        DEFAULT_GAMEPLAY_CONFIG.audio.abilitySpatialMaxDistance,
-        1,
-        200
-      ),
-      abilityPanDistance: parseGameplayNumber(
-        audio.abilityPanDistance,
-        DEFAULT_GAMEPLAY_CONFIG.audio.abilityPanDistance,
-        1,
-        200
-      ),
-      projectileMaxConcurrent: parseGameplayInt(
-        audio.projectileMaxConcurrent,
-        DEFAULT_GAMEPLAY_CONFIG.audio.projectileMaxConcurrent,
-        1,
-        64
-      )
-    }
-  };
-}
-
-function loadGameplayConfigFromDisk() {
-  const raw = fs.readFileSync(GAMEPLAY_CONFIG_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error("gameplay config root must be an object");
-  }
-  return buildGameplayConfig(parsed);
-}
 
 function loadItemConfig() {
   const raw = fs.readFileSync(ITEM_CONFIG_PATH, "utf8");
