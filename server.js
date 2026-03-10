@@ -28,6 +28,7 @@ const { createDamageTools } = require("./server/gameplay/damage");
 const { createInventoryTools } = require("./server/gameplay/inventory");
 const { createLootBagTools } = require("./server/gameplay/loot-bags");
 const { createMobBehaviorTools } = require("./server/gameplay/mob-behavior");
+const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createMobCombatEffectTools } = require("./server/gameplay/mob-combat-effects");
@@ -2571,7 +2572,7 @@ function rollMobDrops(mob) {
 const mobBehaviorTools = createMobBehaviorTools({
   players,
   clamp,
-  getMobCombatProfile,
+  getMobCombatProfile: (...args) => getMobCombatProfile(...args),
   getMobSpeedMultiplier: () => Number(SERVER_CONFIG.mobSpeedMultiplier) || 1,
   mobProvokedChaseMs: MOB_PROVOKED_CHASE_MS,
   mobProvokedLeashRadius: MOB_PROVOKED_LEASH_RADIUS,
@@ -3739,61 +3740,19 @@ function tickPlayerCasts(now) {
   }
 }
 
-function getMobCombatProfile(mob) {
-  const combat = mob && mob.combat && typeof mob.combat === "object" ? mob.combat : null;
-  if (combat) {
-    return combat;
-  }
-  const fallbackDamageMin = clamp(Math.floor(Number(mob?.damageMin) || 1), 0, 255);
-  const fallbackDamageMax = clamp(Math.floor(Number(mob?.damageMax) || fallbackDamageMin), fallbackDamageMin, 255);
-  return {
-    behavior: "melee",
-    aggroRange: MOB_AGGRO_RANGE,
-    preferredRange: MOB_ATTACK_RANGE,
-    leashRange: MOB_WANDER_RADIUS,
-    basicAttack: {
-      type: "melee",
-      abilityId: "",
-      damageMin: fallbackDamageMin,
-      damageMax: fallbackDamageMax,
-      cooldownMs: MOB_ATTACK_COOLDOWN_MS,
-      range: MOB_ATTACK_RANGE
-    },
-    abilities: []
-  };
-}
-
-function getNearestAggroPlayer(mob, maxAggroRange = MOB_AGGRO_RANGE) {
-  let nearest = null;
-  let nearestDistance = Infinity;
-  const rangeLimit = Math.max(0.25, Number(maxAggroRange) || MOB_AGGRO_RANGE);
-
-  for (const player of players.values()) {
-    if (player.hp <= 0) {
-      continue;
-    }
-    const d = distance(mob, player);
-    if (d <= rangeLimit && d < nearestDistance) {
-      nearest = player;
-      nearestDistance = d;
-    }
-  }
-
-  return { player: nearest, dist: nearestDistance };
-}
-
-function triggerMobAttackAnimation(mob, targetDir, now = Date.now(), abilityId = "") {
-  if (!mob) {
-    return;
-  }
-  const normalized = normalizeDirection(Number(targetDir?.dx) || 0, Number(targetDir?.dy) || 0);
-  if (normalized) {
-    mob.lastBiteDirection = normalized;
-  }
-  mob.lastAttackAbilityId = String(abilityId || "").trim().slice(0, 64);
-  mob.lastAttackAt = now;
-  mob.biteCounter = (Number(mob.biteCounter) + 1) & 0xff;
-}
+const mobCombatTools = createMobCombatTools({
+  players,
+  clamp,
+  normalizeDirection,
+  distance,
+  defaultAggroRange: MOB_AGGRO_RANGE,
+  defaultAttackRange: MOB_ATTACK_RANGE,
+  defaultWanderRadius: MOB_WANDER_RADIUS,
+  defaultAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS
+});
+const getMobCombatProfile = mobCombatTools.getMobCombatProfile;
+const getNearestAggroPlayer = mobCombatTools.getNearestAggroPlayer;
+const triggerMobAttackAnimation = mobCombatTools.triggerMobAttackAnimation;
 
 function spawnMobProjectileAbility(mob, abilityDef, abilityLevel, targetDir, now = Date.now()) {
   if (!mob || !abilityDef || !targetDir) {
