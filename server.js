@@ -23,6 +23,7 @@ const {
   formatServerConfigForLog
 } = require("./server/config/server-config");
 const { loadGameplayConfigFromDisk } = require("./server/config/gameplay-config");
+const { loadItemConfigFromDisk } = require("./server/config/item-config");
 const {
   getAbilityDamageRange,
   getAbilityDotDamageRange,
@@ -162,63 +163,6 @@ const {
 
 const publicDir = path.join(__dirname, "public");
 const buildSoundManifest = createSoundManifestBuilder({ publicDir });
-
-function loadItemConfig() {
-  const raw = fs.readFileSync(ITEM_CONFIG_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  const items = Array.isArray(parsed) ? parsed : [];
-
-  const itemDefs = new Map();
-  const clientItemDefs = [];
-
-  for (const entry of items) {
-    const id = String(entry?.id || "").trim();
-    if (!id) {
-      continue;
-    }
-    const name = String(entry?.name || id).trim().slice(0, 48);
-    const stackSize = clamp(Math.round(Number(entry?.stackSize) || 1), 1, 65535);
-    const description = String(entry?.description || "").slice(0, 240);
-    const icon = String(entry?.icon || "").slice(0, 120);
-    const effect = entry && typeof entry.effect === "object" ? entry.effect : null;
-    let normalizedEffect = null;
-    if (effect && typeof effect.type === "string") {
-      normalizedEffect = {
-        type: String(effect.type),
-        value: Number(effect.value) || 0,
-        duration: Number(effect.duration) || 0
-      };
-      for (const [effectKey, effectValue] of Object.entries(effect)) {
-        if (effectKey === "type" || effectKey === "value" || effectKey === "duration") {
-          continue;
-        }
-        if (typeof effectValue === "number" && Number.isFinite(effectValue) && effectValue > 0) {
-          normalizedEffect[effectKey] = effectValue;
-        }
-      }
-    }
-
-    const def = {
-      id,
-      name,
-      stackSize,
-      description,
-      icon,
-      effect: normalizedEffect
-    };
-    itemDefs.set(id, def);
-    clientItemDefs.push(def);
-  }
-
-  if (!itemDefs.size) {
-    throw new Error(`No valid item definitions in ${ITEM_CONFIG_PATH}`);
-  }
-
-  return {
-    itemDefs,
-    clientItemDefs
-  };
-}
 
 const DELIVERY_TYPE_TO_KIND = Object.freeze({
   projectile: "projectile",
@@ -1649,7 +1593,7 @@ function inVisibilityRange(a, b, range) {
   return Math.abs(a.x - b.x) <= range && Math.abs(a.y - b.y) <= range;
 }
 
-const ITEM_CONFIG = loadItemConfig();
+const ITEM_CONFIG = loadItemConfigFromDisk(ITEM_CONFIG_PATH);
 const playerMessageTools = createPlayerMessageTools({
   sendJson,
   itemDefs: ITEM_CONFIG.itemDefs,
