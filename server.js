@@ -9,6 +9,7 @@ const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
 const { createGameHttpServer } = require("./server/network/http-server");
+const { createSoundManifestBuilder } = require("./server/network/sound-manifest");
 
 const PORT = process.env.PORT || 3000;
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
@@ -141,63 +142,7 @@ const {
 } = PROTOCOL;
 
 const publicDir = path.join(__dirname, "public");
-
-const SOUND_DIR_PATH = path.join(publicDir, "sounds");
-const SOUND_EXTENSIONS = new Set([".mp3", ".ogg", ".wav", ".m4a"]);
-
-function toPublicUrlPath(absolutePath) {
-  const relative = path.relative(publicDir, absolutePath);
-  if (!relative || relative.startsWith("..")) {
-    return "";
-  }
-  const normalized = relative.split(path.sep).filter(Boolean).map(encodeURIComponent).join("/");
-  return normalized ? `/${normalized}` : "";
-}
-
-function collectSoundUrlPaths(rootDir) {
-  const urls = [];
-  if (!fs.existsSync(rootDir)) {
-    return urls;
-  }
-
-  const stack = [rootDir];
-  while (stack.length) {
-    const currentDir = stack.pop();
-    let entries = [];
-    try {
-      entries = fs.readdirSync(currentDir, { withFileTypes: true });
-    } catch (_error) {
-      continue;
-    }
-    for (const entry of entries) {
-      const absolutePath = path.join(currentDir, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(absolutePath);
-        continue;
-      }
-      if (!entry.isFile()) {
-        continue;
-      }
-      const ext = path.extname(entry.name).toLowerCase();
-      if (!SOUND_EXTENSIONS.has(ext)) {
-        continue;
-      }
-      const urlPath = toPublicUrlPath(absolutePath);
-      if (urlPath) {
-        urls.push(urlPath);
-      }
-    }
-  }
-
-  urls.sort();
-  return urls;
-}
-
-function buildSoundManifest() {
-  return {
-    availableUrls: collectSoundUrlPaths(SOUND_DIR_PATH)
-  };
-}
+const buildSoundManifest = createSoundManifestBuilder({ publicDir });
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
