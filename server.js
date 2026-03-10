@@ -25,6 +25,10 @@ const {
 const { loadGameplayConfigFromDisk } = require("./server/config/gameplay-config");
 const { loadItemConfigFromDisk } = require("./server/config/item-config");
 const {
+  parseMobDropRules,
+  loadGlobalDropTableConfigFromDisk
+} = require("./server/config/drop-config");
+const {
   getAbilityDamageRange,
   getAbilityDotDamageRange,
   getAbilityRangeForLevel,
@@ -979,67 +983,6 @@ function loadClassConfig(abilityDefs, itemDefs) {
   };
 }
 
-function parseMobDropRules(rawDrops, itemDefs) {
-  return parseDropRulesFromGroups(rawDrops, itemDefs);
-}
-
-function parseDropRulesFromGroups(rawDropGroups, itemDefs) {
-  const rules = [];
-  if (!Array.isArray(rawDropGroups)) {
-    return rules;
-  }
-
-  for (const dropGroup of rawDropGroups) {
-    if (!dropGroup || typeof dropGroup !== "object") {
-      continue;
-    }
-
-    for (const [itemId, rawSpec] of Object.entries(dropGroup)) {
-      if (!itemDefs.has(itemId)) {
-        continue;
-      }
-
-      if (Array.isArray(rawSpec) && rawSpec.length >= 2) {
-        const a = Number(rawSpec[0]);
-        const b = Number(rawSpec[1]);
-        if (Number.isFinite(a) && Number.isFinite(b)) {
-          const min = Math.max(0, Math.floor(Math.min(a, b)));
-          const max = Math.max(min, Math.floor(Math.max(a, b)));
-          rules.push({
-            itemId,
-            kind: "range",
-            min,
-            max
-          });
-        }
-        continue;
-      }
-
-      if (Array.isArray(rawSpec) && rawSpec.length === 1) {
-        const chance = Number(rawSpec[0]);
-        if (Number.isFinite(chance)) {
-          rules.push({
-            itemId,
-            kind: "chance",
-            chance: clamp(chance, 0, 1)
-          });
-        }
-        continue;
-      }
-
-      if (Number.isFinite(Number(rawSpec))) {
-        rules.push({
-          itemId,
-          kind: "chance",
-          chance: clamp(Number(rawSpec), 0, 1)
-        });
-      }
-    }
-  }
-
-  return rules;
-}
-
 function sanitizeCssColor(value) {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -1281,50 +1224,6 @@ const mobAbilityOverrideTools = createMobAbilityOverrideResolver({
   findAbilityEffect
 });
 const resolveMobAbilityOverrideDef = mobAbilityOverrideTools.resolveMobAbilityOverrideDef;
-
-function flattenGlobalDropEntries(node, out) {
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      flattenGlobalDropEntries(item, out);
-    }
-    return;
-  }
-  if (node && typeof node === "object") {
-    out.push(node);
-  }
-}
-
-function loadGlobalDropTableConfig(itemDefs) {
-  const raw = fs.readFileSync(GLOBAL_DROP_TABLE_PATH, "utf8");
-  const parsed = JSON.parse(raw);
-  const maxMapRadius = Math.hypot(MAP_WIDTH / 2, MAP_HEIGHT / 2);
-  const flatEntries = [];
-  flattenGlobalDropEntries(parsed, flatEntries);
-
-  const entries = [];
-  for (const entry of flatEntries) {
-    const [rangeMinRaw, rangeMaxRaw] = parseNumericRange(entry.range, 0, maxMapRadius);
-    const rangeMin = clamp(Math.min(rangeMinRaw, rangeMaxRaw), 0, maxMapRadius);
-    const rangeMax = clamp(Math.max(rangeMinRaw, rangeMaxRaw), rangeMin, maxMapRadius);
-    const itemsGroup = entry && typeof entry.items === "object" ? entry.items : null;
-    if (!itemsGroup) {
-      continue;
-    }
-    const rules = parseDropRulesFromGroups([itemsGroup], itemDefs);
-    if (!rules.length) {
-      continue;
-    }
-    entries.push({
-      rangeMin,
-      rangeMax,
-      rules
-    });
-  }
-
-  return {
-    entries
-  };
-}
 
 function loadMobConfig(itemDefs, abilityDefs) {
   const raw = fs.readFileSync(MOB_CONFIG_PATH, "utf8");
@@ -1864,7 +1763,12 @@ function watchMobConfig() {
 let ABILITY_CONFIG = loadAbilityConfig();
 let CLASS_CONFIG = loadClassConfig(ABILITY_CONFIG.abilityDefs, ITEM_CONFIG.itemDefs);
 let MOB_CONFIG = loadMobConfig(ITEM_CONFIG.itemDefs, ABILITY_CONFIG.abilityDefs);
-const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfig(ITEM_CONFIG.itemDefs);
+const GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
+  GLOBAL_DROP_TABLE_PATH,
+  ITEM_CONFIG.itemDefs,
+  MAP_WIDTH,
+  MAP_HEIGHT
+);
 watchServerConfig();
 watchAbilityConfig();
 watchMobConfig();
