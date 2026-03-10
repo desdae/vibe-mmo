@@ -35,6 +35,7 @@ const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createMobCombatEffectTools } = require("./server/gameplay/mob-combat-effects");
+const { createProjectileEffectTools } = require("./server/gameplay/projectile-effects");
 const { createProjectileRuntimeTools } = require("./server/gameplay/projectile-runtime");
 const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spawn");
 const { createPlayerResourceTools } = require("./server/gameplay/player-resources");
@@ -2418,6 +2419,13 @@ const applySlowToMob = mobCombatEffectTools.applySlowToMob;
 const applyDotToMob = mobCombatEffectTools.applyDotToMob;
 const tickMobDotEffects = mobCombatEffectTools.tickMobDotEffects;
 const applyAbilityHitEffectsToMob = mobCombatEffectTools.applyAbilityHitEffectsToMob;
+const projectileEffectTools = createProjectileEffectTools({
+  clamp,
+  applySlowToMob,
+  stunMob,
+  applyDotToMob
+});
+const applyProjectileHitEffects = projectileEffectTools.applyProjectileHitEffects;
 const areaEffectTools = createAreaEffectTools({
   clamp,
   normalizeDirection,
@@ -2634,35 +2642,6 @@ function respawnMob(mob) {
   mob.returningHome = false;
   mob.abilityCooldowns = new Map();
   clearMobCast(mob);
-}
-
-function applyProjectileHitEffects(mob, projectile, dealtDamage, now = Date.now()) {
-  if (!mob || !mob.alive || dealtDamage <= 0 || !projectile) {
-    return;
-  }
-  const slowDurationMs = Math.max(0, Number(projectile.slowDurationMs) || 0);
-  const slowMultiplier = clamp(Number(projectile.slowMultiplier) || 1, 0.1, 1);
-  if (slowDurationMs > 0 && slowMultiplier < 1) {
-    applySlowToMob(mob, slowMultiplier, slowDurationMs, now);
-  }
-  const stunDurationMs = Math.max(0, Number(projectile.stunDurationMs) || 0);
-  if (stunDurationMs > 0) {
-    stunMob(mob, stunDurationMs, now);
-  }
-  const dotDurationMs = Math.max(0, Number(projectile.dotDurationMs) || 0);
-  const dotDamageMin = Math.max(0, Number(projectile.dotDamageMin) || 0);
-  const dotDamageMax = Math.max(dotDamageMin, Number(projectile.dotDamageMax) || dotDamageMin);
-  if (dotDurationMs > 0 && dotDamageMax > 0) {
-    applyDotToMob(
-      mob,
-      projectile.ownerId || null,
-      String(projectile.dotSchool || "generic"),
-      dotDamageMin,
-      dotDamageMax,
-      dotDurationMs,
-      now
-    );
-  }
 }
 
 const projectileRuntimeTools = createProjectileRuntimeTools({
