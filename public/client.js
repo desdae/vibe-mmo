@@ -642,32 +642,53 @@ function getAbilityVisualHook(actionId, actionDef, hookName, fallback = "", kind
   return fallback;
 }
 
+const sharedClientUiActions = globalThis.VibeClientUiActions || null;
+const sharedCreateUiActionTools =
+  sharedClientUiActions && typeof sharedClientUiActions.createUiActionTools === "function"
+    ? sharedClientUiActions.createUiActionTools
+    : null;
+const uiActionTools = sharedCreateUiActionTools
+  ? sharedCreateUiActionTools({
+      clamp,
+      actionBindings,
+      abilityRuntime,
+      abilityChannel,
+      mouseState,
+      getPrimaryClassAbilityId,
+      getCurrentSelf,
+      screenToWorld,
+      sendUseItem,
+      sendPickupBag,
+      useAbilityAt,
+      getActionDefById,
+      getAbilityEffectiveCooldownMsForSelf,
+      getCastProgress,
+      resetAbilityChanneling
+    })
+  : null;
+
 function makeActionBinding(actionId) {
-  return `action:${String(actionId || "none")}`;
+  if (!uiActionTools) {
+    return `action:${String(actionId || "none")}`;
+  }
+  return uiActionTools.makeActionBinding(actionId);
 }
 
 function makeItemBinding(itemId) {
-  return `item:${String(itemId || "")}`;
+  if (!uiActionTools) {
+    return `item:${String(itemId || "")}`;
+  }
+  return uiActionTools.makeItemBinding(itemId);
 }
 
 function parseActionBinding(binding) {
-  const raw = String(binding || "");
-  if (raw.startsWith("item:")) {
-    return {
-      kind: "item",
-      id: raw.slice(5) || ""
-    };
-  }
-  if (raw.startsWith("action:")) {
+  if (!uiActionTools) {
     return {
       kind: "action",
-      id: raw.slice(7) || "none"
+      id: String(binding || "") || "none"
     };
   }
-  return {
-    kind: "action",
-    id: raw || "none"
-  };
+  return uiActionTools.parseActionBinding(binding);
 }
 
 function toAbilityAudioId(abilityId) {
@@ -2652,59 +2673,25 @@ function ensureActionBarInitialized() {
 }
 
 function applyDefaultActionBindings(classType) {
-  const resolvedClass = String(classType || "").trim();
-  const primary = getPrimaryClassAbilityId(resolvedClass);
-
-  actionBindings.clear();
-  for (let i = 1; i <= 9; i += 1) {
-    actionBindings.set(String(i), makeActionBinding("none"));
+  if (!uiActionTools) {
+    actionBindingsClassType = String(classType || "").trim();
+    return;
   }
-  actionBindings.set("mouse_left", makeActionBinding(primary));
-  actionBindings.set("mouse_right", makeActionBinding("pickup_bag"));
-  actionBindings.set("1", makeActionBinding(primary));
-  actionBindingsClassType = resolvedClass;
+  actionBindingsClassType = uiActionTools.applyDefaultActionBindings(classType);
 }
 
 function ensureActionBindingsForClass(classType) {
-  const resolvedClass = String(classType || "").trim();
-  if (actionBindingsClassType !== resolvedClass || !actionBindings.size) {
-    applyDefaultActionBindings(resolvedClass);
+  if (!uiActionTools) {
+    return;
   }
+  actionBindingsClassType = uiActionTools.ensureActionBindingsForClass(classType, actionBindingsClassType);
 }
 
 function getActionVisualState(binding, self, now) {
-  const parsed = parseActionBinding(binding);
-  if (parsed.kind !== "action") {
+  if (!uiActionTools) {
     return { type: "cooldown", ratio: 0 };
   }
-
-  const actionId = parsed.id;
-  if (abilityChannel.active && abilityChannel.abilityId === actionId && abilityChannel.durationMs > 0) {
-    const castProgress = getCastProgress(abilityChannel, now);
-    if (castProgress) {
-      return {
-        type: "channel",
-        ratio: castProgress.ratio
-      };
-    }
-    resetAbilityChanneling();
-  }
-
-  const def = getActionDefById(actionId);
-  const cooldownMs = Math.max(0, getAbilityEffectiveCooldownMsForSelf(actionId, self));
-  if (cooldownMs <= 0) {
-    return { type: "cooldown", ratio: 0 };
-  }
-  const runtime = abilityRuntime.get(String(actionId || "").toLowerCase());
-  const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
-  const remaining = cooldownMs - (now - lastUsedAt);
-  if (remaining > 0) {
-    return {
-      type: "cooldown",
-      ratio: clamp(remaining / cooldownMs, 0, 1)
-    };
-  }
-  return { type: "cooldown", ratio: 0 };
+  return uiActionTools.getActionVisualState(binding, self, now);
 }
 
 function updateActionBarUI(self) {
@@ -3995,64 +3982,24 @@ function updateAbilityChannel(now) {
 }
 
 function getActionTargetWorld() {
-  const self = getCurrentSelf();
-  if (!self) {
+  if (!uiActionTools) {
     return null;
   }
-  return screenToWorld(mouseState.sx, mouseState.sy, self);
+  return uiActionTools.getActionTargetWorld();
 }
 
 function executeBoundAction(slotId) {
-  const self = getCurrentSelf();
-  if (!self || self.hp <= 0) {
+  if (!uiActionTools) {
     return false;
   }
-
-  const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
-  if (binding.kind === "item") {
-    if (!binding.id) {
-      return false;
-    }
-    sendUseItem(binding.id);
-    return true;
-  }
-
-  const actionId = binding.id;
-  const target = getActionTargetWorld();
-  if (!target) {
-    return false;
-  }
-
-  if (actionId === "pickup_bag") {
-    sendPickupBag(target.x, target.y);
-    return true;
-  }
-  if (actionId === "none") {
-    return false;
-  }
-  return useAbilityAt(actionId, target.x, target.y);
+  return uiActionTools.executeBoundAction(slotId);
 }
 
 function tryPrimaryAutoAction(force = false) {
-  if (!mouseState.leftDown && !force) {
+  if (!uiActionTools) {
     return;
   }
-
-  const self = getCurrentSelf();
-  if (!self || self.hp <= 0) {
-    return;
-  }
-  const binding = parseActionBinding(actionBindings.get("mouse_left") || makeActionBinding("none"));
-  if (binding.kind !== "action" || binding.id === "none") {
-    if (force) {
-      executeBoundAction("mouse_left");
-    }
-    return;
-  }
-  if (abilityChannel.active) {
-    return;
-  }
-  executeBoundAction("mouse_left");
+  uiActionTools.tryPrimaryAutoAction(force);
 }
 
 function worldToScreen(worldX, worldY, cameraX, cameraY) {
