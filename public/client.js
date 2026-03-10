@@ -41,6 +41,19 @@ const INVENTORY_SLOT_SIZE_PX = 50;
 const INVENTORY_SLOT_GAP_PX = 6;
 const INVENTORY_PANEL_PADDING_PX = 10;
 const INVENTORY_PANEL_BORDER_PX = 1;
+const sharedAbilityStats = globalThis.VibeAbilityStats || null;
+const sharedGetAbilityDamageRange =
+  sharedAbilityStats && typeof sharedAbilityStats.getAbilityDamageRange === "function"
+    ? sharedAbilityStats.getAbilityDamageRange
+    : null;
+const sharedGetAbilityRangeForLevel =
+  sharedAbilityStats && typeof sharedAbilityStats.getAbilityRangeForLevel === "function"
+    ? sharedAbilityStats.getAbilityRangeForLevel
+    : null;
+const sharedGetAbilityCooldownMsForLevel =
+  sharedAbilityStats && typeof sharedAbilityStats.getAbilityCooldownMsForLevel === "function"
+    ? sharedAbilityStats.getAbilityCooldownMsForLevel
+    : null;
 const sharedNumberUtils = globalThis.VibeNumberUtils || null;
 const sharedClamp =
   sharedNumberUtils && typeof sharedNumberUtils.clamp === "function" ? sharedNumberUtils.clamp : null;
@@ -1618,19 +1631,15 @@ function buildAbilityTooltip(abilityId) {
   const self = getCurrentSelf();
   const kind = String(ability.kind || action.kind || "meleeCone");
   const level = getSelfAbilityLevel(self, ability.id, 1);
-  const levelOffset = Math.max(0, level - 1);
   const cooldownMs = getAbilityEffectiveCooldownMsForSelf(ability.id, self);
   const castMs = Math.max(0, Number(ability.castMs) || 0);
   const effectiveRange = getAbilityEffectiveRangeForSelf(ability.id, self);
   const manaCost = Math.max(0, Number(ability.manaCost) || 0);
-  const totalDamageMin = Math.max(
-    0,
-    Math.floor(Number(ability.damageMin || 0) + Number(ability.damagePerLevelMin || 0) * levelOffset)
-  );
-  const totalDamageMax = Math.max(
-    totalDamageMin,
-    Math.ceil(Number(ability.damageMax || 0) + Number(ability.damagePerLevelMax || 0) * levelOffset)
-  );
+  const totalDamageRange = sharedGetAbilityDamageRange
+    ? sharedGetAbilityDamageRange(ability, level)
+    : [Math.max(0, Number(ability.damageMin) || 0), Math.max(0, Number(ability.damageMax) || 0)];
+  const totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
+  const totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
   const durationMs = Math.max(0, Number(ability.durationMs) || 0);
   const stunDurationMs = Math.max(0, Number(ability.stunDurationMs) || 0);
   const slowDurationMs = Math.max(0, Number(ability.slowDurationMs) || 0);
@@ -1985,10 +1994,11 @@ function getAbilityEffectiveRangeForSelf(abilityId, self) {
     return Math.max(0, Number(getActionDefById(abilityId).range) || 0);
   }
   const level = getSelfAbilityLevel(self, ability.id, 1);
+  if (sharedGetAbilityRangeForLevel) {
+    return Math.max(0, Number(sharedGetAbilityRangeForLevel(ability, level)) || 0);
+  }
   const levelOffset = Math.max(0, level - 1);
-  const baseRange = Math.max(0, Number(ability.range) || 0);
-  const rangePerLevel = Math.max(0, Number(ability.rangePerLevel) || 0);
-  return Math.max(0, baseRange + rangePerLevel * levelOffset);
+  return Math.max(0, Math.max(0, Number(ability.range) || 0) + Math.max(0, Number(ability.rangePerLevel) || 0) * levelOffset);
 }
 
 function getAbilityEffectiveCooldownMsForSelf(abilityId, self) {
@@ -2001,9 +2011,11 @@ function getAbilityEffectiveCooldownMsForSelf(abilityId, self) {
     return baseCooldownMs;
   }
   const level = getSelfAbilityLevel(self, ability.id, 1);
+  if (sharedGetAbilityCooldownMsForLevel) {
+    return Math.max(0, Number(sharedGetAbilityCooldownMsForLevel(ability, level)) || 0);
+  }
   const levelOffset = Math.max(0, level - 1);
-  const reductionPerLevelMs = Math.max(0, Number(ability.cooldownReductionPerLevel) || 0) * 1000;
-  return Math.max(0, baseCooldownMs - reductionPerLevelMs * levelOffset);
+  return Math.max(0, baseCooldownMs - Math.max(0, Number(ability.cooldownReductionPerLevel) || 0) * 1000 * levelOffset);
 }
 
 function parseAbilityLevelsPayload(rawLevels) {
