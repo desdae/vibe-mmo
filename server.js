@@ -8,6 +8,7 @@ const { createGameLoop } = require("./server/runtime/game-loop");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
+const { createGameHttpServer } = require("./server/network/http-server");
 
 const PORT = process.env.PORT || 3000;
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
@@ -140,21 +141,6 @@ const {
 } = PROTOCOL;
 
 const publicDir = path.join(__dirname, "public");
-
-const contentTypes = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "application/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".mp3": "audio/mpeg",
-  ".ogg": "audio/ogg",
-  ".wav": "audio/wav",
-  ".m4a": "audio/mp4",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".svg": "image/svg+xml"
-};
 
 const SOUND_DIR_PATH = path.join(publicDir, "sounds");
 const SOUND_EXTENSIONS = new Set([".mp3", ".ogg", ".wav", ".m4a"]);
@@ -2657,56 +2643,18 @@ watchServerConfig();
 watchAbilityConfig();
 watchMobConfig();
 
-const server = http.createServer((req, res) => {
-  const reqPath = req.url || "/";
-  const pathOnly = reqPath.split("?")[0];
-  const decodedPath = decodeURIComponent(pathOnly);
-
-  if (decodedPath === "/api/game-config") {
-    const soundManifest = buildSoundManifest();
-    res.writeHead(200, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store"
-    });
-    res.end(
-      JSON.stringify({
-        classes: CLASS_CONFIG.clientClassDefs,
-        abilities: ABILITY_CONFIG.clientAbilityDefs,
-        items: ITEM_CONFIG.clientItemDefs,
-        gameplay: {
-          audio: GAMEPLAY_CONFIG.audio
-        },
-        sounds: soundManifest
-      })
-    );
-    return;
-  }
-
-  const relativePath = (decodedPath === "/" ? "index.html" : decodedPath).replace(/^[/\\]+/, "");
-  const normalizedPath = path.normalize(relativePath);
-  const filePath = path.resolve(publicDir, normalizedPath);
-
-  if (filePath !== publicDir && !filePath.startsWith(publicDir + path.sep)) {
-    res.writeHead(403);
-    res.end("Forbidden");
-    return;
-  }
-
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.writeHead(err.code === "ENOENT" ? 404 : 500, {
-        "Content-Type": "text/plain; charset=utf-8"
-      });
-      res.end(err.code === "ENOENT" ? "Not found" : "Server error");
-      return;
-    }
-
-    const ext = path.extname(filePath).toLowerCase();
-    res.writeHead(200, {
-      "Content-Type": contentTypes[ext] || "application/octet-stream"
-    });
-    res.end(data);
-  });
+const server = createGameHttpServer({
+  http,
+  publicDir,
+  getGameConfigPayload: () => ({
+    classes: CLASS_CONFIG.clientClassDefs,
+    abilities: ABILITY_CONFIG.clientAbilityDefs,
+    items: ITEM_CONFIG.clientItemDefs,
+    gameplay: {
+      audio: GAMEPLAY_CONFIG.audio
+    },
+    sounds: buildSoundManifest()
+  })
 });
 
 const wss = new WebSocketServer({ server });
