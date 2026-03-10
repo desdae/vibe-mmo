@@ -24,6 +24,7 @@ const {
 } = require("./server/gameplay/ability-stats");
 const { createCastingTools } = require("./server/gameplay/casting");
 const { createInventoryTools } = require("./server/gameplay/inventory");
+const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
 const { createPlayerCombatEffectTools } = require("./server/gameplay/player-combat-effects");
 const { createPlayerResourceTools } = require("./server/gameplay/player-resources");
 const { createProgressionTools } = require("./server/gameplay/progression");
@@ -2833,23 +2834,14 @@ function applyDamageToPlayer(player, damage, now = Date.now()) {
   return dealt;
 }
 
-function getPlayerClassDef(player) {
-  if (!player) {
-    return null;
-  }
-  return CLASS_CONFIG.classDefs.get(String(player.classType || "")) || null;
-}
-
-function getPlayerAbilityLevel(player, abilityId) {
-  if (!player || !player.abilityLevels) {
-    return 0;
-  }
-  const level = Number(player.abilityLevels.get(String(abilityId || "")));
-  if (!Number.isFinite(level) || level <= 0) {
-    return 0;
-  }
-  return Math.floor(level);
-}
+const playerAbilityTools = createPlayerAbilityTools({
+  clamp,
+  getClassDefs: () => CLASS_CONFIG.classDefs,
+  getAbilityDefs: () => ABILITY_CONFIG.abilityDefs
+});
+const getPlayerClassDef = playerAbilityTools.getPlayerClassDef;
+const getPlayerAbilityLevel = playerAbilityTools.getPlayerAbilityLevel;
+const levelUpPlayerAbility = playerAbilityTools.levelUpPlayerAbility;
 
 const playerCombatEffectTools = createPlayerCombatEffectTools({
   clamp,
@@ -2869,31 +2861,6 @@ const markAbilityUsed = castingTools.markAbilityUsed;
 const playerHasMovementInput = castingTools.playerHasMovementInput;
 const clearPlayerCast = castingTools.clearPlayerCast;
 const clearMobCast = castingTools.clearMobCast;
-
-function levelUpPlayerAbility(player, abilityId) {
-  if (!player) {
-    return false;
-  }
-  const resolvedAbilityId = String(abilityId || "").trim();
-  if (!resolvedAbilityId || !ABILITY_CONFIG.abilityDefs.has(resolvedAbilityId)) {
-    return false;
-  }
-  const classDef = getPlayerClassDef(player);
-  if (!classDef || !classDef.abilityLevels || !classDef.abilityLevels.has(resolvedAbilityId)) {
-    return false;
-  }
-  const skillPoints = Math.max(0, Math.floor(Number(player.skillPoints) || 0));
-  if (skillPoints <= 0) {
-    return false;
-  }
-  const currentLevel = clamp(getPlayerAbilityLevel(player, resolvedAbilityId), 1, 255);
-  if (currentLevel >= 255) {
-    return false;
-  }
-  player.skillPoints = skillPoints - 1;
-  player.abilityLevels.set(resolvedAbilityId, currentLevel + 1);
-  return true;
-}
 
 function serializePlayer(player) {
   return {
