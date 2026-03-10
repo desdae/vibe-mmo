@@ -32,7 +32,7 @@ const {
   loadServerConfigFromDisk,
   formatServerConfigForLog
 } = require("./server/config/server-config");
-const { loadGameplayConfigFromDisk } = require("./server/config/gameplay-config");
+const { loadGameplayRuntimeConfig } = require("./server/config/gameplay-runtime");
 const { loadItemConfigFromDisk } = require("./server/config/item-config");
 const { loadClassConfigFromDisk } = require("./server/config/class-config");
 const { loadMobConfigFromDisk } = require("./server/config/mob-config");
@@ -97,86 +97,39 @@ const GAMEPLAY_CONFIG_PATH = path.join(__dirname, "config", "gameplay.json");
 const CLASS_CONFIG_PATH = path.join(__dirname, "data", "classes.json");
 const ABILITY_CONFIG_PATH = path.join(__dirname, "data", "abilities.json");
 
-const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
-  map: {
-    width: 1000,
-    height: 1000,
-    visibilityRange: 20
-  },
-  tickMs: 50,
-  player: {
-    baseSpeed: 6,
-    baseExpToNext: 20,
-    expGrowthFactor: 1.25,
-    mobMinSeparation: 0.9,
-    mobSeparationIterations: 2
-  },
-  projectile: {
-    defaultHitRadius: 0.6
-  },
-  clusterSpawning: {
-    targetClusters: 16,
-    clusterAreaSize: 10,
-    maxClustersPerArea: 2
-  },
-  mob: {
-    wanderRadius: 10,
-    provokedLeashRadius: 50,
-    provokedChaseMs: 60000,
-    aggroRange: 5,
-    attackRange: 1.25,
-    attackCooldownMs: 900,
-    minSeparation: 0.85,
-    separationIterations: 2
-  },
-  loot: {
-    bagPickupRange: 2.25,
-    bagClickRange: 1.8,
-    bagDespawnMs: 300000,
-    copperItemId: "copperCoin"
-  },
-  inventory: {
-    cols: 5,
-    rows: 2
-  },
-  audio: {
-    abilitySpatialMaxDistance: 15,
-    abilityPanDistance: 15,
-    projectileMaxConcurrent: 10
-  }
-});
-
-const GAMEPLAY_CONFIG = loadGameplayConfigFromDisk(GAMEPLAY_CONFIG_PATH, DEFAULT_GAMEPLAY_CONFIG);
-const MAP_WIDTH = GAMEPLAY_CONFIG.map.width;
-const MAP_HEIGHT = GAMEPLAY_CONFIG.map.height;
-const VISIBILITY_RANGE = GAMEPLAY_CONFIG.map.visibilityRange;
-const TICK_MS = GAMEPLAY_CONFIG.tickMs;
-const BASE_PLAYER_SPEED = GAMEPLAY_CONFIG.player.baseSpeed;
-const TARGET_MOB_CLUSTERS = GAMEPLAY_CONFIG.clusterSpawning.targetClusters;
-const CLUSTER_AREA_SIZE = GAMEPLAY_CONFIG.clusterSpawning.clusterAreaSize;
-const MAX_CLUSTERS_PER_AREA = GAMEPLAY_CONFIG.clusterSpawning.maxClustersPerArea;
-const MOB_WANDER_RADIUS = GAMEPLAY_CONFIG.mob.wanderRadius;
-const MOB_PROVOKED_LEASH_RADIUS = GAMEPLAY_CONFIG.mob.provokedLeashRadius;
-const MOB_PROVOKED_CHASE_MS = GAMEPLAY_CONFIG.mob.provokedChaseMs;
-const MOB_AGGRO_RANGE = GAMEPLAY_CONFIG.mob.aggroRange;
-const MOB_ATTACK_RANGE = GAMEPLAY_CONFIG.mob.attackRange;
-const MOB_ATTACK_COOLDOWN_MS = GAMEPLAY_CONFIG.mob.attackCooldownMs;
-const MOB_MIN_SEPARATION = GAMEPLAY_CONFIG.mob.minSeparation;
-const MOB_SEPARATION_ITERATIONS = GAMEPLAY_CONFIG.mob.separationIterations;
-const PLAYER_MOB_MIN_SEPARATION = GAMEPLAY_CONFIG.player.mobMinSeparation;
-const PLAYER_MOB_SEPARATION_ITERATIONS = GAMEPLAY_CONFIG.player.mobSeparationIterations;
-
+const gameplayRuntime = loadGameplayRuntimeConfig(GAMEPLAY_CONFIG_PATH);
+const GAMEPLAY_CONFIG = gameplayRuntime.gameplayConfig;
+const {
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  visibilityRange: VISIBILITY_RANGE,
+  tickMs: TICK_MS,
+  basePlayerSpeed: BASE_PLAYER_SPEED,
+  targetMobClusters: TARGET_MOB_CLUSTERS,
+  clusterAreaSize: CLUSTER_AREA_SIZE,
+  maxClustersPerArea: MAX_CLUSTERS_PER_AREA,
+  mobWanderRadius: MOB_WANDER_RADIUS,
+  mobProvokedLeashRadius: MOB_PROVOKED_LEASH_RADIUS,
+  mobProvokedChaseMs: MOB_PROVOKED_CHASE_MS,
+  mobAggroRange: MOB_AGGRO_RANGE,
+  mobAttackRange: MOB_ATTACK_RANGE,
+  mobAttackCooldownMs: MOB_ATTACK_COOLDOWN_MS,
+  mobMinSeparation: MOB_MIN_SEPARATION,
+  mobSeparationIterations: MOB_SEPARATION_ITERATIONS,
+  playerMobMinSeparation: PLAYER_MOB_MIN_SEPARATION,
+  playerMobSeparationIterations: PLAYER_MOB_SEPARATION_ITERATIONS,
+  baseExpToNext: BASE_EXP_TO_NEXT,
+  expGrowthFactor: EXP_GROWTH_FACTOR,
+  defaultProjectileHitRadius: DEFAULT_PROJECTILE_HIT_RADIUS,
+  bagPickupRange: BAG_PICKUP_RANGE,
+  bagClickRange: BAG_CLICK_RANGE,
+  bagDespawnMs: BAG_DESPAWN_MS,
+  inventoryCols: INVENTORY_COLS,
+  inventoryRows: INVENTORY_ROWS,
+  inventorySlotCount: INVENTORY_SLOT_COUNT,
+  copperItemId: ITEM_COPPER_ID
+} = gameplayRuntime.constants;
 const DEFAULT_ABILITY_KIND = "meleeCone";
-const BASE_EXP_TO_NEXT = GAMEPLAY_CONFIG.player.baseExpToNext;
-const EXP_GROWTH_FACTOR = GAMEPLAY_CONFIG.player.expGrowthFactor;
-const DEFAULT_PROJECTILE_HIT_RADIUS = GAMEPLAY_CONFIG.projectile.defaultHitRadius;
-const BAG_PICKUP_RANGE = GAMEPLAY_CONFIG.loot.bagPickupRange;
-const BAG_CLICK_RANGE = GAMEPLAY_CONFIG.loot.bagClickRange;
-const BAG_DESPAWN_MS = GAMEPLAY_CONFIG.loot.bagDespawnMs;
-const INVENTORY_COLS = GAMEPLAY_CONFIG.inventory.cols;
-const INVENTORY_ROWS = GAMEPLAY_CONFIG.inventory.rows;
-const INVENTORY_SLOT_COUNT = INVENTORY_COLS * INVENTORY_ROWS;
-const ITEM_COPPER_ID = GAMEPLAY_CONFIG.loot.copperItemId;
 
 const publicDir = path.join(__dirname, "public");
 const buildSoundManifest = createSoundManifestBuilder({ publicDir });
