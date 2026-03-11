@@ -5195,6 +5195,12 @@ function ensureActionBarInitialized() {
     slot.addEventListener("dragend", () => {
       clearDragState();
     });
+    slot.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resumeSpatialAudioContext();
+      executeBoundAction(slotId);
+    });
 
     actionBar.appendChild(slot);
 
