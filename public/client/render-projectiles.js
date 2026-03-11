@@ -28,6 +28,193 @@
               dy: (Number(dy) || 0) / len
             };
           };
+    const FIREBALL_VARIANTS = 4;
+    const FIREBALL_FRAMES = 6;
+    const FIREBALL_FRAME_MS = 48;
+    const FIRE_SPARK_VARIANTS = 4;
+    const FIRE_SPARK_FRAMES = 5;
+    const FIRE_SPARK_FRAME_MS = 42;
+
+    function createSpriteCanvas(size) {
+      const sprite = document.createElement("canvas");
+      sprite.width = size;
+      sprite.height = size;
+      return sprite;
+    }
+
+    function getVariantIndex(seed, count) {
+      return Math.abs((Number(seed) || 0) % Math.max(1, count | 0));
+    }
+
+    function getFrameIndex(now, frameCount, frameMs) {
+      const count = Math.max(1, frameCount | 0);
+      const duration = Math.max(1, frameMs | 0);
+      return Math.floor(now / duration) % count;
+    }
+
+    function drawRotatedSprite(sprite, x, y, heading) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(heading);
+      ctx.drawImage(sprite, Math.round(-sprite.width / 2), Math.round(-sprite.height / 2));
+      ctx.restore();
+    }
+
+    function createFireballSprite(variantIndex, frameIndex) {
+      const size = 74;
+      const sprite = createSpriteCanvas(size);
+      const sctx = sprite.getContext("2d");
+      const cx = size / 2 + 8;
+      const cy = size / 2;
+      const phase = frameIndex / FIREBALL_FRAMES;
+      const pulse = 1 + Math.sin(phase * Math.PI * 2 + variantIndex * 0.8) * 0.06;
+      const coreR = 4.9 * pulse;
+
+      sctx.save();
+      sctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 8; i += 1) {
+        const t = (i + 1) / 8;
+        const wobble = Math.sin(phase * Math.PI * 2 + variantIndex * 0.65 + i * 1.27) * (1.2 - t * 0.75) * 2.2;
+        const dist = 7 + t * 20;
+        const px = cx - dist;
+        const py = cy + wobble;
+        const pr = Math.max(0.9, 2.7 - t * 2.0);
+        const alpha = 0.42 * (1 - t) + 0.08;
+
+        sctx.beginPath();
+        sctx.fillStyle = `rgba(255, 166, 72, ${alpha.toFixed(3)})`;
+        sctx.arc(px, py, pr, 0, Math.PI * 2);
+        sctx.fill();
+      }
+
+      const glow = sctx.createRadialGradient(cx, cy, 1.5, cx, cy, 14);
+      glow.addColorStop(0, "rgba(255, 252, 200, 0.98)");
+      glow.addColorStop(0.28, "rgba(255, 154, 64, 0.95)");
+      glow.addColorStop(0.68, "rgba(255, 70, 38, 0.64)");
+      glow.addColorStop(1, "rgba(255, 70, 38, 0)");
+      sctx.fillStyle = glow;
+      sctx.beginPath();
+      sctx.arc(cx, cy, 14, 0, Math.PI * 2);
+      sctx.fill();
+      sctx.restore();
+
+      sctx.beginPath();
+      sctx.fillStyle = "#b9241d";
+      sctx.arc(cx, cy, coreR, 0, Math.PI * 2);
+      sctx.fill();
+
+      sctx.beginPath();
+      sctx.strokeStyle = "rgba(255, 226, 148, 0.78)";
+      sctx.lineWidth = 1.4;
+      sctx.arc(cx - 0.7, cy + 0.15, 2.45, -1.1, 1.95);
+      sctx.stroke();
+      sctx.beginPath();
+      sctx.strokeStyle = "rgba(255, 115, 70, 0.8)";
+      sctx.lineWidth = 1.1;
+      sctx.arc(cx + 0.9, cy - 0.45, 1.7, 1.5, 4.3);
+      sctx.stroke();
+
+      sctx.save();
+      sctx.translate(cx, cy);
+      sctx.strokeStyle = "rgba(255, 168, 60, 0.96)";
+      sctx.lineCap = "round";
+      sctx.lineJoin = "round";
+      sctx.lineWidth = 1.7;
+      for (let i = 0; i < 12; i += 1) {
+        const a = (Math.PI * 2 * i) / 12;
+        const flicker = 1 + Math.sin(phase * Math.PI * 2 + i * 1.31 + variantIndex * 0.52) * 0.18;
+        const r0 = 5.2 + (i % 2) * 0.6;
+        const r1 = (6.8 + (i % 2 ? 1.8 : 2.6)) * flicker;
+        sctx.beginPath();
+        sctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+        sctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
+        sctx.stroke();
+      }
+      sctx.restore();
+
+      return sprite;
+    }
+
+    function createFireSparkSprite(variantIndex, frameIndex) {
+      const size = 56;
+      const sprite = createSpriteCanvas(size);
+      const sctx = sprite.getContext("2d");
+      const cx = size / 2 + 5;
+      const cy = size / 2;
+      const phase = frameIndex / FIRE_SPARK_FRAMES;
+
+      sctx.save();
+      sctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 10; i += 1) {
+        const t = (i + 1) / 10;
+        const jitter = Math.sin(phase * Math.PI * 2 + variantIndex * 0.7 + i * 0.9) * (1.4 - t) * 1.9;
+        const dist = 4 + t * 20;
+        const px = cx - dist;
+        const py = cy + jitter;
+        const r = Math.max(0.55, 1.8 - t * 1.25);
+        const alpha = 0.42 * (1 - t) + 0.08;
+        sctx.beginPath();
+        sctx.fillStyle = `rgba(255, 143, 54, ${alpha.toFixed(3)})`;
+        sctx.arc(px, py, r, 0, Math.PI * 2);
+        sctx.fill();
+      }
+
+      const glow = sctx.createRadialGradient(cx, cy, 1, cx, cy, 9.5);
+      glow.addColorStop(0, "rgba(255, 250, 195, 0.96)");
+      glow.addColorStop(0.4, "rgba(255, 176, 81, 0.92)");
+      glow.addColorStop(0.72, "rgba(255, 97, 39, 0.62)");
+      glow.addColorStop(1, "rgba(255, 69, 32, 0)");
+      sctx.fillStyle = glow;
+      sctx.beginPath();
+      sctx.arc(cx, cy, 9.5, 0, Math.PI * 2);
+      sctx.fill();
+      sctx.restore();
+
+      sctx.save();
+      sctx.translate(cx, cy);
+      sctx.lineCap = "round";
+      sctx.lineJoin = "round";
+
+      sctx.beginPath();
+      sctx.moveTo(5.2, 0);
+      sctx.lineTo(-4.4, -2.6);
+      sctx.lineTo(-2.2, 0);
+      sctx.lineTo(-4.4, 2.6);
+      sctx.closePath();
+      sctx.fillStyle = "rgba(255, 131, 48, 0.95)";
+      sctx.strokeStyle = "rgba(255, 213, 134, 0.9)";
+      sctx.lineWidth = 1.1;
+      sctx.fill();
+      sctx.stroke();
+
+      sctx.beginPath();
+      sctx.arc(1.6, 0, 2.2, 0, Math.PI * 2);
+      sctx.fillStyle = "rgba(255, 247, 194, 0.96)";
+      sctx.fill();
+
+      sctx.beginPath();
+      sctx.strokeStyle = "rgba(255, 92, 42, 0.78)";
+      sctx.lineWidth = 1.2;
+      for (let i = 0; i < 4; i += 1) {
+        const y = -2.4 + i * 1.6;
+        const len = 4.4 + (i % 2) * 1.3;
+        sctx.moveTo(-2.5, y);
+        sctx.lineTo(-2.5 - len, y);
+      }
+      sctx.stroke();
+      sctx.restore();
+
+      return sprite;
+    }
+
+    function createVariantFrames(variantCount, frameCount, buildFrame) {
+      return Array.from({ length: variantCount }, (_, variantIndex) =>
+        Array.from({ length: frameCount }, (_, frameIndex) => buildFrame(variantIndex, frameIndex))
+      );
+    }
+
+    const fireballSprites = createVariantFrames(FIREBALL_VARIANTS, FIREBALL_FRAMES, createFireballSprite);
+    const fireSparkSprites = createVariantFrames(FIRE_SPARK_VARIANTS, FIRE_SPARK_FRAMES, createFireSparkSprite);
 
     function getProjectileVisualState(projectile, now) {
       const key = String(projectile.id ?? "");
@@ -70,151 +257,17 @@
     }
 
     function drawFireballProjectile(p, runtime, now) {
-      const dirX = runtime.dirX;
-      const dirY = runtime.dirY;
-      const perpX = -dirY;
-      const perpY = dirX;
-
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-
-      for (let i = 0; i < 8; i += 1) {
-        const t = (i + 1) / 8;
-        const wobble =
-          (seededUnit(runtime.seed, i * 13 + 2) - 0.5) * 3.8 +
-          Math.sin(now * 0.012 + i * 1.37 + runtime.seed * 0.0007) * (1.25 - t * 0.9);
-        const dist = 7 + t * 20 + seededUnit(runtime.seed, i * 11 + 5) * 2.4;
-        const px = p.x - dirX * dist + perpX * wobble;
-        const py = p.y - dirY * dist + perpY * wobble;
-        const pr = Math.max(0.9, 2.7 - t * 2.0);
-        const alpha = 0.42 * (1 - t) + 0.08;
-
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(255, 166, 72, ${alpha.toFixed(3)})`;
-        ctx.arc(px, py, pr, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      const glow = ctx.createRadialGradient(p.x, p.y, 1.5, p.x, p.y, 14);
-      glow.addColorStop(0, "rgba(255, 252, 200, 0.98)");
-      glow.addColorStop(0.28, "rgba(255, 154, 64, 0.95)");
-      glow.addColorStop(0.68, "rgba(255, 70, 38, 0.64)");
-      glow.addColorStop(1, "rgba(255, 70, 38, 0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 14, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      const pulse = 1 + Math.sin(now * 0.02 + runtime.seed * 0.0008) * 0.06;
-      const coreR = 4.9 * pulse;
-      ctx.beginPath();
-      ctx.fillStyle = "#b9241d";
-      ctx.arc(p.x, p.y, coreR, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(255, 226, 148, 0.78)";
-      ctx.lineWidth = 1.4;
-      ctx.arc(p.x - 0.7, p.y + 0.15, 2.45, -1.1, 1.95);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(255, 115, 70, 0.8)";
-      ctx.lineWidth = 1.1;
-      ctx.arc(p.x + 0.9, p.y - 0.45, 1.7, 1.5, 4.3);
-      ctx.stroke();
-
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(Math.atan2(dirY, dirX) + Math.PI / 2);
-      ctx.strokeStyle = "rgba(255, 168, 60, 0.96)";
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.lineWidth = 1.7;
-      for (let i = 0; i < 12; i += 1) {
-        const a = (Math.PI * 2 * i) / 12;
-        const flicker = 1 + Math.sin(now * 0.022 + i * 1.31 + runtime.seed * 0.0004) * 0.18;
-        const r0 = 5.2 + (i % 2) * 0.6;
-        const r1 = (6.8 + (i % 2 ? 1.8 : 2.6)) * flicker;
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
-        ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1);
-        ctx.stroke();
-      }
-      ctx.restore();
+      const heading = Math.atan2(runtime.dirY, runtime.dirX);
+      const variant = getVariantIndex(runtime.seed, FIREBALL_VARIANTS);
+      const frame = getFrameIndex(now, FIREBALL_FRAMES, FIREBALL_FRAME_MS);
+      drawRotatedSprite(fireballSprites[variant][frame], p.x, p.y, heading);
     }
 
     function drawFireSparkProjectile(p, runtime, now) {
-      const dirX = runtime.dirX;
-      const dirY = runtime.dirY;
-      const perpX = -dirY;
-      const perpY = dirX;
-      const heading = Math.atan2(dirY, dirX);
-
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-
-      for (let i = 0; i < 10; i += 1) {
-        const t = (i + 1) / 10;
-        const jitter =
-          (seededUnit(runtime.seed, i * 31 + 7) - 0.5) * 2.8 +
-          Math.sin(now * 0.02 + i * 0.7 + runtime.seed * 0.0009) * (1.4 - t);
-        const dist = 4 + t * 20;
-        const px = p.x - dirX * dist + perpX * jitter;
-        const py = p.y - dirY * dist + perpY * jitter;
-        const r = Math.max(0.55, 1.8 - t * 1.25);
-        const alpha = 0.42 * (1 - t) + 0.08;
-        ctx.beginPath();
-        ctx.fillStyle = `rgba(255, 143, 54, ${alpha.toFixed(3)})`;
-        ctx.arc(px, py, r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      const glow = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, 9.5);
-      glow.addColorStop(0, "rgba(255, 250, 195, 0.96)");
-      glow.addColorStop(0.4, "rgba(255, 176, 81, 0.92)");
-      glow.addColorStop(0.72, "rgba(255, 97, 39, 0.62)");
-      glow.addColorStop(1, "rgba(255, 69, 32, 0)");
-      ctx.fillStyle = glow;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 9.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(heading);
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-
-      ctx.beginPath();
-      ctx.moveTo(5.2, 0);
-      ctx.lineTo(-4.4, -2.6);
-      ctx.lineTo(-2.2, 0);
-      ctx.lineTo(-4.4, 2.6);
-      ctx.closePath();
-      ctx.fillStyle = "rgba(255, 131, 48, 0.95)";
-      ctx.strokeStyle = "rgba(255, 213, 134, 0.9)";
-      ctx.lineWidth = 1.1;
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.beginPath();
-      ctx.arc(1.6, 0, 2.2, 0, Math.PI * 2);
-      ctx.fillStyle = "rgba(255, 247, 194, 0.96)";
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.strokeStyle = "rgba(255, 92, 42, 0.78)";
-      ctx.lineWidth = 1.2;
-      for (let i = 0; i < 4; i += 1) {
-        const y = -2.4 + i * 1.6;
-        const len = 4.4 + (i % 2) * 1.3;
-        ctx.moveTo(-2.5, y);
-        ctx.lineTo(-2.5 - len, y);
-      }
-      ctx.stroke();
-      ctx.restore();
+      const heading = Math.atan2(runtime.dirY, runtime.dirX);
+      const variant = getVariantIndex(runtime.seed, FIRE_SPARK_VARIANTS);
+      const frame = getFrameIndex(now, FIRE_SPARK_FRAMES, FIRE_SPARK_FRAME_MS);
+      drawRotatedSprite(fireSparkSprites[variant][frame], p.x, p.y, heading);
     }
 
     function drawFrostboltProjectile(p, runtime, now) {
