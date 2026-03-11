@@ -24,6 +24,11 @@ const spellbookGrid = document.getElementById("spellbook-grid");
 const actionBar = document.getElementById("action-bar");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
+const vendorPanel = document.getElementById("vendor-panel");
+const vendorTitle = document.getElementById("vendor-title");
+const vendorSubtitle = document.getElementById("vendor-subtitle");
+const vendorItemList = document.getElementById("vendor-item-list");
+const vendorCloseButton = document.getElementById("vendor-close");
 const equipmentPanel = document.getElementById("equipment-panel");
 const equipmentGrid = document.getElementById("equipment-grid");
 const debugPanel = document.getElementById("debug-panel");
@@ -107,6 +112,16 @@ const sharedComputeSummonFormationPositions =
         }
         return positions;
       };
+const sharedTownLayout = globalThis.VibeTownLayout || null;
+const sharedIsTownWallTile =
+  sharedTownLayout && typeof sharedTownLayout.isTownWallTile === "function" ? sharedTownLayout.isTownWallTile : null;
+const sharedIsTownGateTile =
+  sharedTownLayout && typeof sharedTownLayout.isTownGateTile === "function" ? sharedTownLayout.isTownGateTile : null;
+const sharedGetTownWallTiles =
+  sharedTownLayout && typeof sharedTownLayout.getTownWallTiles === "function" ? sharedTownLayout.getTownWallTiles : null;
+const sharedItemValue = globalThis.VibeItemValue || null;
+const sharedGetItemCopperValue =
+  sharedItemValue && typeof sharedItemValue.getItemCopperValue === "function" ? sharedItemValue.getItemCopperValue : null;
 const clientAbilityNormalizationTools = sharedCreateAbilityNormalizationTools
   ? sharedCreateAbilityNormalizationTools({ defaultProjectileHitRadius: 0.6 })
   : null;
@@ -342,6 +357,10 @@ const spatialAudioConfig = {
 const lootClientConfig = {
   ...DEFAULT_LOOT_CLIENT_CONFIG
 };
+const townClientState = {
+  layout: null,
+  wallTiles: []
+};
 const abilityAudioRegistry = new Map();
 const availableSoundUrls = new Set();
 let soundManifestLoaded = false;
@@ -405,6 +424,7 @@ const skeletonArcherWalkFramesCache = new Map();
 const skeletonArcherNoBowWalkFramesCache = new Map();
 const skeletonArcherWalkRuntime = new Map();
 const warriorAnimRuntime = new Map();
+const rangerAnimRuntime = new Map();
 const snapshots = [];
 const floatingDamageNumbers = [];
 const activeExplosions = [];
@@ -419,6 +439,8 @@ const abilityIdsByHash = new Map();
 const abilityRuntime = new Map();
 const itemDefsById = new Map();
 const iconUrlCache = new Map();
+const townTileSpriteCache = new Map();
+let vendorNpcSprite = null;
 const dragState = {
   source: "",
   inventoryFrom: null,
@@ -491,6 +513,14 @@ const adminBotState = {
   panelVisible: false,
   contextBotId: "",
   lastListRequestAt: 0
+};
+const vendorInteractionState = {
+  active: false,
+  npcId: "",
+  x: 0,
+  y: 0,
+  nextAttemptAt: 0,
+  panelOpen: false
 };
 const selfNegativeEffects = {
   stun: null,
@@ -716,7 +746,8 @@ const playerRenderTools = sharedCreatePlayerRenderTools
       remotePlayerBurns,
       swordSwing,
       remotePlayerSwings,
-      warriorAnimRuntime
+      warriorAnimRuntime,
+      rangerAnimRuntime
     })
   : null;
 const sharedClientRenderProjectiles = globalThis.VibeClientRenderProjectiles || null;
@@ -876,6 +907,39 @@ function hideBotContextMenu() {
   adminBotState.contextBotId = "";
 }
 
+function createBotInspectItemNode(item, prefixText = "", suffixText = "") {
+  const itemData = item && typeof item === "object" ? item : null;
+  const line = document.createElement("div");
+  line.className = "bot-detail-line";
+  if (!itemData) {
+    line.textContent = `${prefixText}${suffixText}`.trim();
+    return line;
+  }
+
+  const wrapper = document.createElement("span");
+  wrapper.className = "bot-detail-item";
+  applyItemRarityChrome(wrapper, itemData);
+
+  const iconShell = document.createElement("span");
+  iconShell.className = "bot-detail-item-icon";
+  applyItemRarityChrome(iconShell, itemData);
+  const icon = document.createElement("span");
+  icon.className = "inv-icon";
+  icon.style.backgroundImage = `url(${getItemIconUrl(itemData)})`;
+  iconShell.appendChild(icon);
+
+  const label = document.createElement("span");
+  label.className = "bot-detail-item-label";
+  const qtyText = Math.max(0, Math.floor(Number(itemData.qty) || 0)) > 1 ? ` x${Math.floor(Number(itemData.qty) || 0)}` : "";
+  label.textContent = `${prefixText}${itemData.name || itemData.itemId || "Unknown item"}${qtyText}${suffixText}`;
+
+  wrapper.appendChild(iconShell);
+  wrapper.appendChild(label);
+  line.appendChild(wrapper);
+  bindItemTooltip(wrapper, itemData);
+  return line;
+}
+
 function renderBotInspectDetails() {
   if (!botInspectDetails) {
     return;
@@ -948,10 +1012,8 @@ function renderBotInspectDetails() {
     equipmentBlock.appendChild(line);
   } else {
     for (const entry of equippedItems) {
-      const line = document.createElement("div");
-      line.className = "bot-detail-line";
       const item = entry.item || {};
-      line.textContent = `${humanizeKey(entry.slotId)}: ${item.name || item.itemId || "Unknown item"}`;
+      const line = createBotInspectItemNode(item, `${humanizeKey(entry.slotId)}: `);
       equipmentBlock.appendChild(line);
     }
   }
@@ -971,11 +1033,8 @@ function renderBotInspectDetails() {
     inventoryBlock.appendChild(line);
   } else {
     for (const entry of inventoryItems) {
-      const line = document.createElement("div");
-      line.className = "bot-detail-line";
-      const qtyText = Math.max(0, Math.floor(Number(entry.qty) || 0)) > 1 ? ` x${Math.floor(Number(entry.qty) || 0)}` : "";
       const levelText = Number(entry.itemLevel) > 0 ? ` (ilvl ${Math.floor(Number(entry.itemLevel) || 0)})` : "";
-      line.textContent = `${entry.name || entry.itemId || "Unknown item"}${qtyText}${levelText}`;
+      const line = createBotInspectItemNode(entry, "", levelText);
       inventoryBlock.appendChild(line);
     }
   }
@@ -1413,6 +1472,7 @@ function applyGameplayClientConfig(payload) {
   const gameplay = payload && typeof payload === "object" ? payload : {};
   const audio = gameplay.audio && typeof gameplay.audio === "object" ? gameplay.audio : {};
   const loot = gameplay.loot && typeof gameplay.loot === "object" ? gameplay.loot : {};
+  const town = gameplay.town && typeof gameplay.town === "object" ? gameplay.town : null;
   spatialAudioConfig.abilitySpatialMaxDistance = clamp(
     Number(audio.abilitySpatialMaxDistance) || DEFAULT_SPATIAL_AUDIO_CONFIG.abilitySpatialMaxDistance,
     1,
@@ -1432,6 +1492,46 @@ function applyGameplayClientConfig(payload) {
     Number(loot.bagPickupRange) || DEFAULT_LOOT_CLIENT_CONFIG.bagPickupRange,
     0.1,
     50
+  );
+  townClientState.layout = town ? { ...town, vendor: town.vendor ? { ...town.vendor } : null } : null;
+  townClientState.wallTiles =
+    townClientState.layout && sharedGetTownWallTiles ? sharedGetTownWallTiles(townClientState.layout) : [];
+  updateVendorPanelUI();
+}
+
+function getTownVendor() {
+  return townClientState.layout && townClientState.layout.vendor ? townClientState.layout.vendor : null;
+}
+
+function isTownWallTileAt(tileX, tileY) {
+  if (!townClientState.layout || !sharedIsTownWallTile) {
+    return false;
+  }
+  return sharedIsTownWallTile(townClientState.layout, tileX, tileY);
+}
+
+function isTownGateTileAt(tileX, tileY) {
+  if (!townClientState.layout || !sharedIsTownGateTile) {
+    return false;
+  }
+  return sharedIsTownGateTile(townClientState.layout, tileX, tileY);
+}
+
+function getItemCopperValueClient(itemInput) {
+  if (!sharedGetItemCopperValue) {
+    return 0;
+  }
+  const itemData = itemInput && typeof itemInput === "object" ? itemInput : null;
+  const itemId = itemData ? String(itemData.itemId || "") : String(itemInput || "");
+  const itemDef = itemDefsById.get(itemId) || null;
+  return Math.max(
+    0,
+    Math.round(
+      sharedGetItemCopperValue(itemData || { itemId, qty: 1 }, {
+        itemDef,
+        itemRarities: equipmentConfigState.itemRarities || {}
+      })
+    )
   );
 }
 
@@ -2325,12 +2425,24 @@ function getItemAffixThemes(itemData) {
         pushTheme("lightning");
       } else if (stat.includes("fire")) {
         pushTheme("fire");
+      } else if (stat.includes("poison")) {
+        pushTheme("poison");
       } else if (stat.includes("frost")) {
         pushTheme("frost");
       } else if (stat.includes("arcane")) {
         pushTheme("arcane");
       } else if (stat.includes("physical")) {
         pushTheme("physical");
+      } else if (stat.includes("bow") || stat.includes("projectile") || stat.includes("piercing")) {
+        pushTheme("precision");
+      } else if (stat.includes("grenade") || stat.includes("explosive")) {
+        pushTheme("fire");
+      } else if (stat.includes("trap")) {
+        pushTheme("guard");
+      } else if (stat.includes("summon")) {
+        pushTheme("arcane");
+      } else if (stat.includes("chain")) {
+        pushTheme("lightning");
       } else if (stat.includes("healthregen") || stat.includes("lifesteal") || stat.includes("lifeonkill")) {
         pushTheme("vitality");
       } else if (stat.includes("manaregen") || stat.includes("manasteal") || stat.includes("manaonkill")) {
@@ -2450,6 +2562,7 @@ function buildAbilityTooltip(abilityId) {
     0,
     Number(ability.invulnerabilityDurationMs || 0) || Math.round((Number(ability.invulnerabilityDuration) || 0) * 1000)
   );
+  const summonKind = String(ability.summonKind || "").trim().toLowerCase();
 
   if (kind && kind !== "none") {
     lines.push(`Kind: ${kind}`);
@@ -2503,7 +2616,9 @@ function buildAbilityTooltip(abilityId) {
   }
 
   if (kind === "summon") {
-    appendTooltipNumber(lines, "Hydras", summonCount, (v) => `${Math.round(v)}`);
+    const summonLabel =
+      summonKind === "ballista" ? "Ballistae" : summonKind === "turret" ? "Turrets" : "Summons";
+    appendTooltipNumber(lines, summonLabel, summonCount, (v) => `${Math.round(v)}`);
     appendTooltipNumber(lines, "Summon Range", effectiveRange);
     appendTooltipNumber(lines, "Attack Range", ability.summonAttackRange);
     appendTooltipNumber(lines, "Attack Interval", ability.summonAttackIntervalMs, formatMsAsSeconds);
@@ -2552,6 +2667,10 @@ function buildItemTooltip(itemInput, qty = null) {
     lines.push(String(def.description));
   }
   appendTooltipNumber(lines, "Stack Size", def.stackSize);
+  const copperValue = getItemCopperValueClient(itemData || { itemId, qty: resolvedQty || 1 });
+  if (copperValue > 0) {
+    lines.push(`Vendor Value: ${copperValue} copper`);
+  }
   if (def && def.isEquipment && def.baseStats && typeof def.baseStats === "object") {
     for (const [statKey, statValue] of Object.entries(def.baseStats)) {
       const rendered = formatEquipmentBaseStatLine(statKey, statValue);
@@ -2647,6 +2766,10 @@ function buildItemTooltipHtml(itemInput, qty = null) {
   }
   if (Number(def.stackSize) > 0) {
     blocks.push(`<div class="tooltip-line">Stack Size: ${escapeHtml(formatTooltipNumber(def.stackSize))}</div>`);
+  }
+  const copperValue = getItemCopperValueClient(itemData || { itemId, qty: resolvedQty || 1 });
+  if (copperValue > 0) {
+    blocks.push(`<div class="tooltip-line">Vendor Value: ${escapeHtml(String(copperValue))} copper</div>`);
   }
 
   const baseStats = itemData && itemData.baseStats && typeof itemData.baseStats === "object" ? itemData.baseStats : def.baseStats;
@@ -3572,6 +3695,276 @@ function drawFireHydraActionIcon(iconCtx, size) {
   iconCtx.restore();
 }
 
+function drawActionArrowGlyph(iconCtx, midX, midY, angle, options = {}) {
+  const shaftLength = Math.max(10, Number(options.shaftLength) || 18);
+  const shaftWidth = Math.max(1.4, Number(options.shaftWidth) || 2.2);
+  const headLength = Math.max(4, Number(options.headLength) || 7);
+  const featherLength = Math.max(3, Number(options.featherLength) || 5.5);
+  const primary = options.primary || "#e9eef6";
+  const secondary = options.secondary || "#7c5c39";
+  iconCtx.save();
+  iconCtx.translate(midX, midY);
+  iconCtx.rotate(angle);
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+
+  iconCtx.strokeStyle = primary;
+  iconCtx.lineWidth = shaftWidth;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-shaftLength * 0.58, 0);
+  iconCtx.lineTo(shaftLength * 0.44, 0);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = primary;
+  iconCtx.strokeStyle = "rgba(120, 132, 148, 0.85)";
+  iconCtx.lineWidth = 1.1;
+  iconCtx.beginPath();
+  iconCtx.moveTo(shaftLength * 0.5, 0);
+  iconCtx.lineTo(shaftLength * 0.32, -headLength * 0.55);
+  iconCtx.lineTo(shaftLength * 0.38, 0);
+  iconCtx.lineTo(shaftLength * 0.32, headLength * 0.55);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = secondary;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-shaftLength * 0.58, 0);
+  iconCtx.lineTo(-shaftLength * 0.78, -featherLength * 0.56);
+  iconCtx.lineTo(-shaftLength * 0.66, -featherLength * 0.08);
+  iconCtx.closePath();
+  iconCtx.moveTo(-shaftLength * 0.58, 0);
+  iconCtx.lineTo(-shaftLength * 0.78, featherLength * 0.56);
+  iconCtx.lineTo(-shaftLength * 0.66, featherLength * 0.08);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.restore();
+}
+
+function drawCompactBowGlyph(iconCtx, midX, midY, angle, options = {}) {
+  const size = Math.max(9, Number(options.size) || 15);
+  const wood = options.wood || "#c89b62";
+  const stringColor = options.stringColor || "#fff2c9";
+  iconCtx.save();
+  iconCtx.translate(midX, midY);
+  iconCtx.rotate(angle);
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+  iconCtx.strokeStyle = wood;
+  iconCtx.lineWidth = 2.4;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-size * 0.12, -size);
+  iconCtx.quadraticCurveTo(-size * 0.88, 0, -size * 0.12, size);
+  iconCtx.stroke();
+  iconCtx.strokeStyle = stringColor;
+  iconCtx.lineWidth = 1.2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-size * 0.12, -size);
+  iconCtx.lineTo(-size * 0.12, size);
+  iconCtx.stroke();
+  iconCtx.restore();
+}
+
+function drawAimedShotActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  drawCompactBowGlyph(iconCtx, mid - 2, mid + 1, -0.18, { size: 13 });
+  drawActionArrowGlyph(iconCtx, mid + 2, mid, -0.16, {
+    shaftLength: 20,
+    shaftWidth: 2.5,
+    headLength: 7,
+    primary: "#f2f6ff",
+    secondary: "#b98b5a"
+  });
+  iconCtx.strokeStyle = "rgba(255, 226, 154, 0.78)";
+  iconCtx.lineWidth = 1.4;
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 8, mid - 1, 6, 0, Math.PI * 2);
+  iconCtx.stroke();
+}
+
+function drawMultishotActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  const angles = [-0.42, -0.12, 0.22];
+  for (let i = 0; i < angles.length; i += 1) {
+    drawActionArrowGlyph(iconCtx, mid - 1 + i * 1.8, mid + 1, angles[i], {
+      shaftLength: 18,
+      shaftWidth: 2,
+      headLength: 6,
+      primary: i === 1 ? "#f4f7ff" : "rgba(220, 228, 241, 0.92)",
+      secondary: "#b4895f"
+    });
+  }
+}
+
+function drawPoisonArrowActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  drawActionArrowGlyph(iconCtx, mid, mid + 1, -0.3, {
+    shaftLength: 19,
+    shaftWidth: 2.3,
+    headLength: 7,
+    primary: "#d8f8c6",
+    secondary: "#86b25c"
+  });
+  iconCtx.fillStyle = "rgba(132, 224, 86, 0.96)";
+  iconCtx.strokeStyle = "rgba(228, 255, 208, 0.88)";
+  iconCtx.lineWidth = 1;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid + 8, mid - 5);
+  iconCtx.quadraticCurveTo(mid + 12, mid + 1, mid + 8, mid + 6);
+  iconCtx.quadraticCurveTo(mid + 4, mid + 1, mid + 8, mid - 5);
+  iconCtx.fill();
+  iconCtx.stroke();
+}
+
+function drawExplosiveArrowActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  drawActionArrowGlyph(iconCtx, mid - 1, mid + 2, -0.28, {
+    shaftLength: 19,
+    shaftWidth: 2.2,
+    headLength: 7,
+    primary: "#ffe3a6",
+    secondary: "#b27a4c"
+  });
+  iconCtx.fillStyle = "rgba(255, 131, 52, 0.94)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 8, mid - 5, 3.8, 0, Math.PI * 2);
+  iconCtx.fill();
+  iconCtx.strokeStyle = "rgba(255, 216, 128, 0.82)";
+  iconCtx.lineWidth = 1.2;
+  for (let i = 0; i < 6; i += 1) {
+    const a = (Math.PI * 2 * i) / 6;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid + 8 + Math.cos(a) * 5.5, mid - 5 + Math.sin(a) * 5.5);
+    iconCtx.lineTo(mid + 8 + Math.cos(a) * 8.8, mid - 5 + Math.sin(a) * 8.8);
+    iconCtx.stroke();
+  }
+}
+
+function drawShrapnelGrenadeActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "#586271";
+  iconCtx.strokeStyle = "#d5dde8";
+  iconCtx.lineWidth = 1.5;
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid + 2, 8.2, 0, Math.PI * 2);
+  iconCtx.fill();
+  iconCtx.stroke();
+  iconCtx.fillStyle = "#9b6f45";
+  iconCtx.fillRect(mid - 2.2, mid - 9, 4.4, 5.5);
+  iconCtx.strokeStyle = "#ffd58a";
+  iconCtx.lineWidth = 1.2;
+  for (let i = 0; i < 5; i += 1) {
+    const a = -Math.PI * 0.9 + i * 0.38;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid + Math.cos(a) * 7, mid - 8 + Math.sin(a) * 3);
+    iconCtx.lineTo(mid + Math.cos(a) * 10.5, mid - 12 + Math.sin(a) * 4.2);
+    iconCtx.stroke();
+  }
+}
+
+function drawRainOfArrowsActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "rgba(103, 147, 96, 0.2)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid + 5, 11, 0, Math.PI * 2);
+  iconCtx.fill();
+  const positions = [-8, 0, 8];
+  for (let i = 0; i < positions.length; i += 1) {
+    drawActionArrowGlyph(iconCtx, mid + positions[i], mid - 1 + i * 0.6, Math.PI * 0.5, {
+      shaftLength: 14,
+      shaftWidth: 1.9,
+      headLength: 5.8,
+      primary: "#edf2fa",
+      secondary: "#9c7651"
+    });
+  }
+}
+
+function drawCaltropsActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  const drawSpike = (x, y, scale) => {
+    iconCtx.save();
+    iconCtx.translate(x, y);
+    iconCtx.scale(scale, scale);
+    iconCtx.strokeStyle = "#dce5f0";
+    iconCtx.lineWidth = 2;
+    iconCtx.lineCap = "round";
+    iconCtx.beginPath();
+    iconCtx.moveTo(-5, -4);
+    iconCtx.lineTo(5, 4);
+    iconCtx.moveTo(-5, 4);
+    iconCtx.lineTo(5, -4);
+    iconCtx.moveTo(0, -6);
+    iconCtx.lineTo(0, 6);
+    iconCtx.stroke();
+    iconCtx.restore();
+  };
+  drawSpike(mid - 5, mid + 1, 0.95);
+  drawSpike(mid + 6, mid - 4, 0.8);
+  drawSpike(mid + 3, mid + 8, 0.72);
+}
+
+function drawRicochetShotActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  drawActionArrowGlyph(iconCtx, mid - 2, mid + 2, -0.3, {
+    shaftLength: 18,
+    shaftWidth: 2.2,
+    headLength: 6.8,
+    primary: "#eff5ff",
+    secondary: "#af8357"
+  });
+  iconCtx.strokeStyle = "rgba(255, 221, 148, 0.85)";
+  iconCtx.lineWidth = 1.5;
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 6, mid - 2, 6.6, 0.2, Math.PI * 1.56);
+  iconCtx.stroke();
+}
+
+function drawBallistaNestActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.strokeStyle = "#cfa46f";
+  iconCtx.lineWidth = 2.2;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 7, mid + 10);
+  iconCtx.lineTo(mid - 2, mid + 1);
+  iconCtx.lineTo(mid + 8, mid - 1);
+  iconCtx.lineTo(mid + 2, mid + 9);
+  iconCtx.stroke();
+  iconCtx.strokeStyle = "#f0dec0";
+  iconCtx.lineWidth = 1.4;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 1, mid + 1);
+  iconCtx.lineTo(mid + 11, mid - 8);
+  iconCtx.moveTo(mid - 1, mid + 1);
+  iconCtx.lineTo(mid + 11, mid + 8);
+  iconCtx.moveTo(mid + 11, mid - 8);
+  iconCtx.lineTo(mid + 11, mid + 8);
+  iconCtx.stroke();
+  iconCtx.fillStyle = "rgba(255, 197, 108, 0.9)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid - 8, mid + 11, 2.4, 0, Math.PI * 2);
+  iconCtx.arc(mid + 4, mid + 11, 2.4, 0, Math.PI * 2);
+  iconCtx.fill();
+}
+
+function drawPiercingBoltActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  drawActionArrowGlyph(iconCtx, mid, mid, -0.2, {
+    shaftLength: 21,
+    shaftWidth: 2.8,
+    headLength: 8.5,
+    primary: "#f7f2df",
+    secondary: "#b88757"
+  });
+  iconCtx.strokeStyle = "rgba(255, 228, 163, 0.76)";
+  iconCtx.lineWidth = 1.1;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 11, mid + 5);
+  iconCtx.lineTo(mid + 13, mid - 3);
+  iconCtx.stroke();
+}
+
 function drawWarstompActionIcon(iconCtx, size) {
   const mid = size / 2;
   iconCtx.strokeStyle = "#d6ecff";
@@ -3622,6 +4015,16 @@ function drawUnknownActionIcon(iconCtx, size) {
 const ABILITY_ICON_RENDERERS = Object.freeze({
   unknown: drawUnknownActionIcon,
   melee_slash: drawMeleeSlashActionIcon,
+  aimed_shot: drawAimedShotActionIcon,
+  multishot: drawMultishotActionIcon,
+  poison_arrow: drawPoisonArrowActionIcon,
+  explosive_arrow: drawExplosiveArrowActionIcon,
+  shrapnel_grenade: drawShrapnelGrenadeActionIcon,
+  rain_of_arrows: drawRainOfArrowsActionIcon,
+  caltrops: drawCaltropsActionIcon,
+  ricochet_shot: drawRicochetShotActionIcon,
+  ballista_nest: drawBallistaNestActionIcon,
+  piercing_bolt: drawPiercingBoltActionIcon,
   frostbolt: drawFrostboltActionIcon,
   arcane_missiles: drawArcaneMissilesActionIcon,
   blizzard: drawBlizzardActionIcon,
@@ -3651,6 +4054,7 @@ const ITEM_AFFIX_THEME_PALETTES = Object.freeze({
   frost: { primary: "#8ee3ff", secondary: "#dff8ff" },
   arcane: { primary: "#bf8cff", secondary: "#eddcff" },
   lightning: { primary: "#7be1ff", secondary: "#fff5a8" },
+  poison: { primary: "#78d652", secondary: "#d7ffaf" },
   physical: { primary: "#d7dde7", secondary: "#8e99ab" },
   vitality: { primary: "#76d88b", secondary: "#d9ffe0" },
   mana: { primary: "#4ea7ff", secondary: "#d5edff" },
@@ -3957,6 +4361,32 @@ function drawWeaponOrOffhandIcon(iconCtx, size, presentation, accentPalette) {
     }
     return;
   }
+  if (weaponClass === "bow") {
+    iconCtx.save();
+    iconCtx.translate(mid + 1, mid + 1);
+    iconCtx.rotate(-0.18);
+    iconCtx.strokeStyle = "#c89b62";
+    iconCtx.lineWidth = 2.6;
+    iconCtx.beginPath();
+    iconCtx.moveTo(-2, -13);
+    iconCtx.quadraticCurveTo(-12, 0, -2, 13);
+    iconCtx.stroke();
+    iconCtx.strokeStyle = "#f5e1b7";
+    iconCtx.lineWidth = 1.1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(-2, -13);
+    iconCtx.lineTo(-2, 13);
+    iconCtx.stroke();
+    iconCtx.restore();
+    drawActionArrowGlyph(iconCtx, mid + 5, mid - 1, -0.12, {
+      shaftLength: 16,
+      shaftWidth: 2,
+      headLength: 5.8,
+      primary: "#f1f5fb",
+      secondary: "#a9825c"
+    });
+    return;
+  }
   if (slot === "offHand") {
     const shieldColor = hexToRgba(accentPalette.primary, 0.82);
     iconCtx.fillStyle = shieldColor;
@@ -4201,7 +4631,9 @@ function updateInventoryUI() {
       applyItemRarityChrome(slotEl, slotData);
       slotEl.addEventListener("contextmenu", (event) => {
         event.preventDefault();
-        equipInventoryItemAtIndex(i);
+        if (!trySellInventoryItemAtIndex(i)) {
+          equipInventoryItemAtIndex(i);
+        }
       });
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "inventory";
@@ -4361,6 +4793,242 @@ function updateEquipmentUI() {
   shellEl.appendChild(statsPanelEl);
   shellEl.appendChild(layoutEl);
   equipmentGrid.appendChild(shellEl);
+}
+
+function canInteractWithVendor(self = null) {
+  const actor = self || getCurrentSelf();
+  const vendor = getTownVendor();
+  if (!actor || !vendor) {
+    return false;
+  }
+  return Math.hypot(Number(vendor.x) + 0.5 - Number(actor.x), Number(vendor.y) + 0.5 - Number(actor.y)) <= Math.max(0.5, Number(vendor.interactRange) || 2.25);
+}
+
+function setVendorPanelVisible(visible) {
+  vendorInteractionState.panelOpen = !!visible;
+  if (vendorPanel) {
+    vendorPanel.classList.toggle("hidden", !vendorInteractionState.panelOpen);
+  }
+  if (!visible) {
+    clearAutoVendorInteraction(false, false);
+  }
+}
+
+function sendSellInventoryItem(inventoryIndex) {
+  const vendor = getTownVendor();
+  if (!vendor) {
+    return false;
+  }
+  return sendJsonMessage({
+    type: "sell_inventory_item",
+    inventoryIndex,
+    vendorId: vendor.id
+  });
+}
+
+function trySellInventoryItemAtIndex(index) {
+  const slotData = inventoryState.slots[index];
+  if (!slotData || !slotData.itemId || !slotData.isEquipment || !vendorInteractionState.panelOpen) {
+    return false;
+  }
+  if (!canInteractWithVendor()) {
+    setStatus("Move closer to the vendor.");
+    return false;
+  }
+  const copperValue = getItemCopperValueClient(slotData);
+  if (copperValue <= 0) {
+    return false;
+  }
+  return sendSellInventoryItem(index);
+}
+
+function createVendorItemEntry(slotData, index) {
+  const entry = document.createElement("div");
+  entry.className = "vendor-item-entry";
+  applyItemRarityChrome(entry, slotData);
+  const iconShell = document.createElement("div");
+  iconShell.className = "vendor-item-icon";
+  applyItemRarityChrome(iconShell, slotData);
+  const icon = document.createElement("div");
+  icon.className = "inv-icon";
+  icon.style.backgroundImage = `url(${getItemIconUrl(slotData)})`;
+  iconShell.appendChild(icon);
+
+  const meta = document.createElement("div");
+  meta.className = "vendor-item-meta";
+  const nameEl = document.createElement("div");
+  nameEl.className = "vendor-item-name";
+  nameEl.textContent = slotData.name || itemDefsById.get(slotData.itemId)?.name || slotData.itemId;
+  const extraEl = document.createElement("div");
+  extraEl.className = "vendor-item-extra";
+  const levelText = Number(slotData.itemLevel) > 0 ? `ilvl ${Math.floor(Number(slotData.itemLevel) || 0)}` : "equipment";
+  const qty = Math.max(0, Math.floor(Number(slotData.qty) || 0));
+  extraEl.textContent = qty > 1 ? `${levelText} | x${qty}` : levelText;
+  meta.appendChild(nameEl);
+  meta.appendChild(extraEl);
+
+  const valueEl = document.createElement("div");
+  valueEl.className = "vendor-item-value";
+  valueEl.textContent = `${getItemCopperValueClient(slotData)}c`;
+
+  entry.appendChild(iconShell);
+  entry.appendChild(meta);
+  entry.appendChild(valueEl);
+  bindItemTooltip(entry, slotData);
+  entry.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    sendSellInventoryItem(index);
+  });
+  return entry;
+}
+
+function updateVendorPanelUI() {
+  if (!vendorTitle || !vendorSubtitle || !vendorItemList) {
+    return;
+  }
+  const vendor = getTownVendor();
+  vendorTitle.textContent = vendor ? vendor.name || "Quartermaster" : "Quartermaster";
+  vendorSubtitle.textContent = canInteractWithVendor()
+    ? "Right-click gear to sell it for copper."
+    : "Right-click the vendor in town to open this panel. Move closer to sell.";
+  vendorItemList.innerHTML = "";
+  const sellable = [];
+  for (let index = 0; index < inventoryState.slots.length; index += 1) {
+    const slotData = inventoryState.slots[index];
+    if (!slotData || !slotData.itemId || !slotData.isEquipment) {
+      continue;
+    }
+    const copperValue = getItemCopperValueClient(slotData);
+    if (copperValue <= 0) {
+      continue;
+    }
+    sellable.push({ slotData, index });
+  }
+  if (!sellable.length) {
+    const empty = document.createElement("div");
+    empty.className = "vendor-item-entry empty";
+    empty.textContent = "No sellable gear in inventory.";
+    vendorItemList.appendChild(empty);
+    return;
+  }
+  for (const entry of sellable) {
+    vendorItemList.appendChild(createVendorItemEntry(entry.slotData, entry.index));
+  }
+}
+
+function clearAutoVendorInteraction(sendStopMove = false, keepPanelOpen = true) {
+  const wasActive = vendorInteractionState.active || autoMoveTarget.active;
+  vendorInteractionState.active = false;
+  vendorInteractionState.npcId = "";
+  vendorInteractionState.x = 0;
+  vendorInteractionState.y = 0;
+  vendorInteractionState.nextAttemptAt = 0;
+  clearAutoMoveTarget();
+  if (!keepPanelOpen) {
+    vendorInteractionState.panelOpen = false;
+    if (vendorPanel) {
+      vendorPanel.classList.add("hidden");
+    }
+  }
+  if (sendStopMove && wasActive) {
+    sendMove();
+  }
+}
+
+function startAutoVendorInteraction(vendor) {
+  if (!vendor) {
+    return false;
+  }
+  vendorInteractionState.active = true;
+  vendorInteractionState.npcId = String(vendor.id || "");
+  vendorInteractionState.x = Number(vendor.x) || 0;
+  vendorInteractionState.y = Number(vendor.y) || 0;
+  vendorInteractionState.nextAttemptAt = 0;
+  setAutoMoveTarget(vendorInteractionState.x + 0.5, vendorInteractionState.y + 0.5, 0.8);
+  sendMove();
+  return true;
+}
+
+function getHoveredVendor(cameraX, cameraY) {
+  const vendor = getTownVendor();
+  if (!vendor) {
+    return null;
+  }
+  const p = worldToScreen(Number(vendor.x) + 0.5, Number(vendor.y) + 0.5, cameraX, cameraY);
+  const dx = mouseState.sx - p.x;
+  const dy = mouseState.sy - p.y;
+  const radius = TILE_SIZE * 0.48;
+  if (dx * dx + dy * dy > radius * radius) {
+    return null;
+  }
+  return { vendor, p };
+}
+
+function tryContextVendorInteraction() {
+  const self = getCurrentSelf();
+  if (!self) {
+    return false;
+  }
+  const cameraX = self.x + 0.5;
+  const cameraY = self.y + 0.5;
+  const hovered = getHoveredVendor(cameraX, cameraY);
+  if (!hovered || !hovered.vendor) {
+    return false;
+  }
+  if (canInteractWithVendor(self)) {
+    clearAutoVendorInteraction(false, true);
+    setVendorPanelVisible(true);
+    updateVendorPanelUI();
+    return true;
+  }
+  return startAutoVendorInteraction(hovered.vendor);
+}
+
+function updateAutoVendorInteraction(now = performance.now()) {
+  if (!vendorInteractionState.active && !vendorInteractionState.panelOpen) {
+    return;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    clearAutoVendorInteraction(true, false);
+    return;
+  }
+  const manualMove = getCurrentInputVector();
+  if (manualMove.dx || manualMove.dy) {
+    clearAutoVendorInteraction(false, true);
+    return;
+  }
+  if (vendorInteractionState.panelOpen && !canInteractWithVendor(self)) {
+    setVendorPanelVisible(false);
+  }
+  if (!vendorInteractionState.active) {
+    return;
+  }
+  const vendor = getTownVendor();
+  if (!vendor || String(vendor.id || "") !== vendorInteractionState.npcId) {
+    clearAutoVendorInteraction(true, false);
+    return;
+  }
+  vendorInteractionState.x = Number(vendor.x) || 0;
+  vendorInteractionState.y = Number(vendor.y) || 0;
+  setAutoMoveTarget(vendorInteractionState.x + 0.5, vendorInteractionState.y + 0.5, 0.8);
+  const dist = Math.hypot(vendorInteractionState.x + 0.5 - self.x, vendorInteractionState.y + 0.5 - self.y);
+  if (dist <= Math.max(0.5, Number(vendor.interactRange) || 2.25)) {
+    clearAutoVendorInteraction(true, true);
+    setVendorPanelVisible(true);
+    updateVendorPanelUI();
+    return;
+  }
+  if (now >= vendorInteractionState.nextAttemptAt) {
+    vendorInteractionState.nextAttemptAt = now + 90;
+    sendMove();
+  }
+}
+
+if (vendorCloseButton) {
+  vendorCloseButton.addEventListener("click", () => {
+    setVendorPanelVisible(false);
+  });
 }
 
 const sharedClientUiPanels = globalThis.VibeClientUiPanels || null;
@@ -5397,6 +6065,7 @@ function applyInventoryState(msg) {
   inventoryState.rows = rows;
   inventoryState.slots = nextSlots;
   updateInventoryUI();
+  updateVendorPanelUI();
 }
 
 function applyEquipmentState(msg) {
@@ -5410,6 +6079,7 @@ function applyEquipmentState(msg) {
   }
   equipmentState.slots = nextSlots;
   updateEquipmentUI();
+  updateVendorPanelUI();
 }
 
 const sharedClientNetworkPackets = globalThis.VibeClientNetworkPackets || null;
@@ -5622,10 +6292,12 @@ function resetClientSessionState() {
   skeletonWalkRuntime.clear();
   skeletonArcherWalkRuntime.clear();
   warriorAnimRuntime.clear();
+  rangerAnimRuntime.clear();
   floatingDamageNumbers.length = 0;
   activeExplosions.length = 0;
   activeAreaEffectsById.clear();
   ambientParticleEmitters.clear();
+  clearAutoVendorInteraction(false, false);
   clearAutoLootPickup(false);
   abilityRuntime.clear();
   adminBotState.bots = [];
@@ -5855,6 +6527,17 @@ const serverMessageHandlers = {
   self_progress: (msg) => handleServerSelfProgress(msg),
   loot_picked: (msg) => handleServerLootPicked(msg),
   item_used: (msg) => handleServerItemUsed(msg),
+  vendor_sale_result: (msg) => {
+    if (!msg) {
+      return;
+    }
+    if (msg.ok) {
+      setStatus(`Sold ${msg.itemName || "item"} for ${Math.max(0, Math.floor(Number(msg.copperGained) || 0))} copper.`);
+    } else if (msg.message) {
+      setStatus(String(msg.message));
+    }
+    updateVendorPanelUI();
+  },
   admin_bot_list: (msg) => {
     adminBotState.bots = Array.isArray(msg && msg.bots) ? msg.bots.map((entry) => ({ ...entry })) : [];
     if (
@@ -7069,6 +7752,476 @@ function drawFireHydraAreaEffect(effect, cameraX, cameraY, now) {
   }
 }
 
+const ballistaSpriteCache = new Map();
+const caltropSpriteCache = new Map();
+
+function getBallistaSpriteFrame(frameIndex) {
+  const key = Math.max(0, Math.floor(Number(frameIndex) || 0)) % 6;
+  let sprite = ballistaSpriteCache.get(key);
+  if (sprite) {
+    return sprite;
+  }
+
+  const size = 76;
+  const offscreen = document.createElement("canvas");
+  offscreen.width = size;
+  offscreen.height = size;
+  const iconCtx = offscreen.getContext("2d");
+  const phase = (key / 6) * Math.PI * 2;
+  const recoil = Math.sin(phase) * 2.6;
+  iconCtx.translate(size / 2, size / 2 + 6);
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+
+  iconCtx.fillStyle = "rgba(42, 28, 18, 0.92)";
+  iconCtx.beginPath();
+  iconCtx.ellipse(0, 16, 15, 7, 0, 0, Math.PI * 2);
+  iconCtx.fill();
+
+  iconCtx.strokeStyle = "rgba(207, 169, 114, 0.92)";
+  iconCtx.lineWidth = 3.4;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-9, 14);
+  iconCtx.lineTo(-2, 0);
+  iconCtx.lineTo(9, 14);
+  iconCtx.moveTo(-4, 16);
+  iconCtx.lineTo(0, 4);
+  iconCtx.lineTo(4, 16);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(138, 101, 58, 0.98)";
+  iconCtx.strokeStyle = "rgba(241, 222, 174, 0.72)";
+  iconCtx.lineWidth = 1.5;
+  drawRoundedRect(iconCtx, -14, -2, 28, 8, 3);
+  iconCtx.fill();
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(228, 214, 191, 0.96)";
+  iconCtx.lineWidth = 1.5;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-12, -1);
+  iconCtx.lineTo(14 + recoil, -13);
+  iconCtx.moveTo(-12, 5);
+  iconCtx.lineTo(14 + recoil, 17);
+  iconCtx.moveTo(14 + recoil, -13);
+  iconCtx.lineTo(14 + recoil, 17);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(230, 219, 196, 0.96)";
+  iconCtx.beginPath();
+  iconCtx.moveTo(18 + recoil, 2);
+  iconCtx.lineTo(11 + recoil, -2.8);
+  iconCtx.lineTo(13.5 + recoil, 2);
+  iconCtx.lineTo(11 + recoil, 6.8);
+  iconCtx.closePath();
+  iconCtx.fill();
+
+  sprite = offscreen;
+  ballistaSpriteCache.set(key, sprite);
+  return sprite;
+}
+
+function drawBallistaSprite(screenX, screenY, scale, alpha, frameNow, attackPulse = 0) {
+  const frameIndex = Math.floor(frameNow / 140 + attackPulse * 2.2) % 6;
+  const sprite = getBallistaSpriteFrame(frameIndex);
+  const width = sprite.width * scale;
+  const height = sprite.height * scale;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.shadowBlur = 11;
+  ctx.shadowColor = "rgba(255, 202, 128, 0.28)";
+  ctx.drawImage(sprite, screenX - width * 0.5, screenY - height * 0.56, width, height);
+  ctx.restore();
+}
+
+function getCaltropSprite() {
+  let sprite = caltropSpriteCache.get("default");
+  if (sprite) {
+    return sprite;
+  }
+  const size = 22;
+  const offscreen = document.createElement("canvas");
+  offscreen.width = size;
+  offscreen.height = size;
+  const iconCtx = offscreen.getContext("2d");
+  iconCtx.translate(size / 2, size / 2);
+  iconCtx.strokeStyle = "rgba(224, 231, 239, 0.96)";
+  iconCtx.lineWidth = 2;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(-5, -4);
+  iconCtx.lineTo(5, 4);
+  iconCtx.moveTo(-5, 4);
+  iconCtx.lineTo(5, -4);
+  iconCtx.moveTo(0, -6);
+  iconCtx.lineTo(0, 6);
+  iconCtx.stroke();
+  sprite = offscreen;
+  caltropSpriteCache.set("default", sprite);
+  return sprite;
+}
+
+function drawCircularTargetPreview(self, cameraX, cameraY, now, options = {}) {
+  if (!self || !abilityChannel.active) {
+    return;
+  }
+  const targetX = Number(abilityChannel.targetX);
+  const targetY = Number(abilityChannel.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const abilityDef = findAbilityDefById(activeAbilityId) || (options.fallbackId ? findAbilityDefById(options.fallbackId) : null);
+  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
+  const areaRadius = Math.max(0.2, Number(options.radius) || Number(abilityDef?.areaRadius || abilityDef?.radius || 2.5));
+  const center = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
+  const radiusPx = Math.max(8, areaRadius * TILE_SIZE);
+  const dist = Math.hypot(targetX - self.x, targetY - self.y);
+  const inRange = castRange <= 0 || dist <= castRange + 0.001;
+  const pulse = 0.72 + Math.sin(now * 0.011) * 0.14;
+  const selfP = worldToScreen(self.x + 0.5, self.y + 0.5, cameraX, cameraY);
+  const strokeColor = inRange
+    ? options.strokeColor || "rgba(220, 233, 255, 0.72)"
+    : options.outOfRangeStrokeColor || "rgba(255, 164, 164, 0.72)";
+  const fillColor = inRange
+    ? options.fillColor || `rgba(134, 179, 230, ${(0.12 * pulse).toFixed(3)})`
+    : options.outOfRangeFillColor || `rgba(214, 104, 104, ${(0.13 * pulse).toFixed(3)})`;
+
+  ctx.save();
+  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 1.15;
+  ctx.strokeStyle = inRange ? "rgba(206, 220, 245, 0.46)" : "rgba(255, 141, 141, 0.48)";
+  ctx.beginPath();
+  ctx.moveTo(selfP.x, selfP.y);
+  ctx.lineTo(center.x, center.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.fillStyle = fillColor;
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = strokeColor;
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  return { center, radiusPx, inRange };
+}
+
+function drawTaperedTracerBeam(start, end, seed, now, options = {}) {
+  const alpha = clamp(Number(options.alpha) || 1, 0, 1);
+  if (alpha <= 0) {
+    return;
+  }
+  const widthPx = Math.max(2, Number(options.widthPx) || 8);
+  const outerGlowColor = options.outerGlowColor || [246, 196, 116];
+  const coreColor = options.coreColor || [244, 234, 212];
+  const hotColor = options.hotColor || [255, 252, 244];
+  const streakColor = options.streakColor || [255, 221, 148];
+  const sparkCount = Math.max(0, Math.floor(Number(options.sparkCount) || 10));
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const dirX = dx / length;
+  const dirY = dy / length;
+  const perpX = -dirY;
+  const perpY = dirX;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.strokeStyle = `rgba(${outerGlowColor[0]}, ${outerGlowColor[1]}, ${outerGlowColor[2]}, ${(0.28 * alpha).toFixed(3)})`;
+  ctx.lineWidth = widthPx * 1.8;
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  const gradient = ctx.createLinearGradient(start.x, start.y, end.x, end.y);
+  gradient.addColorStop(0, `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${(0.78 * alpha).toFixed(3)})`);
+  gradient.addColorStop(0.55, `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.96 * alpha).toFixed(3)})`);
+  gradient.addColorStop(1, `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${(0.78 * alpha).toFixed(3)})`);
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = widthPx * 0.7;
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.98 * alpha).toFixed(3)})`;
+  ctx.lineWidth = Math.max(1.1, widthPx * 0.18);
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+
+  for (let i = 0; i < sparkCount; i += 1) {
+    const t = (seededUnit(seed, 410 + i * 17) + now * 0.00042) % 1;
+    const baseX = start.x + dx * t;
+    const baseY = start.y + dy * t;
+    const drift = (seededUnit(seed, 430 + i * 19) - 0.5) * widthPx * 1.6;
+    const px = baseX + perpX * drift;
+    const py = baseY + perpY * drift;
+    const tail = 3 + seededUnit(seed, 450 + i * 11) * 5;
+    ctx.strokeStyle = `rgba(${streakColor[0]}, ${streakColor[1]}, ${streakColor[2]}, ${(0.34 + seededUnit(seed, 470 + i * 7) * 0.4 * alpha).toFixed(3)})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px - dirX * tail * 0.35, py - dirY * tail * 0.35);
+    ctx.lineTo(px + dirX * tail, py + dirY * tail);
+    ctx.stroke();
+  }
+
+  if (options.arrowHead !== false) {
+    ctx.save();
+    ctx.translate(end.x, end.y);
+    ctx.rotate(Math.atan2(dy, dx));
+    ctx.fillStyle = `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.96 * alpha).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(widthPx * 1.1, 0);
+    ctx.lineTo(-widthPx * 0.1, -widthPx * 0.45);
+    ctx.lineTo(widthPx * 0.22, 0);
+    ctx.lineTo(-widthPx * 0.1, widthPx * 0.45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawRainOfArrowsAreaEffect(effect, cameraX, cameraY, now) {
+  const center = worldToScreen(effect.x + 0.5, effect.y + 0.5, cameraX, cameraY);
+  const radiusPx = Math.max(8, effect.radius * TILE_SIZE);
+  const lifeT = clamp((now - effect.startedAt) / Math.max(1, effect.durationMs), 0, 1);
+  const fadeOut = 1 - clamp((now - effect.endsAt + 320) / 320, 0, 1);
+  const alpha = clamp((0.7 - lifeT * 0.18) * fadeOut, 0, 1);
+
+  ctx.save();
+  const zoneGlow = ctx.createRadialGradient(center.x, center.y, radiusPx * 0.15, center.x, center.y, radiusPx * 1.05);
+  zoneGlow.addColorStop(0, `rgba(197, 178, 108, ${(0.14 * alpha).toFixed(3)})`);
+  zoneGlow.addColorStop(0.7, `rgba(120, 88, 42, ${(0.18 * alpha).toFixed(3)})`);
+  zoneGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = zoneGlow;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radiusPx * 1.05, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.clip();
+
+  for (let i = 0; i < 24; i += 1) {
+    const u = (seededUnit(effect.seed, 510 + i * 17) + now * 0.0003 * (0.7 + i * 0.02)) % 1;
+    const v = (seededUnit(effect.seed, 540 + i * 19) + now * 0.00058 * (0.8 + i * 0.01)) % 1;
+    const px = center.x + (u * 2 - 1) * radiusPx * 0.9;
+    const py = center.y + (v * 2 - 1) * radiusPx * 0.9;
+    if ((px - center.x) ** 2 + (py - center.y) ** 2 > radiusPx * radiusPx) {
+      continue;
+    }
+    const dropLen = 12 + seededUnit(effect.seed, 570 + i * 13) * 8;
+    ctx.strokeStyle = `rgba(236, 226, 212, ${(0.26 + seededUnit(effect.seed, 590 + i * 11) * 0.32 * alpha).toFixed(3)})`;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(px + 2.5, py - dropLen * 0.55);
+    ctx.lineTo(px - 1.2, py + dropLen * 0.38);
+    ctx.stroke();
+    ctx.fillStyle = `rgba(250, 245, 237, ${(0.34 * alpha).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(px - 2.4, py + dropLen * 0.42);
+    ctx.lineTo(px - 5.8, py + dropLen * 0.15);
+    ctx.lineTo(px - 2, py + dropLen * 0.22);
+    ctx.lineTo(px - 4.8, py + dropLen * 0.62);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.restore();
+  ctx.beginPath();
+  ctx.lineWidth = 1.45;
+  ctx.strokeStyle = `rgba(235, 211, 162, ${(0.48 * alpha).toFixed(3)})`;
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawCaltropsAreaEffect(effect, cameraX, cameraY, now) {
+  const center = worldToScreen(effect.x + 0.5, effect.y + 0.5, cameraX, cameraY);
+  const radiusPx = Math.max(8, effect.radius * TILE_SIZE);
+  const fadeOut = 1 - clamp((now - effect.endsAt + 380) / 380, 0, 1);
+  const alpha = clamp((0.82 - ((now - effect.startedAt) / Math.max(1, effect.durationMs)) * 0.12) * fadeOut, 0, 1);
+  const sprite = getCaltropSprite();
+
+  ctx.save();
+  const zoneGlow = ctx.createRadialGradient(center.x, center.y, radiusPx * 0.2, center.x, center.y, radiusPx * 1.02);
+  zoneGlow.addColorStop(0, `rgba(214, 224, 236, ${(0.08 * alpha).toFixed(3)})`);
+  zoneGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = zoneGlow;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.fill();
+
+  for (let i = 0; i < 16; i += 1) {
+    const a = seededUnit(effect.seed, 620 + i * 17) * Math.PI * 2;
+    const r = radiusPx * (0.18 + seededUnit(effect.seed, 650 + i * 13) * 0.7);
+    const px = center.x + Math.cos(a) * r;
+    const py = center.y + Math.sin(a) * r;
+    const scale = 0.55 + seededUnit(effect.seed, 680 + i * 11) * 0.38;
+    const wobble = Math.sin(now * 0.004 + i) * 0.04;
+    const width = sprite.width * scale;
+    const height = sprite.height * scale;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(a + wobble);
+    ctx.globalAlpha = alpha * 0.92;
+    ctx.drawImage(sprite, -width * 0.5, -height * 0.5, width, height);
+    ctx.restore();
+  }
+
+  ctx.beginPath();
+  ctx.lineWidth = 1.35;
+  ctx.strokeStyle = `rgba(220, 229, 242, ${(0.42 * alpha).toFixed(3)})`;
+  ctx.arc(center.x, center.y, radiusPx, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRicochetShotAreaEffect(effect, cameraX, cameraY, now) {
+  const dir = normalizeDirection(effect.dx, effect.dy) || { dx: 1, dy: 0 };
+  const startX = Number.isFinite(Number(effect.startX)) ? Number(effect.startX) : effect.x;
+  const startY = Number.isFinite(Number(effect.startY)) ? Number(effect.startY) : effect.y;
+  const lengthTiles = Math.max(0.25, Number(effect.length) || Number(effect.radius) || 1);
+  const endX = startX + dir.dx * lengthTiles;
+  const endY = startY + dir.dy * lengthTiles;
+  const start = worldToScreen(startX + 0.5, startY + 0.5, cameraX, cameraY);
+  const end = worldToScreen(endX + 0.5, endY + 0.5, cameraX, cameraY);
+  const widthPx = Math.max(2.5, (Number(effect.width) || 0.35) * TILE_SIZE);
+  const fadeOut = 1 - clamp((now - effect.endsAt + 120) / 120, 0, 1);
+  drawTaperedTracerBeam(start, end, Number(effect.seed) || 0, now, {
+    alpha: fadeOut,
+    widthPx,
+    outerGlowColor: [245, 181, 96],
+    coreColor: [244, 231, 210],
+    hotColor: [255, 249, 236],
+    streakColor: [255, 214, 140],
+    sparkCount: 4
+  });
+}
+
+function drawPiercingBoltAreaEffect(effect, cameraX, cameraY, now) {
+  const dir = normalizeDirection(effect.dx, effect.dy) || { dx: 1, dy: 0 };
+  const startX = Number.isFinite(Number(effect.startX)) ? Number(effect.startX) : effect.x;
+  const startY = Number.isFinite(Number(effect.startY)) ? Number(effect.startY) : effect.y;
+  const lengthTiles = Math.max(0.25, Number(effect.length) || Number(effect.radius) || 1);
+  const endX = startX + dir.dx * lengthTiles;
+  const endY = startY + dir.dy * lengthTiles;
+  const start = worldToScreen(startX + 0.5, startY + 0.5, cameraX, cameraY);
+  const end = worldToScreen(endX + 0.5, endY + 0.5, cameraX, cameraY);
+  const widthPx = Math.max(3.4, (Number(effect.width) || 0.5) * TILE_SIZE);
+  const fadeIn = clamp((now - effect.startedAt) / 60, 0, 1);
+  const fadeOut = 1 - clamp((now - effect.endsAt + 120) / 120, 0, 1);
+  drawTaperedTracerBeam(start, end, Number(effect.seed) || 0, now, {
+    alpha: fadeIn * fadeOut,
+    widthPx,
+    outerGlowColor: [255, 185, 92],
+    coreColor: [244, 230, 203],
+    hotColor: [255, 250, 239],
+    streakColor: [255, 214, 136],
+    sparkCount: 8
+  });
+}
+
+function drawBallistaNestAreaEffect(effect, cameraX, cameraY, now) {
+  const count = Math.max(1, Math.round(Number(effect.summonCount) || 1));
+  const abilityDef = findAbilityDefById(effect.abilityId) || findAbilityDefById("ballistaNest");
+  const formationRadius = Math.max(
+    Number(effect.formationRadius) || Number(abilityDef?.summonFormationRadius) || 0.8,
+    count >= 3 ? 1.2 : count === 2 ? 0.95 : 0
+  );
+  const positions = sharedComputeSummonFormationPositions(effect.x, effect.y, count, formationRadius);
+  const ageMs = Math.max(0, now - Number(effect.startedAt || now));
+  const fadeOut = 1 - clamp((now - effect.endsAt + 260) / 260, 0, 1);
+  const spawnAlpha = clamp(ageMs / 320, 0, 1);
+  const alpha = clamp(spawnAlpha * fadeOut, 0, 1);
+  const attackIntervalMs = Math.max(120, Number(effect.attackIntervalMs) || 1000);
+  const attackPhase = (ageMs % attackIntervalMs) / attackIntervalMs;
+
+  for (const ballista of positions) {
+    const screen = worldToScreen(ballista.x + 0.5, ballista.y + 0.5, cameraX, cameraY);
+    const baseGlow = ctx.createRadialGradient(screen.x, screen.y + 7, 0, screen.x, screen.y + 7, 14);
+    baseGlow.addColorStop(0, `rgba(255, 210, 146, ${(0.24 * alpha).toFixed(3)})`);
+    baseGlow.addColorStop(0.48, `rgba(176, 110, 46, ${(0.16 * alpha).toFixed(3)})`);
+    baseGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = baseGlow;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y + 7, 14, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = `rgba(60, 40, 24, ${(0.78 * alpha).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(screen.x, screen.y + 7.8, 10.5, 4.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    drawBallistaSprite(
+      screen.x,
+      screen.y - 1.5,
+      0.46 + 0.04 * spawnAlpha,
+      alpha,
+      now + ballista.index * 41,
+      attackPhase > 0.74 ? (attackPhase - 0.74) / 0.26 : 0
+    );
+  }
+}
+
+function drawTargetCircleCastPreview(self, cameraX, cameraY, now) {
+  drawCircularTargetPreview(self, cameraX, cameraY, now);
+}
+
+function drawBallistaNestCastPreview(self, cameraX, cameraY, now) {
+  const preview = drawCircularTargetPreview(self, cameraX, cameraY, now, {
+    fallbackId: "ballistaNest",
+    strokeColor: "rgba(248, 219, 170, 0.72)",
+    fillColor: "rgba(188, 126, 66, 0.13)"
+  });
+  if (!preview || !self) {
+    return;
+  }
+  const targetX = Number(abilityChannel.targetX);
+  const targetY = Number(abilityChannel.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("ballistaNest");
+  const level = getSelfAbilityLevel(self, activeAbilityId, 1);
+  const summonCount = sharedGetSummonCountForLevel(
+    Number(abilityDef?.summonCount) || 1,
+    Number(abilityDef?.summonCountPerLevel) || 0,
+    level,
+    {
+      everyLevels: Number(abilityDef?.summonCountEveryLevels) || 0,
+      maxCount: Number(abilityDef?.maxSummonCount) || 0
+    }
+  );
+  const formationRadius = Math.max(
+    0,
+    Number(abilityDef?.summonFormationRadius) || 0.8,
+    summonCount >= 3 ? 1.2 : summonCount === 2 ? 0.95 : 0
+  );
+  const positions = sharedComputeSummonFormationPositions(targetX, targetY, summonCount, formationRadius);
+  const dist = Math.hypot(targetX - self.x, targetY - self.y);
+  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
+  const inRange = castRange <= 0 || dist <= castRange + 0.001;
+  const pulse = 0.76 + Math.sin(now * 0.012) * 0.14;
+  for (const ballista of positions) {
+    const screen = worldToScreen(ballista.x + 0.5, ballista.y + 0.5, cameraX, cameraY);
+    drawBallistaSprite(screen.x, screen.y - 2, 0.46, (inRange ? 0.42 : 0.26) * pulse, now + ballista.index * 31, 0);
+  }
+}
+
 function drawAreaEffects(cameraX, cameraY, now, layer = "all") {
   for (const [id, effect] of activeAreaEffectsById.entries()) {
     if (!effect || now >= effect.endsAt + 420) {
@@ -7200,12 +8353,19 @@ const ABILITY_AREA_EFFECT_RENDERERS = Object.freeze({
   blizzard: drawBlizzardAreaEffect,
   arcane_beam: drawArcaneBeamAreaEffect,
   lightning_beam: drawLightningBeamAreaEffect,
-  fire_hydra: drawFireHydraAreaEffect
+  fire_hydra: drawFireHydraAreaEffect,
+  rain_of_arrows: drawRainOfArrowsAreaEffect,
+  caltrops: drawCaltropsAreaEffect,
+  ricochet_shot: drawRicochetShotAreaEffect,
+  ballista_nest: drawBallistaNestAreaEffect,
+  piercing_bolt: drawPiercingBoltAreaEffect
 });
 
 const ABILITY_CAST_PREVIEW_RENDERERS = Object.freeze({
   blizzard: drawBlizzardCastPreview,
-  fire_hydra: drawFireHydraCastPreview
+  fire_hydra: drawFireHydraCastPreview,
+  target_circle: drawTargetCircleCastPreview,
+  ballista_nest: drawBallistaNestCastPreview
 });
 
 function drawAbilityCastPreview(self, cameraX, cameraY, now) {
@@ -8831,11 +9991,198 @@ function drawLootBagTooltip(bag, p) {
   uiPresentationTools.drawLootBagTooltip(bag, p);
 }
 
+function createTownTileSprite(kind, variantSeed) {
+  const tile = document.createElement("canvas");
+  tile.width = TILE_SIZE;
+  tile.height = TILE_SIZE;
+  const tctx = tile.getContext("2d");
+  if (!tctx) {
+    return tile;
+  }
+  const seed = Math.abs(Math.floor(Number(variantSeed) || 0));
+
+  if (kind === "wall") {
+    tctx.fillStyle = "#3e3124";
+    tctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+    tctx.fillStyle = "#5d4a37";
+    tctx.fillRect(0, 0, TILE_SIZE, 6);
+    for (let row = 0; row < 4; row += 1) {
+      const y = 6 + row * 7;
+      const rowOffset = ((seed + row) % 3) * 3;
+      for (let x = -rowOffset; x < TILE_SIZE + 8; x += 11) {
+        const width = 10 + ((seed + row + x) % 4);
+        const height = 6 + ((seed + row * 3 + x) % 3);
+        tctx.fillStyle = row % 2 === 0 ? "#735b43" : "#6a533d";
+        tctx.fillRect(x, y, width, height);
+        tctx.strokeStyle = "rgba(27, 18, 12, 0.35)";
+        tctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
+      }
+    }
+    tctx.fillStyle = "rgba(255, 213, 144, 0.12)";
+    tctx.fillRect(0, 0, TILE_SIZE, 3);
+  } else {
+    tctx.fillStyle = "#2a241c";
+    tctx.fillRect(0, 0, TILE_SIZE, TILE_SIZE);
+    for (let index = 0; index < 14; index += 1) {
+      const px = (seed * 17 + index * 13) % TILE_SIZE;
+      const py = (seed * 29 + index * 11) % TILE_SIZE;
+      const size = 4 + ((seed + index) % 5);
+      tctx.fillStyle = index % 2 === 0 ? "rgba(110, 92, 67, 0.32)" : "rgba(84, 69, 50, 0.34)";
+      tctx.fillRect(px, py, size, size);
+    }
+    tctx.strokeStyle = "rgba(255, 217, 158, 0.06)";
+    tctx.lineWidth = 1;
+    for (let crack = 0; crack < 3; crack += 1) {
+      const startX = (seed * 19 + crack * 9) % TILE_SIZE;
+      const startY = (seed * 7 + crack * 13) % TILE_SIZE;
+      tctx.beginPath();
+      tctx.moveTo(startX, startY);
+      tctx.lineTo(startX + 5 + ((seed + crack) % 6), startY + 3 + ((seed + crack * 5) % 5));
+      tctx.lineTo(startX + 10 + ((seed + crack * 2) % 7), startY + 1 + ((seed + crack * 3) % 6));
+      tctx.stroke();
+    }
+  }
+  return tile;
+}
+
+function getTownTileSprite(kind, tileX, tileY) {
+  const variantSeed = Math.abs(((tileX * 73856093) ^ (tileY * 19349663)) % 11);
+  const cacheKey = `${kind}:${variantSeed}`;
+  if (townTileSpriteCache.has(cacheKey)) {
+    return townTileSpriteCache.get(cacheKey);
+  }
+  const sprite = createTownTileSprite(kind, variantSeed);
+  townTileSpriteCache.set(cacheKey, sprite);
+  return sprite;
+}
+
+function createVendorNpcSprite() {
+  const sprite = document.createElement("canvas");
+  sprite.width = 56;
+  sprite.height = 72;
+  const sctx = sprite.getContext("2d");
+  if (!sctx) {
+    return sprite;
+  }
+  sctx.translate(28, 36);
+
+  sctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+  sctx.beginPath();
+  sctx.ellipse(0, 20, 15, 7, 0, 0, Math.PI * 2);
+  sctx.fill();
+
+  sctx.fillStyle = "#5e2f1a";
+  sctx.beginPath();
+  sctx.moveTo(-12, 18);
+  sctx.quadraticCurveTo(0, -6, 12, 18);
+  sctx.lineTo(7, 24);
+  sctx.lineTo(-7, 24);
+  sctx.closePath();
+  sctx.fill();
+
+  sctx.fillStyle = "#b96e34";
+  sctx.fillRect(-9, 2, 18, 7);
+  sctx.fillRect(-7, -7, 14, 12);
+  sctx.fillStyle = "#f0c688";
+  sctx.beginPath();
+  sctx.arc(0, -12, 8, 0, Math.PI * 2);
+  sctx.fill();
+
+  sctx.strokeStyle = "#3a2414";
+  sctx.lineWidth = 2;
+  sctx.beginPath();
+  sctx.moveTo(-9, 7);
+  sctx.lineTo(-18, 18);
+  sctx.moveTo(9, 7);
+  sctx.lineTo(18, 18);
+  sctx.stroke();
+
+  sctx.fillStyle = "#8b5a2f";
+  sctx.fillRect(9, -2, 8, 14);
+  sctx.fillStyle = "#d5ad59";
+  sctx.beginPath();
+  sctx.arc(18, -4, 8, 0, Math.PI * 2);
+  sctx.fill();
+  sctx.fillStyle = "#86511a";
+  for (let i = 0; i < 4; i += 1) {
+    sctx.beginPath();
+    sctx.arc(15 + (i % 2) * 5 - 2, -7 + Math.floor(i / 2) * 5, 2, 0, Math.PI * 2);
+    sctx.fill();
+  }
+
+  sctx.strokeStyle = "rgba(255, 224, 166, 0.38)";
+  sctx.lineWidth = 1;
+  sctx.strokeRect(-10.5, -0.5, 21, 10);
+  return sprite;
+}
+
+function getVendorNpcSprite() {
+  if (!vendorNpcSprite) {
+    vendorNpcSprite = createVendorNpcSprite();
+  }
+  return vendorNpcSprite;
+}
+
+function drawTown(cameraX, cameraY) {
+  const layout = townClientState.layout;
+  if (!layout || layout.enabled === false) {
+    return;
+  }
+  for (let tileY = layout.minTileY; tileY <= layout.maxTileY; tileY += 1) {
+    for (let tileX = layout.minTileX; tileX <= layout.maxTileX; tileX += 1) {
+      const p = worldToScreen(tileX, tileY, cameraX, cameraY);
+      if (p.x + TILE_SIZE < 0 || p.y + TILE_SIZE < 0 || p.x > canvas.width || p.y > canvas.height) {
+        continue;
+      }
+      const isWall = isTownWallTileAt(tileX, tileY);
+      const sprite = getTownTileSprite(isWall ? "wall" : "floor", tileX, tileY);
+      ctx.drawImage(sprite, Math.round(p.x), Math.round(p.y), TILE_SIZE, TILE_SIZE);
+      if (isTownGateTileAt(tileX, tileY)) {
+        ctx.fillStyle = "rgba(232, 196, 129, 0.16)";
+        ctx.fillRect(Math.round(p.x + 4), Math.round(p.y + 4), TILE_SIZE - 8, TILE_SIZE - 8);
+      }
+    }
+  }
+}
+
+function drawVendorNpc(cameraX, cameraY, frameNow) {
+  const vendor = getTownVendor();
+  if (!vendor) {
+    return;
+  }
+  const bob = Math.sin(frameNow / 340) * 1.2;
+  const p = worldToScreen(Number(vendor.x) + 0.5, Number(vendor.y) + 0.5, cameraX, cameraY);
+  const sprite = getVendorNpcSprite();
+  ctx.drawImage(sprite, Math.round(p.x - sprite.width / 2), Math.round(p.y - sprite.height / 2 - 4 + bob));
+}
+
+function drawVendorTooltip(vendor, p) {
+  const title = String(vendor && vendor.name ? vendor.name : "Quartermaster");
+  const subtitle = canInteractWithVendor() ? "Right-click to sell gear" : "Right-click to approach";
+  ctx.font = "12px sans-serif";
+  const width = Math.max(ctx.measureText(title).width, ctx.measureText(subtitle).width) + 18;
+  const x = Math.round(p.x - width / 2);
+  const y = Math.round(p.y - 52);
+  ctx.fillStyle = "rgba(5, 10, 15, 0.94)";
+  ctx.strokeStyle = "rgba(203, 167, 88, 0.76)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, 34, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f4e0aa";
+  ctx.fillText(title, x + 9, y + 14);
+  ctx.fillStyle = "rgba(224, 230, 236, 0.8)";
+  ctx.fillText(subtitle, x + 9, y + 28);
+}
+
 function drawGrid(cameraX, cameraY) {
   const tilesX = Math.ceil(canvas.width / TILE_SIZE) + 2;
   const tilesY = Math.ceil(canvas.height / TILE_SIZE) + 2;
   const startX = Math.floor(cameraX - tilesX / 2);
   const startY = Math.floor(cameraY - tilesY / 2);
+
+  drawTown(cameraX, cameraY);
 
   ctx.strokeStyle = "rgba(87, 147, 172, 0.17)";
   ctx.lineWidth = 1;
@@ -9624,9 +10971,11 @@ const renderLoopTools = sharedCreateRenderLoopTools
       drawAbilityCastPreview,
       getHoveredMob,
       getHoveredLootBag,
+      getHoveredVendor,
       drawProjectile,
       drawExplosionEffects,
       drawAreaEffects,
+      drawVendorNpc,
       drawLootBag,
       drawMob,
       getActiveMobAttackState,
@@ -9655,6 +11004,7 @@ const renderLoopTools = sharedCreateRenderLoopTools
       drawPlayerCastBar,
       drawMobTooltip,
       drawLootBagTooltip,
+      drawVendorTooltip,
       hudName,
       hudClass,
       hudPos,
@@ -9685,9 +11035,12 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleSpellbookPanel,
       toggleDpsPanel,
       executeBoundAction,
+      tryContextVendorInteraction,
       tryContextLootPickup,
       sendMove,
+      cancelAutoVendorInteraction: () => clearAutoVendorInteraction(true, true),
       cancelAutoLootPickup: () => clearAutoLootPickup(true),
+      updateAutoVendorInteraction,
       updateAutoLootPickup,
       clearDragState,
       resetAbilityChanneling,
@@ -9726,7 +11079,11 @@ function buildAutomationSnapshot() {
           classType: selfStatic ? selfStatic.classType : "",
           isAdmin: !!(selfStatic && selfStatic.isAdmin),
           level: entityRuntime.self ? Number(entityRuntime.self.level) || 0 : 0,
-          copper: entityRuntime.self ? Number(entityRuntime.self.copper) || 0 : 0
+          copper: entityRuntime.self ? Number(entityRuntime.self.copper) || 0 : 0,
+          abilityLevels:
+            entityRuntime.self && entityRuntime.self.abilityLevels && typeof entityRuntime.self.abilityLevels === "object"
+              ? { ...entityRuntime.self.abilityLevels }
+              : {}
         }
       : null,
     players: gameState.players.map((player) => ({
@@ -9745,6 +11102,12 @@ function buildAutomationSnapshot() {
       hp: Number(mob.hp) || 0,
       maxHp: Number(mob.maxHp) || 0,
       name: String(mob.type || mob.name || "")
+    })),
+    projectiles: gameState.projectiles.map((projectile) => ({
+      id: projectile.id,
+      x: Number(projectile.x) || 0,
+      y: Number(projectile.y) || 0,
+      abilityId: String(projectile.abilityId || "")
     })),
     lootBags: gameState.lootBags.map((bag) => ({
       id: bag.id,

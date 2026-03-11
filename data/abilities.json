@@ -473,6 +473,394 @@
     ],
     "tags": ["warrior", "aoe"]
   },
+  "aimedShot": {
+    "id": "aimedShot",
+    "name": "Aimed Shot",
+    "description": "Fires a heavy piercing arrow with high single-target damage.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0.25,
+      "cooldown": 0.6,
+      "resourceCost": { "mana": 3 }
+    },
+    "targeting": {
+      "range": 11,
+      "speed": 9,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [6, 9],
+        "school": "physical",
+        "scalingPerLevel": [0.7, 1.1]
+      }
+    ],
+    "tags": ["ranger", "projectile", "bow", "precision", "physical"]
+  },
+  "multishot": {
+    "id": "multishot",
+    "name": "Multishot",
+    "description": "Sprays a fan of arrows in front of the ranger.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0.4,
+      "cooldown": 2.5,
+      "resourceCost": { "mana": 6 }
+    },
+    "targeting": {
+      "range": 9,
+      "speed": 8,
+      "targetType": "enemy",
+      "projectileCount": 5,
+      "spreadDeg": 48
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [2, 4],
+        "school": "physical",
+        "scalingPerLevel": [0.35, 0.55]
+      }
+    ],
+    "tags": ["ranger", "projectile", "bow", "volley", "physical"]
+  },
+  "poisonArrow": {
+    "id": "poisonArrow",
+    "name": "Poison Arrow",
+    "description": "A venom-coated arrow that leaves a toxic wound behind.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0.45,
+      "cooldown": 1.2,
+      "resourceCost": { "mana": 5 }
+    },
+    "targeting": {
+      "range": 10,
+      "speed": 7.5,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [3, 5],
+        "school": "physical",
+        "scalingPerLevel": [0.4, 0.7]
+      },
+      {
+        "type": "damage",
+        "mode": "overTime",
+        "amountPerSecond": [1, 2],
+        "duration": 6,
+        "school": "poison",
+        "scalingPerSecondPerLevel": [0.18, 0.3]
+      }
+    ],
+    "tags": ["ranger", "projectile", "bow", "poison", "physical"]
+  },
+  "explosiveArrow": {
+    "id": "explosiveArrow",
+    "name": "Explosive Arrow",
+    "description": "An arrowhead packed with volatile powder that bursts on impact.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0.55,
+      "cooldown": 2.8,
+      "resourceCost": { "mana": 8 }
+    },
+    "targeting": {
+      "range": 10,
+      "speed": 7,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [4, 6],
+        "school": "physical",
+        "scalingPerLevel": [0.45, 0.7]
+      },
+      {
+        "type": "explode",
+        "radius": 2.2,
+        "effects": [
+          {
+            "type": "damage",
+            "mode": "instant",
+            "amountMultiplier": 0.7,
+            "school": "fire"
+          }
+        ]
+      }
+    ],
+    "tags": ["ranger", "projectile", "bow", "aoe", "fire", "explosive"]
+  },
+  "shrapnelGrenade": {
+    "id": "shrapnelGrenade",
+    "name": "Shrapnel Grenade",
+    "description": "Lobs a grenade that bursts into a ring of razor fragments.",
+    "delivery": {
+      "type": "grenade",
+      "castTime": 0.7,
+      "cooldown": 4.5,
+      "resourceCost": { "mana": 12 }
+    },
+    "targeting": {
+      "range": 8,
+      "speed": 4.3,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [2, 4],
+        "school": "fire",
+        "scalingPerLevel": [0.25, 0.4]
+      },
+      {
+        "type": "explode",
+        "radius": 2.8,
+        "effects": [
+          {
+            "type": "damage",
+            "mode": "instant",
+            "amountMultiplier": 0.85,
+            "school": "physical"
+          }
+        ]
+      },
+      {
+        "type": "emitProjectiles",
+        "trigger": "onImpact",
+        "interval": 0.05,
+        "maxEmissions": 1,
+        "pattern": {
+          "type": "radial",
+          "count": 10,
+          "startAngle": 0,
+          "angleSpread": 360,
+          "evenSpacing": true
+        },
+        "projectile": {
+          "abilityId": "shrapnelShard"
+        }
+      }
+    ],
+    "tags": ["ranger", "grenade", "projectile", "aoe", "explosive", "fire", "physical"]
+  },
+  "shrapnelShard": {
+    "id": "shrapnelShard",
+    "name": "Shrapnel Shard",
+    "description": "A metal splinter ejected by explosive ordnance.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0,
+      "cooldown": 0,
+      "resourceCost": { "mana": 0 }
+    },
+    "targeting": {
+      "range": 5,
+      "speed": 8,
+      "targetType": "enemy",
+      "explodeOnExpire": false
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [1, 2],
+        "school": "physical",
+        "scalingPerLevel": [0.15, 0.25]
+      }
+    ],
+    "tags": ["ranger", "grenade", "projectile", "physical"]
+  },
+  "rainOfArrows": {
+    "id": "rainOfArrows",
+    "name": "Rain of Arrows",
+    "description": "Marks a zone and saturates it with descending arrows.",
+    "delivery": {
+      "type": "volley",
+      "castTime": 0.85,
+      "cooldown": 5,
+      "resourceCost": { "mana": 11 }
+    },
+    "targeting": {
+      "range": 9,
+      "radius": 3,
+      "duration": 4,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "overTime",
+        "amountPerSecond": [2, 3],
+        "duration": 4,
+        "school": "physical",
+        "scalingPerSecondPerLevel": [0.3, 0.45]
+      }
+    ],
+    "tags": ["ranger", "volley", "area", "bow", "physical"]
+  },
+  "caltrops": {
+    "id": "caltrops",
+    "name": "Caltrops",
+    "description": "Scatters barbed spikes that slow and cut anything crossing them.",
+    "delivery": {
+      "type": "trap",
+      "castTime": 0.35,
+      "cooldown": 6,
+      "resourceCost": { "mana": 9 }
+    },
+    "targeting": {
+      "range": 7,
+      "radius": 2.5,
+      "duration": 6,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "overTime",
+        "amountPerSecond": [1, 2],
+        "duration": 6,
+        "school": "physical",
+        "scalingPerSecondPerLevel": [0.18, 0.32]
+      },
+      {
+        "type": "slow",
+        "amount": 0.45,
+        "duration": 1.2
+      }
+    ],
+    "tags": ["ranger", "trap", "area", "physical", "control"]
+  },
+  "ricochetShot": {
+    "id": "ricochetShot",
+    "name": "Ricochet Shot",
+    "description": "A hardened bolt that rebounds from one enemy to the next.",
+    "delivery": {
+      "type": "chain",
+      "castTime": 0.25,
+      "cooldown": 3,
+      "resourceCost": { "mana": 7 }
+    },
+    "targeting": {
+      "range": 10,
+      "jumpCount": 4,
+      "jumpRange": 5.5,
+      "jumpDamageReduction": 0.18,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [4, 6],
+        "school": "physical",
+        "scalingPerLevel": [0.45, 0.8]
+      }
+    ],
+    "progression": {
+      "perLevel": {
+        "targeting.jumpCount": 0.3333
+      }
+    },
+    "tags": ["ranger", "chain", "bow", "physical", "projectile"]
+  },
+  "ballistaNest": {
+    "id": "ballistaNest",
+    "name": "Ballista Nest",
+    "description": "Deploys an autonomous ballista that skewers nearby enemies.",
+    "delivery": {
+      "type": "turret",
+      "castTime": 0.8,
+      "cooldown": 8,
+      "resourceCost": { "mana": 14 }
+    },
+    "targeting": {
+      "range": 8,
+      "duration": 10,
+      "summonCount": 1,
+      "summonCountEveryLevels": 5,
+      "maxSummonCount": 3,
+      "summonFormationRadius": 0.8,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "summon",
+        "summonKind": "ballista",
+        "abilityId": "ballistaBolt",
+        "formationRadius": 0.8
+      }
+    ],
+    "progression": {
+      "perLevel": {
+        "targeting.duration": 1
+      }
+    },
+    "tags": ["ranger", "summon", "turret", "physical"]
+  },
+  "ballistaBolt": {
+    "id": "ballistaBolt",
+    "name": "Ballista Bolt",
+    "description": "A heavy bolt fired by autonomous ballistae.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0,
+      "cooldown": 1.1,
+      "resourceCost": { "mana": 0 }
+    },
+    "targeting": {
+      "range": 9,
+      "speed": 8.5,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [3, 5],
+        "school": "physical",
+        "scalingPerLevel": [0.35, 0.55]
+      }
+    ],
+    "tags": ["ranger", "summon", "projectile", "physical"]
+  },
+  "piercingBolt": {
+    "id": "piercingBolt",
+    "name": "Piercing Bolt",
+    "description": "Launches a focused line of force that pierces every enemy in its path.",
+    "delivery": {
+      "type": "beam",
+      "castTime": 0.5,
+      "cooldown": 4.2,
+      "resourceCost": { "mana": 9 }
+    },
+    "targeting": {
+      "range": 11,
+      "duration": 0.28,
+      "width": 0.5,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [5, 8],
+        "school": "physical",
+        "scalingPerLevel": [0.55, 0.9]
+      }
+    ],
+    "tags": ["ranger", "beam", "physical", "piercing", "projectile"]
+  },
   "mobMeleeSwing": {
     "id": "mobMeleeSwing",
     "name": "Melee Swing",

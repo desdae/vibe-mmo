@@ -35,6 +35,8 @@
 
       if (player.classType === "warrior") {
         drawWarriorPlayer(player, p, isSelf);
+      } else if (player.classType === "ranger") {
+        drawRangerPlayer(player, p, isSelf);
       } else {
         drawMagePlayer(player, p, isSelf);
       }
@@ -266,6 +268,13 @@
       for (const [key, state] of deps.warriorAnimRuntime.entries()) {
         if (now - state.lastSeenAt > 3000) {
           deps.warriorAnimRuntime.delete(key);
+        }
+      }
+      if (deps.rangerAnimRuntime && typeof deps.rangerAnimRuntime.entries === "function") {
+        for (const [key, state] of deps.rangerAnimRuntime.entries()) {
+          if (now - state.lastSeenAt > 3000) {
+            deps.rangerAnimRuntime.delete(key);
+          }
         }
       }
     }
@@ -587,6 +596,156 @@
       ctx.stroke();
     }
 
+    function drawRangerPlayer(player, p, isSelf) {
+      const now = performance.now();
+      const key = `ranger:${String(player.id ?? "0")}`;
+      const seed = (hashString(key) % 628) / 100;
+      const runtime =
+        deps.rangerAnimRuntime.get(key) ||
+        {
+          lastX: player.x,
+          lastY: player.y,
+          lastT: now,
+          phase: seed,
+          lastSeenAt: now
+        };
+      const dt = Math.max(0.001, (now - runtime.lastT) / 1000);
+      const moved = Math.hypot(player.x - runtime.lastX, player.y - runtime.lastY);
+      const moving = moved / dt > 0.035;
+      runtime.phase = (runtime.phase + dt * (moving ? 7.8 : 1.9)) % (Math.PI * 2);
+      runtime.lastX = player.x;
+      runtime.lastY = player.y;
+      runtime.lastT = now;
+      runtime.lastSeenAt = now;
+      deps.rangerAnimRuntime.set(key, runtime);
+
+      const walk = Math.sin(runtime.phase);
+      const bob = moving ? Math.abs(walk) * 1.15 : Math.sin(runtime.phase * 0.6) * 0.32;
+      const sway = moving ? walk * 0.95 : Math.sin(runtime.phase * 0.6) * 0.18;
+      const cx = p.x + sway * 0.08;
+      const cy = p.y + bob * 0.16;
+      const outline = "#0c1017";
+      const cloak = isSelf ? "#355b49" : "#2b4f40";
+      const hood = isSelf ? "#284436" : "#223a2d";
+      const leather = isSelf ? "#7f6a4b" : "#705d43";
+      const bracer = "#a28d69";
+      const bowWood = "#b88c5a";
+      const bowEdge = "#f2d7a0";
+      const skin = "#d5b18a";
+
+      ctx.fillStyle = cloak;
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 7.8, 9.8, 12.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = hood;
+      ctx.beginPath();
+      ctx.arc(cx, cy - 4.8, 8.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(244, 233, 214, 0.92)";
+      ctx.beginPath();
+      ctx.arc(cx, cy - 3.2, 5.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#11151d";
+      ctx.beginPath();
+      ctx.arc(cx - 2, cy - 4.2, 1, 0, Math.PI * 2);
+      ctx.arc(cx + 2, cy - 4.2, 1, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Quiver.
+      ctx.save();
+      ctx.translate(cx - 8.5, cy - 1.2);
+      ctx.rotate(-0.4);
+      ctx.fillStyle = leather;
+      ctx.strokeStyle = outline;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.roundRect(-3, -8, 6, 12, 2.4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = "#e3d4bb";
+      ctx.lineWidth = 1.3;
+      for (let i = 0; i < 3; i += 1) {
+        const off = -3 + i * 2.2;
+        ctx.beginPath();
+        ctx.moveTo(off, -8);
+        ctx.lineTo(off, -12.5);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Legs.
+      const legStep = moving ? walk * 1.5 : 0;
+      ctx.strokeStyle = leather;
+      ctx.lineWidth = 3.5;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(cx - 2.6, cy + 15.5);
+      ctx.lineTo(cx - 5 - legStep * 0.35, cy + 23.2);
+      ctx.moveTo(cx + 2.6, cy + 15.5);
+      ctx.lineTo(cx + 5 + legStep * 0.35, cy + 23.2);
+      ctx.stroke();
+
+      ctx.fillStyle = outline;
+      ctx.beginPath();
+      ctx.ellipse(cx - 5 - legStep * 0.35, cy + 24.6, 2.2, 1.5, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(cx + 5 + legStep * 0.35, cy + 24.6, 2.2, 1.5, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bow arm.
+      const leftShoulderX = cx - 6.2;
+      const leftShoulderY = cy + 0.2;
+      const leftHandX = leftShoulderX - 9.2;
+      const leftHandY = leftShoulderY + 0.8;
+      ctx.strokeStyle = skin;
+      ctx.lineWidth = 3.2;
+      ctx.beginPath();
+      ctx.moveTo(leftShoulderX, leftShoulderY);
+      ctx.lineTo(leftHandX, leftHandY);
+      ctx.stroke();
+
+      // Draw arm.
+      const rightShoulderX = cx + 5.8;
+      const rightShoulderY = cy + 0.4;
+      const drawPull = moving ? Math.abs(walk) * 0.8 : 0.4;
+      const rightHandX = rightShoulderX + 7.4;
+      const rightHandY = rightShoulderY - 1.6 - drawPull;
+      ctx.beginPath();
+      ctx.moveTo(rightShoulderX, rightShoulderY);
+      ctx.lineTo(rightHandX, rightHandY);
+      ctx.stroke();
+
+      ctx.fillStyle = bracer;
+      ctx.beginPath();
+      ctx.arc(leftHandX, leftHandY, 1.7, 0, Math.PI * 2);
+      ctx.arc(rightHandX, rightHandY, 1.7, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bow.
+      ctx.save();
+      ctx.translate(cx + 11.2, cy + 1.2);
+      ctx.rotate(0.06 + sway * 0.015);
+      ctx.strokeStyle = bowWood;
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      ctx.moveTo(-1.2, -13.5);
+      ctx.quadraticCurveTo(-9.5, 0, -1.2, 13.5);
+      ctx.stroke();
+      ctx.strokeStyle = bowEdge;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(-0.2, -13.2);
+      ctx.lineTo(-0.2, 13.2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     return {
       drawPlayer,
       drawPlayerCastBar,
@@ -596,6 +755,7 @@
       drawPlayerEffectAnimations,
       pruneWarriorAnimRuntime,
       drawWarriorPlayer,
+      drawRangerPlayer,
       drawMagePlayer
     };
   }

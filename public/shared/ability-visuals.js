@@ -93,6 +93,57 @@
         areaEffectRenderer: "fire_hydra",
         castPreviewRenderer: "fire_hydra"
       },
+      aimedshot: {
+        iconRenderer: "aimed_shot",
+        projectileRenderer: "ranger_arrow"
+      },
+      multishot: {
+        iconRenderer: "multishot",
+        projectileRenderer: "ranger_arrow"
+      },
+      poisonarrow: {
+        iconRenderer: "poison_arrow",
+        projectileRenderer: "poison_arrow"
+      },
+      explosivearrow: {
+        iconRenderer: "explosive_arrow",
+        projectileRenderer: "explosive_arrow"
+      },
+      shrapnelgrenade: {
+        iconRenderer: "shrapnel_grenade",
+        projectileRenderer: "shrapnel_grenade"
+      },
+      shrapnelshard: {
+        iconRenderer: "shrapnel_grenade",
+        projectileRenderer: "shrapnel_shard"
+      },
+      rainofarrows: {
+        iconRenderer: "rain_of_arrows",
+        areaEffectRenderer: "rain_of_arrows",
+        castPreviewRenderer: "target_circle"
+      },
+      caltrops: {
+        iconRenderer: "caltrops",
+        areaEffectRenderer: "caltrops",
+        castPreviewRenderer: "target_circle"
+      },
+      ricochetshot: {
+        iconRenderer: "ricochet_shot",
+        areaEffectRenderer: "ricochet_shot"
+      },
+      ballistanest: {
+        iconRenderer: "ballista_nest",
+        areaEffectRenderer: "ballista_nest",
+        castPreviewRenderer: "ballista_nest"
+      },
+      ballistabolt: {
+        iconRenderer: "ballista_nest",
+        projectileRenderer: "ballista_bolt"
+      },
+      piercingbolt: {
+        iconRenderer: "piercing_bolt",
+        areaEffectRenderer: "piercing_bolt"
+      },
       hydrafireshard: {
         iconRenderer: "fire_hydra",
         projectileRenderer: "fire_spark"

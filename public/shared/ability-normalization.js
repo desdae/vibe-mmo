@@ -81,13 +81,17 @@
 
   const DELIVERY_TYPE_TO_KIND = Object.freeze({
     projectile: "projectile",
+    grenade: "projectile",
     meleecone: "meleeCone",
     areatarget: "area",
     selfarea: "area",
     area: "area",
+    trap: "area",
+    volley: "area",
     beam: "beam",
     chain: "chain",
     summon: "summon",
+    turret: "summon",
     teleport: "teleport"
   });
 

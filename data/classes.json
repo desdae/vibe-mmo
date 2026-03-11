@@ -31,5 +31,26 @@
         ],
         "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 50}],
         "speed": 1.7
+    },
+    "ranger": {
+        "name": "Ranger",
+        "description": "A mobile hunter who mixes precise shots, traps, grenades, and summoned ballistae to control the field.",
+        "baseHealth": 78,
+        "baseMana": 70,
+        "manaRegen": 0.45,
+        "abilities": [
+            {"id":"aimedShot", "level": 1},
+            {"id":"multishot", "level": 1},
+            {"id":"poisonArrow", "level": 1},
+            {"id":"explosiveArrow", "level": 1},
+            {"id":"shrapnelGrenade", "level": 1},
+            {"id":"rainOfArrows", "level": 1},
+            {"id":"caltrops", "level": 1},
+            {"id":"ricochetShot", "level": 1},
+            {"id":"ballistaNest", "level": 1},
+            {"id":"piercingBolt", "level": 1}
+        ],
+        "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 35}],
+        "speed": 1.95
     }
 }

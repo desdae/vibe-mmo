@@ -26,7 +26,8 @@ function createProjectileTickSystem({
 
     for (const projectile of projectiles.values()) {
       const dt = tickMs / 1000;
-      emitProjectilesFromEmitter(projectile, now);
+      let emittedOnExpire = false;
+      emitProjectilesFromEmitter(projectile, now, "whiletraveling");
       const homingRange = Math.max(0, Number(projectile.homingRange) || 0);
       const homingTurnRate = Math.max(0, Number(projectile.homingTurnRate) || 0);
       if (homingRange > 0 && homingTurnRate > 0) {
@@ -78,6 +79,7 @@ function createProjectileTickSystem({
         projectile.x < 0 || projectile.x > mapWidth - 1 || projectile.y < 0 || projectile.y > mapHeight - 1;
 
       if (hitMob || hitPlayer) {
+        emitProjectilesFromEmitter(projectile, now, "onimpact");
         const impactX = hitMob ? hitMob.x : hitPlayer.x;
         const impactY = hitMob ? hitMob.y : hitPlayer.y;
         queueProjectileHitEvent(impactX, impactY, projectile.abilityId);
@@ -134,6 +136,8 @@ function createProjectileTickSystem({
         (Number(projectile.explosionRadius) || 0) > 0 &&
         projectile.explodeOnExpire !== false
       ) {
+        emitProjectilesFromEmitter(projectile, now, "onexpire");
+        emittedOnExpire = true;
         const explosionRadius = Math.max(0, Number(projectile.explosionRadius) || 0);
         const minMultiplier = clamp(Number(projectile.explosionDamageMultiplier) || 0, 0, 1);
         const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
@@ -171,6 +175,10 @@ function createProjectileTickSystem({
             applyProjectileHitEffects(mob, projectile, dealt, now);
           }
         }
+      }
+
+      if ((expired || outOfMap) && !hitMob && !hitPlayer && !emittedOnExpire) {
+        emitProjectilesFromEmitter(projectile, now, "onexpire");
       }
 
       if (expired || outOfMap || hitMob || hitPlayer) {

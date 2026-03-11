@@ -101,6 +101,19 @@
       }
     },
     {
+      "id": "hunter_shortbow",
+      "name": "Hunter Shortbow",
+      "slot": "mainHand",
+      "weaponClass": "bow",
+      "itemLevelRange": [1, 5],
+      "tags": ["weapon", "ranged", "bow", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.12,
+        "baseDamageMin": 2,
+        "baseDamageMax": 5
+      }
+    },
+    {
       "id": "cracked_buckler",
       "name": "Cracked Buckler",
       "slot": "offHand",
@@ -255,6 +268,19 @@
         "baseDamageMin": 4,
         "baseDamageMax": 8,
         "spellPower": 5
+      }
+    },
+    {
+      "id": "ash_longbow",
+      "name": "Ash Longbow",
+      "slot": "mainHand",
+      "weaponClass": "bow",
+      "itemLevelRange": [6, 10],
+      "tags": ["weapon", "ranged", "bow", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.14,
+        "baseDamageMin": 4,
+        "baseDamageMax": 8
       }
     },
     {
@@ -415,6 +441,19 @@
       }
     },
     {
+      "id": "falcon_recurve",
+      "name": "Falcon Recurve",
+      "slot": "mainHand",
+      "weaponClass": "bow",
+      "itemLevelRange": [11, 15],
+      "tags": ["weapon", "ranged", "bow", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.16,
+        "baseDamageMin": 7,
+        "baseDamageMax": 12
+      }
+    },
+    {
       "id": "kite_shield",
       "name": "Kite Shield",
       "slot": "offHand",
@@ -569,6 +608,19 @@
         "baseDamageMin": 8,
         "baseDamageMax": 16,
         "spellPower": 11
+      }
+    },
+    {
+      "id": "predator_warbow",
+      "name": "Predator Warbow",
+      "slot": "mainHand",
+      "weaponClass": "bow",
+      "itemLevelRange": [16, 20],
+      "tags": ["weapon", "ranged", "bow", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.18,
+        "baseDamageMin": 10,
+        "baseDamageMax": 16
       }
     },
     {
@@ -1734,6 +1786,37 @@
     },
 
     {
+      "id": "venomous_t1",
+      "name": "Venomous",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "poison"],
+      "modifiers": [
+        { "stat": "damageSchool.poison.percent", "rollRange": [6, 12] }
+      ]
+    },
+    {
+      "id": "venomous_t2",
+      "name": "Virulent",
+      "minItemLevel": 16,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "poison"],
+      "modifiers": [
+        { "stat": "damageSchool.poison.percent", "rollRange": [12, 20] }
+      ]
+    },
+    {
+      "id": "venomous_t3",
+      "name": "Toxic",
+      "minItemLevel": 34,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "poison"],
+      "modifiers": [
+        { "stat": "damageSchool.poison.percent", "rollRange": [20, 32] }
+      ]
+    },
+
+    {
       "id": "mystic_t1",
       "name": "Mystic",
       "minItemLevel": 1,
@@ -2051,6 +2134,16 @@
       ]
     },
     {
+      "id": "of_arrows_t1",
+      "name": "of Arrows",
+      "minItemLevel": 8,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "bowTag"],
+      "modifiers": [
+        { "stat": "spellTag.bow.damagePercent", "rollRange": [8, 14] }
+      ]
+    },
+    {
       "id": "of_bursts_t1",
       "name": "of Bursts",
       "minItemLevel": 8,
@@ -2061,6 +2154,36 @@
       ]
     },
     {
+      "id": "of_volleys_t1",
+      "name": "of Volleys",
+      "minItemLevel": 8,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "volleyTag"],
+      "modifiers": [
+        { "stat": "spellTag.volley.damagePercent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "of_traps_t1",
+      "name": "of Traps",
+      "minItemLevel": 10,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "trapTag"],
+      "modifiers": [
+        { "stat": "spellTag.trap.damagePercent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "of_grenadiers_t1",
+      "name": "of Grenadiers",
+      "minItemLevel": 12,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "grenadeTag"],
+      "modifiers": [
+        { "stat": "spellTag.grenade.damagePercent", "rollRange": [10, 18] }
+      ]
+    },
+    {
       "id": "of_rays_t1",
       "name": "of Rays",
       "minItemLevel": 18,
@@ -2068,6 +2191,16 @@
       "tags": ["offensive", "beamTag"],
       "modifiers": [
         { "stat": "spellTag.beam.damagePercent", "rollRange": [10, 18] }
+      ]
+    },
+    {
+      "id": "of_constructs_t1",
+      "name": "of Constructs",
+      "minItemLevel": 18,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "summonTag"],
+      "modifiers": [
+        { "stat": "spellTag.summon.damagePercent", "rollRange": [10, 18] }
       ]
     },
     {
@@ -2088,6 +2221,46 @@
       "tags": ["offensive", "lightningSchool"],
       "modifiers": [
         { "stat": "damageSchool.lightning.jumpDamageReductionPercent", "rollRange": [4, 10] }
+      ]
+    },
+    {
+      "id": "of_rebounds_t1",
+      "name": "of Rebounds",
+      "minItemLevel": 10,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "chainTag"],
+      "modifiers": [
+        { "stat": "spellTag.chain.jumpDamageReductionPercent", "rollRange": [4, 9] }
+      ]
+    },
+    {
+      "id": "of_payloads_t1",
+      "name": "of Payloads",
+      "minItemLevel": 10,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "explosiveTag"],
+      "modifiers": [
+        { "stat": "spellTag.explosive.damagePercent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "of_piercing_t1",
+      "name": "of Piercing",
+      "minItemLevel": 10,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "piercingTag"],
+      "modifiers": [
+        { "stat": "spellTag.piercing.damagePercent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "of_toxins_t1",
+      "name": "of Toxins",
+      "minItemLevel": 8,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "poisonTag"],
+      "modifiers": [
+        { "stat": "spellTag.poison.damagePercent", "rollRange": [8, 14] }
       ]
     },
 
