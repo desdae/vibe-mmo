@@ -28,6 +28,9 @@ function createRuntimeBootstrap({
   const gameLoop = createGameLoop({
     tickMs,
     runTick: (now) => {
+      if (typeof tickHandlers.tickBots === "function") {
+        tickHandlers.tickBots(now);
+      }
       tickHandlers.tickPlayers();
       tickHandlers.tickPlayerCasts(now);
       tickHandlers.tickAreaEffects(now);

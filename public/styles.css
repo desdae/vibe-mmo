@@ -57,6 +57,20 @@ body {
   font-weight: 600;
 }
 
+.form-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.15rem 0;
+  user-select: none;
+}
+
+.form-checkbox input {
+  width: auto;
+  margin: 0;
+}
+
 .hint,
 .status {
   margin: 0;
@@ -807,6 +821,34 @@ body {
   font-size: 13px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.debug-admin {
+  margin-top: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.debug-admin label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9ab7ca;
+}
+
+.debug-admin select,
+.debug-admin button {
+  width: 100%;
+  border: 1px solid rgba(98, 161, 193, 0.48);
+  background: rgba(9, 20, 31, 0.9);
+  color: #dcefff;
+  border-radius: 6px;
+  padding: 7px 8px;
+}
+
+.debug-admin button {
+  cursor: pointer;
+  background: rgba(29, 82, 111, 0.92);
 }
 
 #dps-panel {

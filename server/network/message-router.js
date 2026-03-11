@@ -1,119 +1,15 @@
-function createPlayerEntitySyncState() {
-  return {
-    playerSlotsByRealId: new Map(),
-    playerRealIdBySlot: new Map(),
-    playerStatesBySlot: new Map(),
-    playerSwingBySlot: new Map(),
-    playerCastVersionBySlot: new Map(),
-    playerEffectStatesBySlot: new Map(),
-    selfCastVersion: null,
-    freePlayerSlots: [],
-    nextPlayerSlot: 1,
-    mobSlotsByRealId: new Map(),
-    mobRealIdBySlot: new Map(),
-    mobStatesBySlot: new Map(),
-    mobBiteBySlot: new Map(),
-    mobCastVersionBySlot: new Map(),
-    mobMetaSignatureBySlot: new Map(),
-    mobEffectStatesBySlot: new Map(),
-    freeMobSlots: [],
-    nextMobSlot: 1,
-    projectileSlotsByRealId: new Map(),
-    projectileRealIdBySlot: new Map(),
-    projectileStatesBySlot: new Map(),
-    projectileMetaBySlot: new Map(),
-    freeProjectileSlots: [],
-    nextProjectileSlot: 1,
-    lootBagSlotsByRealId: new Map(),
-    lootBagRealIdBySlot: new Map(),
-    lootBagStatesBySlot: new Map(),
-    lootBagMetaVersionBySlot: new Map(),
-    freeLootBagSlots: [],
-    nextLootBagSlot: 1,
-    selfState: null,
-    selfEffectState: null,
-    areaEffectStatesById: new Map()
-  };
-}
-
 function createJoinedPlayer(ws, msg, deps) {
-  const name = String(msg.name || "").trim().slice(0, 24);
-  const classType = String(msg.classType || "").trim();
-  const classDef = deps.CLASS_CONFIG.classDefs.get(classType) || null;
-
-  if (!name || !classDef) {
-    return { error: "Join requires non-empty name and a valid classType from class config." };
-  }
-
-  const spawn = deps.randomSpawn();
-  const player = {
-    id: deps.allocatePlayerId(),
+  const joinResult = deps.createPlayer({
     ws,
-    name,
-    classType,
-    x: spawn.x,
-    y: spawn.y,
-    hp: classDef.baseHealth,
-    maxHp: classDef.baseHealth,
-    baseHealth: classDef.baseHealth,
-    mana: classDef.baseMana,
-    maxMana: classDef.baseMana,
-    baseMana: classDef.baseMana,
-    healthRegen: 0,
-    baseHealthRegen: 0,
-    manaRegen: classDef.manaRegen,
-    baseManaRegen: classDef.manaRegen,
-    moveSpeed: classDef.movementSpeed,
-    baseMoveSpeed: classDef.movementSpeed,
-    armor: 0,
-    blockChance: 0,
-    critChance: 0,
-    critDamage: 0,
-    lifeSteal: 0,
-    manaSteal: 0,
-    lifeOnKill: 0,
-    manaOnKill: 0,
-    thorns: 0,
-    attackSpeedMultiplier: 1,
-    castSpeedMultiplier: 1,
-    activeHeals: [],
-    activeManaRestores: [],
-    activeDots: new Map(),
-    copper: 0,
-    level: 1,
-    exp: 0,
-    expToNext: deps.expNeededForLevel(1),
-    skillPoints: 0,
-    abilityLevels: new Map(classDef.abilities.map((entry) => [entry.id, entry.level])),
-    abilityLastUsedAt: new Map(),
-    activeCast: null,
-    castStateVersion: 0,
-    invulnerableUntil: 0,
-    stunnedUntil: 0,
-    stunAppliedAt: 0,
-    stunDurationMs: 0,
-    slowUntil: 0,
-    slowMultiplier: 1,
-    slowAppliedAt: 0,
-    slowDurationMs: 0,
-    burningUntil: 0,
-    burnAppliedAt: 0,
-    burnDurationMs: 0,
-    inventorySlots: deps.createEmptyInventorySlots(),
-    equipmentSlots: deps.createEmptyEquipmentSlots(),
-    input: { dx: 0, dy: 0 },
-    lastDirection: { dx: 0, dy: 1 },
-    lastSwingDirection: { dx: 0, dy: 1 },
-    swingCounter: 0,
-    entitySync: createPlayerEntitySyncState()
-  };
-
-  const starterItems = deps.normalizeItemEntries(classDef.startingItems);
-  if (starterItems.length) {
-    deps.addItemsToInventory(player, starterItems);
+    name: msg.name,
+    classType: msg.classType,
+    isAdmin: msg.isAdmin === true,
+    spawn: deps.randomSpawn()
+  });
+  if (joinResult.error) {
+    return joinResult;
   }
-  deps.syncPlayerCopperFromInventory(player, false);
-  deps.players.set(player.id, player);
+  const player = joinResult.player;
 
   deps.sendJson(ws, {
     type: "welcome",
@@ -122,6 +18,7 @@ function createJoinedPlayer(ws, msg, deps) {
       id: player.id,
       name: player.name,
       classType: player.classType,
+      isAdmin: !!player.isAdmin,
       mana: player.mana,
       maxMana: player.maxMana
     },
@@ -384,6 +281,26 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
 
   if (msg.type === "use_item") {
     handleUseItemMessage(player, msg, deps);
+    return { player };
+  }
+
+  if (msg.type === "create_bot_player") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const createResult = deps.createBotPlayer({
+      classType: msg.classType,
+      ownerPlayerId: player.id
+    });
+    if (createResult.error) {
+      deps.sendJson(player.ws, { type: "error", message: createResult.error });
+      return { player };
+    }
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      message: `Created ${createResult.player.name} (${createResult.player.classType}).`
+    });
     return { player };
   }
 

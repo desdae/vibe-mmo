@@ -3,6 +3,8 @@ function createWsConnectionDeps({
   getAbilityConfig,
   getItemConfig,
   allocatePlayerId,
+  createPlayer,
+  createBotPlayer,
   sendJson,
   players,
   mapWidth,
@@ -72,7 +74,9 @@ function createWsConnectionDeps({
     consumeInventoryItem,
     addHealOverTimeEffect,
     addManaOverTimeEffect,
-    allocatePlayerId
+    allocatePlayerId,
+    createPlayer,
+    createBotPlayer
   };
 }
 

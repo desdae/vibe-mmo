@@ -19,6 +19,11 @@
           <option value="">Loading classes...</option>
         </select>
 
+        <label class="form-checkbox" for="isAdmin">
+          <input id="isAdmin" name="isAdmin" type="checkbox" />
+          <span>Admin</span>
+        </label>
+
         <button type="submit">Join Game</button>
       </form>
       <p class="hint">Movement: WASD or Arrow Keys. Action bar: LMB/RMB + keys 1-9. Inventory: I. Character: C. Spellbook: P. DPS: K. Debug: F3.</p>
@@ -76,6 +81,11 @@
       <div id="debug-panel" class="hidden">
         <h2>Debug</h2>
         <div id="debug-net"></div>
+        <div id="debug-admin-controls" class="debug-admin hidden">
+          <label for="debug-bot-class">Bot class</label>
+          <select id="debug-bot-class"></select>
+          <button id="debug-create-bot" type="button">Create Bot Player</button>
+        </div>
       </div>
     </div>
 

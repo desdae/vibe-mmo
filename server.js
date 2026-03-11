@@ -70,8 +70,10 @@ const { createProjectileEffectTools } = require("./server/gameplay/projectile-ef
 const { createProjectileRuntimeTools } = require("./server/gameplay/projectile-runtime");
 const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spawn");
 const { createPlayerCommandTools } = require("./server/gameplay/player-commands");
+const { createPlayerFactory } = require("./server/gameplay/player-factory");
 const { createEquipmentTools } = require("./server/gameplay/equipment");
 const { createCoreServices } = require("./server/runtime/core-services");
+const { createBotTickSystem } = require("./server/runtime/bot-tick");
 const {
   normalizeDirection,
   distance,
@@ -363,6 +365,18 @@ const getPlayerModifiedAbilityCooldownMs = equipmentTools.getPlayerModifiedAbili
 const getPlayerModifiedAbilityCastMs = equipmentTools.getPlayerModifiedAbilityCastMs;
 const equipInventoryItem = equipmentTools.equipInventoryItem;
 const unequipEquipmentItem = equipmentTools.unequipEquipmentItem;
+const playerFactory = createPlayerFactory({
+  classConfigProvider: () => CLASS_CONFIG,
+  allocatePlayerId,
+  createEmptyInventorySlots,
+  createEmptyEquipmentSlots,
+  normalizeItemEntries,
+  addItemsToInventory,
+  syncPlayerCopperFromInventory,
+  expNeededForLevel,
+  players
+});
+const createPlayer = playerFactory.createPlayer;
 
 const projectileSpawnTools = createProjectileSpawnTools({
   normalizeDirection,
@@ -391,16 +405,16 @@ const abilityHandlerContext = createAbilityHandlerContext({
   getAbilityRangeForLevel,
   getAbilityDamageRange,
   getAbilityDamageRangeForEntity: (entity, abilityDef, abilityLevel) =>
-    entity && entity.ws
+    entity && entity.entityType === "player"
       ? getPlayerModifiedAbilityDamageRange(entity, abilityDef, abilityLevel)
       : getAbilityDamageRange(abilityDef, abilityLevel),
   getAbilityDotDamageRange,
   getAbilityDotDamageRangeForEntity: (entity, abilityDef, abilityLevel) =>
-    entity && entity.ws
+    entity && entity.entityType === "player"
       ? getPlayerModifiedAbilityDotDamageRange(entity, abilityDef, abilityLevel)
       : getAbilityDotDamageRange(abilityDef, abilityLevel),
   getAbilityChainStatsForEntity: (entity, abilityDef, abilityLevel) =>
-    entity && entity.ws
+    entity && entity.entityType === "player"
       ? getPlayerModifiedAbilityChainStats(entity, abilityDef, abilityLevel)
       : { jumpCountBonus: 0, jumpDamageReductionPercent: 0 },
   markAbilityUsed: (...args) => markAbilityUsed(...args),
@@ -580,6 +594,29 @@ const playerCommandTools = createPlayerCommandTools({
 const tryPickupLootBag = playerCommandTools.tryPickupLootBag;
 const usePlayerAbility = playerCommandTools.usePlayerAbility;
 const updatePlayerCastTarget = playerCommandTools.updatePlayerCastTarget;
+const botTickSystem = createBotTickSystem({
+  players,
+  mobs,
+  lootBags,
+  activeAreaEffects,
+  createPlayer,
+  classConfigProvider: () => CLASS_CONFIG,
+  abilityDefsProvider: () => ABILITY_CONFIG.abilityDefs,
+  getAbilityRangeForLevel,
+  usePlayerAbility,
+  tryPickupLootBag,
+  equipInventoryItem,
+  randomPointInRadius,
+  distance,
+  normalizeDirection,
+  centerX: MAP_WIDTH * 0.5,
+  centerY: MAP_HEIGHT * 0.5,
+  spawnRadius: 6,
+  bagPickupRange: BAG_PICKUP_RANGE,
+  visibilityRange: VISIBILITY_RANGE
+});
+const createBotPlayer = botTickSystem.createBotPlayer;
+const tickBots = botTickSystem.tickBots;
 const configOrchestrator = createConfigOrchestrator({
   paths: {
     serverConfigPath: SERVER_CONFIG_PATH,
@@ -799,6 +836,8 @@ const runtimeBootstrap = createRuntimeBootstrap({
     getAbilityConfig: () => ABILITY_CONFIG,
     getItemConfig: () => ITEM_CONFIG,
     allocatePlayerId,
+    createPlayer,
+    createBotPlayer,
     sendJson,
     players,
     mapWidth: MAP_WIDTH,
@@ -817,10 +856,10 @@ const runtimeBootstrap = createRuntimeBootstrap({
     sendSelfProgress,
     clamp,
     normalizeDirection,
-  clearPlayerCast,
-  usePlayerAbility,
-  updatePlayerCastTarget,
-  levelUpPlayerAbility,
+    clearPlayerCast,
+    usePlayerAbility,
+    updatePlayerCastTarget,
+    levelUpPlayerAbility,
     tryPickupLootBag,
     mergeOrSwapInventorySlots,
     equipInventoryItem,
@@ -874,6 +913,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
   },
   tickMs: TICK_MS,
   tickHandlers: {
+    tickBots,
     tickPlayers,
     tickPlayerCasts,
     tickAreaEffects,

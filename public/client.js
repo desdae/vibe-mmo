@@ -28,6 +28,9 @@ const equipmentPanel = document.getElementById("equipment-panel");
 const equipmentGrid = document.getElementById("equipment-grid");
 const debugPanel = document.getElementById("debug-panel");
 const debugNet = document.getElementById("debug-net");
+const debugAdminControls = document.getElementById("debug-admin-controls");
+const debugBotClassSelect = document.getElementById("debug-bot-class");
+const debugCreateBotButton = document.getElementById("debug-create-bot");
 const dpsPanel = document.getElementById("dps-panel");
 const dpsTabs = document.getElementById("dps-tabs");
 const dpsValue = document.getElementById("dps-value");
@@ -789,6 +792,53 @@ function setStatus(text) {
   statusEl.textContent = text || "";
 }
 
+function populateAdminBotClassOptions(preferredClassType = "") {
+  if (!debugBotClassSelect) {
+    return;
+  }
+  const previousValue = String(preferredClassType || debugBotClassSelect.value || "").trim();
+  debugBotClassSelect.innerHTML = "";
+  for (const classDef of classDefsById.values()) {
+    const option = document.createElement("option");
+    option.value = classDef.id;
+    option.textContent = classDef.name;
+    debugBotClassSelect.appendChild(option);
+  }
+  if (previousValue && classDefsById.has(previousValue)) {
+    debugBotClassSelect.value = previousValue;
+  } else if (selfStatic && selfStatic.classType && classDefsById.has(selfStatic.classType)) {
+    debugBotClassSelect.value = selfStatic.classType;
+  } else if (debugBotClassSelect.options.length) {
+    debugBotClassSelect.value = debugBotClassSelect.options[0].value;
+  }
+}
+
+function updateAdminDebugControls() {
+  if (!debugAdminControls) {
+    return;
+  }
+  const isAdmin = !!(selfStatic && selfStatic.isAdmin);
+  debugAdminControls.classList.toggle("hidden", !isAdmin);
+  if (isAdmin) {
+    populateAdminBotClassOptions();
+  }
+}
+
+function handleCreateBotPlayer() {
+  if (!selfStatic || !selfStatic.isAdmin || !debugBotClassSelect) {
+    return;
+  }
+  const classType = String(debugBotClassSelect.value || "").trim() || getDefaultClassId();
+  if (!classType) {
+    setStatus("No class available for bot creation.");
+    return;
+  }
+  sendJsonMessage({
+    type: "create_bot_player",
+    classType
+  });
+}
+
 function clearDragState() {
   dragState.source = "";
   dragState.inventoryFrom = null;
@@ -956,11 +1006,14 @@ function getAbilityAudioState(abilityId, eventType, createIfMissing = true) {
   }
   if (!bundle[eventName] && createIfMissing) {
     bundle[eventName] = {
-      audio: null,
+      url: "",
+      source: null,
+      gainNode: null,
       status: "idle",
       playing: false,
       lastPlayedAt: 0,
-      missingAt: 0
+      missingAt: 0,
+      loadPromise: null
     };
   }
   return bundle[eventName] || null;
@@ -1041,19 +1094,17 @@ function applySoundManifest(payload) {
   }
 }
 
-function applyAbilityAudioDefaults(audio, eventType) {
-  if (!audio) {
-    return;
-  }
-  audio.preload = "auto";
+function getAbilityAudioBaseGain(eventType) {
   if (eventType === "channel") {
-    audio.loop = true;
-    audio.volume = 0.44;
-  } else if (eventType === "cast") {
-    audio.volume = 0.54;
-  } else if (eventType === "hit") {
-    audio.volume = 0.58;
+    return 0.44;
   }
+  if (eventType === "cast") {
+    return 0.54;
+  }
+  if (eventType === "hit") {
+    return 0.58;
+  }
+  return 0.5;
 }
 
 function applyGameplayClientConfig(payload) {
@@ -1429,32 +1480,30 @@ function ensureAbilityAudioClip(abilityId, eventType) {
     state.playing = false;
     return state;
   }
-  const audio = new Audio(audioUrl);
-  applyAbilityAudioDefaults(audio, eventType);
-  state.audio = audio;
+  state.url = audioUrl;
   state.status = "loading";
   state.playing = false;
-
-  const markReady = () => {
-    if (state.status !== "missing") {
-      state.status = "ready";
-      state.missingAt = 0;
-    }
-  };
-  const markMissing = () => {
-    state.status = "missing";
-    state.playing = false;
-    state.missingAt = performance.now();
-  };
-
-  audio.addEventListener("canplaythrough", markReady, { once: true });
-  audio.addEventListener("loadeddata", markReady, { once: true });
-  audio.addEventListener("error", markMissing, { once: true });
-  try {
-    audio.load();
-  } catch (_error) {
-    markMissing();
-  }
+  state.loadPromise = loadSpatialAudioBuffer(audioUrl)
+    .then((buffer) => {
+      if (buffer) {
+        state.status = "ready";
+        state.missingAt = 0;
+        return buffer;
+      }
+      state.status = "missing";
+      state.playing = false;
+      state.missingAt = performance.now();
+      return null;
+    })
+    .catch(() => {
+      state.status = "missing";
+      state.playing = false;
+      state.missingAt = performance.now();
+      return null;
+    })
+    .finally(() => {
+      state.loadPromise = null;
+    });
   return state;
 }
 
@@ -1548,7 +1597,7 @@ function getAbilityAudioMinIntervalMs(eventType) {
 function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const state = ensureAbilityAudioClip(normalizedAbilityId, eventType);
-  if (!state || state.status === "missing" || !state.audio) {
+  if (!state || state.status === "missing" || !state.url) {
     return;
   }
 
@@ -1558,37 +1607,88 @@ function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
   }
   state.lastPlayedAt = now;
 
+  resumeSpatialAudioContext();
+  const context = ensureSpatialAudioContext();
+  if (!context || !spatialAudioState.masterGain) {
+    return;
+  }
+  const record = getSpatialAudioBufferRecord(state.url, false);
+  const buffer = record && record.buffer;
+  if (!buffer) {
+    return;
+  }
+  const baseGain = getAbilityAudioBaseGain(eventType);
+
   if (eventType === "channel") {
     if (state.playing) {
       return;
     }
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gainNode = context.createGain();
+    gainNode.gain.value = baseGain;
+    source.connect(gainNode);
+    gainNode.connect(spatialAudioState.masterGain);
     state.playing = true;
-    state.audio.currentTime = 0;
-    const playback = state.audio.play();
-    if (playback && typeof playback.catch === "function") {
-      playback.catch(() => {
+    state.source = source;
+    state.gainNode = gainNode;
+    source.onended = () => {
+      if (state.source === source) {
+        state.source = null;
+        state.gainNode = null;
         state.playing = false;
-      });
+      }
+    };
+    try {
+      source.start();
+    } catch (_error) {
+      state.source = null;
+      state.gainNode = null;
+      state.playing = false;
     }
     return;
   }
 
-  const clip = state.audio.cloneNode();
-  clip.volume = state.audio.volume;
-  const playback = clip.play();
-  if (playback && typeof playback.catch === "function") {
-    playback.catch(() => {});
+  const source = context.createBufferSource();
+  source.buffer = buffer;
+  source.loop = false;
+  const gainNode = context.createGain();
+  gainNode.gain.value = baseGain;
+  source.connect(gainNode);
+  gainNode.connect(spatialAudioState.masterGain);
+  try {
+    source.start();
+  } catch (_error) {
+    // Ignore aborted starts.
   }
 }
 
 function stopAbilityChannelAudio(abilityId) {
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const state = getAbilityAudioState(normalizedAbilityId, "channel", false);
-  if (!state || !state.audio) {
+  if (!state || !state.source) {
     return;
   }
-  state.audio.pause();
-  state.audio.currentTime = 0;
+  try {
+    state.source.stop();
+  } catch (_error) {
+    // Ignore stop race conditions.
+  }
+  try {
+    state.source.disconnect();
+  } catch (_error) {
+    // Ignore disconnect race conditions.
+  }
+  if (state.gainNode) {
+    try {
+      state.gainNode.disconnect();
+    } catch (_error) {
+      // Ignore disconnect race conditions.
+    }
+  }
+  state.source = null;
+  state.gainNode = null;
   state.playing = false;
 }
 
@@ -4324,6 +4424,13 @@ function initializeDpsPanel() {
   setDpsWindow(dpsState.selectedWindowSec);
 }
 
+function initializeDebugAdminControls() {
+  if (debugCreateBotButton) {
+    debugCreateBotButton.addEventListener("click", handleCreateBotPlayer);
+  }
+  updateAdminDebugControls();
+}
+
 function sendJsonMessage(payload) {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return false;
@@ -4848,6 +4955,9 @@ function applyClassAndAbilityDefs(classes, abilities) {
     }
   }
 
+  populateAdminBotClassOptions();
+  updateAdminDebugControls();
+
   if (selfStatic && selfStatic.classType) {
     ensureActionBindingsForClass(selfStatic.classType);
   }
@@ -5203,6 +5313,7 @@ function resetClientSessionState() {
   clearEntityRuntime();
   snapshots.length = 0;
   lastRenderState = null;
+  updateAdminDebugControls();
 }
 
 function handleServerSelfProgress(msg) {
@@ -5303,11 +5414,12 @@ function handleServerItemUsed(msg) {
 }
 
 const serverMessageHandlers = {
-  __open: ({ name, classType }) => {
+  __open: ({ name, classType, isAdmin }) => {
     sendJsonMessage({
       type: "join",
       name,
-      classType
+      classType,
+      isAdmin: !!isAdmin
     });
   },
   __close: () => {
@@ -5334,8 +5446,10 @@ const serverMessageHandlers = {
     selfStatic = msg.selfStatic || {
       id: msg.id,
       name: (pendingJoinInfo && pendingJoinInfo.name) || "You",
-      classType: (pendingJoinInfo && pendingJoinInfo.classType) || getDefaultClassId()
+      classType: (pendingJoinInfo && pendingJoinInfo.classType) || getDefaultClassId(),
+      isAdmin: !!(pendingJoinInfo && pendingJoinInfo.isAdmin)
     };
+    selfStatic.isAdmin = !!selfStatic.isAdmin;
     if (msg && typeof msg === "object" && msg.sounds) {
       applySoundManifest(msg.sounds);
     }
@@ -5348,6 +5462,7 @@ const serverMessageHandlers = {
     joinScreen.classList.add("hidden");
     gameUI.classList.remove("hidden");
     ensureActionBindingsForClass(selfStatic.classType);
+    updateAdminDebugControls();
     setStatus("");
   },
   class_defs: (msg) => applyClassAndAbilityDefs(msg.classes, msg.abilities),
@@ -5410,7 +5525,10 @@ const serverMessageHandlers = {
   mob_death_events: (msg) => addMobDeathEvents(msg.events),
   self_progress: (msg) => handleServerSelfProgress(msg),
   loot_picked: (msg) => handleServerLootPicked(msg),
-  item_used: (msg) => handleServerItemUsed(msg)
+  item_used: (msg) => handleServerItemUsed(msg),
+  admin_action_result: (msg) => {
+    setStatus(msg && msg.message ? msg.message : "Admin action completed.");
+  }
 };
 
 const sharedClientNetworkSession = globalThis.VibeClientNetworkSession || null;
@@ -5430,12 +5548,12 @@ const networkSessionTools = sharedCreateNetworkSessionTools
     })
   : null;
 
-function connectAndJoin(name, classType) {
-  pendingJoinInfo = { name, classType };
+function connectAndJoin(name, classType, isAdmin = false) {
+  pendingJoinInfo = { name, classType, isAdmin: !!isAdmin };
   if (!networkSessionTools) {
     return;
   }
-  socket = networkSessionTools.createSocketSession(name, classType);
+  socket = networkSessionTools.createSocketSession(name, classType, !!isAdmin);
 }
 
 function resizeCanvas() {
@@ -9260,10 +9378,20 @@ function buildAutomationSnapshot() {
           mana: Number(gameState.self.mana) || 0,
           maxMana: Number(gameState.self.maxMana) || 0,
           classType: selfStatic ? selfStatic.classType : "",
+          isAdmin: !!(selfStatic && selfStatic.isAdmin),
           level: entityRuntime.self ? Number(entityRuntime.self.level) || 0 : 0,
           copper: entityRuntime.self ? Number(entityRuntime.self.copper) || 0 : 0
         }
       : null,
+    players: gameState.players.map((player) => ({
+      id: player.id,
+      x: Number(player.x) || 0,
+      y: Number(player.y) || 0,
+      hp: Number(player.hp) || 0,
+      maxHp: Number(player.maxHp) || 0,
+      name: String(player.name || ""),
+      classType: String(player.classType || "")
+    })),
     mobs: gameState.mobs.map((mob) => ({
       id: mob.id,
       x: Number(mob.x) || 0,
@@ -9372,6 +9500,7 @@ function installAutomationApi() {
   });
 }
 
+initializeDebugAdminControls();
 installAutomationApi();
 
 if (inputBootstrapTools) {

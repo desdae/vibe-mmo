@@ -251,6 +251,9 @@ function broadcastStateToPlayers(deps, now = Date.now(), options = {}) {
   const sendDamageBursts = options.sendDamageBursts !== false;
 
   for (const player of players.values()) {
+    if (!player || !player.ws) {
+      continue;
+    }
     const nearby = collectNearbyEntitiesForPlayer(player, deps);
     const entityUpdate = buildEntityUpdatePacket(
       player,

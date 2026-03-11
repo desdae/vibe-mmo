@@ -124,6 +124,7 @@
       const formData = new FormData(deps.joinForm);
       const name = String(formData.get("name") || "").trim();
       const selectedClass = String(formData.get("classType") || "").trim();
+      const isAdmin = formData.get("isAdmin") !== null;
       const firstClassId = deps.classDefsById.size ? deps.classDefsById.keys().next().value : "";
       const classType = selectedClass || firstClassId;
 
@@ -137,7 +138,7 @@
       }
 
       deps.setStatus("Connecting...");
-      deps.connectAndJoin(name, classType);
+      deps.connectAndJoin(name, classType, isAdmin);
     }
 
     function bind() {

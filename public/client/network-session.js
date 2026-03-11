@@ -30,7 +30,7 @@
       return true;
     }
 
-    function createSocketSession(name, classType) {
+    function createSocketSession(name, classType, isAdmin = false) {
       const protocol = globalScope.location && globalScope.location.protocol === "https:" ? "wss:" : "ws:";
       const host = globalScope.location ? globalScope.location.host : "";
       const wsUrl = `${protocol}//${host}`;
@@ -41,7 +41,7 @@
       socket.addEventListener("open", () => {
         const openHandler = messageHandlers.__open;
         if (typeof openHandler === "function") {
-          openHandler({ name, classType, socket });
+          openHandler({ name, classType, isAdmin: !!isAdmin, socket });
         }
       });
 
