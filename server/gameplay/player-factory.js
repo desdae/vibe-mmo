@@ -85,7 +85,9 @@ function createPlayerFactory(options = {}) {
               nextEquipCheckAt: 0,
               nextStatusAt: 0,
               targetMobId: "",
-              targetBagId: ""
+              targetBagId: "",
+              followTargetPlayerId: "",
+              followDistance: 0
             }
           : null,
       name,

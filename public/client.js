@@ -31,6 +31,11 @@ const debugNet = document.getElementById("debug-net");
 const debugAdminControls = document.getElementById("debug-admin-controls");
 const debugBotClassSelect = document.getElementById("debug-bot-class");
 const debugCreateBotButton = document.getElementById("debug-create-bot");
+const debugToggleBotListButton = document.getElementById("debug-toggle-bot-list");
+const botListPanel = document.getElementById("bot-list-panel");
+const botListEntries = document.getElementById("bot-list-entries");
+const botInspectDetails = document.getElementById("bot-inspect-details");
+const botContextMenu = document.getElementById("bot-context-menu");
 const dpsPanel = document.getElementById("dps-panel");
 const dpsTabs = document.getElementById("dps-tabs");
 const dpsValue = document.getElementById("dps-value");
@@ -479,6 +484,14 @@ const dpsState = {
   selectedWindowSec: 60,
   samples: []
 };
+const adminBotState = {
+  bots: [],
+  inspectBot: null,
+  selectedBotId: "",
+  panelVisible: false,
+  contextBotId: "",
+  lastListRequestAt: 0
+};
 const selfNegativeEffects = {
   stun: null,
   slow: null,
@@ -822,6 +835,12 @@ function updateAdminDebugControls() {
   if (isAdmin) {
     populateAdminBotClassOptions();
   }
+  if (!isAdmin) {
+    setBotListVisible(false);
+  }
+  if (debugToggleBotListButton) {
+    debugToggleBotListButton.classList.toggle("hidden", !isAdmin);
+  }
 }
 
 function handleCreateBotPlayer() {
@@ -837,6 +856,289 @@ function handleCreateBotPlayer() {
     type: "create_bot_player",
     classType
   });
+}
+
+function getAbilityDisplayName(abilityId) {
+  const id = String(abilityId || "").trim();
+  if (!id) {
+    return "";
+  }
+  const abilityDef = abilityDefsById.get(id);
+  return abilityDef ? String(abilityDef.name || id) : humanizeKey(id);
+}
+
+function hideBotContextMenu() {
+  if (!botContextMenu) {
+    return;
+  }
+  botContextMenu.classList.add("hidden");
+  botContextMenu.innerHTML = "";
+  adminBotState.contextBotId = "";
+}
+
+function renderBotInspectDetails() {
+  if (!botInspectDetails) {
+    return;
+  }
+  const bot = adminBotState.inspectBot;
+  botInspectDetails.innerHTML = "";
+  if (!bot) {
+    const empty = document.createElement("div");
+    empty.className = "bot-inspect-empty";
+    empty.textContent = "Select or inspect a bot to see its inventory, equipment, and skill assignment.";
+    botInspectDetails.appendChild(empty);
+    return;
+  }
+
+  const summary = document.createElement("div");
+  summary.className = "bot-detail-block";
+  const summaryTitle = document.createElement("div");
+  summaryTitle.className = "bot-detail-title";
+  summaryTitle.textContent = "Overview";
+  summary.appendChild(summaryTitle);
+  const summaryLines = [
+    `${bot.name} | ${humanizeKey(bot.classType)} | Lvl ${bot.level}`,
+    `HP ${Math.floor(bot.hp)}/${Math.floor(bot.maxHp)} | Copper ${Math.floor(bot.copper || 0)}`,
+    `EXP ${Math.floor(bot.exp || 0)}/${Math.floor(bot.expToNext || 0)} | Skill Points ${Math.floor(bot.skillPoints || 0)}`,
+    bot.followTargetName
+      ? `Following ${bot.followTargetName} at ${Number(bot.followDistance || 0).toFixed(1)} tiles`
+      : "Not following a player"
+  ];
+  for (const text of summaryLines) {
+    const line = document.createElement("div");
+    line.className = "bot-detail-line";
+    line.textContent = text;
+    summary.appendChild(line);
+  }
+  botInspectDetails.appendChild(summary);
+
+  const abilityBlock = document.createElement("div");
+  abilityBlock.className = "bot-detail-block";
+  const abilityTitle = document.createElement("div");
+  abilityTitle.className = "bot-detail-title";
+  abilityTitle.textContent = "Abilities";
+  abilityBlock.appendChild(abilityTitle);
+  const abilities = Array.isArray(bot.abilityLevels) ? bot.abilityLevels : [];
+  if (!abilities.length) {
+    const line = document.createElement("div");
+    line.className = "bot-detail-line";
+    line.textContent = "No abilities assigned.";
+    abilityBlock.appendChild(line);
+  } else {
+    for (const entry of abilities) {
+      const line = document.createElement("div");
+      line.className = "bot-detail-line";
+      line.textContent = `${getAbilityDisplayName(entry.id)}: level ${Math.max(1, Math.floor(Number(entry.level) || 1))}`;
+      abilityBlock.appendChild(line);
+    }
+  }
+  botInspectDetails.appendChild(abilityBlock);
+
+  const equipmentBlock = document.createElement("div");
+  equipmentBlock.className = "bot-detail-block";
+  const equipmentTitle = document.createElement("div");
+  equipmentTitle.className = "bot-detail-title";
+  equipmentTitle.textContent = "Equipment";
+  equipmentBlock.appendChild(equipmentTitle);
+  const equippedItems = Array.isArray(bot.equipment) ? bot.equipment : [];
+  if (!equippedItems.length) {
+    const line = document.createElement("div");
+    line.className = "bot-detail-line";
+    line.textContent = "No items equipped.";
+    equipmentBlock.appendChild(line);
+  } else {
+    for (const entry of equippedItems) {
+      const line = document.createElement("div");
+      line.className = "bot-detail-line";
+      const item = entry.item || {};
+      line.textContent = `${humanizeKey(entry.slotId)}: ${item.name || item.itemId || "Unknown item"}`;
+      equipmentBlock.appendChild(line);
+    }
+  }
+  botInspectDetails.appendChild(equipmentBlock);
+
+  const inventoryBlock = document.createElement("div");
+  inventoryBlock.className = "bot-detail-block";
+  const inventoryTitle = document.createElement("div");
+  inventoryTitle.className = "bot-detail-title";
+  inventoryTitle.textContent = "Inventory";
+  inventoryBlock.appendChild(inventoryTitle);
+  const inventoryItems = Array.isArray(bot.inventory) ? bot.inventory : [];
+  if (!inventoryItems.length) {
+    const line = document.createElement("div");
+    line.className = "bot-detail-line";
+    line.textContent = "Inventory is empty.";
+    inventoryBlock.appendChild(line);
+  } else {
+    for (const entry of inventoryItems) {
+      const line = document.createElement("div");
+      line.className = "bot-detail-line";
+      const qtyText = Math.max(0, Math.floor(Number(entry.qty) || 0)) > 1 ? ` x${Math.floor(Number(entry.qty) || 0)}` : "";
+      const levelText = Number(entry.itemLevel) > 0 ? ` (ilvl ${Math.floor(Number(entry.itemLevel) || 0)})` : "";
+      line.textContent = `${entry.name || entry.itemId || "Unknown item"}${qtyText}${levelText}`;
+      inventoryBlock.appendChild(line);
+    }
+  }
+  botInspectDetails.appendChild(inventoryBlock);
+}
+
+function showBotContextMenu(clientX, clientY, botId) {
+  if (!botContextMenu) {
+    return;
+  }
+  const bot = adminBotState.bots.find((entry) => String(entry.id || "") === String(botId || ""));
+  if (!bot) {
+    hideBotContextMenu();
+    return;
+  }
+  adminBotState.contextBotId = String(bot.id || "");
+  botContextMenu.innerHTML = "";
+  const actions = [
+    {
+      label: "Inspect",
+      handler: () => {
+        requestAdminBotInspect(bot.id);
+      }
+    },
+    {
+      label: "Destroy Bot",
+      handler: () => {
+        sendJsonMessage({
+          type: "admin_destroy_bot",
+          botId: bot.id
+        });
+      }
+    },
+    {
+      label: "Follow 3 Tiles",
+      handler: () => {
+        sendJsonMessage({
+          type: "admin_command_bot_follow",
+          botId: bot.id,
+          range: 3
+        });
+      }
+    },
+    {
+      label: "Follow 4 Tiles",
+      handler: () => {
+        sendJsonMessage({
+          type: "admin_command_bot_follow",
+          botId: bot.id,
+          range: 4
+        });
+      }
+    },
+    {
+      label: "Stop Following",
+      handler: () => {
+        sendJsonMessage({
+          type: "admin_command_bot_follow",
+          botId: bot.id,
+          range: 0
+        });
+      }
+    }
+  ];
+  for (const action of actions) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "bot-context-button";
+    button.textContent = action.label;
+    button.addEventListener("click", () => {
+      action.handler();
+      hideBotContextMenu();
+    });
+    botContextMenu.appendChild(button);
+  }
+  botContextMenu.style.left = `${Math.max(8, Math.floor(clientX))}px`;
+  botContextMenu.style.top = `${Math.max(8, Math.floor(clientY))}px`;
+  botContextMenu.classList.remove("hidden");
+}
+
+function renderAdminBotList() {
+  if (!botListEntries) {
+    return;
+  }
+  botListEntries.innerHTML = "";
+  if (!adminBotState.bots.length) {
+    const empty = document.createElement("div");
+    empty.className = "bot-inspect-empty";
+    empty.textContent = "No active bots.";
+    botListEntries.appendChild(empty);
+    renderBotInspectDetails();
+    return;
+  }
+  for (const bot of adminBotState.bots) {
+    const entry = document.createElement("div");
+    entry.className = "bot-list-entry";
+    if (String(adminBotState.selectedBotId || "") === String(bot.id || "")) {
+      entry.classList.add("active");
+    }
+    const title = document.createElement("div");
+    title.className = "bot-entry-title";
+    title.textContent = bot.name;
+    const meta = document.createElement("div");
+    meta.className = "bot-entry-meta";
+    meta.textContent = `${humanizeKey(bot.classType)} | Lvl ${bot.level}${
+      bot.followTargetName ? ` | Following ${bot.followTargetName} (${Number(bot.followDistance || 0).toFixed(1)})` : ""
+    }`;
+    entry.appendChild(title);
+    entry.appendChild(meta);
+    entry.addEventListener("click", () => {
+      requestAdminBotInspect(bot.id);
+    });
+    entry.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      adminBotState.selectedBotId = String(bot.id || "");
+      renderAdminBotList();
+      showBotContextMenu(event.clientX, event.clientY, bot.id);
+    });
+    botListEntries.appendChild(entry);
+  }
+  renderBotInspectDetails();
+}
+
+function requestAdminBotList(force = false) {
+  if (!selfStatic || !selfStatic.isAdmin || !adminBotState.panelVisible) {
+    return false;
+  }
+  const now = performance.now();
+  if (!force && now - Number(adminBotState.lastListRequestAt || 0) < 800) {
+    return false;
+  }
+  adminBotState.lastListRequestAt = now;
+  return sendJsonMessage({ type: "admin_list_bots" });
+}
+
+function requestAdminBotInspect(botId) {
+  const normalizedBotId = String(botId || "").trim();
+  if (!normalizedBotId || !selfStatic || !selfStatic.isAdmin) {
+    return false;
+  }
+  adminBotState.selectedBotId = normalizedBotId;
+  renderAdminBotList();
+  return sendJsonMessage({
+    type: "admin_inspect_bot",
+    botId: normalizedBotId
+  });
+}
+
+function setBotListVisible(visible) {
+  adminBotState.panelVisible = !!visible;
+  if (botListPanel) {
+    botListPanel.classList.toggle("hidden", !adminBotState.panelVisible);
+  }
+  if (!adminBotState.panelVisible) {
+    hideBotContextMenu();
+    return;
+  }
+  requestAdminBotList(true);
+}
+
+function toggleBotListPanel() {
+  setBotListVisible(!adminBotState.panelVisible);
 }
 
 function clearDragState() {
@@ -4428,6 +4730,27 @@ function initializeDebugAdminControls() {
   if (debugCreateBotButton) {
     debugCreateBotButton.addEventListener("click", handleCreateBotPlayer);
   }
+  if (debugToggleBotListButton) {
+    debugToggleBotListButton.addEventListener("click", toggleBotListPanel);
+  }
+  document.addEventListener("click", (event) => {
+    if (!botContextMenu || botContextMenu.classList.contains("hidden")) {
+      return;
+    }
+    if (event.target && botContextMenu.contains(event.target)) {
+      return;
+    }
+    hideBotContextMenu();
+  });
+  document.addEventListener("contextmenu", (event) => {
+    if (!botContextMenu || botContextMenu.classList.contains("hidden")) {
+      return;
+    }
+    if (event.target && botContextMenu.contains(event.target)) {
+      return;
+    }
+    hideBotContextMenu();
+  });
   updateAdminDebugControls();
 }
 
@@ -5305,6 +5628,12 @@ function resetClientSessionState() {
   ambientParticleEmitters.clear();
   clearAutoLootPickup(false);
   abilityRuntime.clear();
+  adminBotState.bots = [];
+  adminBotState.inspectBot = null;
+  adminBotState.selectedBotId = "";
+  adminBotState.contextBotId = "";
+  adminBotState.lastListRequestAt = 0;
+  setBotListVisible(false);
   debugState.frameSamples.length = 0;
   dpsState.samples.length = 0;
   setDpsVisible(false);
@@ -5526,6 +5855,22 @@ const serverMessageHandlers = {
   self_progress: (msg) => handleServerSelfProgress(msg),
   loot_picked: (msg) => handleServerLootPicked(msg),
   item_used: (msg) => handleServerItemUsed(msg),
+  admin_bot_list: (msg) => {
+    adminBotState.bots = Array.isArray(msg && msg.bots) ? msg.bots.map((entry) => ({ ...entry })) : [];
+    if (
+      adminBotState.selectedBotId &&
+      !adminBotState.bots.some((entry) => String(entry.id || "") === String(adminBotState.selectedBotId || ""))
+    ) {
+      adminBotState.selectedBotId = "";
+      adminBotState.inspectBot = null;
+    }
+    renderAdminBotList();
+  },
+  admin_bot_inspect: (msg) => {
+    adminBotState.inspectBot = msg && msg.bot ? { ...msg.bot } : null;
+    adminBotState.selectedBotId = adminBotState.inspectBot ? String(adminBotState.inspectBot.id || "") : "";
+    renderAdminBotList();
+  },
   admin_action_result: (msg) => {
     setStatus(msg && msg.message ? msg.message : "Admin action completed.");
   }
@@ -9353,6 +9698,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       connectAndJoin,
       updateDebugPanel,
       updateDpsPanel,
+      refreshAdminBotList: () => requestAdminBotList(false),
       initializeDpsPanel,
       loadInitialGameConfig,
       render
@@ -9419,7 +9765,10 @@ function buildAutomationSnapshot() {
     inventory: inventoryState.slots.map((slot) => (slot ? { ...slot } : null)),
     equipment: { ...equipmentState.slots },
     status: statusEl ? String(statusEl.textContent || "") : "",
-    equipmentVisible: equipmentPanel ? !equipmentPanel.classList.contains("hidden") : false
+    equipmentVisible: equipmentPanel ? !equipmentPanel.classList.contains("hidden") : false,
+    adminBotPanelVisible: botListPanel ? !botListPanel.classList.contains("hidden") : false,
+    adminBots: adminBotState.bots.map((bot) => ({ ...bot })),
+    adminBotInspect: adminBotState.inspectBot ? { ...adminBotState.inspectBot } : null
   };
 }
 

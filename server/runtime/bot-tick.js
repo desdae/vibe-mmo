@@ -3,6 +3,8 @@ function createBotTickSystem(options = {}) {
   const mobs = options.mobs instanceof Map ? options.mobs : null;
   const lootBags = options.lootBags instanceof Map ? options.lootBags : null;
   const activeAreaEffects = options.activeAreaEffects instanceof Map ? options.activeAreaEffects : null;
+  const projectiles = options.projectiles instanceof Map ? options.projectiles : null;
+  const itemDefs = options.itemDefs;
   const createPlayer = typeof options.createPlayer === "function" ? options.createPlayer : null;
   const classConfigProvider =
     typeof options.classConfigProvider === "function" ? options.classConfigProvider : () => null;
@@ -24,7 +26,7 @@ function createBotTickSystem(options = {}) {
   const bagPickupRange = Math.max(0.1, Number(options.bagPickupRange) || 1.5);
   const visibilityRange = Math.max(4, Number(options.visibilityRange) || 20);
 
-  if (!players || !mobs || !lootBags || !activeAreaEffects || !createPlayer) {
+  if (!players || !mobs || !lootBags || !activeAreaEffects || !projectiles || !createPlayer) {
     throw new Error("createBotTickSystem requires maps and createPlayer");
   }
 
@@ -48,6 +50,11 @@ function createBotTickSystem(options = {}) {
       return ["trinket1", "trinket2"];
     }
     return normalized ? [normalized] : [];
+  }
+
+  function getPlayerDisplayName(playerId) {
+    const player = players.get(String(playerId || "")) || null;
+    return player ? String(player.name || "") : "";
   }
 
   function getEntryScore(entry) {
@@ -261,6 +268,139 @@ function createBotTickSystem(options = {}) {
     }
   }
 
+  function serializeItemEntry(entry) {
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+    const itemId = String(entry.itemId || "").trim();
+    const itemDef = itemDefs && typeof itemDefs.get === "function" ? itemDefs.get(itemId) || null : null;
+    return {
+      itemId,
+      name: String(entry.name || (itemDef ? itemDef.name : itemId)),
+      qty: Math.max(0, Math.floor(Number(entry.qty) || 0)),
+      rarity: String(entry.rarity || ""),
+      slot: String(entry.slot || ""),
+      itemLevel: Math.max(0, Math.floor(Number(entry.itemLevel) || 0)),
+      isEquipment: !!entry.isEquipment
+    };
+  }
+
+  function buildBotSummary(bot) {
+    const followTargetPlayerId = String(bot?.botState?.followTargetPlayerId || "");
+    return {
+      id: String(bot.id || ""),
+      name: String(bot.name || ""),
+      classType: String(bot.classType || ""),
+      level: Math.max(1, Math.floor(Number(bot.level) || 1)),
+      hp: Math.max(0, Number(bot.hp) || 0),
+      maxHp: Math.max(1, Number(bot.maxHp) || 1),
+      followTargetPlayerId,
+      followTargetName: getPlayerDisplayName(followTargetPlayerId),
+      followDistance: Math.max(0, Number(bot?.botState?.followDistance) || 0)
+    };
+  }
+
+  function listBots() {
+    const bots = [];
+    for (const player of players.values()) {
+      if (!player || !player.isBot) {
+        continue;
+      }
+      bots.push(buildBotSummary(player));
+    }
+    bots.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    return bots;
+  }
+
+  function getBotById(botId) {
+    const bot = players.get(String(botId || "")) || null;
+    return bot && bot.isBot ? bot : null;
+  }
+
+  function inspectBot(botId) {
+    const bot = getBotById(botId);
+    if (!bot) {
+      return null;
+    }
+    const abilityLevels = Array.from(bot.abilityLevels.entries())
+      .map(([id, level]) => ({
+        id: String(id || ""),
+        level: Math.max(1, Math.floor(Number(level) || 1))
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const inventory = Array.isArray(bot.inventorySlots)
+      ? bot.inventorySlots.map(serializeItemEntry).filter(Boolean)
+      : [];
+    const equipment = [];
+    for (const [slotId, entry] of Object.entries(bot.equipmentSlots && typeof bot.equipmentSlots === "object" ? bot.equipmentSlots : {})) {
+      const serialized = serializeItemEntry(entry);
+      if (!serialized) {
+        continue;
+      }
+      equipment.push({
+        slotId,
+        item: serialized
+      });
+    }
+    equipment.sort((a, b) => String(a.slotId || "").localeCompare(String(b.slotId || "")));
+    return {
+      ...buildBotSummary(bot),
+      skillPoints: Math.max(0, Math.floor(Number(bot.skillPoints) || 0)),
+      copper: Math.max(0, Number(bot.copper) || 0),
+      exp: Math.max(0, Number(bot.exp) || 0),
+      expToNext: Math.max(1, Number(bot.expToNext) || 1),
+      abilityLevels,
+      inventory,
+      equipment
+    };
+  }
+
+  function removeBotOwnedEntities(botId) {
+    const ownerId = String(botId || "");
+    for (const [projectileId, projectile] of projectiles.entries()) {
+      if (String(projectile && projectile.ownerId || "") === ownerId) {
+        projectiles.delete(projectileId);
+      }
+    }
+    for (const [effectId, effect] of activeAreaEffects.entries()) {
+      if (String(effect && effect.ownerId || "") === ownerId) {
+        activeAreaEffects.delete(effectId);
+      }
+    }
+  }
+
+  function destroyBot(botId) {
+    const bot = getBotById(botId);
+    if (!bot) {
+      return false;
+    }
+    players.delete(bot.id);
+    removeBotOwnedEntities(bot.id);
+    return true;
+  }
+
+  function setBotFollow(botId, leaderPlayerId, followDistance) {
+    const bot = getBotById(botId);
+    const leaderId = String(leaderPlayerId || "");
+    const leader = players.get(leaderId) || null;
+    if (!bot || !leader || bot.id === leader.id) {
+      return false;
+    }
+    bot.botState.followTargetPlayerId = leader.id;
+    bot.botState.followDistance = Math.max(0, Number(followDistance) || 0);
+    return true;
+  }
+
+  function clearBotFollow(botId) {
+    const bot = getBotById(botId);
+    if (!bot) {
+      return false;
+    }
+    bot.botState.followTargetPlayerId = "";
+    bot.botState.followDistance = 0;
+    return true;
+  }
+
   function tickBot(player, now = Date.now()) {
     if (!player || !player.isBot || !player.botState) {
       return;
@@ -281,6 +421,48 @@ function createBotTickSystem(options = {}) {
     if (Number(player.botState.nextEquipCheckAt) <= now) {
       autoEquipBot(player);
       player.botState.nextEquipCheckAt = now + 1200;
+    }
+
+    const followTarget =
+      player.botState.followTargetPlayerId ? players.get(String(player.botState.followTargetPlayerId)) || null : null;
+    const followDistance = Math.max(0, Number(player.botState.followDistance) || 0);
+    if (followTarget && followTarget.hp > 0) {
+      const distanceToLeader = distance(player, followTarget);
+      const nearestMobToLeader = findNearestMob(followTarget, visibilityRange);
+      if (distanceToLeader > followDistance + 0.9) {
+        updateBotMovementToward(player, followTarget, followDistance || 3.5);
+        return;
+      }
+      if (nearestMobToLeader.mob && nearestMobToLeader.distance <= visibilityRange) {
+        const combatTarget = nearestMobToLeader.mob;
+        const combatDistance = distance(player, combatTarget);
+        let followedAttackUsed = false;
+        if (String(player.classType || "").toLowerCase() === "mage") {
+          followedAttackUsed = tryUseMageAbilities(player, combatTarget, combatDistance, now);
+          if (!followedAttackUsed && combatDistance > 6.5) {
+            updateBotMovementToward(player, combatTarget, 6);
+            return;
+          }
+        } else {
+          followedAttackUsed = tryUseWarriorAbilities(player, combatTarget, combatDistance, now);
+          if (!followedAttackUsed && combatDistance > 1.6) {
+            updateBotMovementToward(player, combatTarget, 1.4);
+            return;
+          }
+        }
+        if (followedAttackUsed) {
+          player.input = { dx: 0, dy: 0 };
+          return;
+        }
+      }
+      if (distanceToLeader > followDistance + 0.25) {
+        updateBotMovementToward(player, followTarget, followDistance || 3.5);
+      } else {
+        player.input = { dx: 0, dy: 0 };
+      }
+      return;
+    } else if (followTarget && followTarget.hp <= 0) {
+      clearBotFollow(player.id);
     }
 
     const nearbyBag = findNearestLootBag(player, 12);
@@ -380,7 +562,12 @@ function createBotTickSystem(options = {}) {
 
   return {
     createBotPlayer,
-    tickBots
+    tickBots,
+    listBots,
+    inspectBot,
+    destroyBot,
+    setBotFollow,
+    clearBotFollow
   };
 }
 

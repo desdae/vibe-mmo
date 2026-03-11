@@ -599,6 +599,8 @@ const botTickSystem = createBotTickSystem({
   mobs,
   lootBags,
   activeAreaEffects,
+  projectiles,
+  itemDefs: ITEM_CONFIG.itemDefs,
   createPlayer,
   classConfigProvider: () => CLASS_CONFIG,
   abilityDefsProvider: () => ABILITY_CONFIG.abilityDefs,
@@ -617,6 +619,11 @@ const botTickSystem = createBotTickSystem({
 });
 const createBotPlayer = botTickSystem.createBotPlayer;
 const tickBots = botTickSystem.tickBots;
+const listBots = botTickSystem.listBots;
+const inspectBot = botTickSystem.inspectBot;
+const destroyBot = botTickSystem.destroyBot;
+const setBotFollow = botTickSystem.setBotFollow;
+const clearBotFollow = botTickSystem.clearBotFollow;
 const configOrchestrator = createConfigOrchestrator({
   paths: {
     serverConfigPath: SERVER_CONFIG_PATH,
@@ -838,6 +845,11 @@ const runtimeBootstrap = createRuntimeBootstrap({
     allocatePlayerId,
     createPlayer,
     createBotPlayer,
+    listBots,
+    inspectBot,
+    destroyBot,
+    setBotFollow,
+    clearBotFollow,
     sendJson,
     players,
     mapWidth: MAP_WIDTH,

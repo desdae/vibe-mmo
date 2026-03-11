@@ -5,6 +5,11 @@ function createWsConnectionDeps({
   allocatePlayerId,
   createPlayer,
   createBotPlayer,
+  listBots,
+  inspectBot,
+  destroyBot,
+  setBotFollow,
+  clearBotFollow,
   sendJson,
   players,
   mapWidth,
@@ -76,7 +81,12 @@ function createWsConnectionDeps({
     addManaOverTimeEffect,
     allocatePlayerId,
     createPlayer,
-    createBotPlayer
+    createBotPlayer,
+    listBots,
+    inspectBot,
+    destroyBot,
+    setBotFollow,
+    clearBotFollow
   };
 }
 

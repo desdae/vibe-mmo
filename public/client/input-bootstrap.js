@@ -161,6 +161,7 @@
 
       globalScope.setInterval(deps.updateDebugPanel, 250);
       globalScope.setInterval(deps.updateDpsPanel, 250);
+      globalScope.setInterval(deps.refreshAdminBotList, 1500);
       globalScope.setInterval(deps.tryPrimaryAutoAction, 50);
       globalScope.setInterval(deps.updateAutoLootPickup, 75);
       deps.initializeDpsPanel();

@@ -140,6 +140,20 @@ function handleUseItemMessage(player, msg, deps) {
   });
 }
 
+function sendAdminBotList(player, deps) {
+  deps.sendJson(player.ws, {
+    type: "admin_bot_list",
+    bots: typeof deps.listBots === "function" ? deps.listBots() : []
+  });
+}
+
+function sendAdminBotInspect(player, botData, deps) {
+  deps.sendJson(player.ws, {
+    type: "admin_bot_inspect",
+    bot: botData || null
+  });
+}
+
 function routeIncomingMessage({ rawMessage, ws, player, deps }) {
   let msg;
   try {
@@ -301,6 +315,78 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
       type: "admin_action_result",
       message: `Created ${createResult.player.name} (${createResult.player.classType}).`
     });
+    sendAdminBotList(player, deps);
+    sendAdminBotInspect(player, deps.inspectBot(createResult.player.id), deps);
+    return { player };
+  }
+
+  if (msg.type === "admin_list_bots") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    sendAdminBotList(player, deps);
+    return { player };
+  }
+
+  if (msg.type === "admin_inspect_bot") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const botId = String(msg.botId || "").trim();
+    if (!botId) {
+      return { player };
+    }
+    sendAdminBotInspect(player, deps.inspectBot(botId), deps);
+    return { player };
+  }
+
+  if (msg.type === "admin_destroy_bot") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const botId = String(msg.botId || "").trim();
+    if (!botId) {
+      return { player };
+    }
+    const destroyed = deps.destroyBot(botId);
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      message: destroyed ? "Bot destroyed." : "Bot not found."
+    });
+    sendAdminBotList(player, deps);
+    sendAdminBotInspect(player, destroyed ? null : deps.inspectBot(botId), deps);
+    return { player };
+  }
+
+  if (msg.type === "admin_command_bot_follow") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const botId = String(msg.botId || "").trim();
+    if (!botId) {
+      return { player };
+    }
+    const followRange = Number(msg.range);
+    let changed = false;
+    if (Number.isFinite(followRange) && followRange > 0) {
+      changed = deps.setBotFollow(botId, player.id, followRange);
+    } else {
+      changed = deps.clearBotFollow(botId);
+    }
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      message: changed
+        ? Number.isFinite(followRange) && followRange > 0
+          ? `Bot now follows at ${followRange.toFixed(1)} tiles.`
+          : "Bot follow cleared."
+        : "Bot not found."
+    });
+    sendAdminBotList(player, deps);
+    sendAdminBotInspect(player, deps.inspectBot(botId), deps);
     return { player };
   }
 

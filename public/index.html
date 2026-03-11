@@ -85,8 +85,17 @@
           <label for="debug-bot-class">Bot class</label>
           <select id="debug-bot-class"></select>
           <button id="debug-create-bot" type="button">Create Bot Player</button>
+          <button id="debug-toggle-bot-list" type="button">Bot List</button>
         </div>
       </div>
+      <div id="bot-list-panel" class="hidden">
+        <div class="inventory-header">Active Bots</div>
+        <div class="bot-list-shell">
+          <div id="bot-list-entries" class="bot-list-entries"></div>
+          <div id="bot-inspect-details" class="bot-inspect-details"></div>
+        </div>
+      </div>
+      <div id="bot-context-menu" class="bot-context-menu hidden"></div>
     </div>
 
     <script src="/shared/protocol.js"></script>

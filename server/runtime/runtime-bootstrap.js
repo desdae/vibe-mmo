@@ -42,10 +42,21 @@ function createRuntimeBootstrap({
   });
 
   function start() {
-    gameLoop.start();
     initializeMobSpawners();
+    const handleListenError = (error) => {
+      if (error && error.code === "EADDRINUSE") {
+        console.error(`[server] Port ${port} is already in use.`);
+        console.error("[server] Stop the other process on that port or start with PORT=<free-port>.");
+        process.exit(1);
+        return;
+      }
+      throw error;
+    };
 
+    server.once("error", handleListenError);
     server.listen(port, () => {
+      server.removeListener("error", handleListenError);
+      gameLoop.start();
       if (typeof onServerListening === "function") {
         onServerListening();
       }

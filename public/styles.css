@@ -851,6 +851,117 @@ body {
   background: rgba(29, 82, 111, 0.92);
 }
 
+#bot-list-panel {
+  position: fixed;
+  right: 12px;
+  top: 176px;
+  width: min(680px, calc(100vw - 24px));
+  max-height: min(72vh, 720px);
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(1, 11, 19, 0.92);
+  border: 1px solid rgba(83, 147, 177, 0.35);
+  backdrop-filter: blur(2px);
+  z-index: 8;
+}
+
+.bot-list-shell {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(280px, 1fr);
+  gap: 10px;
+  min-height: 320px;
+}
+
+.bot-list-entries,
+.bot-inspect-details {
+  min-height: 260px;
+  max-height: calc(72vh - 70px);
+  overflow: auto;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(7, 17, 27, 0.86);
+  border: 1px solid rgba(72, 118, 145, 0.32);
+}
+
+.bot-list-entry {
+  padding: 8px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(79, 126, 155, 0.28);
+  background: rgba(12, 24, 36, 0.7);
+  cursor: pointer;
+}
+
+.bot-list-entry + .bot-list-entry {
+  margin-top: 8px;
+}
+
+.bot-list-entry.active {
+  border-color: rgba(150, 220, 255, 0.7);
+  background: rgba(24, 52, 74, 0.9);
+}
+
+.bot-entry-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e4f3ff;
+}
+
+.bot-entry-meta {
+  margin-top: 4px;
+  font-size: 11px;
+  color: #a8c0d2;
+}
+
+.bot-inspect-empty {
+  color: #8ea5b4;
+  font-size: 12px;
+}
+
+.bot-detail-block + .bot-detail-block {
+  margin-top: 12px;
+}
+
+.bot-detail-title {
+  margin-bottom: 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f1d89a;
+}
+
+.bot-detail-line {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #dceaf5;
+}
+
+.bot-context-menu {
+  position: fixed;
+  min-width: 170px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(5, 12, 18, 0.96);
+  border: 1px solid rgba(96, 149, 180, 0.42);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+  z-index: 12;
+}
+
+.bot-context-button {
+  width: 100%;
+  display: block;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #deeffe;
+  text-align: left;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.bot-context-button:hover {
+  background: rgba(31, 64, 89, 0.9);
+}
+
 #dps-panel {
   position: fixed;
   left: 12px;
