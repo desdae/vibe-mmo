@@ -334,7 +334,8 @@ const debugState = {
   upEvents: [],
   downEvents: [],
   upBytesWindow: 0,
-  downBytesWindow: 0
+  downBytesWindow: 0,
+  frameSamples: []
 };
 const dpsState = {
   enabled: false,
@@ -3267,6 +3268,13 @@ function updateDebugPanel() {
   uiPanelTools.updateDebugPanel();
 }
 
+function reportFrame(now = performance.now()) {
+  if (!uiPanelTools) {
+    return;
+  }
+  uiPanelTools.reportFrame(now);
+}
+
 function setDebugEnabled(enabled) {
   if (!uiPanelTools) {
     return;
@@ -4159,6 +4167,7 @@ function resetClientSessionState() {
   ambientParticleEmitters.clear();
   clearAutoLootPickup(false);
   abilityRuntime.clear();
+  debugState.frameSamples.length = 0;
   dpsState.samples.length = 0;
   setDpsVisible(false);
   spellbookState.signature = "";
@@ -7635,6 +7644,7 @@ const renderLoopTools = sharedCreateRenderLoopTools
       canvas,
       gameState,
       requestAnimationFrame,
+      reportFrame,
       updateAbilityChannel,
       getInterpolatedState,
       setLastRenderState: (state) => {

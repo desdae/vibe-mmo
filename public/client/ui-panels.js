@@ -70,6 +70,14 @@
       }
     }
 
+    function pruneFrameSamples(now) {
+      const frameWindowMs = 1000;
+      const cutoff = now - frameWindowMs;
+      while (debugState.frameSamples.length && debugState.frameSamples[0] < cutoff) {
+        debugState.frameSamples.shift();
+      }
+    }
+
     function addTrafficEvent(direction, bytes) {
       if (bytes <= 0) {
         return;
@@ -87,6 +95,22 @@
       debugState.downBytesWindow += bytes;
     }
 
+    function reportFrame(now = performance.now()) {
+      debugState.frameSamples.push(now);
+      pruneFrameSamples(now);
+    }
+
+    function getFps(now = performance.now()) {
+      pruneFrameSamples(now);
+      const sampleCount = debugState.frameSamples.length;
+      if (sampleCount <= 1) {
+        return 0;
+      }
+      const first = debugState.frameSamples[0];
+      const elapsedMs = Math.max(1, now - first);
+      return ((sampleCount - 1) * 1000) / elapsedMs;
+    }
+
     function updateDebugPanel() {
       const now = performance.now();
       pruneTraffic(now);
@@ -95,7 +119,7 @@
         return;
       }
 
-      debugNet.textContent = `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps`;
+      debugNet.textContent = `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps | FPS: ${getFps(now).toFixed(1)}`;
     }
 
     function setDebugEnabled(enabled) {
@@ -184,6 +208,8 @@
       formatKbps,
       pruneTraffic,
       addTrafficEvent,
+      reportFrame,
+      getFps,
       updateDebugPanel,
       setDebugEnabled,
       toggleDebugPanel,

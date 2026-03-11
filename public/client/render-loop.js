@@ -19,6 +19,7 @@
       requestFrame(renderFrame);
 
       const frameNow = performance.now();
+      deps.reportFrame(frameNow);
       deps.updateAbilityChannel(frameNow);
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
