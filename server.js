@@ -416,6 +416,7 @@ const getPlayerModifiedAbilityDotDamageRange = equipmentTools.getPlayerModifiedA
 const getPlayerModifiedAbilityChainStats = equipmentTools.getPlayerModifiedAbilityChainStats;
 const getPlayerModifiedAbilityCooldownMs = equipmentTools.getPlayerModifiedAbilityCooldownMs;
 const getPlayerModifiedAbilityCastMs = equipmentTools.getPlayerModifiedAbilityCastMs;
+const createEquipmentEntryFromBaseItem = equipmentTools.createEquipmentEntryFromBaseItem;
 const equipInventoryItem = equipmentTools.equipInventoryItem;
 const unequipEquipmentItem = equipmentTools.unequipEquipmentItem;
 const vendorTools = createVendorTools({
@@ -440,6 +441,8 @@ const playerFactory = createPlayerFactory({
   createEmptyEquipmentSlots,
   normalizeItemEntries,
   addItemsToInventory,
+  createEquipmentEntryFromBaseItem,
+  recomputePlayerDerivedStats: equipmentTools.recomputePlayerDerivedStats,
   syncPlayerCopperFromInventory,
   expNeededForLevel,
   sanitizeSpawn: (spawn) => {

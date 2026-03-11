@@ -37,6 +37,13 @@ const debugAdminControls = document.getElementById("debug-admin-controls");
 const debugBotClassSelect = document.getElementById("debug-bot-class");
 const debugCreateBotButton = document.getElementById("debug-create-bot");
 const debugToggleBotListButton = document.getElementById("debug-toggle-bot-list");
+const debugToggleGearLabButton = document.getElementById("debug-toggle-gear-lab");
+const debugGearPanel = document.getElementById("debug-gear-panel");
+const debugGearPreviewLayout = document.getElementById("debug-gear-preview-layout");
+const debugGearPreviewCanvas = document.getElementById("debug-gear-preview-canvas");
+const debugGearControls = document.getElementById("debug-gear-controls");
+const debugGearRerollAffixesButton = document.getElementById("debug-gear-reroll-affixes");
+const debugGearCloseButton = document.getElementById("debug-gear-close");
 const botListPanel = document.getElementById("bot-list-panel");
 const botListEntries = document.getElementById("bot-list-entries");
 const botInspectDetails = document.getElementById("bot-inspect-details");
@@ -461,7 +468,12 @@ const inventoryState = {
 };
 const equipmentConfigState = {
   itemSlots: [],
-  itemRarities: {}
+  itemRarities: {},
+  debugBaseItems: [],
+  debugPrefixes: [],
+  debugSuffixes: [],
+  debugRarities: [],
+  maxItemLevel: 1
 };
 const equipmentState = {
   slots: {}
@@ -475,6 +487,39 @@ const DEFAULT_ITEM_RARITY_COLORS = Object.freeze({
   mythic: "#ff5fc8",
   divine: "#fff1b5"
 });
+const DEFAULT_DEBUG_RARITY_RULES = Object.freeze({
+  normal: Object.freeze({ prefixMin: 0, prefixMax: 0, suffixMin: 0, suffixMax: 0 }),
+  magic: Object.freeze({ prefixMin: 0, prefixMax: 1, suffixMin: 1, suffixMax: 1 }),
+  rare: Object.freeze({ prefixMin: 1, prefixMax: 2, suffixMin: 1, suffixMax: 2 }),
+  epic: Object.freeze({ prefixMin: 2, prefixMax: 3, suffixMin: 2, suffixMax: 3 }),
+  legendary: Object.freeze({ prefixMin: 3, prefixMax: 4, suffixMin: 3, suffixMax: 4 }),
+  mythic: Object.freeze({ prefixMin: 4, prefixMax: 5, suffixMin: 4, suffixMax: 5 }),
+  divine: Object.freeze({ prefixMin: 5, prefixMax: 6, suffixMin: 5, suffixMax: 6 })
+});
+const DEBUG_GEAR_FALLBACK_PREFIXES = Object.freeze([
+  { id: "debug_savage", name: "Savage", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "gloves", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damage.global.percent", rollMin: 3, rollMax: 12 }] },
+  { id: "debug_emberforged", name: "Emberforged", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.fire.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_frozen", name: "Frozen", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "head", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.frost.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_stormbound", name: "Stormbound", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "ring", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.lightning.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_arcane", name: "Arcane", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "head", "chest", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.arcane.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_guarded", name: "Guarded", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "bracers", "gloves", "pants", "boots", "belt", "offHand"], requiredItemTagsAny: [], modifiers: [{ stat: "armor.percent", rollMin: 4, rollMax: 18 }] },
+  { id: "debug_vigorous", name: "Vigorous", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "pants", "boots", "belt", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "maxHealth.flat", rollMin: 8, rollMax: 40 }] },
+  { id: "debug_mystic", name: "Mystic", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "pants", "boots", "belt", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "maxMana.flat", rollMin: 8, rollMax: 40 }] },
+  { id: "debug_swift", name: "Swift", minItemLevel: 1, allowedSlots: ["boots", "belt", "ring", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "moveSpeed.percent", rollMin: 2, rollMax: 10 }] },
+  { id: "debug_precise", name: "Precise", minItemLevel: 1, allowedSlots: ["mainHand", "gloves", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "critChance.percent", rollMin: 2, rollMax: 9 }] }
+]);
+const DEBUG_GEAR_FALLBACK_SUFFIXES = Object.freeze([
+  { id: "debug_of_mending", name: "of Mending", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "gloves", "bracers", "pants", "boots", "belt", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "healthRegen.flat", rollMin: 1, rollMax: 6 }] },
+  { id: "debug_of_insight", name: "of Insight", minItemLevel: 1, allowedSlots: ["head", "chest", "ring", "necklace", "trinket", "mainHand", "offHand"], requiredItemTagsAny: [], modifiers: [{ stat: "manaRegen.flat", rollMin: 1, rollMax: 6 }] },
+  { id: "debug_of_striking", name: "of Striking", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "gloves", "ring"], requiredItemTagsAny: [], modifiers: [{ stat: "damage.global.percent", rollMin: 2, rollMax: 10 }] },
+  { id: "debug_of_flames", name: "of Flames", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.fire.percent", rollMin: 3, rollMax: 14 }] },
+  { id: "debug_of_the_glacier", name: "of the Glacier", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.frost.percent", rollMin: 3, rollMax: 14 }] },
+  { id: "debug_of_storms", name: "of Storms", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.lightning.percent", rollMin: 3, rollMax: 14 }] },
+  { id: "debug_of_the_fox", name: "of the Fox", minItemLevel: 1, allowedSlots: ["boots", "belt", "pants", "gloves", "ring"], requiredItemTagsAny: [], modifiers: [{ stat: "moveSpeed.percent", rollMin: 2, rollMax: 8 }] },
+  { id: "debug_of_the_barricade", name: "of the Barricade", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "bracers", "gloves", "pants", "boots", "belt", "offHand"], requiredItemTagsAny: [], modifiers: [{ stat: "blockChance.percent", rollMin: 1, rollMax: 6 }] },
+  { id: "debug_of_echoes", name: "of Echoes", minItemLevel: 1, allowedSlots: ["mainHand", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "castSpeed.percent", rollMin: 2, rollMax: 10 }] },
+  { id: "debug_of_haste", name: "of Haste", minItemLevel: 1, allowedSlots: ["mainHand", "gloves", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "attackSpeed.percent", rollMin: 2, rollMax: 10 }] }
+]);
 const EQUIPMENT_SLOT_LAYOUT = Object.freeze({
   head: { x: 50, y: 6, label: "Helm" },
   shoulders: { x: 10, y: 16, label: "Shoulder" },
@@ -527,6 +572,11 @@ const vendorInteractionState = {
   y: 0,
   nextAttemptAt: 0,
   panelOpen: false
+};
+const debugGearState = {
+  visible: false,
+  slotStates: {},
+  previewClassType: "warrior"
 };
 const selfNegativeEffects = {
   stun: null,
@@ -979,9 +1029,13 @@ function updateAdminDebugControls() {
   }
   if (!isAdmin) {
     setBotListVisible(false);
+    setDebugGearVisible(false);
   }
   if (debugToggleBotListButton) {
     debugToggleBotListButton.classList.toggle("hidden", !isAdmin);
+  }
+  if (debugToggleGearLabButton) {
+    debugToggleGearLabButton.classList.toggle("hidden", !isAdmin);
   }
 }
 
@@ -2332,6 +2386,10 @@ function humanizeKey(key) {
   );
 }
 
+function toLowerWord(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
 function escapeHtml(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -3514,6 +3572,139 @@ function createIconUrl(cacheKey, drawFn) {
   const url = iconCanvas.toDataURL("image/png");
   iconUrlCache.set(cacheKey, url);
   return url;
+}
+
+function inferPreviewArchetypeForItem(itemData) {
+  const presentation = getItemPresentationData(itemData);
+  const slotFamily = getEquipmentSlotFamily(presentation.slot);
+  const tags = new Set(Array.isArray(itemData && itemData.tags) ? itemData.tags.map((value) => String(value || "").trim().toLowerCase()) : []);
+  const nameText = String(itemData && (itemData.name || itemData.itemId) || "").toLowerCase();
+  const weaponClass = String(presentation.weaponClass || "").toLowerCase();
+
+  if (weaponClass === "bow" || tags.has("bow") || tags.has("projectile") || slotFamily === "trinket" && nameText.includes("hawk")) {
+    return "ranger";
+  }
+  if (
+    weaponClass === "staff" ||
+    weaponClass === "wand" ||
+    weaponClass === "orb" ||
+    tags.has("caster") ||
+    nameText.includes("arcane") ||
+    nameText.includes("oracle") ||
+    nameText.includes("wizard")
+  ) {
+    return "mage";
+  }
+  if (
+    weaponClass === "sword" ||
+    weaponClass === "axe" ||
+    weaponClass === "shield" ||
+    nameText.includes("plate") ||
+    nameText.includes("guardian") ||
+    nameText.includes("warden") ||
+    nameText.includes("iron")
+  ) {
+    return "warrior";
+  }
+  if (slotFamily === "head" && (nameText.includes("hood") || nameText.includes("hat"))) {
+    return nameText.includes("hat") ? "mage" : "ranger";
+  }
+  return "warrior";
+}
+
+function buildDebugPreviewStyle(itemData) {
+  const archetype = inferPreviewArchetypeForItem(itemData);
+  const configured = getClassRenderStyle(archetype);
+  if (configured && typeof configured === "object") {
+    return {
+      ...configured,
+      sizeScale: Math.min(1.24, Math.max(1.08, Number(configured.sizeScale) || 1))
+    };
+  }
+  return {
+    rigType: "humanoid",
+    species: "human",
+    archetype,
+    sizeScale: 1.18,
+    defaults: {
+      head: archetype === "mage" ? "wizard_hat" : archetype === "ranger" ? "hood" : "helmet",
+      chest: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      shoulders: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      gloves: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      bracers: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      belt: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      pants: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      boots: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      mainHand: archetype === "mage" ? "staff" : archetype === "ranger" ? "bow" : "sword",
+      offHand: archetype === "warrior" ? "shield" : "none"
+    }
+  };
+}
+
+function buildDebugPreviewEquipmentSlots(itemData) {
+  const slotFamily = getEquipmentSlotFamily(getEquipmentSlotIdForItem(itemData));
+  const slots = {};
+  if (slotFamily === "ring") {
+    slots.ring1 = itemData;
+  } else if (slotFamily === "trinket") {
+    slots.trinket1 = itemData;
+  } else if (slotFamily) {
+    slots[slotFamily] = itemData;
+  }
+  return slots;
+}
+
+function getDebugGearPreviewUrl(itemData) {
+  const presentation = getItemPresentationData(itemData);
+  const key = [
+    "debug_preview",
+    presentation.itemId,
+    String(itemData && itemData.name || ""),
+    presentation.slot,
+    presentation.weaponClass,
+    presentation.rarity,
+    presentation.affixThemes.join(",")
+  ].join(":");
+  return createIconUrl(key, (iconCtx, size) => {
+    const previousTools = humanoidRenderTools;
+    const previewTools = sharedCreateHumanoidRenderTools
+      ? sharedCreateHumanoidRenderTools({
+          ctx: iconCtx,
+          clamp,
+          lerp,
+          hashString,
+          sanitizeCssColor
+        })
+      : null;
+    const renderTools = previewTools || previousTools;
+    if (!renderTools || typeof renderTools.drawHumanoid !== "function") {
+      drawItemIcon(itemData, iconCtx, size);
+      return;
+    }
+
+    iconCtx.clearRect(0, 0, size, size);
+    iconCtx.fillStyle = "rgba(0, 0, 0, 0)";
+    iconCtx.fillRect(0, 0, size, size);
+    const p = { x: size * 0.5, y: size * 0.66 };
+    const previewEntity = {
+      id: `preview:${key}`,
+      x: 0,
+      y: 0
+    };
+    const previewStyle = buildDebugPreviewStyle(itemData);
+    renderTools.drawHumanoid({
+      entity: previewEntity,
+      entityKey: `preview:${key}`,
+      p,
+      style: previewStyle,
+      equipmentSlots: buildDebugPreviewEquipmentSlots(itemData),
+      attackState: null,
+      castState: null,
+      aimWorldX: 1,
+      aimWorldY: 0,
+      isSelf: false
+    });
+  });
 }
 
 function drawMeleeSlashActionIcon(iconCtx, size) {
@@ -5518,14 +5709,26 @@ function initializeDebugAdminControls() {
   if (debugToggleBotListButton) {
     debugToggleBotListButton.addEventListener("click", toggleBotListPanel);
   }
+  if (debugToggleGearLabButton) {
+    debugToggleGearLabButton.addEventListener("click", handleToggleDebugGearLab);
+  }
+  if (debugGearCloseButton) {
+    debugGearCloseButton.addEventListener("click", () => setDebugGearVisible(false));
+  }
+  if (debugGearRerollAffixesButton) {
+    debugGearRerollAffixesButton.addEventListener("click", rerollAllDebugGearAffixes);
+  }
   document.addEventListener("click", (event) => {
     if (!botContextMenu || botContextMenu.classList.contains("hidden")) {
-      return;
+      if (debugGearPanel && debugGearState.visible && event.target && debugGearPanel.contains(event.target)) {
+        return;
+      }
+    } else {
+      if (event.target && botContextMenu.contains(event.target)) {
+        return;
+      }
+      hideBotContextMenu();
     }
-    if (event.target && botContextMenu.contains(event.target)) {
-      return;
-    }
-    hideBotContextMenu();
   });
   document.addEventListener("contextmenu", (event) => {
     if (!botContextMenu || botContextMenu.classList.contains("hidden")) {
@@ -6162,14 +6365,736 @@ function applyEquipmentConfig(equipment) {
     : [];
   const itemRarities =
     equipment && equipment.itemRarities && typeof equipment.itemRarities === "object" ? equipment.itemRarities : {};
+  const debugBaseItems = Array.isArray(equipment && equipment.debugBaseItems) ? equipment.debugBaseItems : [];
+  const debugPrefixes = Array.isArray(equipment && equipment.debugPrefixes) ? equipment.debugPrefixes : [];
+  const debugSuffixes = Array.isArray(equipment && equipment.debugSuffixes) ? equipment.debugSuffixes : [];
+  const debugRarities = Array.isArray(equipment && equipment.debugRarities) ? equipment.debugRarities : [];
   equipmentConfigState.itemSlots = slotIds;
   equipmentConfigState.itemRarities = itemRarities;
+  equipmentConfigState.debugBaseItems = debugBaseItems;
+  equipmentConfigState.debugPrefixes = debugPrefixes;
+  equipmentConfigState.debugSuffixes = debugSuffixes;
+  equipmentConfigState.debugRarities = debugRarities;
+  equipmentConfigState.maxItemLevel = Math.max(1, Math.floor(Number(equipment && equipment.maxItemLevel) || 1));
   const nextSlots = {};
   for (const slotId of slotIds) {
     nextSlots[slotId] = equipmentState.slots[slotId] || null;
   }
   equipmentState.slots = nextSlots;
   updateEquipmentUI();
+  if (debugGearState.visible) {
+    rerollDebugGearLab();
+  }
+}
+
+function randomDebugInt(min, max) {
+  const low = Math.floor(Math.min(Number(min) || 0, Number(max) || 0));
+  const high = Math.floor(Math.max(Number(min) || 0, Number(max) || 0));
+  return low + Math.floor(Math.random() * (high - low + 1));
+}
+
+function pickRandomEntry(list) {
+  const entries = Array.isArray(list) ? list.filter(Boolean) : [];
+  if (!entries.length) {
+    return null;
+  }
+  return entries[randomDebugInt(0, entries.length - 1)] || null;
+}
+
+function rollDebugModifierValue(modifier) {
+  if (!modifier || typeof modifier !== "object") {
+    return 0;
+  }
+  const min = Number(modifier.rollMin);
+  const max = Number(modifier.rollMax);
+  const low = Math.min(Number.isFinite(min) ? min : 0, Number.isFinite(max) ? max : Number.isFinite(min) ? min : 0);
+  const high = Math.max(Number.isFinite(min) ? min : 0, Number.isFinite(max) ? max : Number.isFinite(min) ? min : 0);
+  const areIntegers = Math.abs(low - Math.round(low)) < 0.001 && Math.abs(high - Math.round(high)) < 0.001;
+  if (areIntegers) {
+    return randomDebugInt(Math.round(low), Math.round(high));
+  }
+  return Math.round((low + Math.random() * (high - low)) * 100) / 100;
+}
+
+function filterDebugAffixPool(pool, baseItem, itemLevel) {
+  const tags = new Set(Array.isArray(baseItem && baseItem.tags) ? baseItem.tags.map((value) => String(value || "").trim()) : []);
+  const slotId = String(baseItem && baseItem.slot || "").trim();
+  return (Array.isArray(pool) ? pool : []).filter((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+    if (itemLevel < Math.max(1, Math.floor(Number(entry.minItemLevel) || 1))) {
+      return false;
+    }
+    const allowedSlots = Array.isArray(entry.allowedSlots) ? entry.allowedSlots.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    if (allowedSlots.length && !allowedSlots.includes(slotId)) {
+      return false;
+    }
+    const requiredTags = Array.isArray(entry.requiredItemTagsAny)
+      ? entry.requiredItemTagsAny.map((value) => String(value || "").trim()).filter(Boolean)
+      : [];
+    if (requiredTags.length) {
+      let matched = false;
+      for (const tag of requiredTags) {
+        if (tags.has(tag)) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+function pickUniqueRandomEntries(pool, count) {
+  const available = Array.isArray(pool) ? pool.slice() : [];
+  const results = [];
+  let remaining = Math.max(0, Math.floor(Number(count) || 0));
+  while (remaining > 0 && available.length > 0) {
+    const index = randomDebugInt(0, available.length - 1);
+    results.push(available[index]);
+    available.splice(index, 1);
+    remaining -= 1;
+  }
+  return results;
+}
+
+function buildDebugAffixInstances(entries, kind) {
+  return (Array.isArray(entries) ? entries : []).map((affix) => ({
+    id: String(affix.id || ""),
+    name: String(affix.name || affix.id || ""),
+    kind,
+    modifiers: (Array.isArray(affix.modifiers) ? affix.modifiers : [])
+      .map((modifier) => ({
+        stat: String(modifier.stat || ""),
+        value: rollDebugModifierValue(modifier)
+      }))
+      .filter((modifier) => modifier.stat && Number.isFinite(modifier.value) && modifier.value !== 0)
+  }));
+}
+
+function buildDebugEquipmentDisplayName(baseItem, prefixes, suffixes) {
+  const prefixText = (Array.isArray(prefixes) ? prefixes : []).map((entry) => entry.name).filter(Boolean).join(" ");
+  const suffixText = (Array.isArray(suffixes) ? suffixes : []).map((entry) => entry.name).filter(Boolean).join(" ");
+  const parts = [];
+  if (prefixText) {
+    parts.push(prefixText);
+  }
+  parts.push(String(baseItem && baseItem.name || "Item"));
+  if (suffixText) {
+    parts.push(suffixText);
+  }
+  return parts.join(" ");
+}
+
+function pickDebugBaseItemForLevel(slotId, itemLevel) {
+  const candidates = getDebugBaseItemPool().filter(
+    (entry) => String(entry && entry.slot || "").trim() === String(slotId || "").trim()
+  );
+  if (!candidates.length) {
+    return null;
+  }
+  const exact = candidates.filter((entry) => {
+    const range = Array.isArray(entry.itemLevelRange) ? entry.itemLevelRange : [1, 1];
+    const minLevel = Math.max(1, Math.floor(Number(range[0]) || 1));
+    const maxLevel = Math.max(minLevel, Math.floor(Number(range[1]) || minLevel));
+    return itemLevel >= minLevel && itemLevel <= maxLevel;
+  });
+  if (exact.length) {
+    return pickRandomEntry(exact);
+  }
+  let best = candidates[0];
+  let bestDistance = Infinity;
+  for (const entry of candidates) {
+    const range = Array.isArray(entry.itemLevelRange) ? entry.itemLevelRange : [1, 1];
+    const minLevel = Math.max(1, Math.floor(Number(range[0]) || 1));
+    const maxLevel = Math.max(minLevel, Math.floor(Number(range[1]) || minLevel));
+    const mid = (minLevel + maxLevel) * 0.5;
+    const distance = Math.abs(mid - itemLevel);
+    if (distance < bestDistance) {
+      best = entry;
+      bestDistance = distance;
+    }
+  }
+  return best || null;
+}
+
+function getDebugBaseItemPool() {
+  const configured = Array.isArray(equipmentConfigState.debugBaseItems) ? equipmentConfigState.debugBaseItems.filter(Boolean) : [];
+  if (configured.length) {
+    return configured;
+  }
+  const derived = [];
+  for (const itemDef of itemDefsById.values()) {
+    if (!itemDef || !itemDef.isEquipment) {
+      continue;
+    }
+    derived.push({
+      id: String(itemDef.id || ""),
+      name: String(itemDef.name || itemDef.id || ""),
+      slot: String(itemDef.slot || "").trim(),
+      weaponClass: String(itemDef.weaponClass || "").trim(),
+      itemLevelRange: Array.isArray(itemDef.itemLevelRange) ? [...itemDef.itemLevelRange] : [1, 1],
+      tags: Array.isArray(itemDef.tags) ? [...itemDef.tags] : [],
+      baseStats: itemDef.baseStats && typeof itemDef.baseStats === "object" ? { ...itemDef.baseStats } : {}
+    });
+  }
+  return derived;
+}
+
+function getDebugMaxItemLevel() {
+  const configured = Math.max(1, Math.floor(Number(equipmentConfigState.maxItemLevel) || 1));
+  const baseItems = getDebugBaseItemPool();
+  let derivedMax = 1;
+  for (const entry of baseItems) {
+    const range = Array.isArray(entry && entry.itemLevelRange) ? entry.itemLevelRange : [1, 1];
+    const maxLevel = Math.max(1, Math.floor(Number(range[1]) || Number(range[0]) || 1));
+    if (maxLevel > derivedMax) {
+      derivedMax = maxLevel;
+    }
+  }
+  return Math.max(configured, derivedMax, 50);
+}
+
+function getDebugRarityPool() {
+  const configured = Array.isArray(equipmentConfigState.debugRarities) ? equipmentConfigState.debugRarities.filter(Boolean) : [];
+  const merged = new Map();
+  for (const entry of configured) {
+    const id = String(entry && entry.id || "").trim().toLowerCase();
+    if (!id) {
+      continue;
+    }
+    merged.set(id, {
+      id,
+      prefixMin: Math.max(0, Math.floor(Number(entry.prefixMin) || 0)),
+      prefixMax: Math.max(0, Math.floor(Number(entry.prefixMax) || 0)),
+      suffixMin: Math.max(0, Math.floor(Number(entry.suffixMin) || 0)),
+      suffixMax: Math.max(0, Math.floor(Number(entry.suffixMax) || 0)),
+      color: entry && entry.color ? String(entry.color) : ""
+    });
+  }
+  const itemRarities = equipmentConfigState.itemRarities && typeof equipmentConfigState.itemRarities === "object"
+    ? equipmentConfigState.itemRarities
+    : {};
+  for (const rarityId of Object.keys(itemRarities)) {
+    const id = String(rarityId || "").trim().toLowerCase();
+    if (!id) {
+      continue;
+    }
+    const existing = merged.get(id);
+    const fallbackRule = DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal;
+    merged.set(id, {
+      id,
+      prefixMin: existing ? existing.prefixMin : fallbackRule.prefixMin,
+      prefixMax: existing ? existing.prefixMax : fallbackRule.prefixMax,
+      suffixMin: existing ? existing.suffixMin : fallbackRule.suffixMin,
+      suffixMax: existing ? existing.suffixMax : fallbackRule.suffixMax,
+      color:
+        (itemRarities[rarityId] && itemRarities[rarityId].color ? String(itemRarities[rarityId].color) : "") ||
+        (existing && existing.color) ||
+        ""
+    });
+  }
+  for (const rarityId of Object.keys(DEFAULT_ITEM_RARITY_COLORS)) {
+    const id = String(rarityId || "").trim().toLowerCase();
+    if (!id || merged.has(id)) {
+      continue;
+    }
+    merged.set(id, {
+      id,
+      prefixMin: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).prefixMin,
+      prefixMax: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).prefixMax,
+      suffixMin: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).suffixMin,
+      suffixMax: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).suffixMax,
+      color: DEFAULT_ITEM_RARITY_COLORS[id] || ""
+    });
+  }
+  const order = ["normal", "magic", "rare", "epic", "legendary", "mythic", "divine"];
+  return Array.from(merged.values()).sort((a, b) => {
+    const indexA = order.indexOf(a.id);
+    const indexB = order.indexOf(b.id);
+    if (indexA >= 0 && indexB >= 0) {
+      return indexA - indexB;
+    }
+    if (indexA >= 0) {
+      return -1;
+    }
+    if (indexB >= 0) {
+      return 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function getDebugPrefixPool() {
+  const configured = Array.isArray(equipmentConfigState.debugPrefixes) ? equipmentConfigState.debugPrefixes.filter(Boolean) : [];
+  return configured.length ? configured : DEBUG_GEAR_FALLBACK_PREFIXES;
+}
+
+function getDebugSuffixPool() {
+  const configured = Array.isArray(equipmentConfigState.debugSuffixes) ? equipmentConfigState.debugSuffixes.filter(Boolean) : [];
+  return configured.length ? configured : DEBUG_GEAR_FALLBACK_SUFFIXES;
+}
+
+function rollDebugEquipmentItem(forcedRarityId = "") {
+  const debugBaseItems = getDebugBaseItemPool();
+  const debugRarities = getDebugRarityPool();
+  const debugPrefixes = getDebugPrefixPool();
+  const debugSuffixes = getDebugSuffixPool();
+  const slotFamilies = Array.from(
+    new Set(debugBaseItems.map((entry) => String(entry.slot || "").trim()).filter(Boolean))
+  );
+  const baseSlot = pickRandomEntry(slotFamilies);
+  if (!baseSlot) {
+    return null;
+  }
+  const maxItemLevel = getDebugMaxItemLevel();
+  const itemLevel = randomDebugInt(1, maxItemLevel);
+  const baseItem = pickDebugBaseItemForLevel(baseSlot, itemLevel);
+  const rarity =
+    forcedRarityId
+      ? debugRarities.find((entry) => String(entry && entry.id || "").trim().toLowerCase() === String(forcedRarityId).trim().toLowerCase()) || null
+      : pickRandomEntry(debugRarities);
+  if (!baseItem || !rarity) {
+    return null;
+  }
+  const prefixPool = filterDebugAffixPool(debugPrefixes, baseItem, itemLevel);
+  const suffixPool = filterDebugAffixPool(debugSuffixes, baseItem, itemLevel);
+  const prefixCount = randomDebugInt(Number(rarity.prefixMin) || 0, Number(rarity.prefixMax) || 0);
+  const suffixCount = randomDebugInt(Number(rarity.suffixMin) || 0, Number(rarity.suffixMax) || 0);
+  const prefixes = buildDebugAffixInstances(pickUniqueRandomEntries(prefixPool, prefixCount), "prefix");
+  const suffixes = buildDebugAffixInstances(pickUniqueRandomEntries(suffixPool, suffixCount), "suffix");
+  const affixes = [...prefixes, ...suffixes];
+  return {
+    itemId: String(baseItem.id || ""),
+    qty: 1,
+    instanceId: `debug-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: buildDebugEquipmentDisplayName(baseItem, prefixes, suffixes),
+    rarity: String(rarity.id || "normal"),
+    slot: String(baseItem.slot || ""),
+    weaponClass: String(baseItem.weaponClass || ""),
+    itemLevel,
+    isEquipment: true,
+    tags: Array.isArray(baseItem.tags) ? [...baseItem.tags] : [],
+    baseStats: baseItem.baseStats && typeof baseItem.baseStats === "object" ? { ...baseItem.baseStats } : {},
+    affixes,
+    prefixes,
+    suffixes
+  };
+}
+
+function getDebugGearSlotIds() {
+  return Array.isArray(equipmentConfigState.itemSlots) ? equipmentConfigState.itemSlots.slice() : [];
+}
+
+function getDebugGearEquipmentSlots() {
+  const slots = {};
+  for (const slotId of getDebugGearSlotIds()) {
+    slots[slotId] = debugGearState.slotStates[slotId] && debugGearState.slotStates[slotId].itemData
+      ? debugGearState.slotStates[slotId].itemData
+      : null;
+  }
+  return slots;
+}
+
+function getDebugRarityIndex(rarityId) {
+  const pool = getDebugRarityPool();
+  const normalized = String(rarityId || "").trim().toLowerCase();
+  const index = pool.findIndex((entry) => String(entry && entry.id || "").trim().toLowerCase() === normalized);
+  return index >= 0 ? index : 0;
+}
+
+function getDebugRarityByIndex(index) {
+  const pool = getDebugRarityPool();
+  if (!pool.length) {
+    return { id: "normal", prefixMin: 0, prefixMax: 0, suffixMin: 0, suffixMax: 0 };
+  }
+  const safeIndex = clamp(Math.floor(Number(index) || 0), 0, pool.length - 1);
+  return pool[safeIndex] || pool[0];
+}
+
+function buildDebugEquipmentItemFromBase(baseItem, itemLevel, rarityId) {
+  const rarityPool = getDebugRarityPool();
+  const debugPrefixes = getDebugPrefixPool();
+  const debugSuffixes = getDebugSuffixPool();
+  const rarity =
+    rarityPool.find((entry) => String(entry && entry.id || "").trim().toLowerCase() === String(rarityId || "").trim().toLowerCase()) ||
+    rarityPool[0] ||
+    { id: "normal", prefixMin: 0, prefixMax: 0, suffixMin: 0, suffixMax: 0 };
+  const prefixPool = filterDebugAffixPool(debugPrefixes, baseItem, itemLevel);
+  const suffixPool = filterDebugAffixPool(debugSuffixes, baseItem, itemLevel);
+  const prefixCount = randomDebugInt(Number(rarity.prefixMin) || 0, Number(rarity.prefixMax) || 0);
+  const suffixCount = randomDebugInt(Number(rarity.suffixMin) || 0, Number(rarity.suffixMax) || 0);
+  const prefixes = buildDebugAffixInstances(pickUniqueRandomEntries(prefixPool, prefixCount), "prefix");
+  const suffixes = buildDebugAffixInstances(pickUniqueRandomEntries(suffixPool, suffixCount), "suffix");
+  const affixes = [...prefixes, ...suffixes];
+  return {
+    itemId: String(baseItem.id || ""),
+    qty: 1,
+    instanceId: `debug-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: buildDebugEquipmentDisplayName(baseItem, prefixes, suffixes),
+    rarity: String(rarity.id || "normal"),
+    slot: String(baseItem.slot || ""),
+    weaponClass: String(baseItem.weaponClass || ""),
+    itemLevel,
+    isEquipment: true,
+    tags: Array.isArray(baseItem.tags) ? [...baseItem.tags] : [],
+    baseStats: baseItem.baseStats && typeof baseItem.baseStats === "object" ? { ...baseItem.baseStats } : {},
+    affixes,
+    prefixes,
+    suffixes
+  };
+}
+
+function rollDebugEquipmentItemForSlot(slotId, itemLevel, rarityId, preferredBaseItemId = "") {
+  const slotFamily = getEquipmentSlotFamily(slotId);
+  const basePool = getDebugBaseItemPool();
+  let baseItem = null;
+  if (preferredBaseItemId) {
+    baseItem =
+      basePool.find(
+        (entry) =>
+          String(entry && entry.id || "").trim() === String(preferredBaseItemId || "").trim() &&
+          String(entry && entry.slot || "").trim() === String(slotFamily || "").trim()
+      ) || null;
+  }
+  if (!baseItem) {
+    baseItem = pickDebugBaseItemForLevel(slotFamily, itemLevel);
+  }
+  if (!baseItem) {
+    return null;
+  }
+  return buildDebugEquipmentItemFromBase(baseItem, itemLevel, rarityId);
+}
+
+function getDebugItemAffixSignature(itemData) {
+  if (!itemData || typeof itemData !== "object") {
+    return "";
+  }
+  const affixes = Array.isArray(itemData.affixes) ? itemData.affixes : [];
+  return JSON.stringify(
+    affixes.map((affix) => ({
+      id: String(affix && affix.id || ""),
+      modifiers: (Array.isArray(affix && affix.modifiers) ? affix.modifiers : []).map((modifier) => ({
+        stat: String(modifier && modifier.stat || ""),
+        value: Number(modifier && modifier.value) || 0
+      }))
+    }))
+  );
+}
+
+function inferDebugGearPreviewClassType() {
+  const slots = getDebugGearEquipmentSlots();
+  const mainHand = slots.mainHand || null;
+  const offHand = slots.offHand || null;
+  const chest = slots.chest || null;
+  const head = slots.head || null;
+  const mainWeapon = toLowerWord(mainHand && mainHand.weaponClass);
+  const combinedText = [head && head.name, chest && chest.name, mainHand && mainHand.name, offHand && offHand.name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (
+    mainWeapon === "bow" ||
+    combinedText.includes("hood") ||
+    combinedText.includes("leather")
+  ) {
+    return "ranger";
+  }
+  if (
+    mainWeapon === "staff" ||
+    mainWeapon === "wand" ||
+    mainWeapon === "orb" ||
+    combinedText.includes("wizard") ||
+    combinedText.includes("robe") ||
+    combinedText.includes("arcane")
+  ) {
+    return "mage";
+  }
+  if (
+    mainWeapon === "sword" ||
+    mainWeapon === "axe" ||
+    (offHand && Array.isArray(offHand.tags) && offHand.tags.some((tag) => String(tag || "").toLowerCase() === "shield")) ||
+    combinedText.includes("plate") ||
+    combinedText.includes("helm")
+  ) {
+    return "warrior";
+  }
+  return String(selfStatic && selfStatic.classType || "warrior").trim().toLowerCase() || "warrior";
+}
+
+function rerollDebugGearSlot(slotId, options = {}) {
+  const current =
+    debugGearState.slotStates[slotId] && typeof debugGearState.slotStates[slotId] === "object"
+      ? debugGearState.slotStates[slotId]
+      : null;
+  const maxItemLevel = getDebugMaxItemLevel();
+  const itemLevel = clamp(
+    Math.floor(Number(options.itemLevel !== undefined ? options.itemLevel : current && current.itemLevel) || 1),
+    1,
+    maxItemLevel
+  );
+  const rarityId = String(options.rarityId || (current && current.rarityId) || "normal");
+  const preferredBaseItemId =
+    options.keepBaseItem && current && current.itemData && current.itemData.itemId
+      ? current.itemData.itemId
+      : "";
+  let itemData = rollDebugEquipmentItemForSlot(slotId, itemLevel, rarityId, preferredBaseItemId);
+  if (options.forceAffixChange && current && current.itemData && String(rarityId).toLowerCase() !== "normal") {
+    const previousSignature = getDebugItemAffixSignature(current.itemData);
+    let attempt = 0;
+    while (attempt < 6 && itemData && getDebugItemAffixSignature(itemData) === previousSignature) {
+      itemData = rollDebugEquipmentItemForSlot(slotId, itemLevel, rarityId, preferredBaseItemId);
+      attempt += 1;
+    }
+  }
+  debugGearState.slotStates[slotId] = {
+    itemLevel,
+    rarityId,
+    itemData
+  };
+}
+
+function rerollAllDebugGearAffixes() {
+  for (const slotId of getDebugGearSlotIds()) {
+    rerollDebugGearSlot(slotId, { keepBaseItem: true, forceAffixChange: true });
+  }
+  renderDebugGearLab();
+}
+
+function drawDebugGearPreviewCharacter() {
+  if (!debugGearPreviewCanvas) {
+    return;
+  }
+  const previewCtx = debugGearPreviewCanvas.getContext("2d");
+  if (!previewCtx) {
+    return;
+  }
+  previewCtx.clearRect(0, 0, debugGearPreviewCanvas.width, debugGearPreviewCanvas.height);
+  if (!sharedCreateHumanoidRenderTools && !humanoidRenderTools) {
+    return;
+  }
+  const previewTools = sharedCreateHumanoidRenderTools
+    ? sharedCreateHumanoidRenderTools({
+        ctx: previewCtx,
+        clamp,
+        lerp,
+        hashString,
+        sanitizeCssColor
+      })
+    : humanoidRenderTools;
+  if (!previewTools || typeof previewTools.drawHumanoid !== "function") {
+    return;
+  }
+  debugGearState.previewClassType = inferDebugGearPreviewClassType();
+  const style =
+    getClassRenderStyle(debugGearState.previewClassType) || {
+      rigType: "humanoid",
+      species: "human",
+      archetype: debugGearState.previewClassType
+    };
+  previewTools.drawHumanoid({
+    entity: { id: "debug-gear-preview", x: 0, y: 0 },
+    entityKey: "debug-gear-preview",
+    p: { x: debugGearPreviewCanvas.width * 0.5, y: debugGearPreviewCanvas.height * 0.56 },
+    style: {
+      ...style,
+      sizeScale: clamp(Number(style.sizeScale) || 1, 0.7, 1.18)
+    },
+    equipmentSlots: getDebugGearEquipmentSlots(),
+    attackState: null,
+    castState: null,
+    aimWorldX: 1,
+    aimWorldY: 0,
+    useDefaultGearFallback: false,
+    isSelf: false
+  });
+}
+
+function renderDebugGearPreviewSlots() {
+  if (!debugGearPreviewLayout) {
+    return;
+  }
+  for (const anchor of Array.from(debugGearPreviewLayout.querySelectorAll(".debug-gear-anchor"))) {
+    anchor.remove();
+  }
+  for (const slotId of getDebugGearSlotIds()) {
+    const slotLayout = EQUIPMENT_SLOT_LAYOUT[slotId] || { x: 50, y: 50, label: humanizeKey(slotId) };
+    const anchor = document.createElement("div");
+    const horizontalRole = slotLayout.x < 35 ? "left-anchor" : slotLayout.x > 65 ? "right-anchor" : "center-anchor";
+    anchor.className = `debug-gear-anchor ${horizontalRole}${slotLayout.kind === "belt" ? " belt-anchor" : ""}`;
+    anchor.style.left = `${slotLayout.x}%`;
+    anchor.style.top = `${slotLayout.y}%`;
+
+    const slotEl = document.createElement("div");
+    slotEl.className = `inventory-slot debug-gear-slot${slotLayout.kind === "belt" ? " belt-slot" : ""}`;
+    const slotState = debugGearState.slotStates[slotId] || null;
+    const itemData = slotState && slotState.itemData ? slotState.itemData : null;
+    if (itemData && itemData.itemId) {
+      slotEl.classList.add("has-item");
+      applyItemRarityChrome(slotEl, itemData);
+      bindItemTooltip(slotEl, itemData);
+      const iconEl = document.createElement("div");
+      iconEl.className = "inv-icon";
+      iconEl.style.backgroundImage = `url(${getItemIconUrl(itemData)})`;
+      slotEl.appendChild(iconEl);
+    }
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "debug-gear-slot-label";
+    labelEl.textContent = slotLayout.label || humanizeKey(slotId);
+
+    anchor.appendChild(slotEl);
+    anchor.appendChild(labelEl);
+    debugGearPreviewLayout.appendChild(anchor);
+  }
+}
+
+function renderDebugGearControls() {
+  if (!debugGearControls) {
+    return;
+  }
+  debugGearControls.innerHTML = "";
+  const rarityPool = getDebugRarityPool();
+  const maxItemLevel = getDebugMaxItemLevel();
+  for (const slotId of getDebugGearSlotIds()) {
+    const slotState = debugGearState.slotStates[slotId] || null;
+    const itemData = slotState && slotState.itemData ? slotState.itemData : null;
+    const rowEl = document.createElement("div");
+    rowEl.className = "debug-gear-control-row";
+
+    const labelWrap = document.createElement("div");
+    const labelEl = document.createElement("div");
+    labelEl.className = "debug-gear-control-label";
+    labelEl.textContent = (EQUIPMENT_SLOT_LAYOUT[slotId] && EQUIPMENT_SLOT_LAYOUT[slotId].label) || humanizeKey(slotId);
+    const metaEl = document.createElement("div");
+    metaEl.className = "debug-gear-control-meta";
+    metaEl.textContent = itemData && itemData.name ? itemData.name : "No item";
+    labelWrap.appendChild(labelEl);
+    labelWrap.appendChild(metaEl);
+
+    const fieldsEl = document.createElement("div");
+    fieldsEl.className = "debug-gear-control-fields";
+
+    const levelField = document.createElement("div");
+    levelField.className = "debug-gear-control-field";
+    const levelLabel = document.createElement("div");
+    levelLabel.className = "debug-gear-control-field-label";
+    levelLabel.textContent = "iLvl";
+    const levelInput = document.createElement("input");
+    levelInput.type = "range";
+    levelInput.min = "1";
+    levelInput.max = String(maxItemLevel);
+    levelInput.step = "1";
+    levelInput.value = String(slotState && slotState.itemLevel ? slotState.itemLevel : 1);
+    const levelValue = document.createElement("div");
+    levelValue.className = "debug-gear-control-field-value";
+    levelValue.textContent = String(levelInput.value);
+    const applyLevelChange = () => {
+      const currentSlotState = debugGearState.slotStates[slotId] || null;
+      levelValue.textContent = String(levelInput.value);
+      rerollDebugGearSlot(slotId, {
+        itemLevel: Number(levelInput.value),
+        rarityId: currentSlotState && currentSlotState.rarityId ? currentSlotState.rarityId : "normal"
+      });
+      refreshDebugGearLabPreviewOnly();
+      const updatedState = debugGearState.slotStates[slotId] || null;
+      metaEl.textContent = updatedState && updatedState.itemData && updatedState.itemData.name ? updatedState.itemData.name : "No item";
+    };
+    levelInput.addEventListener("input", applyLevelChange);
+    levelInput.addEventListener("change", () => renderDebugGearControls());
+    levelField.appendChild(levelLabel);
+    levelField.appendChild(levelInput);
+    levelField.appendChild(levelValue);
+
+    const rarityField = document.createElement("div");
+    rarityField.className = "debug-gear-control-field";
+    const rarityLabel = document.createElement("div");
+    rarityLabel.className = "debug-gear-control-field-label";
+    rarityLabel.textContent = "Rarity";
+    const rarityInput = document.createElement("input");
+    rarityInput.type = "range";
+    rarityInput.min = "0";
+    rarityInput.max = String(Math.max(0, rarityPool.length - 1));
+    rarityInput.step = "1";
+    rarityInput.value = String(getDebugRarityIndex(slotState && slotState.rarityId ? slotState.rarityId : "normal"));
+    const rarityValue = document.createElement("div");
+    rarityValue.className = "debug-gear-control-field-value";
+    rarityValue.textContent = humanizeKey(getDebugRarityByIndex(rarityInput.value).id);
+    const applyRarityChange = () => {
+      const currentSlotState = debugGearState.slotStates[slotId] || null;
+      const rarity = getDebugRarityByIndex(rarityInput.value);
+      rarityValue.textContent = humanizeKey(rarity.id);
+      rerollDebugGearSlot(slotId, {
+        itemLevel: currentSlotState && currentSlotState.itemLevel ? currentSlotState.itemLevel : 1,
+        rarityId: rarity.id,
+        keepBaseItem: true
+      });
+      refreshDebugGearLabPreviewOnly();
+      const updatedState = debugGearState.slotStates[slotId] || null;
+      metaEl.textContent = updatedState && updatedState.itemData && updatedState.itemData.name ? updatedState.itemData.name : "No item";
+    };
+    rarityInput.addEventListener("input", applyRarityChange);
+    rarityInput.addEventListener("change", () => renderDebugGearControls());
+    rarityField.appendChild(rarityLabel);
+    rarityField.appendChild(rarityInput);
+    rarityField.appendChild(rarityValue);
+
+    fieldsEl.appendChild(levelField);
+    fieldsEl.appendChild(rarityField);
+    rowEl.appendChild(labelWrap);
+    rowEl.appendChild(fieldsEl);
+    debugGearControls.appendChild(rowEl);
+  }
+}
+
+function renderDebugGearLab() {
+  hideHoverTooltip();
+  drawDebugGearPreviewCharacter();
+  renderDebugGearPreviewSlots();
+  renderDebugGearControls();
+}
+
+function refreshDebugGearLabPreviewOnly() {
+  hideHoverTooltip();
+  drawDebugGearPreviewCharacter();
+  renderDebugGearPreviewSlots();
+}
+
+function rerollDebugGearLab() {
+  debugGearState.slotStates = {};
+  const maxItemLevel = getDebugMaxItemLevel();
+  const rarityPool = getDebugRarityPool();
+  for (const slotId of getDebugGearSlotIds()) {
+    const itemLevel = randomDebugInt(1, maxItemLevel);
+    const rarity = pickRandomEntry(rarityPool) || { id: "normal" };
+    rerollDebugGearSlot(slotId, {
+      itemLevel,
+      rarityId: rarity.id
+    });
+  }
+  renderDebugGearLab();
+}
+
+function setDebugGearVisible(visible) {
+  debugGearState.visible = !!visible;
+  if (debugGearPanel) {
+    debugGearPanel.classList.toggle("hidden", !debugGearState.visible);
+  }
+  if (!debugGearState.visible) {
+    hideHoverTooltip();
+  }
+}
+
+function handleToggleDebugGearLab() {
+  if (!selfStatic || !selfStatic.isAdmin) {
+    return;
+  }
+  rerollDebugGearLab();
+  setDebugGearVisible(true);
 }
 
 function applyInventoryState(msg) {

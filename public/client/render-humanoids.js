@@ -24,6 +24,43 @@
       typeof deps.sanitizeCssColor === "function"
         ? deps.sanitizeCssColor
         : (value) => (/^#[0-9a-fA-F]{3,8}$/.test(String(value || "").trim()) ? String(value).trim() : "");
+    const rarityRankById = Object.freeze({
+      normal: 0,
+      magic: 1,
+      rare: 2,
+      epic: 3,
+      legendary: 4,
+      mythic: 5,
+      divine: 6
+    });
+    const rarityColorById = Object.freeze({
+      normal: "#c4d0da",
+      magic: "#58a6ff",
+      rare: "#f3d26b",
+      epic: "#be7dff",
+      legendary: "#ff9747",
+      mythic: "#ff5fc8",
+      divine: "#fff1b5"
+    });
+    const themeAccentById = Object.freeze({
+      fire: "#ff8d52",
+      frost: "#7fd9ff",
+      arcane: "#b58cff",
+      lightning: "#ffe06a",
+      poison: "#89d96d",
+      shadow: "#7b73af",
+      holy: "#fff0a4",
+      vitality: "#71d5a1",
+      guard: "#d3dbe7",
+      wind: "#9fe2d4",
+      precision: "#ffd1a1"
+    });
+    const slotAuraThresholds = Object.freeze({
+      head: 3,
+      chest: 2,
+      mainHand: 2,
+      offHand: 3
+    });
 
     const motionRuntime = new Map();
     const humanoidMobTypes = new Set(["zombie", "skeleton", "skeleton_archer", "orc"]);
@@ -117,6 +154,185 @@
         }
       }
       return palette;
+    }
+
+    function hexToRgb(color) {
+      const raw = sanitizeCssColor(color).replace("#", "");
+      if (!raw) {
+        return { r: 255, g: 255, b: 255 };
+      }
+      const expanded =
+        raw.length === 3
+          ? raw
+              .split("")
+              .map((part) => part + part)
+              .join("")
+          : raw.slice(0, 6);
+      return {
+        r: parseInt(expanded.slice(0, 2), 16),
+        g: parseInt(expanded.slice(2, 4), 16),
+        b: parseInt(expanded.slice(4, 6), 16)
+      };
+    }
+
+    function rgbToCss(rgb, alpha = 1) {
+      return `rgba(${clamp(Math.round(rgb.r || 0), 0, 255)}, ${clamp(Math.round(rgb.g || 0), 0, 255)}, ${clamp(
+        Math.round(rgb.b || 0),
+        0,
+        255
+      )}, ${clamp(alpha, 0, 1)})`;
+    }
+
+    function mixColors(colorA, colorB, ratio = 0.5, alpha = 1) {
+      const a = hexToRgb(colorA);
+      const b = hexToRgb(colorB);
+      const t = clamp(ratio, 0, 1);
+      return rgbToCss(
+        {
+          r: lerp(a.r, b.r, t),
+          g: lerp(a.g, b.g, t),
+          b: lerp(a.b, b.b, t)
+        },
+        alpha
+      );
+    }
+
+    function tintHex(colorA, colorB, ratio = 0.5) {
+      const a = hexToRgb(colorA);
+      const b = hexToRgb(colorB);
+      const t = clamp(ratio, 0, 1);
+      const toHex = (value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0");
+      return (
+        "#" +
+        toHex(lerp(a.r, b.r, t)) +
+        toHex(lerp(a.g, b.g, t)) +
+        toHex(lerp(a.b, b.b, t))
+      );
+    }
+
+    function getAppearanceThemeList(entry) {
+      if (Array.isArray(entry?.appearanceThemes) && entry.appearanceThemes.length) {
+        return entry.appearanceThemes.map((value) => toLowerWord(value)).filter(Boolean).slice(0, 3);
+      }
+      const themes = new Set();
+      const text = `${String(entry?.name || "")} ${String(entry?.itemId || "")}`.toLowerCase();
+      const tagValues = Array.isArray(entry?.tags) ? entry.tags.map((value) => toLowerWord(value)).filter(Boolean) : [];
+      for (const tag of tagValues) {
+        if (themeAccentById[tag]) {
+          themes.add(tag);
+        }
+      }
+      for (const themeId of Object.keys(themeAccentById)) {
+        if (text.includes(themeId)) {
+          themes.add(themeId);
+        }
+      }
+      return Array.from(themes).slice(0, 3);
+    }
+
+    function getAppearanceSeed(entry, fallbackKey) {
+      const explicitSeed = Number(entry?.appearanceSeed);
+      if (Number.isFinite(explicitSeed) && explicitSeed > 0) {
+        return explicitSeed >>> 0;
+      }
+      return hashString(`${fallbackKey || "slot"}|${String(entry?.itemId || "")}|${String(entry?.name || "")}`);
+    }
+
+    function getRarityId(entry) {
+      const rarityId = toLowerWord(entry?.rarity);
+      return rarityRankById[rarityId] !== undefined ? rarityId : "normal";
+    }
+
+    function getAppearancePower(entry) {
+      const explicitPower = Number(entry?.appearancePower);
+      if (Number.isFinite(explicitPower) && explicitPower > 0) {
+        return explicitPower;
+      }
+      return 0;
+    }
+
+    function createSlotVisual(entry, fallbackKey, slotId, extra = {}) {
+      const themes = getAppearanceThemeList(entry);
+      const rarityId = getRarityId(entry);
+      const seed = getAppearanceSeed(entry, `${slotId}|${fallbackKey}`);
+      const primaryTheme = themes[0] || "";
+      const accentColor = themeAccentById[primaryTheme] || rarityColorById[rarityId] || "#d5ddea";
+      const rarityColor = rarityColorById[rarityId] || rarityColorById.normal;
+      const appearancePower = getAppearancePower(entry);
+      const auraStrength = clamp(
+        (Math.max(0, rarityRankById[rarityId] - 2) * 0.18) + Math.min(0.28, appearancePower / 120),
+        0,
+        0.8
+      );
+      return {
+        slotId,
+        seed,
+        variant: seed % 5,
+        variantMinor: (seed >>> 3) % 7,
+        rarityId,
+        rarityRank: rarityRankById[rarityId] || 0,
+        rarityColor,
+        themes,
+        primaryTheme,
+        accentColor,
+        trimColor: tintHex(rarityColor, accentColor, 0.32),
+        auraStrength,
+        appearancePower,
+        itemId: String(entry?.itemId || ""),
+        nameText: getNameText(entry),
+        tags: getTagSet(entry),
+        ...extra
+      };
+    }
+
+    function getVisualMaterialColors(profile, palette, material) {
+      const basePrimary =
+        material === "plate"
+          ? palette.metal
+          : material === "leather"
+            ? palette.leather
+            : material === "robe"
+              ? palette.cloth
+              : palette.cloth;
+      const baseSecondary =
+        material === "plate"
+          ? palette.metalDark
+          : material === "leather"
+            ? palette.leatherDark
+            : palette.clothDark;
+      const accentRatio = clamp(0.12 + (profile?.rarityRank || 0) * 0.04 + (profile?.appearancePower || 0) / 240, 0.08, 0.46);
+      return {
+        primary: tintHex(basePrimary, profile?.accentColor || basePrimary, accentRatio),
+        secondary: tintHex(baseSecondary, profile?.accentColor || baseSecondary, accentRatio * 0.72),
+        trim: tintHex(profile?.trimColor || profile?.rarityColor || baseSecondary, "#ffffff", 0.08)
+      };
+    }
+
+    function drawItemAura(x, y, profile, scale, spreadScale = 1) {
+      if (!profile) {
+        return;
+      }
+      const threshold = slotAuraThresholds[profile.slotId] ?? 4;
+      if (profile.rarityRank < threshold && profile.auraStrength < 0.24) {
+        return;
+      }
+      const seed = profile.seed || 0;
+      const particleCount = Math.min(4, 2 + Math.floor(profile.rarityRank / 2));
+      const now = performance.now() / 1000;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (let index = 0; index < particleCount; index += 1) {
+        const angle = now * (0.8 + ((seed + index) % 7) * 0.09) + (Math.PI * 2 * index) / particleCount + ((seed >>> 4) % 31) * 0.07;
+        const radius = (5 + index * 2.1 + ((seed >>> (index + 3)) % 5)) * scale * spreadScale;
+        const px = x + Math.cos(angle) * radius;
+        const py = y + Math.sin(angle) * radius * 0.72;
+        const glowRadius = (1.1 + ((seed >>> (index + 7)) % 3) * 0.45) * scale;
+        ctx.fillStyle = mixColors(profile.accentColor, "#ffffff", 0.45, clamp(0.28 + profile.auraStrength * 0.55, 0.22, 0.74));
+        ctx.beginPath();
+        ctx.arc(px, py, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
     }
 
     function getBasePalette(style, options = {}) {
@@ -301,8 +517,38 @@
       };
     }
 
-    function buildLoadout(style, equipmentSlots) {
-      const defaults = style?.defaults && typeof style.defaults === "object" ? style.defaults : {};
+    function buildArmorVisual(entry, fallback, slotId) {
+      const material = resolveArmorMaterial(entry, fallback);
+      return createSlotVisual(entry, fallback, slotId, { material });
+    }
+
+    function buildHeadVisual(entry, fallback, style) {
+      const kind = resolveHeadStyle(entry, fallback, style);
+      return createSlotVisual(entry, kind, "head", { kind });
+    }
+
+    function buildHeldItemVisual(entry, fallback, slotId) {
+      const held = resolveHeldItem(entry, fallback, slotId);
+      const profile = createSlotVisual(entry, held.type || fallback, slotId, held);
+      return profile;
+    }
+
+    function buildLoadout(style, equipmentSlots, useDefaultGearFallback = true) {
+      const defaults =
+        useDefaultGearFallback && style?.defaults && typeof style.defaults === "object"
+          ? style.defaults
+          : {
+              head: "none",
+              chest: "none",
+              shoulders: "none",
+              gloves: "none",
+              bracers: "none",
+              belt: "none",
+              pants: "none",
+              boots: "none",
+              mainHand: "none",
+              offHand: "none"
+            };
       const chestEntry = getSlotEntry(equipmentSlots, "chest");
       const pantsEntry = getSlotEntry(equipmentSlots, "pants");
       const bootsEntry = getSlotEntry(equipmentSlots, "boots");
@@ -311,17 +557,39 @@
       const bootsStyle = resolveArmorMaterial(bootsEntry, defaults.boots || pantsStyle);
       const mainHand = resolveHeldItem(getSlotEntry(equipmentSlots, "mainHand"), defaults.mainHand, "mainHand");
       const offHand = resolveHeldItem(getSlotEntry(equipmentSlots, "offHand"), defaults.offHand, "offHand");
+      const headVisual = buildHeadVisual(getSlotEntry(equipmentSlots, "head"), defaults.head, style);
+      const shouldersVisual = buildArmorVisual(getSlotEntry(equipmentSlots, "shoulders"), defaults.shoulders || chestStyle, "shoulders");
+      const chestVisual = buildArmorVisual(chestEntry, defaults.chest, "chest");
+      const glovesVisual = buildArmorVisual(getSlotEntry(equipmentSlots, "gloves"), defaults.gloves || chestStyle, "gloves");
+      const bracersVisual = buildArmorVisual(getSlotEntry(equipmentSlots, "bracers"), defaults.bracers || chestStyle, "bracers");
+      const beltVisual = buildArmorVisual(getSlotEntry(equipmentSlots, "belt"), defaults.belt || chestStyle, "belt");
+      const pantsVisual = buildArmorVisual(pantsEntry, defaults.pants || chestStyle, "pants");
+      const bootsVisual = buildArmorVisual(bootsEntry, defaults.boots || pantsStyle, "boots");
+      const mainHandVisual = buildHeldItemVisual(getSlotEntry(equipmentSlots, "mainHand"), defaults.mainHand, "mainHand");
+      const offHandVisual = mainHand.twoHanded
+        ? createSlotVisual(null, "none", "offHand", { type: "none", twoHanded: false, slotId: "offHand" })
+        : buildHeldItemVisual(getSlotEntry(equipmentSlots, "offHand"), defaults.offHand, "offHand");
       return {
-        head: resolveHeadStyle(getSlotEntry(equipmentSlots, "head"), defaults.head, style),
-        shoulders: resolveArmorMaterial(getSlotEntry(equipmentSlots, "shoulders"), defaults.shoulders || chestStyle),
+        head: headVisual.kind,
+        headVisual,
+        shoulders: shouldersVisual.material,
+        shouldersVisual,
         chest: chestStyle,
-        gloves: resolveArmorMaterial(getSlotEntry(equipmentSlots, "gloves"), defaults.gloves || chestStyle),
-        bracers: resolveArmorMaterial(getSlotEntry(equipmentSlots, "bracers"), defaults.bracers || chestStyle),
-        belt: resolveArmorMaterial(getSlotEntry(equipmentSlots, "belt"), defaults.belt || chestStyle),
+        chestVisual,
+        gloves: glovesVisual.material,
+        glovesVisual,
+        bracers: bracersVisual.material,
+        bracersVisual,
+        belt: beltVisual.material,
+        beltVisual,
         pants: pantsStyle,
+        pantsVisual,
         boots: bootsStyle,
+        bootsVisual,
         mainHand,
-        offHand: mainHand.twoHanded ? { type: "none", twoHanded: false, slotId: "offHand" } : offHand
+        mainHandVisual,
+        offHand: mainHand.twoHanded ? { type: "none", twoHanded: false, slotId: "offHand" } : offHand,
+        offHandVisual
       };
     }
 
@@ -364,14 +632,14 @@
       ctx.stroke();
     }
 
-    function drawBowWeapon(mainHandPose, drawHandPose, side, palette, pull, scale) {
+    function drawBowWeapon(mainHandPose, drawHandPose, side, palette, pull, scale, profile = null) {
       if (!mainHandPose) {
         return;
       }
       const sign = side === "left" ? -1 : 1;
       const curveDir = sign;
-      const bowColor = palette.bow || palette.leather;
-      const bowDark = palette.bowDark || palette.leatherDark;
+      const bowColor = tintHex(palette.bow || palette.leather, profile?.accentColor || palette.accent, 0.12 + (profile?.rarityRank || 0) * 0.04);
+      const bowDark = tintHex(palette.bowDark || palette.leatherDark, profile?.trimColor || palette.outline, 0.2);
       const stringColor = "#edf2fb";
       const shaftColor = palette.arrowShaft || "#e8edf7";
       const headColor = palette.arrowHead || palette.metalDark || palette.outline;
@@ -390,6 +658,7 @@
       const arrowY = lerp(gripY, pullY, 0.58);
       const arrowBackX = pullX + curveDir * 0.75 * scale;
       const arrowTipX = gripX + curveDir * (10.6 + pull * 3.8) * scale;
+      drawItemAura(gripX + curveDir * 2.2 * scale, gripY, profile, scale, 0.7);
 
       ctx.strokeStyle = bowDark;
       ctx.lineWidth = 2.35 * scale;
@@ -469,38 +738,54 @@
       return resolveBowHandSide(entity, options);
     }
 
-    function drawHeldItem(handX, handY, type, side, palette, attackVisual, scale, armPose = null) {
+    function drawHeldItem(handX, handY, type, side, palette, attackVisual, scale, armPose = null, profile = null) {
       if (!type || type === "none") {
         return;
       }
       const sign = side === "left" ? -1 : 1;
       const forearmAngle = armPose ? Math.atan2(handY - armPose.elbowY, handX - armPose.elbowX) : side === "left" ? 2.18 : 0.96;
+      const metalPrimary = tintHex(palette.metal, profile?.accentColor || palette.accent, 0.08 + (profile?.rarityRank || 0) * 0.05);
+      const metalSecondary = tintHex(palette.metalDark, profile?.trimColor || palette.outline, 0.22);
+      const leatherPrimary = tintHex(palette.leather, profile?.accentColor || palette.accent, 0.14);
+      const leatherSecondary = tintHex(palette.leatherDark, profile?.trimColor || palette.outline, 0.18);
+      const variant = Number(profile?.variant || 0);
+      drawItemAura(handX + sign * 2.8 * scale, handY - 1.5 * scale, profile, scale, 0.54);
       if (type === "shield") {
-        ctx.fillStyle = palette.metal;
+        const shieldRadiusX = (variant % 2 === 0 ? 5.1 : 4.4) * scale;
+        const shieldRadiusY = (variant % 3 === 0 ? 5.6 : 4.7) * scale;
+        ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.8 * scale;
         ctx.beginPath();
-        ctx.arc(handX + sign * 4.2 * scale, handY + 1.4 * scale, 5.1 * scale, 0, Math.PI * 2);
+        if (variant % 2 === 0) {
+          ctx.arc(handX + sign * 4.2 * scale, handY + 1.4 * scale, shieldRadiusX, 0, Math.PI * 2);
+        } else {
+          ctx.ellipse(handX + sign * 4.2 * scale, handY + 1.4 * scale, shieldRadiusX, shieldRadiusY, sign * 0.18, 0, Math.PI * 2);
+        }
         ctx.fill();
         ctx.stroke();
-        ctx.strokeStyle = palette.metalDark;
+        ctx.strokeStyle = metalSecondary;
         ctx.lineWidth = 1 * scale;
         ctx.beginPath();
-        ctx.arc(handX + sign * 4.2 * scale, handY + 1.4 * scale, 4 * scale, 0, Math.PI * 2);
+        if (variant % 2 === 0) {
+          ctx.arc(handX + sign * 4.2 * scale, handY + 1.4 * scale, 4 * scale, 0, Math.PI * 2);
+        } else {
+          ctx.ellipse(handX + sign * 4.2 * scale, handY + 1.4 * scale, 3.25 * scale, 4.1 * scale, sign * 0.18, 0, Math.PI * 2);
+        }
         ctx.stroke();
         return;
       }
       if (type === "staff" || type === "wand") {
-        const len = (type === "staff" ? 18 : 13) * scale;
-        drawLine(handX, handY, handX + sign * 2.2 * scale, handY - len, "#5d422c", 2.4 * scale);
-        ctx.fillStyle = palette.accent;
+        const len = (type === "staff" ? 18 + variant * 0.8 : 13 + variant * 0.6) * scale;
+        drawLine(handX, handY, handX + sign * 2.2 * scale, handY - len, leatherSecondary, 2.4 * scale);
+        ctx.fillStyle = profile?.accentColor || palette.accent;
         ctx.beginPath();
         ctx.arc(handX + sign * 2.2 * scale, handY - len - 2.5 * scale, (type === "staff" ? 4.2 : 2.8) * scale, 0, Math.PI * 2);
         ctx.fill();
         return;
       }
       if (type === "orb") {
-        ctx.fillStyle = palette.accent;
+        ctx.fillStyle = profile?.accentColor || palette.accent;
         ctx.beginPath();
         ctx.arc(handX + sign * 5.2 * scale, handY - 1.6 * scale, 4.1 * scale, 0, Math.PI * 2);
         ctx.fill();
@@ -511,20 +796,23 @@
         return;
       }
       if (type === "axe") {
-        const len = 12 * scale;
+        const len = (11.5 + variant * 0.9) * scale;
         const haftAngle = forearmAngle + (attackVisual && attackVisual.kind === "dual_axes" ? sign * 0.26 : sign * 0.12);
         const tipX = handX + Math.cos(haftAngle) * len;
         const tipY = handY + Math.sin(haftAngle) * len;
-        drawLine(handX, handY, tipX, tipY, "#6f4c33", 2.2 * scale);
-        ctx.fillStyle = palette.metal;
+        drawLine(handX, handY, tipX, tipY, leatherSecondary, 2.2 * scale);
+        ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.2 * scale;
         const perpX = -Math.sin(haftAngle);
         const perpY = Math.cos(haftAngle);
         ctx.beginPath();
         ctx.moveTo(tipX, tipY);
-        ctx.lineTo(tipX + perpX * 5.6 * scale, tipY + perpY * 5.6 * scale);
-        ctx.lineTo(tipX + perpX * 2.1 * scale - Math.cos(haftAngle) * 4.4 * scale, tipY + perpY * 2.1 * scale - Math.sin(haftAngle) * 4.4 * scale);
+        ctx.lineTo(tipX + perpX * (5.2 + variant * 0.55) * scale, tipY + perpY * (5.2 + variant * 0.55) * scale);
+        ctx.lineTo(
+          tipX + perpX * (2 + variant * 0.2) * scale - Math.cos(haftAngle) * (4.1 + variant * 0.5) * scale,
+          tipY + perpY * (2 + variant * 0.2) * scale - Math.sin(haftAngle) * (4.1 + variant * 0.5) * scale
+        );
         ctx.lineTo(tipX - Math.cos(haftAngle) * 3.2 * scale, tipY - Math.sin(haftAngle) * 3.2 * scale);
         ctx.closePath();
         ctx.fill();
@@ -532,7 +820,7 @@
         return;
       }
       if (type === "sword") {
-        const len = 14 * scale;
+        const len = (13 + variant * 1.15) * scale;
         const bladeAngle =
           forearmAngle +
           (attackVisual && attackVisual.kind === "swing"
@@ -546,9 +834,16 @@
         const tipY = handY + Math.sin(bladeAngle) * len;
         const perpX = -Math.sin(bladeAngle);
         const perpY = Math.cos(bladeAngle);
-        drawLine(handX, handY, tipX, tipY, palette.metalDark, 2.4 * scale);
-        drawLine(handX + perpX * 0.35 * scale, handY + perpY * 0.35 * scale, tipX + perpX * 0.35 * scale, tipY + perpY * 0.35 * scale, "#f3f6fb", 1 * scale);
-        drawLine(handX - perpX * 2.1 * scale, handY - perpY * 2.1 * scale, handX + perpX * 2.1 * scale, handY + perpY * 2.1 * scale, palette.metalDark, 1.6 * scale);
+        drawLine(handX, handY, tipX, tipY, metalSecondary, 2.4 * scale);
+        drawLine(handX + perpX * 0.35 * scale, handY + perpY * 0.35 * scale, tipX + perpX * 0.35 * scale, tipY + perpY * 0.35 * scale, mixColors("#f3f6fb", profile?.accentColor || "#f3f6fb", 0.18), 1 * scale);
+        drawLine(
+          handX - perpX * (1.7 + variant * 0.42) * scale,
+          handY - perpY * (1.7 + variant * 0.42) * scale,
+          handX + perpX * (2.1 + variant * 0.52) * scale,
+          handY + perpY * (2.1 + variant * 0.52) * scale,
+          metalSecondary,
+          1.6 * scale
+        );
         return;
       }
       if (type === "claws" || type === "none") {
@@ -561,22 +856,28 @@
       }
     }
 
-    function drawHeadgear(cx, headY, headRadius, styleName, palette, scale) {
+    function drawHeadgear(cx, headY, headRadius, styleName, palette, scale, profile = null) {
       if (!styleName || styleName === "none") {
         return;
       }
+      const variant = Number(profile?.variant || 0);
+      const clothPrimary = tintHex(palette.cloth, profile?.accentColor || palette.accent, 0.18 + (profile?.rarityRank || 0) * 0.04);
+      const clothSecondary = tintHex(palette.clothDark, profile?.trimColor || palette.outline, 0.18);
+      const metalPrimary = tintHex(styleName === "rusty_helmet" ? palette.helmetMetal || "#8f674d" : palette.metal, profile?.accentColor || palette.accent, 0.1 + (profile?.rarityRank || 0) * 0.04);
+      const metalDark = tintHex(styleName === "rusty_helmet" ? palette.helmetMetalDark || "#5f4131" : palette.metalDark, profile?.trimColor || palette.outline, 0.18);
+      drawItemAura(cx, headY - 2 * scale, profile, scale, 0.64);
       if (styleName === "wizard_hat") {
-        ctx.fillStyle = palette.cloth;
+        ctx.fillStyle = clothPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.8 * scale;
         ctx.beginPath();
-        ctx.ellipse(cx + 0.8 * scale, headY - 2.7 * scale, 13 * scale, 4.8 * scale, -0.14, 0, Math.PI * 2);
+        ctx.ellipse(cx + 0.8 * scale, headY - 2.7 * scale, (11.4 + variant * 0.95) * scale, (4.2 + (variant % 3) * 0.45) * scale, -0.14, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         ctx.beginPath();
-        ctx.moveTo(cx - 7 * scale, headY - 2.7 * scale);
-        ctx.lineTo(cx + 1.8 * scale, headY - 19 * scale);
-        ctx.lineTo(cx + 10.5 * scale, headY - 4.4 * scale);
+        ctx.moveTo(cx - (6.4 + variant * 0.35) * scale, headY - 2.7 * scale);
+        ctx.lineTo(cx + 1.8 * scale, headY - (17 + variant * 1.25) * scale);
+        ctx.lineTo(cx + (9.4 + variant * 0.55) * scale, headY - (4 + (variant % 2) * 0.6) * scale);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
@@ -588,29 +889,27 @@
         return;
       }
       if (styleName === "hood") {
-        ctx.fillStyle = palette.clothDark;
+        ctx.fillStyle = clothSecondary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.8 * scale;
         ctx.beginPath();
-        ctx.moveTo(cx - 9.5 * scale, headY - 1.5 * scale);
-        ctx.quadraticCurveTo(cx, headY - 14.5 * scale, cx + 9.5 * scale, headY - 1.5 * scale);
-        ctx.lineTo(cx + 7.2 * scale, headY + 6.8 * scale);
-        ctx.quadraticCurveTo(cx, headY + 10.2 * scale, cx - 7.2 * scale, headY + 6.8 * scale);
+        ctx.moveTo(cx - (8.8 + variant * 0.55) * scale, headY - 1.5 * scale);
+        ctx.quadraticCurveTo(cx, headY - (13.2 + variant * 0.9) * scale, cx + (8.8 + variant * 0.55) * scale, headY - 1.5 * scale);
+        ctx.lineTo(cx + (6.8 + variant * 0.35) * scale, headY + (6.4 + (variant % 2) * 0.7) * scale);
+        ctx.quadraticCurveTo(cx, headY + (9 + (variant % 3) * 0.8) * scale, cx - (6.8 + variant * 0.35) * scale, headY + (6.4 + (variant % 2) * 0.7) * scale);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
         return;
       }
       if (styleName === "rusty_helmet") {
-        const metal = palette.helmetMetal || "#8f674d";
-        const metalDark = palette.helmetMetalDark || "#5f4131";
-        ctx.fillStyle = metal;
+        ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 2 * scale;
         ctx.beginPath();
-        ctx.arc(cx, headY, headRadius + 1.25 * scale, Math.PI, Math.PI * 2);
-        ctx.lineTo(cx + headRadius + 1.2 * scale, headY + 1.9 * scale);
-        ctx.lineTo(cx - headRadius - 1.2 * scale, headY + 1.9 * scale);
+        ctx.arc(cx, headY, headRadius + (1 + (variant % 2) * 0.45) * scale, Math.PI, Math.PI * 2);
+        ctx.lineTo(cx + headRadius + (1 + (variant % 3) * 0.35) * scale, headY + 1.9 * scale);
+        ctx.lineTo(cx - headRadius - (1 + ((variant + 1) % 3) * 0.35) * scale, headY + 1.9 * scale);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
@@ -620,7 +919,7 @@
         ctx.moveTo(cx - (headRadius - 1.8) * scale, headY - 0.1 * scale);
         ctx.lineTo(cx + (headRadius - 1.8) * scale, headY - 0.1 * scale);
         ctx.moveTo(cx, headY - headRadius * scale);
-        ctx.lineTo(cx, headY + headRadius * 0.4 * scale);
+        ctx.lineTo(cx, headY + headRadius * (0.3 + (variant % 2) * 0.12) * scale);
         ctx.stroke();
         ctx.fillStyle = "rgba(168, 108, 74, 0.28)";
         ctx.beginPath();
@@ -630,17 +929,17 @@
         return;
       }
       if (styleName === "helmet") {
-        ctx.fillStyle = palette.metal;
+        ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 2 * scale;
         ctx.beginPath();
-        ctx.arc(cx, headY, headRadius + 1.2 * scale, Math.PI, Math.PI * 2);
-        ctx.lineTo(cx + headRadius + 1.2 * scale, headY + 1.8 * scale);
-        ctx.lineTo(cx - headRadius - 1.2 * scale, headY + 1.8 * scale);
+        ctx.arc(cx, headY, headRadius + (1 + (variant % 2) * 0.45) * scale, Math.PI, Math.PI * 2);
+        ctx.lineTo(cx + headRadius + (1 + (variant % 3) * 0.3) * scale, headY + 1.8 * scale);
+        ctx.lineTo(cx - headRadius - (1 + ((variant + 2) % 3) * 0.3) * scale, headY + 1.8 * scale);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
-        ctx.strokeStyle = palette.metalDark;
+        ctx.strokeStyle = metalDark;
         ctx.lineWidth = 1.6 * scale;
         ctx.beginPath();
         ctx.moveTo(cx - (headRadius - 2) * scale, headY - 0.2 * scale);
@@ -648,6 +947,15 @@
         ctx.moveTo(cx, headY - headRadius * scale);
         ctx.lineTo(cx, headY + headRadius * 0.5 * scale);
         ctx.stroke();
+        if (variant % 2 === 1) {
+          ctx.fillStyle = metalDark;
+          ctx.beginPath();
+          ctx.moveTo(cx - 2.1 * scale, headY - headRadius * 1.02 * scale);
+          ctx.lineTo(cx, headY - headRadius * 1.55 * scale);
+          ctx.lineTo(cx + 2.1 * scale, headY - headRadius * 1.02 * scale);
+          ctx.closePath();
+          ctx.fill();
+        }
       }
     }
 
@@ -678,57 +986,82 @@
     function drawChest(cx, cy, loadout, palette, species, scale) {
       const chestType = loadout.chest;
       const shouldersType = loadout.shoulders;
-      const armorColor =
-        chestType === "plate" ? palette.metal : chestType === "leather" ? palette.leather : chestType === "robe" ? palette.cloth : palette.cloth;
-      const armorDark =
-        chestType === "plate" ? palette.metalDark : chestType === "leather" ? palette.leatherDark : palette.clothDark;
+      const chestProfile = loadout.chestVisual || null;
+      const shoulderProfile = loadout.shouldersVisual || null;
+      const chestColors = getVisualMaterialColors(chestProfile, palette, chestType);
+      const shoulderColors = getVisualMaterialColors(shoulderProfile, palette, shouldersType);
+      const armorColor = chestColors.primary;
+      const armorDark = chestColors.secondary;
       const bodyColor = species === "skeleton" ? palette.bone : palette.skin;
+      const chestVariant = Number(chestProfile?.variant || 0);
+      drawItemAura(cx, cy - 0.5 * scale, chestProfile, scale, 0.88);
 
       if (species === "skeleton" && (chestType === "ribcage" || chestType === "none" || !chestType)) {
         drawRibCage(cx, cy, palette, scale);
+      } else if (chestType === "none" || !chestType) {
+        ctx.fillStyle = bodyColor;
+        ctx.strokeStyle = palette.outline;
+        ctx.lineWidth = 2 * scale;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, (7.4 + chestVariant * 0.3) * scale, (6.4 + (chestVariant % 2) * 0.45) * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
       } else if (chestType === "robe") {
         ctx.fillStyle = armorColor;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 2 * scale;
         ctx.beginPath();
-        ctx.moveTo(cx - 7.5 * scale, cy - 6 * scale);
-        ctx.quadraticCurveTo(cx, cy - 10.5 * scale, cx + 7.5 * scale, cy - 6 * scale);
-        ctx.lineTo(cx + 10 * scale, cy + 10.5 * scale);
-        ctx.quadraticCurveTo(cx, cy + 15.5 * scale, cx - 10 * scale, cy + 10.5 * scale);
+        ctx.moveTo(cx - (7 + chestVariant * 0.55) * scale, cy - 6 * scale);
+        ctx.quadraticCurveTo(cx, cy - (10.5 + (chestVariant % 2) * 1.2) * scale, cx + (7 + chestVariant * 0.55) * scale, cy - 6 * scale);
+        ctx.lineTo(cx + (9.3 + chestVariant * 0.45) * scale, cy + (10.2 + (chestVariant % 3) * 1.1) * scale);
+        ctx.quadraticCurveTo(cx, cy + (15 + (chestVariant % 2) * 1.1) * scale, cx - (9.3 + chestVariant * 0.45) * scale, cy + (10.2 + (chestVariant % 3) * 1.1) * scale);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
         drawLine(cx, cy - 4 * scale, cx, cy + 11.5 * scale, armorDark, 1.1 * scale);
+        if (chestVariant % 2 === 1) {
+          drawLine(cx - 5.5 * scale, cy - 2 * scale, cx + 5.5 * scale, cy - 0.8 * scale, chestColors.trim, 1 * scale);
+        }
       } else {
         ctx.fillStyle = species === "zombie" ? bodyColor : armorColor;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 2 * scale;
         ctx.beginPath();
-        ctx.ellipse(cx, cy, 8.5 * scale, 7.2 * scale, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx, cy, (7.8 + chestVariant * 0.45) * scale, (6.8 + (chestVariant % 2) * 0.65) * scale, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         if (chestType === "plate") {
           drawLine(cx - 6 * scale, cy + 3.8 * scale, cx + 6 * scale, cy + 3.8 * scale, armorDark, 1.4 * scale);
+          if (chestVariant % 2 === 0) {
+            drawLine(cx, cy - 5.2 * scale, cx, cy + 5 * scale, chestColors.trim, 1.2 * scale);
+          }
+        } else if (chestType === "leather") {
+          drawLine(cx - 5.2 * scale, cy - 4.8 * scale, cx + 4.6 * scale, cy + 4.6 * scale, chestColors.trim, 1 * scale);
+          if (chestVariant % 2 === 1) {
+            drawLine(cx + 5.2 * scale, cy - 4.8 * scale, cx - 4.6 * scale, cy + 4.6 * scale, armorDark, 0.9 * scale);
+          }
         }
       }
 
       if (shouldersType === "plate") {
-        ctx.fillStyle = palette.metal;
+        ctx.fillStyle = shoulderColors.primary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.4 * scale;
         ctx.beginPath();
-        ctx.ellipse(cx - 7.6 * scale, cy - 3 * scale, 3.8 * scale, 2.7 * scale, -0.35, 0, Math.PI * 2);
-        ctx.ellipse(cx + 7.6 * scale, cy - 3 * scale, 3.8 * scale, 2.7 * scale, 0.35, 0, Math.PI * 2);
+        ctx.ellipse(cx - 7.6 * scale, cy - 3 * scale, (3.4 + (shoulderProfile?.variant || 0) * 0.3) * scale, 2.7 * scale, -0.35, 0, Math.PI * 2);
+        ctx.ellipse(cx + 7.6 * scale, cy - 3 * scale, (3.4 + (shoulderProfile?.variant || 0) * 0.3) * scale, 2.7 * scale, 0.35, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
       }
 
-      ctx.strokeStyle = loadout.belt === "plate" ? palette.leatherDark : palette.leather;
-      ctx.lineWidth = 1.8 * scale;
-      ctx.beginPath();
-      ctx.moveTo(cx - 6.2 * scale, cy + 4.8 * scale);
-      ctx.lineTo(cx + 6.2 * scale, cy + 4.8 * scale);
-      ctx.stroke();
+      if (loadout.belt && loadout.belt !== "none") {
+        ctx.strokeStyle = loadout.belt === "plate" ? palette.leatherDark : palette.leather;
+        ctx.lineWidth = 1.8 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - 6.2 * scale, cy + 4.8 * scale);
+        ctx.lineTo(cx + 6.2 * scale, cy + 4.8 * scale);
+        ctx.stroke();
+      }
     }
 
     function drawHead(cx, cy, palette, species, scale) {
@@ -897,7 +1230,7 @@
       const scale = clamp(Number(style.sizeScale) || 1, 0.6, 2.4);
       const motion = getMotionState(options.entityKey || String(entity.id || "entity"), entity, style);
       const palette = getBasePalette(style, { isSelf });
-      const loadout = buildLoadout(style, equipmentSlots);
+      const loadout = buildLoadout(style, equipmentSlots, options.useDefaultGearFallback !== false);
       const attackVisual = resolveAttackState(style, loadout, attackState, castState);
       const runtimeState = motion.runtimeState || null;
       const targetBowPull = loadout.mainHand.type === "bow" && attackVisual.kind === "bow" ? clamp(Number(attackVisual.progress) || 0, 0, 1) : 0;
@@ -914,6 +1247,9 @@
       const hipY = cy + 7.8 * scale;
       const shoulderSpread = 5.9 * scale;
       const hipSpread = 3 * scale;
+      const pantsColors = getVisualMaterialColors(loadout.pantsVisual || null, palette, loadout.pants);
+      const bootsColors = getVisualMaterialColors(loadout.bootsVisual || null, palette, loadout.boots);
+      const bootVariant = Number(loadout.bootsVisual?.variant || 0);
 
       if (species !== "skeleton") {
         drawLine(cx, headY + 7.5 * scale, cx, shoulderY - 0.6 * scale, palette.outline, 2 * scale);
@@ -930,21 +1266,46 @@
         const toeX = ankleX + Math.cos(pose.footAngle) * pose.footLen;
         const toeY = ankleY + Math.sin(pose.footAngle) * pose.footLen;
         const legColor =
-          loadout.pants === "plate" ? palette.metalDark : loadout.pants === "leather" ? palette.leather : loadout.pants === "robe" ? palette.cloth : species === "skeleton" ? palette.boneDark : palette.cloth;
+          species === "skeleton"
+            ? palette.boneDark
+            : loadout.pants === "none" || !loadout.pants
+              ? palette.skinDark
+              : loadout.pants === "plate"
+              ? pantsColors.secondary
+              : loadout.pants === "leather"
+                ? pantsColors.primary
+                : loadout.pants === "robe"
+                  ? pantsColors.primary
+                  : pantsColors.primary;
         drawLine(hipX, hipY, kneeX, kneeY, legColor, 2.9 * scale);
         drawLine(kneeX, kneeY, ankleX, ankleY, legColor, 2.7 * scale);
         drawLine(ankleX, ankleY, toeX, toeY, legColor, 2.2 * scale);
         drawJoint(kneeX, kneeY, 1.18 * scale, legColor, palette.outline, 0.8 * scale);
         drawJoint(ankleX, ankleY, 0.92 * scale, legColor, palette.outline, 0.72 * scale);
-        ctx.fillStyle = loadout.boots === "plate" ? palette.metal : loadout.boots === "leather" ? palette.leatherDark : palette.outline;
+        ctx.fillStyle =
+          loadout.boots === "none" || !loadout.boots
+            ? palette.skinDark
+            : loadout.boots === "plate"
+              ? bootsColors.primary
+              : loadout.boots === "leather"
+                ? bootsColors.secondary
+                : bootsColors.secondary;
         ctx.beginPath();
-        ctx.ellipse(toeX, toeY + 0.9 * scale, 2.45 * scale, 1.45 * scale, pose.footAngle, 0, Math.PI * 2);
+        ctx.ellipse(
+          toeX,
+          toeY + 0.9 * scale,
+          (2.2 + (bootVariant % 3) * 0.22) * scale,
+          (1.35 + (bootVariant % 2) * 0.18) * scale,
+          pose.footAngle,
+          0,
+          Math.PI * 2
+        );
         ctx.fill();
       }
 
       drawChest(cx, cy + 3.2 * scale, loadout, palette, species, scale);
       const headRadius = drawHead(cx, headY, palette, species, scale);
-      drawHeadgear(cx, headY, headRadius, loadout.head, palette, scale);
+      drawHeadgear(cx, headY, headRadius, loadout.head, palette, scale, loadout.headVisual);
 
       const armPoseBySide = {};
       for (const side of ["left", "right"]) {
@@ -967,13 +1328,15 @@
         const bowHandPose = armPoseBySide[bowHandSide];
         const drawHandSide = bowHandSide === "left" ? "right" : "left";
         const drawHandPose = armPoseBySide[drawHandSide];
-        drawBowWeapon(bowHandPose, drawHandPose, bowHandSide, palette, bowPull, scale);
+        drawBowWeapon(bowHandPose, drawHandPose, bowHandSide, palette, bowPull, scale, loadout.mainHandVisual);
       } else {
         const offHandSide = mainHandSide === "left" ? "right" : "left";
         for (const side of ["left", "right"]) {
           const handPose = armPoseBySide[side];
           const handItem = side === mainHandSide ? loadout.mainHand : side === offHandSide ? loadout.offHand : { type: "none" };
-          drawHeldItem(handPose.handX, handPose.handY, handItem.type, side, palette, attackVisual, scale, handPose);
+          const handProfile =
+            side === mainHandSide ? loadout.mainHandVisual : side === offHandSide ? loadout.offHandVisual : null;
+          drawHeldItem(handPose.handX, handPose.handY, handItem.type, side, palette, attackVisual, scale, handPose, handProfile);
         }
       }
 

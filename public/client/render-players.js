@@ -344,6 +344,7 @@
         p,
         style: buildPlayerRenderStyle(player),
         equipmentSlots,
+        useDefaultGearFallback: false,
         attackState,
         castState,
         aimWorldX,

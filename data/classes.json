@@ -10,6 +10,18 @@
             {"id":"warstomp", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50, "manaPotion01": 20}],
+        "startingEquipment": [
+            "starter_warrior_helm",
+            "starter_warrior_chest",
+            "starter_warrior_shoulders",
+            "starter_warrior_gloves",
+            "starter_warrior_bracers",
+            "starter_warrior_belt",
+            "starter_warrior_pants",
+            "starter_warrior_boots",
+            "starter_warrior_sword",
+            "starter_warrior_shield"
+        ],
         "speed": 1.8,
         "renderStyle": {
             "rigType": "humanoid",
@@ -61,6 +73,17 @@
             {"id":"fireHydra", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 50}],
+        "startingEquipment": [
+            "starter_mage_hat",
+            "starter_mage_chest",
+            "starter_mage_shoulders",
+            "starter_mage_gloves",
+            "starter_mage_bracers",
+            "starter_mage_belt",
+            "starter_mage_pants",
+            "starter_mage_boots",
+            "starter_mage_staff"
+        ],
         "speed": 1.7,
         "renderStyle": {
             "rigType": "humanoid",
@@ -113,6 +136,17 @@
             {"id":"piercingBolt", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 35}],
+        "startingEquipment": [
+            "starter_ranger_hood",
+            "starter_ranger_chest",
+            "starter_ranger_shoulders",
+            "starter_ranger_gloves",
+            "starter_ranger_bracers",
+            "starter_ranger_belt",
+            "starter_ranger_pants",
+            "starter_ranger_boots",
+            "starter_ranger_bow"
+        ],
         "speed": 1.95,
         "renderStyle": {
             "rigType": "humanoid",

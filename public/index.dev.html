@@ -94,6 +94,26 @@
           <select id="debug-bot-class"></select>
           <button id="debug-create-bot" type="button">Create Bot Player</button>
           <button id="debug-toggle-bot-list" type="button">Bot List</button>
+          <button id="debug-toggle-gear-lab" type="button">Debug Gear</button>
+        </div>
+      </div>
+      <div id="debug-gear-panel" class="hidden">
+        <div class="debug-gear-header">
+          <div class="inventory-header">Debug Gear Lab</div>
+          <button id="debug-gear-close" class="vendor-close-button" type="button">Close</button>
+        </div>
+        <div class="debug-gear-subtitle">Live gear preview. Press the debug button again to reroll the entire loadout.</div>
+        <div class="debug-gear-actions">
+          <button id="debug-gear-reroll-affixes" type="button">Reroll Affixes</button>
+        </div>
+        <div class="debug-gear-layout">
+          <div class="debug-gear-preview-shell">
+            <div id="debug-gear-preview-layout" class="debug-gear-preview-layout">
+              <div class="debug-gear-preview-figure"></div>
+              <canvas id="debug-gear-preview-canvas" width="360" height="460"></canvas>
+            </div>
+          </div>
+          <div id="debug-gear-controls" class="debug-gear-controls"></div>
         </div>
       </div>
       <div id="bot-list-panel" class="hidden">

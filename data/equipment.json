@@ -30,19 +30,19 @@
     "rare": {
       "prefixCount": [1, 2],
       "suffixCount": [1, 2],
-      "dropWeight": 100000000,
+      "dropWeight": 10000,
       "color": "#f3d26b"
     },
     "epic": {
       "prefixCount": [2, 3],
       "suffixCount": [2, 3],
-      "dropWeight": 1000,
+      "dropWeight": 1000000,
       "color": "#be7dff"
     },
     "legendary": {
       "prefixCount": [3, 4],
       "suffixCount": [3, 4],
-      "dropWeight": 100,
+      "dropWeight": 1000000,
       "color": "#ff9747"
     },
     "mythic": {
@@ -59,6 +59,261 @@
     }
   },
   "baseItems": [
+    {
+      "id": "starter_warrior_helm",
+      "name": "Recruit Plate Helm",
+      "slot": "head",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_chest",
+      "name": "Recruit Plate Cuirass",
+      "slot": "chest",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_shoulders",
+      "name": "Recruit Plate Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_gloves",
+      "name": "Recruit Plate Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_bracers",
+      "name": "Recruit Plate Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_belt",
+      "name": "Recruit Plate Belt",
+      "slot": "belt",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_pants",
+      "name": "Recruit Plate Greaves",
+      "slot": "pants",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_boots",
+      "name": "Recruit Plate Boots",
+      "slot": "boots",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "plate", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_sword",
+      "name": "Recruit Sword",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [1, 1],
+      "tags": ["weapon", "melee", "physical", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_warrior_shield",
+      "name": "Recruit Shield",
+      "slot": "offHand",
+      "itemLevelRange": [1, 1],
+      "tags": ["offhand", "shield", "armor", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_hat",
+      "name": "Apprentice Wizard Hat",
+      "slot": "head",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_chest",
+      "name": "Apprentice Robe",
+      "slot": "chest",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_shoulders",
+      "name": "Apprentice Cloth Mantle",
+      "slot": "shoulders",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_gloves",
+      "name": "Apprentice Cloth Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_bracers",
+      "name": "Apprentice Cloth Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_belt",
+      "name": "Apprentice Robe Sash",
+      "slot": "belt",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_pants",
+      "name": "Apprentice Cloth Leggings",
+      "slot": "pants",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_boots",
+      "name": "Apprentice Cloth Boots",
+      "slot": "boots",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "robe", "caster", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_mage_staff",
+      "name": "Apprentice Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [1, 1],
+      "tags": ["weapon", "caster", "twoHanded", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_hood",
+      "name": "Trail Hood",
+      "slot": "head",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_chest",
+      "name": "Trail Leather Jerkin",
+      "slot": "chest",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_shoulders",
+      "name": "Trail Leather Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_gloves",
+      "name": "Trail Leather Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_bracers",
+      "name": "Trail Leather Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_belt",
+      "name": "Trail Leather Belt",
+      "slot": "belt",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_pants",
+      "name": "Trail Leather Pants",
+      "slot": "pants",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_boots",
+      "name": "Trail Leather Boots",
+      "slot": "boots",
+      "itemLevelRange": [1, 1],
+      "tags": ["armor", "leather", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
+    {
+      "id": "starter_ranger_bow",
+      "name": "Trail Bow",
+      "slot": "mainHand",
+      "weaponClass": "bow",
+      "itemLevelRange": [1, 1],
+      "tags": ["weapon", "ranged", "bow", "physical", "starter"],
+      "baseStats": {},
+      "starterOnly": true
+    },
     {
       "id": "rusted_sword",
       "name": "Rusted Sword",

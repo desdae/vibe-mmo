@@ -202,7 +202,7 @@ function createEquipmentTools(options = {}) {
 
   function pickBaseItemForLevel(slotId, itemLevel) {
     const config = getEquipmentConfig();
-    const candidates = (Array.isArray(config?.baseItems) ? config.baseItems : []).filter((entry) => entry.slot === slotId);
+    const candidates = (Array.isArray(config?.baseItems) ? config.baseItems : []).filter((entry) => entry.slot === slotId && !entry.starterOnly);
     if (!candidates.length) {
       return null;
     }
@@ -260,6 +260,32 @@ function createEquipmentTools(options = {}) {
       parts.push(suffixText);
     }
     return parts.join(" ");
+  }
+
+  function createEquipmentEntryFromBaseItem(itemId, options = {}) {
+    const baseItem = getBaseItem(itemId);
+    if (!baseItem) {
+      return null;
+    }
+    const requestedLevel = Math.floor(Number(options.itemLevel) || baseItem.itemLevelRange[0] || 1);
+    const itemLevel = clamp(requestedLevel, baseItem.itemLevelRange[0], baseItem.itemLevelRange[1]);
+    const rarityId = String(options.rarity || "normal").trim() || "normal";
+    return {
+      itemId: baseItem.id,
+      qty: 1,
+      instanceId: String(allocateItemInstanceId()),
+      name: String(options.name || baseItem.name),
+      rarity: rarityId,
+      slot: baseItem.slot,
+      weaponClass: baseItem.weaponClass,
+      itemLevel,
+      isEquipment: true,
+      tags: Array.isArray(baseItem.tags) ? [...baseItem.tags] : [],
+      baseStats: { ...baseItem.baseStats },
+      affixes: [],
+      prefixes: [],
+      suffixes: []
+    };
   }
 
   function rollEquipmentItemAt(x, y) {
@@ -644,6 +670,7 @@ function createEquipmentTools(options = {}) {
   return {
     cloneItemEntry,
     createEmptyEquipmentSlots,
+    createEquipmentEntryFromBaseItem,
     isEquipmentItemId,
     isEquipmentEntry,
     rollEquipmentDropsAt,

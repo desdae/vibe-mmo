@@ -50,6 +50,10 @@ function createPlayerFactory(options = {}) {
     typeof options.normalizeItemEntries === "function" ? options.normalizeItemEntries : () => [];
   const addItemsToInventory =
     typeof options.addItemsToInventory === "function" ? options.addItemsToInventory : () => ({ changed: false });
+  const createEquipmentEntryFromBaseItem =
+    typeof options.createEquipmentEntryFromBaseItem === "function" ? options.createEquipmentEntryFromBaseItem : () => null;
+  const recomputePlayerDerivedStats =
+    typeof options.recomputePlayerDerivedStats === "function" ? options.recomputePlayerDerivedStats : () => {};
   const syncPlayerCopperFromInventory =
     typeof options.syncPlayerCopperFromInventory === "function" ? options.syncPlayerCopperFromInventory : () => {};
   const expNeededForLevel =
@@ -59,6 +63,37 @@ function createPlayerFactory(options = {}) {
 
   if (!players) {
     throw new Error("createPlayerFactory requires players map");
+  }
+
+  function getSlotFamily(slotId) {
+    const normalized = String(slotId || "").trim();
+    if (normalized === "ring1" || normalized === "ring2") {
+      return "ring";
+    }
+    if (normalized === "trinket1" || normalized === "trinket2") {
+      return "trinket";
+    }
+    return normalized;
+  }
+
+  function findFirstCompatibleEquipmentSlot(equipmentSlots, slotId) {
+    if (!equipmentSlots || typeof equipmentSlots !== "object") {
+      return "";
+    }
+    const family = getSlotFamily(slotId);
+    const exact = String(slotId || "").trim();
+    if (exact && exact in equipmentSlots && !equipmentSlots[exact]) {
+      return exact;
+    }
+    for (const candidate of Object.keys(equipmentSlots)) {
+      if (getSlotFamily(candidate) !== family) {
+        continue;
+      }
+      if (!equipmentSlots[candidate]) {
+        return candidate;
+      }
+    }
+    return "";
   }
 
   function createPlayer(params = {}) {
@@ -160,6 +195,18 @@ function createPlayerFactory(options = {}) {
     if (starterItems.length) {
       addItemsToInventory(player, starterItems);
     }
+    for (const itemId of Array.isArray(classDef.startingEquipment) ? classDef.startingEquipment : []) {
+      const entry = createEquipmentEntryFromBaseItem(itemId, { rarity: "normal" });
+      if (!entry) {
+        continue;
+      }
+      const targetSlot = findFirstCompatibleEquipmentSlot(player.equipmentSlots, entry.slot);
+      if (!targetSlot) {
+        continue;
+      }
+      player.equipmentSlots[targetSlot] = entry;
+    }
+    recomputePlayerDerivedStats(player);
     syncPlayerCopperFromInventory(player, false);
 
     if (params.overrides && typeof params.overrides === "object") {
