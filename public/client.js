@@ -361,11 +361,21 @@ const inventoryState = {
   slots: []
 };
 const equipmentConfigState = {
-  itemSlots: []
+  itemSlots: [],
+  itemRarities: {}
 };
 const equipmentState = {
   slots: {}
 };
+const DEFAULT_ITEM_RARITY_COLORS = Object.freeze({
+  normal: "#b8c5d1",
+  magic: "#58a6ff",
+  rare: "#f3d26b",
+  epic: "#be7dff",
+  legendary: "#ff9747",
+  mythic: "#ff5fc8",
+  divine: "#fff1b5"
+});
 const EQUIPMENT_SLOT_LAYOUT = Object.freeze({
   head: { x: 50, y: 6, label: "Helm" },
   shoulders: { x: 10, y: 16, label: "Shoulder" },
@@ -385,6 +395,10 @@ const EQUIPMENT_SLOT_LAYOUT = Object.freeze({
 });
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
+const hoverTooltipEl = document.createElement("div");
+hoverTooltipEl.id = "hover-tooltip";
+hoverTooltipEl.className = "hidden";
+document.body.appendChild(hoverTooltipEl);
 const debugState = {
   enabled: false,
   upEvents: [],
@@ -1638,6 +1652,39 @@ function humanizeKey(key) {
   );
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function getItemRarityColor(rarityId) {
+  const key = String(rarityId || "").trim().toLowerCase();
+  const configColor = equipmentConfigState.itemRarities[key] && equipmentConfigState.itemRarities[key].color;
+  return sanitizeCssColor(configColor) || DEFAULT_ITEM_RARITY_COLORS[key] || DEFAULT_ITEM_RARITY_COLORS.normal;
+}
+
+function hexToRgba(hex, alpha = 1) {
+  const raw = String(hex || "").trim().replace("#", "");
+  if (!(raw.length === 3 || raw.length === 6)) {
+    return `rgba(184, 197, 209, ${clamp(alpha, 0, 1)})`;
+  }
+  const expanded =
+    raw.length === 3
+      ? raw
+          .split("")
+          .map((part) => part + part)
+          .join("")
+      : raw;
+  const r = parseInt(expanded.slice(0, 2), 16);
+  const g = parseInt(expanded.slice(2, 4), 16);
+  const b = parseInt(expanded.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${clamp(alpha, 0, 1)})`;
+}
+
 function appendTooltipNumber(lines, label, value, formatter = null) {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) {
@@ -1785,6 +1832,76 @@ function getItemInstanceAffixes(itemData) {
     pushAffixArray(itemData.suffixes);
   }
   return result;
+}
+
+function getItemAffixThemes(itemData) {
+  const affixes = getItemInstanceAffixes(itemData);
+  const themes = [];
+  const seen = new Set();
+  const pushTheme = (theme) => {
+    if (!theme || seen.has(theme)) {
+      return;
+    }
+    seen.add(theme);
+    themes.push(theme);
+  };
+
+  for (const affix of affixes) {
+    for (const modifier of affix.modifiers) {
+      const stat = String(modifier.stat || "").toLowerCase();
+      if (!stat) {
+        continue;
+      }
+      if (stat.includes("lightning")) {
+        pushTheme("lightning");
+      } else if (stat.includes("fire")) {
+        pushTheme("fire");
+      } else if (stat.includes("frost")) {
+        pushTheme("frost");
+      } else if (stat.includes("arcane")) {
+        pushTheme("arcane");
+      } else if (stat.includes("physical")) {
+        pushTheme("physical");
+      } else if (stat.includes("healthregen") || stat.includes("lifesteal") || stat.includes("lifeonkill")) {
+        pushTheme("vitality");
+      } else if (stat.includes("manaregen") || stat.includes("manasteal") || stat.includes("manaonkill")) {
+        pushTheme("mana");
+      } else if (stat.includes("movespeed")) {
+        pushTheme("wind");
+      } else if (stat.includes("armor") || stat.includes("blockchance") || stat.includes("thorns")) {
+        pushTheme("guard");
+      } else if (stat.includes("crit")) {
+        pushTheme("precision");
+      } else if (stat.includes("castspeed") || stat.includes("attackspeed")) {
+        pushTheme("swift");
+      }
+      if (themes.length >= 3) {
+        return themes;
+      }
+    }
+  }
+  return themes;
+}
+
+function getItemPresentationData(itemInput) {
+  const itemData = itemInput && typeof itemInput === "object" ? itemInput : null;
+  const itemId = String(itemData ? itemData.itemId || "" : itemInput || "").trim();
+  const itemDef = itemDefsById.get(itemId) || null;
+  const slot = String((itemData && itemData.slot) || (itemDef && itemDef.slot) || "").trim();
+  const rarity = String((itemData && itemData.rarity) || "normal").trim().toLowerCase() || "normal";
+  const weaponClass = String((itemData && itemData.weaponClass) || (itemDef && itemDef.weaponClass) || "")
+    .trim()
+    .toLowerCase();
+  return {
+    itemId,
+    itemData,
+    itemDef,
+    slot,
+    rarity,
+    weaponClass,
+    rarityColor: getItemRarityColor(rarity),
+    affixThemes: getItemAffixThemes(itemData)
+  };
 }
 
 function formatEquipmentBaseStatLine(statKey, value) {
@@ -1998,6 +2115,268 @@ function buildItemTooltip(itemInput, qty = null) {
   }
 
   return lines.join("\n");
+}
+
+function buildItemTooltipHtml(itemInput, qty = null) {
+  const itemData = itemInput && typeof itemInput === "object" ? itemInput : null;
+  const itemId = itemData ? String(itemData.itemId || "") : String(itemInput || "");
+  const def = itemDefsById.get(itemId);
+  if (!def) {
+    return `<div class="tooltip-title-row"><span class="tooltip-title">${escapeHtml(itemId || "Item")}</span></div>`;
+  }
+
+  const resolvedQty = qty !== null ? qty : itemData ? itemData.qty : null;
+  const displayName = String((itemData && itemData.name) || def.name || itemId || "Item");
+  const rarityKey = itemData && typeof itemData.rarity === "string" ? itemData.rarity.trim().toLowerCase() : "normal";
+  const rarityColor = getItemRarityColor(rarityKey);
+  const iconUrl = getItemIconUrl(itemData || itemId);
+  const blocks = [];
+
+  blocks.push(
+    `<div class="tooltip-title-row">` +
+      `<span class="tooltip-inline-icon" style="background-image:url('${escapeHtml(iconUrl)}')"></span>` +
+      `<span class="tooltip-title item-rarity-${escapeHtml(rarityKey)}" style="color:${escapeHtml(rarityColor)}">` +
+      `${escapeHtml(resolvedQty && resolvedQty > 0 ? `${displayName} x${Math.floor(resolvedQty)}` : displayName)}` +
+      `</span>` +
+    `</div>`
+  );
+
+  if (itemData && typeof itemData.rarity === "string" && itemData.rarity.trim()) {
+    blocks.push(`<div class="tooltip-line">Rarity: ${escapeHtml(toTitleCaseWords(itemData.rarity.trim()))}</div>`);
+  }
+  if (itemData && Number.isFinite(Number(itemData.itemLevel))) {
+    blocks.push(
+      `<div class="tooltip-line">Item Level: ${escapeHtml(String(Math.max(1, Math.floor(Number(itemData.itemLevel)))))}</div>`
+    );
+  }
+  if (itemData && typeof itemData.slot === "string" && itemData.slot.trim()) {
+    blocks.push(`<div class="tooltip-line">Slot: ${escapeHtml(humanizeKey(itemData.slot.trim()))}</div>`);
+  } else if (def && typeof def.slot === "string" && def.slot.trim()) {
+    blocks.push(`<div class="tooltip-line">Slot: ${escapeHtml(humanizeKey(def.slot.trim()))}</div>`);
+  }
+  if (def.description) {
+    blocks.push(`<div class="tooltip-line">${escapeHtml(String(def.description))}</div>`);
+  }
+  if (Number(def.stackSize) > 0) {
+    blocks.push(`<div class="tooltip-line">Stack Size: ${escapeHtml(formatTooltipNumber(def.stackSize))}</div>`);
+  }
+
+  const baseStats = itemData && itemData.baseStats && typeof itemData.baseStats === "object" ? itemData.baseStats : def.baseStats;
+  if (def && def.isEquipment && baseStats && typeof baseStats === "object") {
+    for (const [statKey, statValue] of Object.entries(baseStats)) {
+      const rendered = formatEquipmentBaseStatLine(statKey, statValue);
+      if (rendered) {
+        blocks.push(`<div class="tooltip-line tooltip-stat">${escapeHtml(rendered)}</div>`);
+      }
+    }
+  }
+
+  const effect = def.effect && typeof def.effect === "object" ? def.effect : null;
+  if (effect && effect.type) {
+    blocks.push(`<div class="tooltip-line">Effect: ${escapeHtml(toTitleCaseWords(String(effect.type)))}</div>`);
+    for (const [key, value] of Object.entries(effect)) {
+      if (key === "type") {
+        continue;
+      }
+      if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+        if (key === "duration") {
+          blocks.push(`<div class="tooltip-line">${escapeHtml("Duration")}: ${escapeHtml(`${value}s`)}</div>`);
+        } else if (key === "value") {
+          blocks.push(
+            `<div class="tooltip-line">${escapeHtml("Value")}: ${escapeHtml(
+              Math.abs(value - Math.round(value)) < 0.001 ? String(Math.round(value)) : value.toFixed(2)
+            )}</div>`
+          );
+        } else {
+          blocks.push(
+            `<div class="tooltip-line">${escapeHtml(humanizeKey(key))}: ${escapeHtml(
+              Math.abs(value - Math.round(value)) < 0.001 ? String(Math.round(value)) : value.toFixed(2)
+            )}</div>`
+          );
+        }
+      }
+    }
+  }
+
+  const affixes = getItemInstanceAffixes(itemData);
+  if (affixes.length) {
+    blocks.push(`<div class="tooltip-section-label">Affixes</div>`);
+    for (const affix of affixes) {
+      const prefix = affix.name ? `${affix.name}: ` : "";
+      const modifierText = affix.modifiers.map(formatAffixModifier).filter(Boolean).join(", ");
+      if (prefix || modifierText) {
+        blocks.push(
+          `<div class="tooltip-line tooltip-affix"><span class="tooltip-bullet">◆</span>${escapeHtml(
+            `${prefix}${modifierText || "No modifiers"}`
+          )}</div>`
+        );
+      }
+    }
+  }
+
+  return blocks.join("");
+}
+
+function positionHoverTooltip(clientX, clientY) {
+  if (!hoverTooltipEl || hoverTooltipEl.classList.contains("hidden")) {
+    return;
+  }
+  const margin = 14;
+  const tooltipWidth = hoverTooltipEl.offsetWidth || 0;
+  const tooltipHeight = hoverTooltipEl.offsetHeight || 0;
+  let left = clientX + margin;
+  let top = clientY + margin;
+
+  if (left + tooltipWidth > window.innerWidth - 10) {
+    left = Math.max(10, clientX - tooltipWidth - margin);
+  }
+  if (top + tooltipHeight > window.innerHeight - 10) {
+    top = Math.max(10, clientY - tooltipHeight - margin);
+  }
+
+  hoverTooltipEl.style.left = `${Math.round(left)}px`;
+  hoverTooltipEl.style.top = `${Math.round(top)}px`;
+}
+
+function showItemTooltip(itemInput, event, qty = null) {
+  if (!hoverTooltipEl) {
+    return;
+  }
+  hoverTooltipEl.innerHTML = buildItemTooltipHtml(itemInput, qty);
+  hoverTooltipEl.classList.remove("hidden");
+  positionHoverTooltip(event.clientX, event.clientY);
+}
+
+function hideHoverTooltip() {
+  if (!hoverTooltipEl) {
+    return;
+  }
+  hoverTooltipEl.classList.add("hidden");
+  hoverTooltipEl.innerHTML = "";
+}
+
+function bindItemTooltip(node, itemInput, qty = null) {
+  if (!node) {
+    return;
+  }
+  node.title = "";
+  node.addEventListener("mouseenter", (event) => {
+    showItemTooltip(itemInput, event, qty);
+  });
+  node.addEventListener("mousemove", (event) => {
+    positionHoverTooltip(event.clientX, event.clientY);
+  });
+  node.addEventListener("mouseleave", () => {
+    hideHoverTooltip();
+  });
+  node.addEventListener("blur", () => {
+    hideHoverTooltip();
+  });
+}
+
+function applyItemRarityChrome(slotEl, itemInput) {
+  if (!slotEl) {
+    return;
+  }
+  const presentation = getItemPresentationData(itemInput);
+  const color = presentation.rarityColor;
+  slotEl.style.setProperty("--item-rarity-color", color);
+  slotEl.style.setProperty("--item-rarity-glow", hexToRgba(color, 0.28));
+}
+
+function getEquippedItemEntries() {
+  return Object.values(equipmentState.slots || {}).filter((entry) => entry && entry.itemId);
+}
+
+function getClientEquippedBaseStatTotal(statKey) {
+  const target = String(statKey || "").trim();
+  if (!target) {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of getEquippedItemEntries()) {
+    const baseStats = entry && entry.baseStats && typeof entry.baseStats === "object" ? entry.baseStats : null;
+    total += Number(baseStats && baseStats[target]) || 0;
+  }
+  return total;
+}
+
+function getClientEquippedAffixStatTotal(statKey) {
+  const target = String(statKey || "").trim();
+  if (!target) {
+    return 0;
+  }
+  let total = 0;
+  for (const entry of getEquippedItemEntries()) {
+    const affixes = getItemInstanceAffixes(entry);
+    for (const affix of affixes) {
+      for (const modifier of affix.modifiers) {
+        if (String(modifier.stat || "") !== target) {
+          continue;
+        }
+        total += Number(modifier.value) || 0;
+      }
+    }
+  }
+  return total;
+}
+
+function buildCharacterStatSummary() {
+  const self = getCurrentSelf();
+  const classDef = classDefsById.get(String((self && self.classType) || (selfStatic && selfStatic.classType) || ""));
+  const baseHealth = Math.max(1, Number(classDef?.baseHealth) || 1);
+  const baseMana = Math.max(0, Number(classDef?.baseMana) || 0);
+  const baseManaRegen = Math.max(0, Number(classDef?.manaRegen) || 0);
+  const baseMoveSpeed = Math.max(0.1, Number(classDef?.movementSpeed) || 0.1);
+  const baseHealthRegen = 0;
+  const baseArmor = Math.max(0, getClientEquippedBaseStatTotal("armor"));
+  const armorPercent = getClientEquippedAffixStatTotal("armor.percent");
+  const baseBlockChance = Math.max(0, getClientEquippedBaseStatTotal("blockChance"));
+
+  const maxHealthFlat = getClientEquippedAffixStatTotal("maxHealth.flat");
+  const maxHealthPercent = getClientEquippedAffixStatTotal("maxHealth.percent");
+  const maxManaFlat = getClientEquippedAffixStatTotal("maxMana.flat");
+  const maxManaPercent = getClientEquippedAffixStatTotal("maxMana.percent");
+  const healthRegenFlat = getClientEquippedAffixStatTotal("healthRegen.flat");
+  const healthRegenPercent = getClientEquippedAffixStatTotal("healthRegen.percent");
+  const manaRegenFlat = getClientEquippedAffixStatTotal("manaRegen.flat");
+  const manaRegenPercent = getClientEquippedAffixStatTotal("manaRegen.percent");
+  const moveSpeedPercent = getClientEquippedAffixStatTotal("moveSpeed.percent");
+  const critChancePercent = getClientEquippedAffixStatTotal("critChance.percent");
+  const critDamagePercent = getClientEquippedAffixStatTotal("critDamage.percent");
+  const lifeStealPercent = getClientEquippedAffixStatTotal("lifeSteal.percent");
+  const manaStealPercent = getClientEquippedAffixStatTotal("manaSteal.percent");
+  const lifeOnKillFlat = getClientEquippedAffixStatTotal("lifeOnKill.flat");
+  const manaOnKillFlat = getClientEquippedAffixStatTotal("manaOnKill.flat");
+  const thornsFlat = getClientEquippedAffixStatTotal("thorns.flat");
+  const attackSpeedPercent = getClientEquippedAffixStatTotal("attackSpeed.percent");
+  const castSpeedPercent = getClientEquippedAffixStatTotal("castSpeed.percent");
+
+  const maxHealthTotal = Math.round((baseHealth + maxHealthFlat) * (1 + maxHealthPercent / 100));
+  const maxManaTotal = Math.round((baseMana + maxManaFlat) * (1 + maxManaPercent / 100));
+  const healthRegenTotal = (baseHealthRegen + healthRegenFlat) * (1 + healthRegenPercent / 100);
+  const manaRegenTotal = (baseManaRegen + manaRegenFlat) * (1 + manaRegenPercent / 100);
+  const moveSpeedTotal = baseMoveSpeed * (1 + moveSpeedPercent / 100);
+  const armorTotal = Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100)));
+
+  return [
+    { label: "Health", total: maxHealthTotal, bonus: maxHealthTotal - baseHealth },
+    { label: "Mana", total: maxManaTotal, bonus: maxManaTotal - baseMana },
+    { label: "Health Regen", total: healthRegenTotal, bonus: healthRegenTotal - baseHealthRegen, decimals: 2 },
+    { label: "Mana Regen", total: manaRegenTotal, bonus: manaRegenTotal - baseManaRegen, decimals: 2 },
+    { label: "Move Speed", total: moveSpeedTotal, bonus: moveSpeedTotal - baseMoveSpeed, decimals: 2 },
+    { label: "Armor", total: armorTotal, bonus: armorTotal },
+    { label: "Block", total: baseBlockChance * 100, bonus: baseBlockChance * 100, suffix: "%" },
+    { label: "Crit Chance", total: critChancePercent, bonus: critChancePercent, suffix: "%" },
+    { label: "Crit Damage", total: critDamagePercent, bonus: critDamagePercent, suffix: "%" },
+    { label: "Life Steal", total: lifeStealPercent, bonus: lifeStealPercent, suffix: "%" },
+    { label: "Mana Steal", total: manaStealPercent, bonus: manaStealPercent, suffix: "%" },
+    { label: "Life On Kill", total: lifeOnKillFlat, bonus: lifeOnKillFlat },
+    { label: "Mana On Kill", total: manaOnKillFlat, bonus: manaOnKillFlat },
+    { label: "Thorns", total: thornsFlat, bonus: thornsFlat },
+    { label: "Attack Speed", total: attackSpeedPercent, bonus: attackSpeedPercent, suffix: "%" },
+    { label: "Cast Speed", total: castSpeedPercent, bonus: castSpeedPercent, suffix: "%" }
+  ];
 }
 
 function getPrimaryClassAbilityId(classType) {
@@ -2740,140 +3119,396 @@ function getActionIconUrl(actionId) {
   });
 }
 
-function getItemIconUrl(itemId) {
-  const key = `item_icon:${itemId}`;
-  return createIconUrl(key, (iconCtx, size) => {
-    const mid = size / 2;
-    const itemDef = itemDefsById.get(itemId);
-    iconCtx.fillStyle = "rgba(18, 29, 42, 0.95)";
-    iconCtx.fillRect(0, 0, size, size);
+const ITEM_AFFIX_THEME_PALETTES = Object.freeze({
+  fire: { primary: "#ff8b42", secondary: "#ffd27a" },
+  frost: { primary: "#8ee3ff", secondary: "#dff8ff" },
+  arcane: { primary: "#bf8cff", secondary: "#eddcff" },
+  lightning: { primary: "#7be1ff", secondary: "#fff5a8" },
+  physical: { primary: "#d7dde7", secondary: "#8e99ab" },
+  vitality: { primary: "#76d88b", secondary: "#d9ffe0" },
+  mana: { primary: "#4ea7ff", secondary: "#d5edff" },
+  wind: { primary: "#9df5cd", secondary: "#ecfff7" },
+  guard: { primary: "#8bc1cf", secondary: "#e0f8ff" },
+  precision: { primary: "#ffd768", secondary: "#fff5cb" },
+  swift: { primary: "#ffbe78", secondary: "#fff0da" }
+});
 
-    if (itemId === "copperCoin") {
-      iconCtx.fillStyle = "#b86a2d";
-      iconCtx.beginPath();
-      iconCtx.arc(mid, mid, 12, 0, Math.PI * 2);
-      iconCtx.fill();
-      iconCtx.strokeStyle = "#e4a563";
-      iconCtx.lineWidth = 3;
-      iconCtx.stroke();
-      iconCtx.fillStyle = "#f0c78a";
-      iconCtx.font = "700 14px Segoe UI";
-      iconCtx.textAlign = "center";
-      iconCtx.textBaseline = "middle";
-      iconCtx.fillText("C", mid, mid + 0.5);
-      return;
+function getItemAccentPalette(itemInput) {
+  const presentation = getItemPresentationData(itemInput);
+  const theme = presentation.affixThemes[0] || "";
+  return ITEM_AFFIX_THEME_PALETTES[theme] || {
+    primary: presentation.rarityColor,
+    secondary: "#f0f6ff"
+  };
+}
+
+function buildItemIconCacheKey(itemInput) {
+  const presentation = getItemPresentationData(itemInput);
+  return [
+    "item_icon",
+    presentation.itemId,
+    presentation.slot,
+    presentation.weaponClass,
+    presentation.rarity,
+    presentation.affixThemes.join(",")
+  ].join(":");
+}
+
+function drawItemIconBackdrop(iconCtx, size, rarityColor, accentPalette) {
+  const outerGradient = iconCtx.createLinearGradient(0, 0, size, size);
+  outerGradient.addColorStop(0, "rgba(12, 18, 27, 0.98)");
+  outerGradient.addColorStop(1, "rgba(6, 11, 18, 0.98)");
+  iconCtx.fillStyle = outerGradient;
+  iconCtx.fillRect(0, 0, size, size);
+
+  const glow = iconCtx.createRadialGradient(size * 0.52, size * 0.38, 4, size * 0.52, size * 0.38, size * 26);
+  glow.addColorStop(0, hexToRgba(accentPalette.primary, 0.24));
+  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  iconCtx.fillStyle = glow;
+  iconCtx.fillRect(0, 0, size, size);
+
+  iconCtx.strokeStyle = hexToRgba(rarityColor, 0.95);
+  iconCtx.lineWidth = 2.4;
+  iconCtx.strokeRect(1.2, 1.2, size - 2.4, size - 2.4);
+  iconCtx.strokeStyle = "rgba(255,255,255,0.12)";
+  iconCtx.lineWidth = 1;
+  iconCtx.strokeRect(4.5, 4.5, size - 9, size - 9);
+}
+
+function drawItemAffixDecorations(iconCtx, size, affixThemes) {
+  const maxThemes = Math.min(3, affixThemes.length);
+  for (let i = 0; i < maxThemes; i += 1) {
+    const palette = ITEM_AFFIX_THEME_PALETTES[affixThemes[i]];
+    if (!palette) {
+      continue;
     }
+    const x = 10 + i * 14;
+    const y = size - 8;
+    iconCtx.fillStyle = palette.primary;
+    iconCtx.strokeStyle = hexToRgba(palette.secondary, 0.92);
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x, y - 4);
+    iconCtx.lineTo(x + 4, y);
+    iconCtx.lineTo(x, y + 4);
+    iconCtx.lineTo(x - 4, y);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+  }
+}
 
-    if (itemId === "healthPotion01") {
-      iconCtx.strokeStyle = "#d6e4f5";
-      iconCtx.fillStyle = "#8b1e1e";
-      iconCtx.lineWidth = 2.8;
-      iconCtx.beginPath();
-      iconCtx.moveTo(mid - 8, mid - 9);
-      iconCtx.lineTo(mid + 8, mid - 9);
-      iconCtx.lineTo(mid + 6, mid + 11);
-      iconCtx.lineTo(mid - 6, mid + 11);
-      iconCtx.closePath();
-      iconCtx.fill();
-      iconCtx.stroke();
+function drawPotionIcon(iconCtx, size, liquidColor) {
+  const mid = size / 2;
+  iconCtx.strokeStyle = "#d6e4f5";
+  iconCtx.fillStyle = liquidColor;
+  iconCtx.lineWidth = 2.6;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 8, mid - 7);
+  iconCtx.lineTo(mid + 8, mid - 7);
+  iconCtx.lineTo(mid + 6, mid + 11);
+  iconCtx.lineTo(mid - 6, mid + 11);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+  iconCtx.fillStyle = "#dce6f3";
+  iconCtx.fillRect(mid - 4.5, mid - 13, 9, 5);
+}
 
-      iconCtx.fillStyle = "#dce6f3";
-      iconCtx.fillRect(mid - 4.5, mid - 14, 9, 5);
-      return;
-    }
+function drawArmorSlotIcon(iconCtx, size, slot, accentPalette) {
+  const mid = size / 2;
+  iconCtx.strokeStyle = hexToRgba(accentPalette.secondary, 0.95);
+  iconCtx.fillStyle = hexToRgba(accentPalette.primary, 0.78);
+  iconCtx.lineWidth = 2.2;
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
 
-    if (itemId === "manaPotion01") {
-      iconCtx.strokeStyle = "#d6e4f5";
-      iconCtx.fillStyle = "#185d9c";
-      iconCtx.lineWidth = 2.8;
-      iconCtx.beginPath();
-      iconCtx.moveTo(mid - 8, mid - 9);
-      iconCtx.lineTo(mid + 8, mid - 9);
-      iconCtx.lineTo(mid + 6, mid + 11);
-      iconCtx.lineTo(mid - 6, mid + 11);
-      iconCtx.closePath();
-      iconCtx.fill();
-      iconCtx.stroke();
+  if (slot === "head") {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11, mid + 8);
+    iconCtx.lineTo(mid - 9, mid - 6);
+    iconCtx.lineTo(mid - 4, mid - 11);
+    iconCtx.lineTo(mid + 4, mid - 11);
+    iconCtx.lineTo(mid + 9, mid - 6);
+    iconCtx.lineTo(mid + 11, mid + 8);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    iconCtx.clearRect(mid - 6, mid + 1, 12, 4);
+    return;
+  }
 
-      iconCtx.fillStyle = "#dce6f3";
-      iconCtx.fillRect(mid - 4.5, mid - 14, 9, 5);
-      return;
-    }
+  if (slot === "chest") {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10, mid - 10);
+    iconCtx.lineTo(mid + 10, mid - 10);
+    iconCtx.lineTo(mid + 13, mid - 3);
+    iconCtx.lineTo(mid + 8, mid + 12);
+    iconCtx.lineTo(mid - 8, mid + 12);
+    iconCtx.lineTo(mid - 13, mid - 3);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    return;
+  }
 
-    if (itemDef && itemDef.isEquipment) {
-      const slot = String(itemDef.slot || "").trim();
-      const weaponClass = String(itemDef.weaponClass || "").trim().toLowerCase();
-      iconCtx.strokeStyle = "rgba(222, 235, 247, 0.92)";
-      iconCtx.lineWidth = 2.2;
-      iconCtx.lineCap = "round";
-      iconCtx.lineJoin = "round";
+  if (slot === "shoulders") {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 13, mid + 3);
+    iconCtx.lineTo(mid - 8, mid - 8);
+    iconCtx.lineTo(mid - 1, mid - 4);
+    iconCtx.lineTo(mid - 3, mid + 10);
+    iconCtx.closePath();
+    iconCtx.moveTo(mid + 13, mid + 3);
+    iconCtx.lineTo(mid + 8, mid - 8);
+    iconCtx.lineTo(mid + 1, mid - 4);
+    iconCtx.lineTo(mid + 3, mid + 10);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    return;
+  }
 
-      if (weaponClass === "sword") {
-        iconCtx.strokeStyle = "#d7dee8";
-        iconCtx.beginPath();
-        iconCtx.moveTo(mid - 8, mid + 10);
-        iconCtx.lineTo(mid + 8, mid - 10);
-        iconCtx.stroke();
-        iconCtx.strokeStyle = "#9d7b53";
-        iconCtx.beginPath();
-        iconCtx.moveTo(mid - 4, mid + 12);
-        iconCtx.lineTo(mid - 10, mid + 6);
-        iconCtx.moveTo(mid - 2, mid + 6);
-        iconCtx.lineTo(mid + 4, mid + 12);
-        iconCtx.stroke();
-        return;
-      }
+  if (slot === "bracers") {
+    iconCtx.beginPath();
+    iconCtx.roundRect(mid - 7, mid - 11, 14, 22, 4);
+    iconCtx.fill();
+    iconCtx.stroke();
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6, mid - 2);
+    iconCtx.lineTo(mid + 6, mid - 2);
+    iconCtx.stroke();
+    return;
+  }
 
-      if (weaponClass === "wand" || weaponClass === "staff") {
-        iconCtx.strokeStyle = "#8b673f";
-        iconCtx.beginPath();
-        iconCtx.moveTo(mid - 8, mid + 12);
-        iconCtx.lineTo(mid + 7, mid - 10);
-        iconCtx.stroke();
-        iconCtx.fillStyle = weaponClass === "staff" ? "#8fd2ff" : "#cfa8ff";
-        iconCtx.beginPath();
-        iconCtx.arc(mid + 9, mid - 12, 5, 0, Math.PI * 2);
-        iconCtx.fill();
-        return;
-      }
+  if (slot === "gloves") {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10, mid + 9);
+    iconCtx.lineTo(mid - 10, mid - 6);
+    iconCtx.lineTo(mid - 4, mid - 11);
+    iconCtx.lineTo(mid, mid - 6);
+    iconCtx.lineTo(mid + 4, mid - 11);
+    iconCtx.lineTo(mid + 10, mid - 6);
+    iconCtx.lineTo(mid + 10, mid + 9);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    return;
+  }
 
-      if (slot === "offHand") {
-        iconCtx.fillStyle = "#d8dfe8";
-        iconCtx.strokeStyle = "#95a0ae";
-        iconCtx.beginPath();
-        iconCtx.arc(mid, mid, 11, 0, Math.PI * 2);
-        iconCtx.fill();
-        iconCtx.stroke();
-        iconCtx.beginPath();
-        iconCtx.arc(mid, mid, 3.5, 0, Math.PI * 2);
-        iconCtx.stroke();
-        return;
-      }
+  if (slot === "pants") {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 9, mid - 11);
+    iconCtx.lineTo(mid + 9, mid - 11);
+    iconCtx.lineTo(mid + 6, mid + 11);
+    iconCtx.lineTo(mid + 1, mid + 11);
+    iconCtx.lineTo(mid, mid + 2);
+    iconCtx.lineTo(mid - 1, mid + 11);
+    iconCtx.lineTo(mid - 6, mid + 11);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    return;
+  }
 
-      if (slot === "ring" || slot === "necklace" || slot === "trinket") {
-        iconCtx.strokeStyle = slot === "trinket" ? "#8fd2ff" : "#e2bb62";
-        iconCtx.lineWidth = 3;
-        iconCtx.beginPath();
-        iconCtx.arc(mid, mid, 9, 0, Math.PI * 2);
-        iconCtx.stroke();
-        return;
-      }
+  if (slot === "belt") {
+    iconCtx.fillStyle = "#6c4b24";
+    iconCtx.strokeStyle = "#caa263";
+    iconCtx.lineWidth = 2;
+    iconCtx.fillRect(mid - 14, mid - 5, 28, 10);
+    iconCtx.strokeRect(mid - 14, mid - 5, 28, 10);
+    iconCtx.fillStyle = hexToRgba(accentPalette.secondary, 0.95);
+    iconCtx.fillRect(mid - 4, mid - 4, 8, 8);
+    return;
+  }
 
-      iconCtx.fillStyle = "#a7b8c9";
-      iconCtx.beginPath();
-      iconCtx.moveTo(mid, 8);
-      iconCtx.lineTo(size - 10, mid);
-      iconCtx.lineTo(mid, size - 8);
-      iconCtx.lineTo(10, mid);
-      iconCtx.closePath();
-      iconCtx.fill();
-      return;
-    }
+  if (slot === "boots") {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11, mid - 8);
+    iconCtx.lineTo(mid - 4, mid - 8);
+    iconCtx.lineTo(mid - 1, mid + 4);
+    iconCtx.lineTo(mid - 8, mid + 10);
+    iconCtx.lineTo(mid - 12, mid + 10);
+    iconCtx.closePath();
+    iconCtx.moveTo(mid + 4, mid - 8);
+    iconCtx.lineTo(mid + 11, mid - 8);
+    iconCtx.lineTo(mid + 12, mid + 5);
+    iconCtx.lineTo(mid + 6, mid + 10);
+    iconCtx.lineTo(mid + 1, mid + 9);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    return;
+  }
+}
 
-    iconCtx.fillStyle = "#8fa3b8";
+function drawJewelrySlotIcon(iconCtx, size, slot, accentPalette) {
+  const mid = size / 2;
+  iconCtx.lineWidth = 2.2;
+  iconCtx.strokeStyle = "#e9ca7a";
+  iconCtx.fillStyle = hexToRgba(accentPalette.primary, 0.95);
+  if (slot === "ring") {
     iconCtx.beginPath();
     iconCtx.arc(mid, mid, 10, 0, Math.PI * 2);
+    iconCtx.stroke();
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid, 5, 0, Math.PI * 2);
+    iconCtx.clearRect(mid - 5, mid - 5, 10, 10);
+    iconCtx.stroke();
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 10, 4, 0, Math.PI * 2);
     iconCtx.fill();
+    return;
+  }
+  if (slot === "necklace") {
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 3, 11, Math.PI * 0.1, Math.PI * 0.9);
+    iconCtx.stroke();
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid, mid + 1);
+    iconCtx.lineTo(mid + 6, mid + 11);
+    iconCtx.lineTo(mid - 6, mid + 11);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    return;
+  }
+  iconCtx.strokeStyle = "#c5dfff";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid, mid - 12);
+  iconCtx.lineTo(mid + 9, mid - 2);
+  iconCtx.lineTo(mid + 3, mid + 11);
+  iconCtx.lineTo(mid - 3, mid + 11);
+  iconCtx.lineTo(mid - 9, mid - 2);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+}
+
+function drawWeaponOrOffhandIcon(iconCtx, size, presentation, accentPalette) {
+  const mid = size / 2;
+  const slot = presentation.slot;
+  const weaponClass = presentation.weaponClass;
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+
+  if (weaponClass === "sword") {
+    iconCtx.strokeStyle = "#d9e1ea";
+    iconCtx.lineWidth = 3.2;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10, mid + 11);
+    iconCtx.lineTo(mid + 8, mid - 10);
+    iconCtx.stroke();
+    iconCtx.strokeStyle = "#93673f";
+    iconCtx.lineWidth = 2.2;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6, mid + 13);
+    iconCtx.lineTo(mid - 12, mid + 7);
+    iconCtx.moveTo(mid - 3, mid + 7);
+    iconCtx.lineTo(mid + 4, mid + 13);
+    iconCtx.stroke();
+    return;
+  }
+  if (weaponClass === "wand" || weaponClass === "staff") {
+    iconCtx.strokeStyle = "#7e5b33";
+    iconCtx.lineWidth = 3;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 9, mid + 12);
+    iconCtx.lineTo(mid + 6, mid - 10);
+    iconCtx.stroke();
+    iconCtx.fillStyle = accentPalette.primary;
+    iconCtx.strokeStyle = hexToRgba(accentPalette.secondary, 0.92);
+    iconCtx.lineWidth = 1.4;
+    iconCtx.beginPath();
+    iconCtx.arc(mid + 8, mid - 12, weaponClass === "staff" ? 5 : 4, 0, Math.PI * 2);
+    iconCtx.fill();
+    iconCtx.stroke();
+    if (weaponClass === "staff") {
+      iconCtx.beginPath();
+      iconCtx.arc(mid + 1, mid - 2, 2.8, 0, Math.PI * 2);
+      iconCtx.fill();
+    }
+    return;
+  }
+  if (slot === "offHand") {
+    const shieldColor = hexToRgba(accentPalette.primary, 0.82);
+    iconCtx.fillStyle = shieldColor;
+    iconCtx.strokeStyle = hexToRgba(accentPalette.secondary, 0.92);
+    iconCtx.lineWidth = 2.1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid, mid - 12);
+    iconCtx.lineTo(mid + 11, mid - 6);
+    iconCtx.lineTo(mid + 7, mid + 12);
+    iconCtx.lineTo(mid - 7, mid + 12);
+    iconCtx.lineTo(mid - 11, mid - 6);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.stroke();
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid + 1, 3.5, 0, Math.PI * 2);
+    iconCtx.stroke();
+    return;
+  }
+  iconCtx.fillStyle = hexToRgba(accentPalette.primary, 0.88);
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid, 10, 0, Math.PI * 2);
+  iconCtx.fill();
+}
+
+function drawItemIcon(itemInput, iconCtx, size) {
+  const presentation = getItemPresentationData(itemInput);
+  const mid = size / 2;
+  const accentPalette = getItemAccentPalette(itemInput);
+  drawItemIconBackdrop(iconCtx, size, presentation.rarityColor, accentPalette);
+
+  if (presentation.itemId === "copperCoin") {
+    iconCtx.fillStyle = "#b86a2d";
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid, 12, 0, Math.PI * 2);
+    iconCtx.fill();
+    iconCtx.strokeStyle = "#e4a563";
+    iconCtx.lineWidth = 3;
+    iconCtx.stroke();
+    iconCtx.fillStyle = "#f0c78a";
+    iconCtx.font = "700 14px Segoe UI";
+    iconCtx.textAlign = "center";
+    iconCtx.textBaseline = "middle";
+    iconCtx.fillText("C", mid, mid + 0.5);
+    return;
+  }
+
+  if (presentation.itemId === "healthPotion01") {
+    drawPotionIcon(iconCtx, size, "#8b1e1e");
+    return;
+  }
+  if (presentation.itemId === "manaPotion01") {
+    drawPotionIcon(iconCtx, size, "#185d9c");
+    return;
+  }
+
+  if (presentation.itemDef && presentation.itemDef.isEquipment) {
+    const slotFamily = getEquipmentSlotFamily(presentation.slot);
+    if (["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots"].includes(slotFamily)) {
+      drawArmorSlotIcon(iconCtx, size, slotFamily, accentPalette);
+    } else if (["ring", "necklace", "trinket"].includes(slotFamily)) {
+      drawJewelrySlotIcon(iconCtx, size, slotFamily, accentPalette);
+    } else {
+      drawWeaponOrOffhandIcon(iconCtx, size, presentation, accentPalette);
+    }
+    drawItemAffixDecorations(iconCtx, size, presentation.affixThemes);
+    return;
+  }
+
+  iconCtx.fillStyle = "#8fa3b8";
+  iconCtx.beginPath();
+  iconCtx.arc(mid, mid, 10, 0, Math.PI * 2);
+  iconCtx.fill();
+}
+
+function getItemIconUrl(itemInput) {
+  const key = buildItemIconCacheKey(itemInput);
+  return createIconUrl(key, (iconCtx, size) => {
+    drawItemIcon(itemInput, iconCtx, size);
   });
 }
 
@@ -2977,6 +3612,7 @@ function updateInventoryUI() {
   if (!inventoryGrid || !inventoryPanel) {
     return;
   }
+  hideHoverTooltip();
 
   ensureInventorySlotsLength();
   const gridWidth =
@@ -3034,7 +3670,8 @@ function updateInventoryUI() {
     if (slotData && slotData.itemId) {
       slotEl.classList.add("has-item");
       slotEl.draggable = true;
-      slotEl.title = buildItemTooltip(slotData);
+      bindItemTooltip(slotEl, slotData);
+      applyItemRarityChrome(slotEl, slotData);
       slotEl.addEventListener("contextmenu", (event) => {
         event.preventDefault();
         equipInventoryItemAtIndex(i);
@@ -3054,7 +3691,7 @@ function updateInventoryUI() {
 
       const iconEl = document.createElement("div");
       iconEl.className = "inv-icon";
-      iconEl.style.backgroundImage = `url(${getItemIconUrl(slotData.itemId)})`;
+      iconEl.style.backgroundImage = `url(${getItemIconUrl(slotData)})`;
       slotEl.appendChild(iconEl);
 
       const qtyEl = document.createElement("div");
@@ -3071,8 +3708,43 @@ function updateEquipmentUI() {
   if (!equipmentGrid || !equipmentPanel) {
     return;
   }
+  hideHoverTooltip();
   const slotIds = Array.isArray(equipmentConfigState.itemSlots) ? equipmentConfigState.itemSlots : [];
   equipmentGrid.innerHTML = "";
+  const shellEl = document.createElement("div");
+  shellEl.className = "equipment-layout-shell";
+  const statsPanelEl = document.createElement("div");
+  statsPanelEl.className = "equipment-stats-panel";
+  const statsTitleEl = document.createElement("div");
+  statsTitleEl.className = "equipment-stats-title";
+  statsTitleEl.textContent = "Stats";
+  statsPanelEl.appendChild(statsTitleEl);
+  const statsListEl = document.createElement("div");
+  statsListEl.className = "equipment-stats-list";
+  for (const stat of buildCharacterStatSummary()) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "equipment-stat-row";
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "equipment-stat-label";
+    labelEl.textContent = stat.label;
+
+    const valueEl = document.createElement("div");
+    valueEl.className = "equipment-stat-value";
+    const totalText = `${formatTooltipNumber(stat.total, stat.decimals ?? 2)}${stat.suffix || ""}`;
+    const bonus = Number(stat.bonus) || 0;
+    const bonusText =
+      Math.abs(bonus) > 0.001
+        ? ` (${bonus > 0 ? "+" : ""}${formatTooltipNumber(Math.abs(bonus), stat.decimals ?? 2)}${stat.suffix || ""})`
+        : "";
+    valueEl.textContent = `${totalText}${bonusText}`;
+
+    rowEl.appendChild(labelEl);
+    rowEl.appendChild(valueEl);
+    statsListEl.appendChild(rowEl);
+  }
+  statsPanelEl.appendChild(statsListEl);
+
   const layoutEl = document.createElement("div");
   layoutEl.className = "equipment-layout";
 
@@ -3129,7 +3801,8 @@ function updateEquipmentUI() {
     if (slotData && slotData.itemId) {
       slotEl.classList.add("has-item");
       slotEl.draggable = true;
-      slotEl.title = buildItemTooltip(slotData);
+      bindItemTooltip(slotEl, slotData);
+      applyItemRarityChrome(slotEl, slotData);
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "equipment";
         dragState.inventoryFrom = null;
@@ -3145,7 +3818,7 @@ function updateEquipmentUI() {
 
       const iconEl = document.createElement("div");
       iconEl.className = "inv-icon";
-      iconEl.style.backgroundImage = `url(${getItemIconUrl(slotData.itemId)})`;
+      iconEl.style.backgroundImage = `url(${getItemIconUrl(slotData)})`;
       slotEl.appendChild(iconEl);
     }
 
@@ -3158,7 +3831,9 @@ function updateEquipmentUI() {
     layoutEl.appendChild(anchor);
   }
 
-  equipmentGrid.appendChild(layoutEl);
+  shellEl.appendChild(statsPanelEl);
+  shellEl.appendChild(layoutEl);
+  equipmentGrid.appendChild(shellEl);
 }
 
 const sharedClientUiPanels = globalThis.VibeClientUiPanels || null;
@@ -4023,6 +4698,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
       baseHealth: Math.max(1, Math.floor(Number(classDef.baseHealth) || 1)),
       baseMana: Math.max(0, Math.floor(Number(classDef.baseMana) || 0)),
       manaRegen: Math.max(0, Number(classDef.manaRegen) || 0),
+      movementSpeed: Math.max(0.1, Number(classDef.speed ?? classDef.movementSpeed) || 0.1),
       abilities: abilitiesList
     });
     classOptions.push({
@@ -4136,7 +4812,10 @@ function applyEquipmentConfig(equipment) {
   const slotIds = Array.isArray(equipment && equipment.itemSlots)
     ? equipment.itemSlots.map((value) => String(value || "").trim()).filter(Boolean)
     : [];
+  const itemRarities =
+    equipment && equipment.itemRarities && typeof equipment.itemRarities === "object" ? equipment.itemRarities : {};
   equipmentConfigState.itemSlots = slotIds;
+  equipmentConfigState.itemRarities = itemRarities;
   const nextSlots = {};
   for (const slotId of slotIds) {
     nextSlots[slotId] = equipmentState.slots[slotId] || null;

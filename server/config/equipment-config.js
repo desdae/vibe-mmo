@@ -1,6 +1,23 @@
 const fs = require("fs");
 const { clamp, parseNumericRange } = require("../gameplay/number-utils");
 
+function sanitizeCssColor(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^#[0-9a-fA-F]{3,8}$/.test(raw)) {
+    return raw;
+  }
+  if (/^rgba?\(([^)]+)\)$/.test(raw)) {
+    return raw;
+  }
+  if (/^hsla?\(([^)]+)\)$/.test(raw)) {
+    return raw;
+  }
+  return "";
+}
+
 function sanitizeStringArray(values) {
   const result = [];
   const seen = new Set();
@@ -98,7 +115,8 @@ function sanitizeRarity(entry, fallbackName) {
     prefixMax: Math.max(0, Math.floor(Math.max(prefixMinRaw, prefixMaxRaw))),
     suffixMin: Math.max(0, Math.floor(Math.min(suffixMinRaw, suffixMaxRaw))),
     suffixMax: Math.max(0, Math.floor(Math.max(suffixMinRaw, suffixMaxRaw))),
-    dropWeight: Math.max(0.0001, Number(entry.dropWeight) || 1)
+    dropWeight: Math.max(0.0001, Number(entry.dropWeight) || 1),
+    color: sanitizeCssColor(entry.color)
   };
 }
 
@@ -185,8 +203,17 @@ function loadEquipmentConfigFromDisk(configPath) {
 
   const maxItemLevel = baseItems.reduce((max, entry) => Math.max(max, entry.itemLevelRange[1]), 1);
   const equipmentSlotIds = expandEquipmentSlotIds(itemSlots);
+  const clientItemRarities = Object.fromEntries(
+    rarityEntries.map((entry) => [
+      entry.id,
+      {
+        color: entry.color || ""
+      }
+    ])
+  );
   const clientEquipmentConfig = {
-    itemSlots: equipmentSlotIds
+    itemSlots: equipmentSlotIds,
+    itemRarities: clientItemRarities
   };
   const equipmentItemDefs = baseItems.map(buildEquipmentItemDef);
 

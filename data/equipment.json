@@ -18,37 +18,44 @@
     "normal": {
       "prefixCount": [0, 0],
       "suffixCount": [0, 0],
-      "dropWeight": 1000000
+      "dropWeight": 1000000,
+      "color": "#b8c5d1"
     },
     "magic": {
       "prefixCount": [0, 1],
       "suffixCount": [1, 1],
-      "dropWeight": 100000
+      "dropWeight": 100000,
+      "color": "#58a6ff"
     },
     "rare": {
       "prefixCount": [1, 2],
       "suffixCount": [1, 2],
-      "dropWeight": 100000000
+      "dropWeight": 100000000,
+      "color": "#f3d26b"
     },
     "epic": {
       "prefixCount": [2, 3],
       "suffixCount": [2, 3],
-      "dropWeight": 1000
+      "dropWeight": 1000,
+      "color": "#be7dff"
     },
     "legendary": {
       "prefixCount": [3, 4],
       "suffixCount": [3, 4],
-      "dropWeight": 100
+      "dropWeight": 100,
+      "color": "#ff9747"
     },
     "mythic": {
       "prefixCount": [4, 5],
       "suffixCount": [4, 5],
-      "dropWeight": 10
+      "dropWeight": 10,
+      "color": "#ff5fc8"
     },
     "divine": {
       "prefixCount": [5, 6],
       "suffixCount": [5, 6],
-      "dropWeight": 1
+      "dropWeight": 1,
+      "color": "#fff1b5"
     }
   },
   "baseItems": [
