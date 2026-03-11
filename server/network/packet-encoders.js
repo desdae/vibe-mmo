@@ -41,7 +41,8 @@ const {
   AREA_EFFECT_OP_UPSERT,
   AREA_EFFECT_OP_REMOVE,
   AREA_EFFECT_KIND_AREA,
-  AREA_EFFECT_KIND_BEAM
+  AREA_EFFECT_KIND_BEAM,
+  AREA_EFFECT_KIND_SUMMON
 } = PROTOCOL;
 const {
   clamp,
@@ -104,7 +105,13 @@ function encodeAreaEffectEventPacket(events) {
 
     const abilityBytes = Buffer.from(String(event.abilityId || "").slice(0, 64), "utf8");
     const details = Buffer.alloc(12);
-    details.writeUInt8(Number(event.kind) === AREA_EFFECT_KIND_BEAM ? AREA_EFFECT_KIND_BEAM : AREA_EFFECT_KIND_AREA, 0);
+    const kind =
+      Number(event.kind) === AREA_EFFECT_KIND_BEAM
+        ? AREA_EFFECT_KIND_BEAM
+        : Number(event.kind) === AREA_EFFECT_KIND_SUMMON
+          ? AREA_EFFECT_KIND_SUMMON
+          : AREA_EFFECT_KIND_AREA;
+    details.writeUInt8(kind, 0);
     details.writeUInt16LE(clamp(Math.floor(Number(event.xQ) || 0), 0, 65535), 1);
     details.writeUInt16LE(clamp(Math.floor(Number(event.yQ) || 0), 0, 65535), 3);
     details.writeUInt16LE(clamp(Math.floor(Number(event.radiusQ) || 0), 1, 65535), 5);
@@ -116,7 +123,7 @@ function encodeAreaEffectEventPacket(events) {
       parts.push(abilityBytes);
     }
 
-    if (Number(event.kind) === AREA_EFFECT_KIND_BEAM) {
+    if (kind === AREA_EFFECT_KIND_BEAM) {
       const beam = Buffer.alloc(12);
       beam.writeUInt16LE(clamp(Math.floor(Number(event.startXQ) || 0), 0, 65535), 0);
       beam.writeUInt16LE(clamp(Math.floor(Number(event.startYQ) || 0), 0, 65535), 2);
@@ -125,6 +132,13 @@ function encodeAreaEffectEventPacket(events) {
       beam.writeUInt16LE(clamp(Math.floor(Number(event.lengthQ) || 0), 1, 65535), 8);
       beam.writeUInt16LE(clamp(Math.floor(Number(event.widthQ) || 0), 1, 65535), 10);
       parts.push(beam);
+    } else if (kind === AREA_EFFECT_KIND_SUMMON) {
+      const summon = Buffer.alloc(7);
+      summon.writeUInt8(clamp(Math.floor(Number(event.summonCount) || 1), 1, 255), 0);
+      summon.writeUInt16LE(clamp(Math.floor(Number(event.attackIntervalMs) || 1000), 1, 65535), 1);
+      summon.writeUInt16LE(clamp(Math.floor(Number(event.attackRangeQ) || 0), 1, 65535), 3);
+      summon.writeUInt16LE(clamp(Math.floor(Number(event.formationRadiusQ) || 0), 0, 65535), 5);
+      parts.push(summon);
     }
   }
 
@@ -177,13 +191,13 @@ function encodeProjectileMetaPacket(projectileMeta) {
   header.writeUInt8(PROJECTILE_META_PROTO_VERSION, 1);
   header.writeUInt16LE(projectileMeta.length, 2);
 
-  const body = Buffer.alloc(projectileMeta.length * 5);
+  const body = Buffer.alloc(projectileMeta.length * 6);
   let offset = 0;
   for (const meta of projectileMeta) {
-    const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
-    body.writeUInt8(id, offset);
-    body.writeUInt32LE(hashString32(meta && meta.abilityId), offset + 1);
-    offset += 5;
+    const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 65535);
+    body.writeUInt16LE(id, offset);
+    body.writeUInt32LE(hashString32(String((meta && meta.abilityId) || "").trim().toLowerCase()), offset + 2);
+    offset += 6;
   }
 
   return Buffer.concat([header, body]);
@@ -284,7 +298,7 @@ function writeCastRecord(buffer, offset, record, kind) {
     return offset + 3;
   }
 
-  buffer.writeUInt32LE(hashString32(record.abilityId), offset + 3);
+  buffer.writeUInt32LE(hashString32(String(record.abilityId || "").trim().toLowerCase()), offset + 3);
   buffer.writeUInt16LE(clamp(Math.floor(Number(record.durationMs) || 0), 1, 65535), offset + 7);
   buffer.writeUInt16LE(clamp(Math.floor(Number(record.elapsedMs) || 0), 0, 65535), offset + 9);
   return offset + 11;
@@ -426,7 +440,7 @@ function encodeMobBitePacket(events) {
     body.writeUInt8(clamp(Math.floor(Number(event && event.id) || 0), 0, 255), offset);
     body.writeInt8(encodeUnitDirectionComponent(event && event.dx), offset + 1);
     body.writeInt8(encodeUnitDirectionComponent(event && event.dy), offset + 2);
-    body.writeUInt32LE(hashString32(event && event.abilityId), offset + 3);
+    body.writeUInt32LE(hashString32(String((event && event.abilityId) || "").trim().toLowerCase()), offset + 3);
     offset += 7;
   }
 
@@ -449,7 +463,7 @@ function encodeExplosionEventPacket(events) {
     body.writeUInt16LE(quantizePos(Number(event && event.x)), offset);
     body.writeUInt16LE(quantizePos(Number(event && event.y)), offset + 2);
     body.writeUInt16LE(quantizeDistance(event && event.radius), offset + 4);
-    body.writeUInt32LE(hashString32(event && event.abilityId), offset + 6);
+    body.writeUInt32LE(hashString32(String((event && event.abilityId) || "").trim().toLowerCase()), offset + 6);
     offset += 10;
   }
 
@@ -467,7 +481,7 @@ function encodeProjectileHitEventPacket(events) {
   for (const event of events) {
     body.writeUInt16LE(quantizePos(Number(event && event.x)), offset);
     body.writeUInt16LE(quantizePos(Number(event && event.y)), offset + 2);
-    body.writeUInt32LE(hashString32(event && event.abilityId), offset + 4);
+    body.writeUInt32LE(hashString32(String((event && event.abilityId) || "").trim().toLowerCase()), offset + 4);
     offset += 8;
   }
 

@@ -28,13 +28,21 @@
     const resolveAbilityIdHash =
       typeof deps.resolveAbilityIdHash === "function" ? deps.resolveAbilityIdHash : () => "";
 
+    const areaEffectProtoType = Number.isFinite(Number(deps.AREA_EFFECT_PROTO_TYPE)) ? Number(deps.AREA_EFFECT_PROTO_TYPE) : 3;
+    const areaEffectProtoVersion = Number.isFinite(Number(deps.AREA_EFFECT_PROTO_VERSION))
+      ? Number(deps.AREA_EFFECT_PROTO_VERSION)
+      : 2;
+    const areaEffectOpUpsert = Number.isFinite(Number(deps.AREA_EFFECT_OP_UPSERT)) ? Number(deps.AREA_EFFECT_OP_UPSERT) : 1;
+    const areaEffectOpRemove = Number.isFinite(Number(deps.AREA_EFFECT_OP_REMOVE)) ? Number(deps.AREA_EFFECT_OP_REMOVE) : 2;
+    const areaEffectKindArea = Number.isFinite(Number(deps.AREA_EFFECT_KIND_AREA)) ? Number(deps.AREA_EFFECT_KIND_AREA) : 0;
+    const areaEffectKindBeam = Number.isFinite(Number(deps.AREA_EFFECT_KIND_BEAM)) ? Number(deps.AREA_EFFECT_KIND_BEAM) : 1;
+    const areaEffectKindSummon = Number.isFinite(Number(deps.AREA_EFFECT_KIND_SUMMON)) ? Number(deps.AREA_EFFECT_KIND_SUMMON) : 2;
+
     const {
       ENTITY_PROTO_TYPE,
       ENTITY_PROTO_VERSION,
       MOB_EFFECT_PROTO_TYPE,
       MOB_EFFECT_PROTO_VERSION,
-      AREA_EFFECT_PROTO_TYPE,
-      AREA_EFFECT_PROTO_VERSION,
       MOB_META_PROTO_TYPE,
       MOB_META_PROTO_VERSION,
       PROJECTILE_META_PROTO_TYPE,
@@ -67,9 +75,6 @@
       MOB_EFFECT_FLAG_SLOW,
       MOB_EFFECT_FLAG_REMOVE,
       MOB_EFFECT_FLAG_BURN,
-      AREA_EFFECT_OP_UPSERT,
-      AREA_EFFECT_OP_REMOVE,
-      AREA_EFFECT_KIND_BEAM,
       POS_SCALE,
       MANA_SCALE,
       HEAL_SCALE,
@@ -609,7 +614,7 @@
       if (view.byteLength < 4) {
         return;
       }
-      if (view.getUint8(0) !== AREA_EFFECT_PROTO_TYPE || view.getUint8(1) !== AREA_EFFECT_PROTO_VERSION) {
+      if (view.getUint8(0) !== areaEffectProtoType || view.getUint8(1) !== areaEffectProtoVersion) {
         return;
       }
 
@@ -626,11 +631,11 @@
         offset += 5;
         const id = String(numericId);
 
-        if (op === AREA_EFFECT_OP_REMOVE) {
+        if (op === areaEffectOpRemove) {
           activeAreaEffectsById && activeAreaEffectsById.delete(id);
           continue;
         }
-        if (op !== AREA_EFFECT_OP_UPSERT) {
+        if (op !== areaEffectOpUpsert) {
           continue;
         }
 
@@ -661,10 +666,15 @@
           remainingMs,
           durationMs,
           abilityId,
-          kind: kindByte === AREA_EFFECT_KIND_BEAM ? "beam" : "area"
+          kind:
+            kindByte === areaEffectKindBeam
+              ? "beam"
+              : kindByte === areaEffectKindSummon
+                ? "summon"
+                : "area"
         };
 
-        if (kindByte === AREA_EFFECT_KIND_BEAM) {
+        if (kindByte === areaEffectKindBeam) {
           if (offset + 12 > view.byteLength) {
             break;
           }
@@ -675,6 +685,15 @@
           payload.length = dequantizePos(view.getUint16(offset + 8, true));
           payload.width = dequantizePos(view.getUint16(offset + 10, true));
           offset += 12;
+        } else if (kindByte === areaEffectKindSummon) {
+          if (offset + 7 > view.byteLength) {
+            break;
+          }
+          payload.summonCount = view.getUint8(offset);
+          payload.attackIntervalMs = view.getUint16(offset + 1, true);
+          payload.attackRange = dequantizePos(view.getUint16(offset + 3, true));
+          payload.formationRadius = dequantizePos(view.getUint16(offset + 5, true));
+          offset += 7;
         }
 
         upsertAreaEffectState(payload, now);
@@ -741,7 +760,7 @@
         return;
       }
       const version = view.getUint8(1);
-      if (version !== 1 && version !== PROJECTILE_META_PROTO_VERSION) {
+      if (version !== 1 && version !== 2 && version !== PROJECTILE_META_PROTO_VERSION) {
         return;
       }
 
@@ -750,7 +769,14 @@
       for (let i = 0; i < count; i += 1) {
         let id = 0;
         let abilityId = "";
-        if (version >= 2) {
+        if (version >= 3) {
+          if (offset + 6 > view.byteLength) {
+            break;
+          }
+          id = view.getUint16(offset, true);
+          abilityId = resolveAbilityIdHash(view.getUint32(offset + 2, true));
+          offset += 6;
+        } else if (version >= 2) {
           if (offset + 5 > view.byteLength) {
             break;
           }

@@ -1,3 +1,5 @@
+const { computeSummonFormationPositions, getSummonCountForLevel } = require("../../public/shared/summon-layout");
+
 function createAreaEffectTools(options = {}) {
   const clamp = typeof options.clamp === "function" ? options.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
   const normalizeDirection =
@@ -11,6 +13,8 @@ function createAreaEffectTools(options = {}) {
   const applyDamageToMob = typeof options.applyDamageToMob === "function" ? options.applyDamageToMob : () => 0;
   const applyDotToMob = typeof options.applyDotToMob === "function" ? options.applyDotToMob : () => {};
   const applySlowToMob = typeof options.applySlowToMob === "function" ? options.applySlowToMob : () => {};
+  const spawnProjectileFromTemplate =
+    typeof options.spawnProjectileFromTemplate === "function" ? options.spawnProjectileFromTemplate : () => false;
   const mapWidth = Math.max(1, Number(options.mapWidth) || 1);
   const mapHeight = Math.max(1, Number(options.mapHeight) || 1);
 
@@ -141,6 +145,55 @@ function createAreaEffectTools(options = {}) {
     return effect;
   }
 
+  function createPersistentSummonEffect(
+    ownerId,
+    abilityDef,
+    centerX,
+    centerY,
+    summonCount,
+    durationMs,
+    payload = null,
+    now
+  ) {
+    const config = payload && typeof payload === "object" ? payload : {};
+    const effectiveSummonCount = getSummonCountForLevel(
+      Number(abilityDef && abilityDef.summonCount) || Number(summonCount) || 1,
+      Number(abilityDef && abilityDef.summonCountPerLevel) || 0,
+      Math.max(1, Math.floor(Number(config.abilityLevel) || 1)),
+      {
+        everyLevels: Number(abilityDef && abilityDef.summonCountEveryLevels) || 0,
+        maxCount: Number(abilityDef && abilityDef.maxSummonCount) || 0
+      }
+    );
+    const effect = {
+      id: String(allocateAreaEffectId()),
+      ownerId: String(ownerId || ""),
+      abilityId: String(abilityDef.id || ""),
+      kind: "summon",
+      x: clamp(centerX, 0, mapWidth - 1),
+      y: clamp(centerY, 0, mapHeight - 1),
+      radius: Math.max(0.5, Number(config.renderRadius) || Number(config.formationRadius) + 1.1 || 1.4),
+      summonCount: Math.max(1, Math.round(Number(effectiveSummonCount) || 1)),
+      formationRadius: Math.max(0, Number(config.formationRadius) || 0),
+      attackRange: Math.max(0.5, Number(config.attackRange) || 6),
+      attackIntervalMs: Math.max(120, Math.floor(Number(config.attackIntervalMs) || 1000)),
+      projectileTemplate:
+        config.projectileTemplate && typeof config.projectileTemplate === "object"
+          ? { ...config.projectileTemplate }
+          : null,
+      abilityLevel: Math.max(1, Math.floor(Number(config.abilityLevel) || 1)),
+      tickIntervalMs: Math.max(120, Math.floor(Number(config.attackIntervalMs) || 1000)),
+      createdAt: now,
+      endsAt: now + durationMs,
+      durationMs,
+      nextAttackAt: now + Math.max(200, Math.min(700, Math.floor(Number(config.initialDelayMs) || 380))),
+      nextTickAt: now + Math.max(200, Math.min(700, Math.floor(Number(config.initialDelayMs) || 380)))
+    };
+    activeAreaEffects.set(effect.id, effect);
+    queueExplosionEvent(effect.x, effect.y, Math.max(0.4, effect.radius * 0.7), effect.abilityId);
+    return effect;
+  }
+
   function rollScaledTickDamage(minPerSecond, maxPerSecond, tickIntervalMs) {
     const minBase = Math.max(0, Number(minPerSecond) || 0);
     const maxBase = Math.max(minBase, Number(maxPerSecond) || minBase);
@@ -220,6 +273,52 @@ function createAreaEffectTools(options = {}) {
               }
             }
           }
+        } else if (String(effect.kind || "") === "summon") {
+          const projectileTemplate =
+            effect.projectileTemplate && typeof effect.projectileTemplate === "object"
+              ? effect.projectileTemplate
+              : null;
+          if (!projectileTemplate) {
+            effect.nextTickAt = Number(effect.endsAt) + 1;
+            continue;
+          }
+          const hydraPositions = computeSummonFormationPositions(
+            effect.x,
+            effect.y,
+            effect.summonCount,
+            effect.formationRadius
+          );
+          for (const hydra of hydraPositions) {
+            let bestTarget = null;
+            let bestDistSq = Math.max(0.25, Number(effect.attackRange) || 6) ** 2;
+            for (const mob of mobs.values()) {
+              if (!mob.alive) {
+                continue;
+              }
+              const dx = mob.x - hydra.x;
+              const dy = mob.y - hydra.y;
+              const distSq = dx * dx + dy * dy;
+              if (distSq > bestDistSq) {
+                continue;
+              }
+              bestTarget = mob;
+              bestDistSq = distSq;
+            }
+            if (!bestTarget) {
+              continue;
+            }
+            spawnProjectileFromTemplate(
+              effect.ownerId,
+              hydra.x,
+              hydra.y,
+              { dx: bestTarget.x - hydra.x, dy: bestTarget.y - hydra.y },
+              projectileTemplate,
+              effect.abilityLevel,
+              now,
+              "mob"
+            );
+          }
+          effect.nextAttackAt = effect.nextTickAt;
         } else {
           for (const mob of mobs.values()) {
             if (!mob.alive) {
@@ -257,6 +356,7 @@ function createAreaEffectTools(options = {}) {
     getAreaAbilityTargetPosition,
     createPersistentAreaEffect,
     createPersistentBeamEffect,
+    createPersistentSummonEffect,
     tickAreaEffects
   };
 }

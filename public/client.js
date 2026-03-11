@@ -61,6 +61,44 @@ const sharedGetAbilityCooldownMsForLevel =
   sharedAbilityStats && typeof sharedAbilityStats.getAbilityCooldownMsForLevel === "function"
     ? sharedAbilityStats.getAbilityCooldownMsForLevel
     : null;
+const sharedSummonLayout = globalThis.VibeSummonLayout || null;
+const sharedGetSummonCountForLevel =
+  sharedSummonLayout && typeof sharedSummonLayout.getSummonCountForLevel === "function"
+    ? sharedSummonLayout.getSummonCountForLevel
+    : (baseCount, countPerLevel, level, options = {}) => {
+        const base = Math.max(1, Math.round(Number(baseCount) || 1));
+        const perLevel = Math.max(0, Number(countPerLevel) || 0);
+        const lvl = Math.max(1, Math.floor(Number(level) || 1));
+        const everyLevels = Math.max(0, Math.floor(Number(options.everyLevels) || 0));
+        const maxCount = Math.max(0, Math.floor(Number(options.maxCount) || 0));
+        const scaled =
+          everyLevels > 0
+            ? base + Math.floor(Math.max(0, lvl - 1) / everyLevels)
+            : base + perLevel * Math.max(0, lvl - 1);
+        const rounded = Math.max(1, Math.round(scaled));
+        return maxCount > 0 ? Math.min(maxCount, rounded) : rounded;
+      };
+const sharedComputeSummonFormationPositions =
+  sharedSummonLayout && typeof sharedSummonLayout.computeSummonFormationPositions === "function"
+    ? sharedSummonLayout.computeSummonFormationPositions
+    : (centerX, centerY, count, formationRadius = 0.9, startAngle = -Math.PI * 0.5) => {
+        const total = Math.max(1, Math.round(Number(count) || 1));
+        const radius = Math.max(0, Number(formationRadius) || 0);
+        if (total <= 1 || radius <= 0.001) {
+          return [{ x: Number(centerX) || 0, y: Number(centerY) || 0, angle: startAngle, index: 0 }];
+        }
+        const positions = [];
+        for (let index = 0; index < total; index += 1) {
+          const angle = startAngle + (index / total) * Math.PI * 2;
+          positions.push({
+            x: (Number(centerX) || 0) + Math.cos(angle) * radius,
+            y: (Number(centerY) || 0) + Math.sin(angle) * radius,
+            angle,
+            index
+          });
+        }
+        return positions;
+      };
 const clientAbilityNormalizationTools = sharedCreateAbilityNormalizationTools
   ? sharedCreateAbilityNormalizationTools({ defaultProjectileHitRadius: 0.6 })
   : null;
@@ -88,13 +126,35 @@ const protocol = globalThis.VibeProtocol || {
   MOB_EFFECT_PROTO_TYPE: 2,
   MOB_EFFECT_PROTO_VERSION: 1,
   AREA_EFFECT_PROTO_TYPE: 3,
-  AREA_EFFECT_PROTO_VERSION: 1,
+  AREA_EFFECT_PROTO_VERSION: 2,
   MOB_META_PROTO_TYPE: 4,
   MOB_META_PROTO_VERSION: 1,
   PROJECTILE_META_PROTO_TYPE: 5,
-  PROJECTILE_META_PROTO_VERSION: 1,
+  PROJECTILE_META_PROTO_VERSION: 3,
   DAMAGE_EVENT_PROTO_TYPE: 6,
   DAMAGE_EVENT_PROTO_VERSION: 1,
+  PLAYER_META_PROTO_TYPE: 7,
+  PLAYER_META_PROTO_VERSION: 1,
+  LOOTBAG_META_PROTO_TYPE: 8,
+  LOOTBAG_META_PROTO_VERSION: 1,
+  PLAYER_SWING_PROTO_TYPE: 9,
+  PLAYER_SWING_PROTO_VERSION: 1,
+  CAST_EVENT_PROTO_TYPE: 10,
+  CAST_EVENT_PROTO_VERSION: 1,
+  PLAYER_EFFECT_PROTO_TYPE: 11,
+  PLAYER_EFFECT_PROTO_VERSION: 1,
+  MOB_BITE_PROTO_TYPE: 12,
+  MOB_BITE_PROTO_VERSION: 1,
+  EXPLOSION_EVENT_PROTO_TYPE: 13,
+  EXPLOSION_EVENT_PROTO_VERSION: 1,
+  PROJECTILE_HIT_EVENT_PROTO_TYPE: 14,
+  PROJECTILE_HIT_EVENT_PROTO_VERSION: 1,
+  MOB_DEATH_EVENT_PROTO_TYPE: 15,
+  MOB_DEATH_EVENT_PROTO_VERSION: 1,
+  CAST_EVENT_KIND_PLAYER: 0,
+  CAST_EVENT_KIND_MOB: 1,
+  CAST_EVENT_KIND_SELF: 2,
+  CAST_EVENT_FLAG_ACTIVE: 1 << 0,
   DAMAGE_EVENT_FLAG_TARGET_PLAYER: 1 << 0,
   DAMAGE_EVENT_FLAG_FROM_SELF: 1 << 1,
   MOB_EFFECT_FLAG_STUN: 1 << 0,
@@ -105,6 +165,7 @@ const protocol = globalThis.VibeProtocol || {
   AREA_EFFECT_OP_REMOVE: 2,
   AREA_EFFECT_KIND_AREA: 0,
   AREA_EFFECT_KIND_BEAM: 1,
+  AREA_EFFECT_KIND_SUMMON: 2,
   POS_SCALE: 64,
   MANA_SCALE: 10,
   HEAL_SCALE: 10,
@@ -301,7 +362,10 @@ const abilityChannel = {
   startedAt: 0,
   durationMs: 0,
   targetX: 0,
-  targetY: 0
+  targetY: 0,
+  lastRetargetSentAt: 0,
+  lastSentTargetX: NaN,
+  lastSentTargetY: NaN
 };
 const mouseState = {
   leftDown: false,
@@ -1547,8 +1611,11 @@ const abilityRuntimeTools = sharedCreateAbilityRuntimeTools
       getCurrentSelf,
       getActionDefById,
       sendAbilityUse,
+      sendCastTargetUpdate,
       getAbilityEffectiveCooldownMsForSelf,
       getAbilityEffectiveRangeForSelf,
+      mouseState,
+      screenToWorld,
       playAbilityAudioEvent,
       triggerSwordSwing,
       stopAbilityChannelAudio,
@@ -1957,6 +2024,8 @@ function buildAbilityTooltip(abilityId) {
   const totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
   const totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
   const durationMs = Math.max(0, Number(ability.durationMs) || 0);
+  const durationPerLevelMs = Math.max(0, Number(ability.durationPerLevelMs) || 0);
+  const totalDurationMs = durationMs + durationPerLevelMs * Math.max(0, level - 1);
   const stunDurationMs = Math.max(0, Number(ability.stunDurationMs) || 0);
   const slowDurationMs = Math.max(0, Number(ability.slowDurationMs) || 0);
   const rawSlowMultiplier = Number(ability.slowMultiplier);
@@ -1966,6 +2035,15 @@ function buildAbilityTooltip(abilityId) {
       ? clamp(1 - clamp(Number(ability.slowAmount), 0, 0.95), 0.1, 1)
       : 1;
   const slowPercent = Math.round((1 - slowMultiplier) * 100);
+  const summonCount = sharedGetSummonCountForLevel(
+    Number(ability.summonCount) || 1,
+    Number(ability.summonCountPerLevel) || 0,
+    level,
+    {
+      everyLevels: Number(ability.summonCountEveryLevels) || 0,
+      maxCount: Number(ability.maxSummonCount) || 0
+    }
+  );
   const invulnerabilityDurationMs = Math.max(
     0,
     Number(ability.invulnerabilityDurationMs || 0) || Math.round((Number(ability.invulnerabilityDuration) || 0) * 1000)
@@ -2012,7 +2090,7 @@ function buildAbilityTooltip(abilityId) {
 
   if (kind === "beam") {
     appendTooltipNumber(lines, "Beam Width", ability.beamWidth);
-    appendTooltipNumber(lines, "Duration", durationMs, formatMsAsSeconds);
+    appendTooltipNumber(lines, "Duration", totalDurationMs || durationMs, formatMsAsSeconds);
   }
 
   if (kind === "chain") {
@@ -2020,6 +2098,14 @@ function buildAbilityTooltip(abilityId) {
     appendTooltipNumber(lines, "Jump Range", ability.jumpRange);
     appendTooltipNumber(lines, "Jumps", ability.jumpCount, (v) => `${Math.round(v)}`);
     appendTooltipNumber(lines, "Jump Damage Loss", ability.jumpDamageReduction, (v) => `${Math.round(v * 100)}%`);
+  }
+
+  if (kind === "summon") {
+    appendTooltipNumber(lines, "Hydras", summonCount, (v) => `${Math.round(v)}`);
+    appendTooltipNumber(lines, "Summon Range", effectiveRange);
+    appendTooltipNumber(lines, "Attack Range", ability.summonAttackRange);
+    appendTooltipNumber(lines, "Attack Interval", ability.summonAttackIntervalMs, formatMsAsSeconds);
+    appendTooltipNumber(lines, "Duration", totalDurationMs || durationMs, formatMsAsSeconds);
   }
 
   if (kind === "teleport") {
@@ -3046,6 +3132,44 @@ function drawFireballActionIcon(iconCtx, size) {
   }
 }
 
+function drawFireHydraActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.save();
+  iconCtx.translate(mid, mid + 1);
+
+  iconCtx.fillStyle = "rgba(83, 24, 13, 0.95)";
+  iconCtx.beginPath();
+  iconCtx.ellipse(0, 5, 11, 8, 0, 0, Math.PI * 2);
+  iconCtx.fill();
+
+  const neckOffsets = [-7, 0, 7];
+  for (let index = 0; index < neckOffsets.length; index += 1) {
+    const x = neckOffsets[index];
+    iconCtx.strokeStyle = "rgba(255, 125, 62, 0.88)";
+    iconCtx.lineWidth = 3.6;
+    iconCtx.lineCap = "round";
+    iconCtx.beginPath();
+    iconCtx.moveTo(x * 0.4, 4);
+    iconCtx.quadraticCurveTo(x * 0.55, -2, x, -8);
+    iconCtx.stroke();
+
+    iconCtx.fillStyle = "rgba(255, 128, 54, 0.95)";
+    iconCtx.beginPath();
+    iconCtx.ellipse(x, -10, 4.2, 3.5, 0, 0, Math.PI * 2);
+    iconCtx.fill();
+    iconCtx.fillStyle = "rgba(255, 226, 142, 0.92)";
+    iconCtx.beginPath();
+    iconCtx.arc(x + 0.8, -10.6, 1.5, 0, Math.PI * 2);
+    iconCtx.fill();
+  }
+
+  iconCtx.fillStyle = "rgba(255, 184, 82, 0.85)";
+  iconCtx.beginPath();
+  iconCtx.arc(0, 7, 3, 0, Math.PI * 2);
+  iconCtx.fill();
+  iconCtx.restore();
+}
+
 function drawWarstompActionIcon(iconCtx, size) {
   const mid = size / 2;
   iconCtx.strokeStyle = "#d6ecff";
@@ -3103,6 +3227,7 @@ const ABILITY_ICON_RENDERERS = Object.freeze({
   lightning_beam: drawLightningBeamActionIcon,
   blink: drawBlinkActionIcon,
   fireball: drawFireballActionIcon,
+  fire_hydra: drawFireHydraActionIcon,
   warstomp: drawWarstompActionIcon,
   pickup_bag: drawPickupBagActionIcon
 });
@@ -5553,6 +5678,45 @@ function sendAbilityUse(abilityId, worldX, worldY) {
   });
 }
 
+function sendCastTargetUpdate(abilityId, worldX, worldY) {
+  const self = getCurrentSelf();
+  if (!socket || socket.readyState !== WebSocket.OPEN || !self || !abilityChannel.active) {
+    return false;
+  }
+  const resolvedAbilityId = String(abilityId || abilityChannel.abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return false;
+  }
+
+  const dx = Number(worldX) - self.x;
+  const dy = Number(worldY) - self.y;
+  const len = Math.hypot(dx, dy);
+  if (!Number.isFinite(len)) {
+    return false;
+  }
+
+  let dirX = 0;
+  let dirY = 1;
+  if (len > 0.0001) {
+    dirX = dx / len;
+    dirY = dy / len;
+  } else {
+    const fallback = sharedNormalizeDirection(self.lastDirection?.dx, self.lastDirection?.dy);
+    if (fallback) {
+      dirX = fallback.dx;
+      dirY = fallback.dy;
+    }
+  }
+
+  return sendJsonMessage({
+    type: "update_cast_target",
+    abilityId: resolvedAbilityId,
+    dx: dirX,
+    dy: dirY,
+    distance: len
+  });
+}
+
 function getAbilityRuntimeKey(abilityId) {
   if (!abilityRuntimeTools) {
     return String(abilityId || "").trim().toLowerCase();
@@ -6269,10 +6433,190 @@ function drawBlizzardAreaEffect(effect, cameraX, cameraY, now) {
   ctx.stroke();
 }
 
-function drawAreaEffects(cameraX, cameraY, now) {
+const hydraSpriteCache = new Map();
+
+function getHydraSpriteFrame(frameIndex) {
+  const key = Math.max(0, Math.floor(Number(frameIndex) || 0)) % 6;
+  let sprite = hydraSpriteCache.get(key);
+  if (sprite) {
+    return sprite;
+  }
+
+  const size = 76;
+  const offscreen = document.createElement("canvas");
+  offscreen.width = size;
+  offscreen.height = size;
+  const iconCtx = offscreen.getContext("2d");
+  const phase = key / 6;
+  const bob = Math.sin(phase * Math.PI * 2);
+  const flicker = Math.cos(phase * Math.PI * 2);
+
+  iconCtx.translate(size / 2, size / 2 + 4);
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+
+  const tailGlow = iconCtx.createRadialGradient(0, 22, 0, 0, 22, 26);
+  tailGlow.addColorStop(0, "rgba(255, 196, 96, 0.34)");
+  tailGlow.addColorStop(0.5, "rgba(255, 112, 34, 0.18)");
+  tailGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  iconCtx.fillStyle = tailGlow;
+  iconCtx.beginPath();
+  iconCtx.arc(0, 22, 26, 0, Math.PI * 2);
+  iconCtx.fill();
+
+  iconCtx.fillStyle = "rgba(63, 16, 9, 0.92)";
+  iconCtx.beginPath();
+  iconCtx.ellipse(0, 21, 17, 10, 0, 0, Math.PI * 2);
+  iconCtx.fill();
+  iconCtx.strokeStyle = "rgba(255, 171, 82, 0.72)";
+  iconCtx.lineWidth = 1.8;
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(255, 96, 41, 0.82)";
+  iconCtx.lineWidth = 8;
+  const neckEndX = bob * 5;
+  const neckEndY = -9 - Math.abs(flicker) * 2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-1.5, 14);
+  iconCtx.quadraticCurveTo(-7 + bob * 2.8, 2, neckEndX, neckEndY);
+  iconCtx.stroke();
+
+  const headX = neckEndX + 1.5;
+  const headY = neckEndY - 4.5;
+  const headGlow = iconCtx.createRadialGradient(headX, headY, 0, headX, headY, 15);
+  headGlow.addColorStop(0, "rgba(255, 248, 196, 0.88)");
+  headGlow.addColorStop(0.42, "rgba(255, 153, 74, 0.48)");
+  headGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  iconCtx.fillStyle = headGlow;
+  iconCtx.beginPath();
+  iconCtx.arc(headX, headY, 15, 0, Math.PI * 2);
+  iconCtx.fill();
+
+  iconCtx.fillStyle = "rgba(221, 63, 30, 0.98)";
+  iconCtx.beginPath();
+  iconCtx.ellipse(headX, headY, 7.5, 6.4, 0, 0, Math.PI * 2);
+  iconCtx.fill();
+  iconCtx.strokeStyle = "rgba(255, 208, 129, 0.82)";
+  iconCtx.lineWidth = 1.3;
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(255, 214, 115, 0.98)";
+  iconCtx.beginPath();
+  iconCtx.arc(headX + 1.2, headY - 1, 2.3, 0, Math.PI * 2);
+  iconCtx.fill();
+
+  iconCtx.strokeStyle = "rgba(255, 191, 111, 0.76)";
+  iconCtx.lineWidth = 1.5;
+  iconCtx.beginPath();
+  iconCtx.moveTo(headX + 3.8, headY - 1.8);
+  iconCtx.lineTo(headX + 10, headY - 5.5 - Math.abs(bob) * 2.8);
+  iconCtx.stroke();
+
+  iconCtx.beginPath();
+  iconCtx.moveTo(headX + 2, headY + 4);
+  iconCtx.lineTo(headX + 8.5, headY + 8.5 + Math.abs(bob) * 1.5);
+  iconCtx.stroke();
+
+  sprite = offscreen;
+  hydraSpriteCache.set(key, sprite);
+  return sprite;
+}
+
+function drawHydraSprite(screenX, screenY, scale, alpha, frameNow, attackPulse = 0) {
+  const frameIndex = Math.floor(frameNow / 120 + attackPulse * 2) % 6;
+  const sprite = getHydraSpriteFrame(frameIndex);
+  const width = sprite.width * scale;
+  const height = sprite.height * scale;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.shadowBlur = 14;
+  ctx.shadowColor = "rgba(255, 128, 48, 0.44)";
+  ctx.drawImage(sprite, screenX - width * 0.5, screenY - height * 0.56, width, height);
+  ctx.restore();
+}
+
+function drawFireHydraAreaEffect(effect, cameraX, cameraY, now) {
+  const count = Math.max(1, Math.round(Number(effect.summonCount) || 1));
+  const abilityDef = findAbilityDefById(effect.abilityId) || findAbilityDefById("fireHydra");
+  const baseFormationRadius = Math.max(
+    0,
+    Number(effect.formationRadius) || Number(abilityDef?.summonFormationRadius) || 0.95
+  );
+  const formationRadius = Math.max(
+    baseFormationRadius,
+    count >= 4 ? 1.6 : count === 3 ? 1.4 : count === 2 ? 1.05 : 0
+  );
+  const positions = sharedComputeSummonFormationPositions(effect.x, effect.y, count, formationRadius);
+  const ageMs = Math.max(0, now - Number(effect.startedAt || now));
+  const fadeOut = 1 - clamp((now - effect.endsAt + 260) / 260, 0, 1);
+  const spawnAlpha = clamp(ageMs / 360, 0, 1);
+  const alpha = clamp(spawnAlpha * fadeOut, 0, 1);
+  const attackIntervalMs = Math.max(120, Number(effect.attackIntervalMs) || 1000);
+  const attackPhase = ((ageMs % attackIntervalMs) / attackIntervalMs);
+
+  for (const hydra of positions) {
+    const screen = worldToScreen(hydra.x + 0.5, hydra.y + 0.5, cameraX, cameraY);
+    const emberRadius = 8 + Math.sin(now * 0.008 + hydra.index * 0.9) * 1.6;
+    const glow = ctx.createRadialGradient(screen.x, screen.y, 0, screen.x, screen.y, emberRadius * 2.4);
+    glow.addColorStop(0, `rgba(255, 220, 132, ${(0.18 * alpha).toFixed(3)})`);
+    glow.addColorStop(0.45, `rgba(255, 103, 43, ${(0.18 * alpha).toFixed(3)})`);
+    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y + 2, emberRadius * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    const baseGlow = ctx.createRadialGradient(screen.x, screen.y + 7, 0, screen.x, screen.y + 7, 18);
+    baseGlow.addColorStop(0, `rgba(255, 222, 156, ${(0.36 * alpha).toFixed(3)})`);
+    baseGlow.addColorStop(0.4, `rgba(255, 132, 54, ${(0.24 * alpha).toFixed(3)})`);
+    baseGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = baseGlow;
+    ctx.beginPath();
+    ctx.arc(screen.x, screen.y + 7, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = `rgba(59, 13, 8, ${(0.74 * alpha).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.ellipse(screen.x, screen.y + 8.5, 10.5, 5.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.lineWidth = 1.15;
+    ctx.strokeStyle = `rgba(255, 192, 104, ${(0.52 * alpha).toFixed(3)})`;
+    ctx.arc(screen.x, screen.y + 5, 8.5, 0, Math.PI * 2);
+    ctx.stroke();
+
+    drawHydraSprite(
+      screen.x,
+      screen.y - 2,
+      0.44 + 0.05 * spawnAlpha,
+      alpha,
+      now + hydra.index * 37,
+      attackPhase > 0.72 ? (attackPhase - 0.72) / 0.28 : 0
+    );
+
+    if (ageMs < 450) {
+      const ring = 12 + (1 - ageMs / 450) * 12;
+      ctx.beginPath();
+      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = `rgba(255, 193, 109, ${(0.55 * alpha).toFixed(3)})`;
+      ctx.arc(screen.x, screen.y + 4, ring, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawAreaEffects(cameraX, cameraY, now, layer = "all") {
   for (const [id, effect] of activeAreaEffectsById.entries()) {
     if (!effect || now >= effect.endsAt + 420) {
       activeAreaEffectsById.delete(id);
+      continue;
+    }
+    const isSummon = String(effect.kind || "").toLowerCase() === "summon";
+    if (layer === "underlay" && isSummon) {
+      continue;
+    }
+    if (layer === "overlay" && !isSummon) {
       continue;
     }
     const actionDef = getActionDefById(effect.abilityId);
@@ -6333,14 +6677,72 @@ function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
   ctx.restore();
 }
 
+function drawFireHydraCastPreview(self, cameraX, cameraY, now) {
+  if (!self || !abilityChannel.active) {
+    return;
+  }
+  const targetX = Number(abilityChannel.targetX);
+  const targetY = Number(abilityChannel.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("fireHydra");
+  const level = getSelfAbilityLevel(self, activeAbilityId, 1);
+  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
+  const summonCount = sharedGetSummonCountForLevel(
+    Number(abilityDef?.summonCount) || 1,
+    Number(abilityDef?.summonCountPerLevel) || 0,
+    level,
+    {
+      everyLevels: Number(abilityDef?.summonCountEveryLevels) || 0,
+      maxCount: Number(abilityDef?.maxSummonCount) || 0
+    }
+  );
+  const formationRadius = Math.max(
+    0,
+    Number(abilityDef?.summonFormationRadius) || 0,
+    summonCount >= 4 ? 1.6 : summonCount === 3 ? 1.4 : summonCount === 2 ? 1.05 : 0
+  );
+  const positions = sharedComputeSummonFormationPositions(targetX, targetY, summonCount, formationRadius);
+  const center = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
+  const selfP = worldToScreen(self.x + 0.5, self.y + 0.5, cameraX, cameraY);
+  const dist = Math.hypot(targetX - self.x, targetY - self.y);
+  const inRange = castRange <= 0 || dist <= castRange + 0.001;
+  const pulse = 0.76 + Math.sin(now * 0.011) * 0.16;
+
+  ctx.save();
+  ctx.setLineDash([5, 4]);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = inRange ? "rgba(255, 195, 120, 0.62)" : "rgba(255, 128, 128, 0.62)";
+  ctx.beginPath();
+  ctx.moveTo(selfP.x, selfP.y);
+  ctx.lineTo(center.x, center.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  for (const hydra of positions) {
+    const screen = worldToScreen(hydra.x + 0.5, hydra.y + 0.5, cameraX, cameraY);
+    drawHydraSprite(screen.x, screen.y - 4, 0.44, inRange ? 0.4 * pulse : 0.28 * pulse, now + hydra.index * 37, 0);
+    ctx.beginPath();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = inRange ? "rgba(255, 212, 138, 0.66)" : "rgba(255, 145, 145, 0.6)";
+    ctx.arc(screen.x, screen.y + 6, 12, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 const ABILITY_AREA_EFFECT_RENDERERS = Object.freeze({
   blizzard: drawBlizzardAreaEffect,
   arcane_beam: drawArcaneBeamAreaEffect,
-  lightning_beam: drawLightningBeamAreaEffect
+  lightning_beam: drawLightningBeamAreaEffect,
+  fire_hydra: drawFireHydraAreaEffect
 });
 
 const ABILITY_CAST_PREVIEW_RENDERERS = Object.freeze({
-  blizzard: drawBlizzardCastPreview
+  blizzard: drawBlizzardCastPreview,
+  fire_hydra: drawFireHydraCastPreview
 });
 
 function drawAbilityCastPreview(self, cameraX, cameraY, now) {
@@ -8875,6 +9277,16 @@ function buildAutomationSnapshot() {
       x: Number(bag.x) || 0,
       y: Number(bag.y) || 0,
       items: Array.isArray(bag.items) ? bag.items.map((entry) => ({ ...entry })) : []
+    })),
+    areaEffects: Array.from(activeAreaEffectsById.values()).map((effect) => ({
+      id: String(effect.id || ""),
+      abilityId: String(effect.abilityId || ""),
+      kind: String(effect.kind || ""),
+      x: Number(effect.x) || 0,
+      y: Number(effect.y) || 0,
+      radius: Number(effect.radius) || 0,
+      summonCount: Math.max(1, Math.round(Number(effect.summonCount) || 1)),
+      formationRadius: Math.max(0, Number(effect.formationRadius) || 0)
     })),
     inventory: inventoryState.slots.map((slot) => (slot ? { ...slot } : null)),
     equipment: { ...equipmentState.slots },

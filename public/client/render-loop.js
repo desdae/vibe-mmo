@@ -58,7 +58,7 @@
         deps.drawProjectile(projectile, cameraX, cameraY, frameNow);
       }
       deps.drawExplosionEffects(cameraX, cameraY);
-      deps.drawAreaEffects(cameraX, cameraY, frameNow);
+      deps.drawAreaEffects(cameraX, cameraY, frameNow, "underlay");
 
       for (const bag of interpolatedState.lootBags) {
         deps.drawLootBag(bag, cameraX, cameraY, frameNow);
@@ -90,6 +90,7 @@
         deps.drawMobBurnEffect(mob, cameraX, cameraY, frameNow);
         deps.drawMobStunEffect(mob, cameraX, cameraY, frameNow);
       }
+      deps.drawAreaEffects(cameraX, cameraY, frameNow, "overlay");
       deps.drawFloatingDamageNumbers(cameraX, cameraY);
       deps.pruneSkeletonWalkRuntime();
       deps.pruneCreeperWalkRuntime();

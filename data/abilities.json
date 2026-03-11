@@ -76,60 +76,84 @@
           "critMultiplier": true
         },
         "projectile": {
-          "id": "fireball_pulse_shard",
-          "name": "Fire Pulse Shard",
-          "delivery": {
-            "type": "projectile",
-            "castTime": 0,
-            "cooldown": 0,
-            "resourceCost": {
-              "mana": 0
-            }
-          },
-          "targeting": {
-            "range": 11,
-            "speed": 7,
-            "targetType": "enemy",
-            "pierce": 0,
-            "projectileCount": 1,
-            "explodeOnExpire": false,
-            "homing": {
+          "abilityId": "fireShard",
+          "overrides": {
+            "targeting": {
+              "range": 11,
+              "speed": 7,
+              "explodeOnExpire": false,
+              "homing": {
                 "range": 11,
                 "turnRate": 6.5
-            }
-          },
-          "effects": [
-            {
-              "type": "damage",
-              "mode": "instant",
-              "amount": [1, 2],
-              "school": "fire"
+              }
             },
-            {
-              "type": "damage",
-              "mode": "overTime",
-              "amountPerSecond": [1, 1],
-              "duration": 3,
-              "school": "fire"
-            },
-             {
-            "type": "explode",
-            "radius": 3,
             "effects": [
-                {
+              {
+                "type": "damage",
+                "mode": "instant",
+                "amount": [1, 2],
+                "school": "fire"
+              },
+              {
+                "type": "damage",
+                "mode": "overTime",
+                "amountPerSecond": [1, 1],
+                "duration": 3,
+                "school": "fire"
+              },
+              {
+                "type": "explode",
+                "radius": 3,
+                "effects": [
+                  {
                     "type": "damage",
                     "mode": "instant",
                     "amountMultiplier": 0.3,
                     "school": "fire"
-                }
+                  }
+                ]
+              }
             ]
-            }
-        ],
-          "tags": ["childProjectile", "radial", "fire"]
+          }
         }
       }
     ],
     "tags": ["mage", "fire", "projectile", "aoe", "pulse"]
+  },
+  "fireShard": {
+    "id": "fireShard",
+    "name": "Fire Shard",
+    "description": "A small fiery shard used by summon and pulse effects.",
+    "delivery": {
+      "type": "projectile",
+      "castTime": 0,
+      "cooldown": 1.05,
+      "resourceCost": { "mana": 0 }
+    },
+    "targeting": {
+      "range": 8,
+      "speed": 7,
+      "targetType": "enemy",
+      "explodeOnExpire": false
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [2, 4],
+        "school": "fire",
+        "scalingPerLevel": [0.35, 0.6]
+      },
+      {
+        "type": "damage",
+        "mode": "overTime",
+        "amountPerSecond": [1, 1],
+        "duration": 3,
+        "school": "fire",
+        "scalingPerSecondPerLevel": [0.1, 0.15]
+      }
+    ],
+    "tags": ["childProjectile", "fire", "shard"]
   },
   "frostbolt": {
     "id": "frostbolt",
@@ -348,6 +372,51 @@
       }
     },
     "tags": ["mage", "chain", "lightning"]
+  },
+  "fireHydra": {
+    "id": "fireHydra",
+    "name": "Fire Hydra",
+    "description": "Summons fiery hydras that spit fire shards at the nearest enemies.",
+    "delivery": {
+      "type": "summon",
+      "castTime": 1.0,
+      "cooldown": 4.0,
+      "resourceCost": { "mana": 14 }
+    },
+    "targeting": {
+      "range": 8,
+      "duration": 10,
+      "summonCount": 1,
+      "summonCountEveryLevels": 4,
+      "maxSummonCount": 4,
+      "summonFormationRadius": 0.95,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "summon",
+        "summonKind": "hydra",
+        "count": 1,
+        "formationRadius": 0.95,
+        "abilityId": "fireShard",
+        "overrides": {
+          "delivery": {
+            "cooldown": 1.05
+          },
+          "targeting": {
+            "range": 8,
+            "speed": 7,
+            "explodeOnExpire": false
+          }
+        }
+      }
+    ],
+    "progression": {
+      "perLevel": {
+        "targeting.duration": 1
+      }
+    },
+    "tags": ["mage", "fire", "summon"]
   },
   "slash": {
     "id": "slash",

@@ -115,6 +115,10 @@
       const parsedDy = Number(raw.dy);
       const parsedLength = Math.max(0, Number(raw.length) || 0);
       const parsedWidth = Math.max(0, Number(raw.width) || 0);
+      const summonCount = Math.max(1, Math.round(Number(raw.summonCount) || 1));
+      const attackIntervalMs = Math.max(1, Math.floor(Number(raw.attackIntervalMs) || 1000));
+      const attackRange = Math.max(0, Number(raw.attackRange) || 0);
+      const formationRadius = Math.max(0, Number(raw.formationRadius) || 0);
       const normalizedDir = normalizeDirection(parsedDx, parsedDy);
       activeAreaEffectsById.set(id, {
         id,
@@ -140,7 +144,12 @@
         dx: normalizedDir ? normalizedDir.dx : existing && Number.isFinite(existing.dx) ? existing.dx : 0,
         dy: normalizedDir ? normalizedDir.dy : existing && Number.isFinite(existing.dy) ? existing.dy : 1,
         length: parsedLength > 0 ? parsedLength : existing && Number.isFinite(existing.length) ? existing.length : 0,
-        width: parsedWidth > 0 ? parsedWidth : existing && Number.isFinite(existing.width) ? existing.width : 0
+        width: parsedWidth > 0 ? parsedWidth : existing && Number.isFinite(existing.width) ? existing.width : 0,
+        summonCount,
+        attackIntervalMs,
+        attackRange: attackRange > 0 ? attackRange : existing && Number.isFinite(existing.attackRange) ? existing.attackRange : 0,
+        formationRadius:
+          formationRadius >= 0 ? formationRadius : existing && Number.isFinite(existing.formationRadius) ? existing.formationRadius : 0
       });
     }
 

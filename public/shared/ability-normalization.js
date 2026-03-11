@@ -87,6 +87,7 @@
     area: "area",
     beam: "beam",
     chain: "chain",
+    summon: "summon",
     teleport: "teleport"
   });
 
@@ -172,6 +173,47 @@
         normalized.projectileCount = projectileCount;
       }
 
+      const summonEffect = findAbilityEffect(effects, "summon");
+      const summonCount = firstFiniteNumber([targeting.summonCount, summonEffect && summonEffect.count, entry.summonCount], 0);
+      if (summonCount > 0) {
+        normalized.summonCount = summonCount;
+      }
+      const summonFormationRadius = firstFiniteNumber(
+        [targeting.summonFormationRadius, summonEffect && summonEffect.formationRadius, entry.summonFormationRadius],
+        0
+      );
+      if (summonFormationRadius > 0) {
+        normalized.summonFormationRadius = summonFormationRadius;
+      }
+      const summonKind = String(
+        (summonEffect && (summonEffect.summonKind || summonEffect.kind || summonEffect.unitId)) ||
+          entry.summonKind ||
+          ""
+      )
+        .trim()
+        .toLowerCase();
+      if (summonKind) {
+        normalized.summonKind = summonKind;
+      }
+      const summonAbilityId = String(
+        (summonEffect && (summonEffect.abilityId || summonEffect.childAbilityId || summonEffect.projectileAbilityId)) ||
+          entry.summonAbilityId ||
+          ""
+      )
+        .trim();
+      if (summonAbilityId) {
+        normalized.summonAbilityId = summonAbilityId;
+      }
+      const summonAbilityOverrides =
+        summonEffect && summonEffect.overrides && typeof summonEffect.overrides === "object"
+          ? summonEffect.overrides
+          : entry.summonAbilityOverrides && typeof entry.summonAbilityOverrides === "object"
+            ? entry.summonAbilityOverrides
+            : null;
+      if (summonAbilityOverrides) {
+        normalized.summonAbilityOverrides = summonAbilityOverrides;
+      }
+
       const directDamageEffect = findAbilityEffect(effects, "damage", "instant");
       const dotDamageEffect = findAbilityEffect(effects, "damage", "overtime");
       const fallbackDamageEffect = findAbilityEffect(effects, "damage");
@@ -221,6 +263,13 @@
       );
       if (effectDuration > 0) {
         normalized.duration = effectDuration;
+      }
+      const durationPerLevel = firstFiniteNumber(
+        [getProgressionPerLevelValue(entry, "targeting.duration"), entry.durationPerLevel],
+        0
+      );
+      if (durationPerLevel > 0) {
+        normalized.durationPerLevel = durationPerLevel;
       }
 
       const explodeEffect = findAbilityEffect(effects, "explode");
@@ -319,6 +368,24 @@
       if (jumpCountPerLevel > 0) {
         normalized.jumpCountPerLevel = jumpCountPerLevel;
       }
+      const summonCountPerLevel = firstFiniteNumber(
+        [getProgressionPerLevelValue(entry, "targeting.summonCount"), entry.summonCountPerLevel],
+        0
+      );
+      if (summonCountPerLevel > 0) {
+        normalized.summonCountPerLevel = summonCountPerLevel;
+      }
+      const summonCountEveryLevels = firstFiniteNumber(
+        [targeting.summonCountEveryLevels, entry.summonCountEveryLevels],
+        0
+      );
+      if (summonCountEveryLevels > 0) {
+        normalized.summonCountEveryLevels = summonCountEveryLevels;
+      }
+      const maxSummonCount = firstFiniteNumber([targeting.maxSummonCount, entry.maxSummonCount], 0);
+      if (maxSummonCount > 0) {
+        normalized.maxSummonCount = maxSummonCount;
+      }
 
       const spreadDeg = firstFiniteNumber([targeting.spreadDeg, targeting.spreadAngle, entry.spreadDeg, entry.spreadAngle], 0);
       if (spreadDeg > 0) {
@@ -393,6 +460,7 @@
       const damagePerLevel = parseNumericRange(normalized.damageRangePerLevel, 0, 0);
       const dotDamageRange = parseNumericRange(normalized.dotDamagePerSecond, 0, 0);
       const dotDamagePerLevel = parseNumericRange(normalized.dotDamagePerSecondPerLevel, 0, 0);
+      const cooldownMs = Math.max(0, Math.round((Number(normalized.cooldown) || 0) * 1000));
 
       const dotDurationMsRaw = Number(normalized.dotDurationMs);
       const dotDurationSecRaw = Number(normalized.dotDuration);
@@ -420,6 +488,7 @@
 
       return {
         id: String(normalized.id || `${parentAbilityId}_child_projectile`),
+        cooldownMs,
         speed,
         range,
         damageMin: clamp(Math.floor(Math.min(damageRange[0], damageRange[1])), 0, 255),

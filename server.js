@@ -411,6 +411,7 @@ const abilityHandlerContext = createAbilityHandlerContext({
   getAreaAbilityTargetPosition: (...args) => getAreaAbilityTargetPosition(...args),
   createPersistentAreaEffect: (...args) => createPersistentAreaEffect(...args),
   createPersistentBeamEffect: (...args) => createPersistentBeamEffect(...args),
+  createPersistentSummonEffect: (...args) => createPersistentSummonEffect(...args),
   resolvePlayerMobCollisions: (...args) => resolvePlayerMobCollisions(...args),
   getAbilityInvulnerabilityDurationMs
 });
@@ -514,12 +515,14 @@ const areaEffectTools = createAreaEffectTools({
   applyDamageToMob,
   applyDotToMob,
   applySlowToMob,
+  spawnProjectileFromTemplate,
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT
 });
 const getAreaAbilityTargetPosition = areaEffectTools.getAreaAbilityTargetPosition;
 const createPersistentAreaEffect = areaEffectTools.createPersistentAreaEffect;
 const createPersistentBeamEffect = areaEffectTools.createPersistentBeamEffect;
+const createPersistentSummonEffect = areaEffectTools.createPersistentSummonEffect;
 const tickAreaEffects = areaEffectTools.tickAreaEffects;
 
 const playerAbilityTools = createPlayerAbilityTools({
@@ -576,6 +579,7 @@ const playerCommandTools = createPlayerCommandTools({
 });
 const tryPickupLootBag = playerCommandTools.tryPickupLootBag;
 const usePlayerAbility = playerCommandTools.usePlayerAbility;
+const updatePlayerCastTarget = playerCommandTools.updatePlayerCastTarget;
 const configOrchestrator = createConfigOrchestrator({
   paths: {
     serverConfigPath: SERVER_CONFIG_PATH,
@@ -813,9 +817,10 @@ const runtimeBootstrap = createRuntimeBootstrap({
     sendSelfProgress,
     clamp,
     normalizeDirection,
-    clearPlayerCast,
-    usePlayerAbility,
-    levelUpPlayerAbility,
+  clearPlayerCast,
+  usePlayerAbility,
+  updatePlayerCastTarget,
+  levelUpPlayerAbility,
     tryPickupLootBag,
     mergeOrSwapInventorySlots,
     equipInventoryItem,

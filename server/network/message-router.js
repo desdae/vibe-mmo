@@ -292,6 +292,17 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "update_cast_target") {
+    const dx = Number(msg.dx);
+    const dy = Number(msg.dy);
+    const distance = Number(msg.distance);
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+      return { player };
+    }
+    deps.updatePlayerCastTarget(player, dx, dy, Number.isFinite(distance) ? distance : null);
+    return { player };
+  }
+
   if (msg.type === "level_up_ability") {
     const abilityId = String(msg.abilityId || "").trim();
     if (!abilityId) {

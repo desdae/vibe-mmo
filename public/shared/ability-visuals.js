@@ -32,6 +32,11 @@
         iconRenderer: "lightning_beam",
         areaEffectRenderer: "lightning_beam"
       },
+      summon: {
+        iconRenderer: "fire_hydra",
+        areaEffectRenderer: "fire_hydra",
+        castPreviewRenderer: "fire_hydra"
+      },
       teleport: {
         iconRenderer: "blink"
       }
@@ -51,6 +56,10 @@
         projectileRenderer: "fireball"
       },
       fireball_pulse_shard: {
+        iconRenderer: "fireball",
+        projectileRenderer: "fire_spark"
+      },
+      fireshard: {
         iconRenderer: "fireball",
         projectileRenderer: "fire_spark"
       },
@@ -78,6 +87,15 @@
       chainlightning: {
         iconRenderer: "lightning_beam",
         areaEffectRenderer: "lightning_beam"
+      },
+      firehydra: {
+        iconRenderer: "fire_hydra",
+        areaEffectRenderer: "fire_hydra",
+        castPreviewRenderer: "fire_hydra"
+      },
+      hydrafireshard: {
+        iconRenderer: "fire_hydra",
+        projectileRenderer: "fire_spark"
       },
       blink: {
         iconRenderer: "blink"

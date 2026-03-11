@@ -5,6 +5,7 @@ const {
   AREA_EFFECT_OP_REMOVE,
   AREA_EFFECT_KIND_AREA,
   AREA_EFFECT_KIND_BEAM,
+  AREA_EFFECT_KIND_SUMMON,
   POS_SCALE
 } = PROTOCOL;
 
@@ -22,7 +23,8 @@ function toAreaEffectState(effect) {
     return null;
   }
   const kindRaw = String((effect && effect.kind) || "area").toLowerCase();
-  const kind = kindRaw === "beam" ? AREA_EFFECT_KIND_BEAM : AREA_EFFECT_KIND_AREA;
+  const kind =
+    kindRaw === "beam" ? AREA_EFFECT_KIND_BEAM : kindRaw === "summon" ? AREA_EFFECT_KIND_SUMMON : AREA_EFFECT_KIND_AREA;
   const state = {
     id: Math.floor(id),
     kind,
@@ -40,6 +42,11 @@ function toAreaEffectState(effect) {
     state.dyQ = clamp(Math.round((Number(effect && effect.dy) || 0) * 1000), -32767, 32767);
     state.lengthQ = quantizePos(Math.max(0.1, Number(effect && effect.length) || 0.1));
     state.widthQ = quantizePos(Math.max(0.1, Number(effect && effect.width) || 0.1));
+  } else if (kind === AREA_EFFECT_KIND_SUMMON) {
+    state.summonCount = clamp(Math.round(Number(effect && effect.summonCount) || 1), 1, 255);
+    state.attackIntervalMs = clamp(Math.floor(Number(effect && effect.attackIntervalMs) || 1000), 1, 65535);
+    state.attackRangeQ = quantizePos(Math.max(0.1, Number(effect && effect.attackRange) || 0.1));
+    state.formationRadiusQ = quantizePos(Math.max(0, Number(effect && effect.formationRadius) || 0));
   }
   return state;
 }
@@ -67,6 +74,14 @@ function areaEffectStateEquals(a, b) {
       a.dyQ === b.dyQ &&
       a.lengthQ === b.lengthQ &&
       a.widthQ === b.widthQ
+    );
+  }
+  if (a.kind === AREA_EFFECT_KIND_SUMMON) {
+    return (
+      a.summonCount === b.summonCount &&
+      a.attackIntervalMs === b.attackIntervalMs &&
+      a.attackRangeQ === b.attackRangeQ &&
+      a.formationRadiusQ === b.formationRadiusQ
     );
   }
   return true;

@@ -23,6 +23,10 @@
         : () => 0;
     const getAbilityEffectiveRangeForSelf =
       typeof deps.getAbilityEffectiveRangeForSelf === "function" ? deps.getAbilityEffectiveRangeForSelf : () => 0;
+    const mouseState = deps.mouseState && typeof deps.mouseState === "object" ? deps.mouseState : { sx: 0, sy: 0 };
+    const screenToWorld = typeof deps.screenToWorld === "function" ? deps.screenToWorld : () => ({ x: 0, y: 0 });
+    const sendCastTargetUpdate =
+      typeof deps.sendCastTargetUpdate === "function" ? deps.sendCastTargetUpdate : () => false;
     const playAbilityAudioEvent =
       typeof deps.playAbilityAudioEvent === "function" ? deps.playAbilityAudioEvent : () => {};
     const triggerSwordSwing = typeof deps.triggerSwordSwing === "function" ? deps.triggerSwordSwing : () => {};
@@ -107,6 +111,9 @@
       abilityChannel.durationMs = 0;
       abilityChannel.targetX = 0;
       abilityChannel.targetY = 0;
+      abilityChannel.lastRetargetSentAt = 0;
+      abilityChannel.lastSentTargetX = NaN;
+      abilityChannel.lastSentTargetY = NaN;
     }
 
     function applyServerCastState(targetState, payload) {
@@ -178,6 +185,13 @@
         const dx = worldX - self.x;
         const dy = worldY - self.y;
         const len = Math.hypot(dx, dy);
+        abilityChannel.active = true;
+        abilityChannel.abilityId = resolvedAbilityId;
+        abilityChannel.startedAt = now;
+        abilityChannel.durationMs = castMs;
+        abilityChannel.lastRetargetSentAt = 0;
+        abilityChannel.lastSentTargetX = NaN;
+        abilityChannel.lastSentTargetY = NaN;
         if (len > 0) {
           const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(resolvedAbilityId, self) || len);
           const distance = castRange > 0 ? Math.min(len, castRange) : len;
@@ -198,10 +212,69 @@
       return true;
     }
 
+    function updateLocalCastTargetFromMouse() {
+      const self = getCurrentSelf();
+      if (!self || !abilityChannel.active) {
+        return false;
+      }
+      const targetWorld = screenToWorld(mouseState.sx, mouseState.sy, self);
+      const worldX = Number(targetWorld && targetWorld.x);
+      const worldY = Number(targetWorld && targetWorld.y);
+      if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) {
+        return false;
+      }
+
+      const dx = worldX - self.x;
+      const dy = worldY - self.y;
+      const len = Math.hypot(dx, dy);
+      if (len <= 0.0001) {
+        abilityChannel.targetX = self.x;
+        abilityChannel.targetY = self.y;
+        return true;
+      }
+
+      const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(abilityChannel.abilityId, self) || len);
+      const distance = castRange > 0 ? Math.min(len, castRange) : len;
+      abilityChannel.targetX = self.x + (dx / len) * distance;
+      abilityChannel.targetY = self.y + (dy / len) * distance;
+      return true;
+    }
+
+    function maybeSendCastTargetUpdate(now) {
+      const self = getCurrentSelf();
+      if (!self || !abilityChannel.active) {
+        return;
+      }
+      const targetX = Number(abilityChannel.targetX);
+      const targetY = Number(abilityChannel.targetY);
+      if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+        return;
+      }
+
+      const lastSentAt = Number(abilityChannel.lastRetargetSentAt) || 0;
+      const lastSentTargetX = Number(abilityChannel.lastSentTargetX);
+      const lastSentTargetY = Number(abilityChannel.lastSentTargetY);
+      const changedEnough =
+        !Number.isFinite(lastSentTargetX) ||
+        !Number.isFinite(lastSentTargetY) ||
+        Math.hypot(targetX - lastSentTargetX, targetY - lastSentTargetY) >= 0.08;
+      if (!changedEnough || now - lastSentAt < 50) {
+        return;
+      }
+
+      if (sendCastTargetUpdate(abilityChannel.abilityId, targetX, targetY)) {
+        abilityChannel.lastRetargetSentAt = now;
+        abilityChannel.lastSentTargetX = targetX;
+        abilityChannel.lastSentTargetY = targetY;
+      }
+    }
+
     function updateAbilityChannel(now) {
       if (!abilityChannel.active) {
         return;
       }
+      updateLocalCastTargetFromMouse();
+      maybeSendCastTargetUpdate(now);
       const progress = getCastProgress(abilityChannel, now);
       if (!progress) {
         const previousSelfCast = captureCastStateSnapshot(abilityChannel);

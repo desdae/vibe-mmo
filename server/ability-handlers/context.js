@@ -24,6 +24,7 @@ function createAbilityHandlerContext(params = {}) {
     getAreaAbilityTargetPosition,
     createPersistentAreaEffect,
     createPersistentBeamEffect,
+    createPersistentSummonEffect,
     resolvePlayerMobCollisions,
     getAbilityInvulnerabilityDurationMs
   } = params;
@@ -53,6 +54,7 @@ function createAbilityHandlerContext(params = {}) {
     getAreaAbilityTargetPosition,
     createPersistentAreaEffect,
     createPersistentBeamEffect,
+    createPersistentSummonEffect,
     resolvePlayerMobCollisions,
     getAbilityInvulnerabilityDurationMs
   };

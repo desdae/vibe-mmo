@@ -1,6 +1,24 @@
 const fs = require("fs");
 const { clamp, parseNumericRange } = require("../gameplay/number-utils");
 
+function findAbilityEffect(effects, type, mode = "") {
+  const targetType = String(type || "").trim().toLowerCase();
+  const targetMode = String(mode || "").trim().toLowerCase();
+  for (const effect of Array.isArray(effects) ? effects : []) {
+    if (!effect || typeof effect !== "object") {
+      continue;
+    }
+    if (String(effect.type || "").trim().toLowerCase() !== targetType) {
+      continue;
+    }
+    if (targetMode && String(effect.mode || "").trim().toLowerCase() !== targetMode) {
+      continue;
+    }
+    return effect;
+  }
+  return null;
+}
+
 const OMITTED_CLIENT_FIELDS = new Set([
   "name",
   "description",
@@ -40,6 +58,14 @@ const OMITTED_CLIENT_FIELDS = new Set([
   "jumpRange",
   "jumpDamageReduction",
   "jumpCountPerLevel",
+  "durationPerLevel",
+  "summonCount",
+  "summonFormationRadius",
+  "summonCountPerLevel",
+  "summonCountEveryLevels",
+  "maxSummonCount",
+  "summonAbilityId",
+  "summonAbilityOverrides",
   "homingRange",
   "homingTurnRate",
   "turnRate",
@@ -57,13 +83,125 @@ function loadAbilityConfigFromDisk(configPath, options) {
   const raw = fs.readFileSync(configPath, "utf8");
   const parsed = JSON.parse(raw);
   const entries = parsed && typeof parsed === "object" ? Object.entries(parsed) : [];
+  const normalizedEntries = entries
+    .map(([rawId, rawEntry]) => normalizeAbilityEntry(rawId, rawEntry))
+    .filter((entry) => entry && typeof entry === "object" && String(entry.id || "").trim());
+  const normalizedEntriesById = new Map();
+  for (const entry of normalizedEntries) {
+    normalizedEntriesById.set(String(entry.id).trim(), entry);
+  }
 
   const abilityDefs = new Map();
   const clientAbilityDefs = [];
 
-  for (const [rawId, rawEntry] of entries) {
-    const entry = normalizeAbilityEntry(rawId, rawEntry);
-    const id = String(entry?.id || rawId || "").trim();
+  function mergeAbilityTemplate(baseEntry, overrideEntry) {
+    const base = baseEntry && typeof baseEntry === "object" ? baseEntry : {};
+    const override = overrideEntry && typeof overrideEntry === "object" ? overrideEntry : {};
+    return {
+      ...base,
+      ...override,
+      delivery:
+        base.delivery || override.delivery
+          ? {
+              ...(base.delivery && typeof base.delivery === "object" ? base.delivery : {}),
+              ...(override.delivery && typeof override.delivery === "object" ? override.delivery : {})
+            }
+          : undefined,
+      targeting:
+        base.targeting || override.targeting
+          ? {
+              ...(base.targeting && typeof base.targeting === "object" ? base.targeting : {}),
+              ...(override.targeting && typeof override.targeting === "object" ? override.targeting : {})
+            }
+          : undefined,
+      progression:
+        base.progression || override.progression
+          ? {
+              ...(base.progression && typeof base.progression === "object" ? base.progression : {}),
+              ...(override.progression && typeof override.progression === "object" ? override.progression : {}),
+              perLevel: {
+                ...((base.progression && base.progression.perLevel && typeof base.progression.perLevel === "object")
+                  ? base.progression.perLevel
+                  : {}),
+                ...((override.progression && override.progression.perLevel && typeof override.progression.perLevel === "object")
+                  ? override.progression.perLevel
+                  : {})
+              }
+            }
+          : undefined,
+      effects: Array.isArray(override.effects) ? override.effects : base.effects,
+      tags: Array.isArray(override.tags) ? override.tags : base.tags
+    };
+  }
+
+  function resolveChildAbilityEntry(parentId, rawChildSource) {
+    if (!rawChildSource || typeof rawChildSource !== "object") {
+      return null;
+    }
+    const referenceId = String(rawChildSource.abilityId || rawChildSource.childAbilityId || "").trim();
+    if (!referenceId) {
+      return normalizeAbilityEntry(`${parentId}_child`, rawChildSource);
+    }
+    const baseEntry = normalizedEntriesById.get(referenceId);
+    if (!baseEntry) {
+      return null;
+    }
+    const overrideSource =
+      rawChildSource.overrides && typeof rawChildSource.overrides === "object" ? rawChildSource.overrides : {};
+    const merged = mergeAbilityTemplate(baseEntry, {
+      ...overrideSource,
+      id: referenceId
+    });
+    return normalizeAbilityEntry(referenceId, merged);
+  }
+
+  function buildProjectileTemplateFromChildSource(parentId, rawChildSource) {
+    const childEntry = resolveChildAbilityEntry(parentId, rawChildSource);
+    if (!childEntry || typeof childEntry !== "object") {
+      return null;
+    }
+    const childConfig = buildEmitProjectilesConfig(
+      {
+        effects: [
+          {
+            type: "emitProjectiles",
+            interval: 1,
+            projectile: childEntry
+          }
+        ]
+      },
+      `${parentId}_child_projectile`
+    );
+    return childConfig && childConfig.childProjectile ? childConfig.childProjectile : null;
+  }
+
+  function buildResolvedEmitProjectilesConfig(entry, abilityId) {
+    const emitEffect = findAbilityEffect(entry && entry.effects, "emitprojectiles");
+    if (!emitEffect || typeof emitEffect !== "object") {
+      return buildEmitProjectilesConfig(entry, abilityId);
+    }
+    const resolvedChildEntry = resolveChildAbilityEntry(abilityId, emitEffect.projectile);
+    if (!resolvedChildEntry) {
+      return buildEmitProjectilesConfig(entry, abilityId);
+    }
+
+    const resolvedEntry = {
+      ...entry,
+      effects: (Array.isArray(entry.effects) ? entry.effects : []).map((effect) => {
+        if (effect === emitEffect) {
+          return {
+            ...emitEffect,
+            projectile: resolvedChildEntry
+          };
+        }
+        return effect;
+      })
+    };
+    return buildEmitProjectilesConfig(resolvedEntry, abilityId);
+  }
+
+  for (const entry of normalizedEntries) {
+    const id = String(entry?.id || "").trim();
     if (!id || !entry || typeof entry !== "object") {
       continue;
     }
@@ -108,6 +246,14 @@ function loadAbilityConfigFromDisk(configPath, options) {
         : Number.isFinite(durationSecRaw) && durationSecRaw > 0
           ? Math.round(durationSecRaw * 1000)
           : 0;
+    const durationPerLevelMsRaw = Number(entry.durationPerLevelMs);
+    const durationPerLevelSecRaw = Number(entry.durationPerLevel);
+    const durationPerLevelMs =
+      Number.isFinite(durationPerLevelMsRaw) && durationPerLevelMsRaw > 0
+        ? Math.round(durationPerLevelMsRaw)
+        : Number.isFinite(durationPerLevelSecRaw) && durationPerLevelSecRaw > 0
+          ? Math.round(durationPerLevelSecRaw * 1000)
+          : 0;
     const dotDurationMsRaw = Number(entry.dotDurationMs);
     const dotDurationSecRaw = Number(entry.dotDuration);
     const dotDurationMs =
@@ -131,6 +277,18 @@ function loadAbilityConfigFromDisk(configPath, options) {
     const jumpRange = Math.max(0, Number(entry.jumpRange) || 0);
     const jumpDamageReduction = clamp(Number(entry.jumpDamageReduction) || 0, 0, 0.95);
     const jumpCountPerLevel = Math.max(0, Number(entry.jumpCountPerLevel) || 0);
+    const summonCount = Math.max(0, Number(entry.summonCount) || 0);
+    const summonFormationRadius = Math.max(0, Number(entry.summonFormationRadius) || 0);
+    const summonCountPerLevel = Math.max(0, Number(entry.summonCountPerLevel) || 0);
+    const summonCountEveryLevels = Math.max(0, Math.floor(Number(entry.summonCountEveryLevels) || 0));
+    const maxSummonCount = Math.max(0, Math.floor(Number(entry.maxSummonCount) || 0));
+    const summonKind = String(entry.summonKind || "").trim().toLowerCase();
+    const summonProjectile = buildProjectileTemplateFromChildSource(id, {
+      abilityId: entry.summonAbilityId,
+      overrides: entry.summonAbilityOverrides
+    });
+    const summonAttackRange = Math.max(0, Number((summonProjectile && summonProjectile.range) || 0));
+    const summonAttackIntervalMs = Math.max(0, Number((summonProjectile && summonProjectile.cooldownMs) || 0));
     const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000));
     const slowDurationMsRaw = Number(entry.slowDurationMs);
     const slowDurationSecRaw = Number(entry.slowDuration);
@@ -153,7 +311,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
     const homingTurnRateDefault = id.toLowerCase() === "arcanemissiles" ? 6.5 : 0;
     const homingRange = Math.max(0, Number(entry.homingRange) || homingRangeDefault);
     const homingTurnRate = Math.max(0, Number(entry.homingTurnRate ?? entry.turnRate) || homingTurnRateDefault);
-    const emitProjectiles = buildEmitProjectilesConfig(entry, id);
+    const emitProjectiles = buildResolvedEmitProjectilesConfig(entry, id);
     const firstDamageEffect = (Array.isArray(entry.effects) ? entry.effects : []).find(
       (effect) => effect && typeof effect === "object" && String(effect.type || "").toLowerCase() === "damage"
     );
@@ -191,6 +349,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
       explosionDamageMultiplier,
       areaRadius,
       durationMs,
+      durationPerLevelMs,
       castMs,
       invulnerabilityDurationMs,
       rangePerLevel,
@@ -200,6 +359,15 @@ function loadAbilityConfigFromDisk(configPath, options) {
       jumpRange,
       jumpDamageReduction,
       jumpCountPerLevel,
+      summonCount,
+      summonAttackRange,
+      summonFormationRadius,
+      summonAttackIntervalMs,
+      summonCountPerLevel,
+      summonCountEveryLevels,
+      maxSummonCount,
+      summonKind,
+      summonProjectile,
       stunDurationMs,
       slowDurationMs,
       slowMultiplier,
@@ -264,7 +432,15 @@ function loadAbilityConfigFromDisk(configPath, options) {
       jumpRange: def.jumpRange,
       jumpDamageReduction: def.jumpDamageReduction,
       jumpCountPerLevel: def.jumpCountPerLevel,
+      summonCount: def.summonCount,
+      summonAttackRange: def.summonAttackRange,
+      summonFormationRadius: def.summonFormationRadius,
+      summonAttackIntervalMs: def.summonAttackIntervalMs,
+      summonCountPerLevel: def.summonCountPerLevel,
+      summonCountEveryLevels: def.summonCountEveryLevels,
+      maxSummonCount: def.maxSummonCount,
       durationMs: def.durationMs,
+      durationPerLevelMs: def.durationPerLevelMs,
       stunDurationMs: def.stunDurationMs,
       slowDurationMs: def.slowDurationMs,
       slowMultiplier: def.slowMultiplier,
@@ -274,6 +450,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
       homingTurnRate: def.homingTurnRate,
       damageRange: [def.damageMin, def.damageMax],
       damageRangePerLevel: [def.damagePerLevelMin, def.damagePerLevelMax],
+      summonKind: def.summonKind,
       ...extraClientFields
     });
   }

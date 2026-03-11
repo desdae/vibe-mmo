@@ -150,9 +150,39 @@ function createPlayerCommandTools({
     return used;
   }
 
+  function updatePlayerCastTarget(player, targetDx, targetDy, targetDistance = null) {
+    if (!player || !player.activeCast || player.hp <= 0) {
+      return false;
+    }
+    const cast = player.activeCast;
+    const abilityDef = abilityDefsProvider().get(String(cast.abilityId || ""));
+    if (!abilityDef) {
+      return false;
+    }
+    if ((Number(player.stunnedUntil) || 0) > Date.now()) {
+      return false;
+    }
+    if (abilityDef.kind !== "teleport" && playerHasMovementInput(player)) {
+      return false;
+    }
+
+    const aimDirection =
+      normalizeDirection(targetDx, targetDy) || normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
+    if (!aimDirection) {
+      return false;
+    }
+
+    cast.dx = aimDirection.dx;
+    cast.dy = aimDirection.dy;
+    cast.targetDistance = Number.isFinite(Number(targetDistance)) ? Number(targetDistance) : null;
+    player.lastDirection = aimDirection;
+    return true;
+  }
+
   return {
     tryPickupLootBag,
-    usePlayerAbility
+    usePlayerAbility,
+    updatePlayerCastTarget
   };
 }
 
