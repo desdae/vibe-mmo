@@ -7,6 +7,10 @@
     const movementSync = deps.movementSync || { lastDx: 0, lastDy: 0, lastSentAt: 0 };
     const mouseState = deps.mouseState || { sx: 0, sy: 0 };
     const gameState = deps.gameState || {};
+    const autoMoveTarget =
+      deps.autoMoveTarget && typeof deps.autoMoveTarget === "object"
+        ? deps.autoMoveTarget
+        : { active: false, x: 0, y: 0, stopDistance: 0.1 };
     const canvas = deps.canvas || null;
     const tileSize = Math.max(1, Number(deps.tileSize) || 32);
     const sendJsonMessage = typeof deps.sendJsonMessage === "function" ? deps.sendJsonMessage : () => false;
@@ -28,12 +32,41 @@
       return { dx: rawDx / len, dy: rawDy / len };
     }
 
+    function getAutoMoveVector() {
+      if (!autoMoveTarget.active || !gameState.self) {
+        return { dx: 0, dy: 0 };
+      }
+      const targetX = Number(autoMoveTarget.x);
+      const targetY = Number(autoMoveTarget.y);
+      if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+        return { dx: 0, dy: 0 };
+      }
+      const dx = targetX - Number(gameState.self.x || 0);
+      const dy = targetY - Number(gameState.self.y || 0);
+      const dist = Math.hypot(dx, dy);
+      if (!dist || dist <= Math.max(0, Number(autoMoveTarget.stopDistance) || 0)) {
+        return { dx: 0, dy: 0 };
+      }
+      return {
+        dx: dx / dist,
+        dy: dy / dist
+      };
+    }
+
+    function getCurrentMovementVector() {
+      const manual = getCurrentInputVector();
+      if (manual.dx || manual.dy) {
+        return manual;
+      }
+      return getAutoMoveVector();
+    }
+
     function sendMove(socket) {
       if (!socket || socket.readyState !== globalScope.WebSocket.OPEN || !gameState.self) {
         return;
       }
 
-      const { dx, dy } = getCurrentInputVector();
+      const { dx, dy } = getCurrentMovementVector();
       const changed = dx !== movementSync.lastDx || dy !== movementSync.lastDy;
       if (!changed) {
         return;
@@ -48,6 +81,20 @@
       movementSync.lastDx = dx;
       movementSync.lastDy = dy;
       movementSync.lastSentAt = performance.now();
+    }
+
+    function setAutoMoveTarget(x, y, stopDistance = 0.1) {
+      autoMoveTarget.active = true;
+      autoMoveTarget.x = Number(x) || 0;
+      autoMoveTarget.y = Number(y) || 0;
+      autoMoveTarget.stopDistance = Math.max(0, Number(stopDistance) || 0);
+    }
+
+    function clearAutoMoveTarget() {
+      autoMoveTarget.active = false;
+      autoMoveTarget.x = 0;
+      autoMoveTarget.y = 0;
+      autoMoveTarget.stopDistance = 0.1;
     }
 
     function updateMouseScreenPosition(event) {
@@ -73,7 +120,10 @@
 
     return {
       getCurrentInputVector,
+      getCurrentMovementVector,
       sendMove,
+      setAutoMoveTarget,
+      clearAutoMoveTarget,
       updateMouseScreenPosition,
       screenToWorld
     };

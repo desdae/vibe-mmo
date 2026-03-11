@@ -209,6 +209,12 @@ const movementSync = {
   lastDy: 0,
   lastSentAt: 0
 };
+const autoMoveTarget = {
+  active: false,
+  x: 0,
+  y: 0,
+  stopDistance: 0.1
+};
 const ABILITY_AUDIO_EVENTS = ["channel", "cast", "hit"];
 const ABILITY_SPATIAL_LEGACY_FLYING = Object.freeze({
   arcanemissiles: "arcane_missile_flying",
@@ -219,9 +225,15 @@ const DEFAULT_SPATIAL_AUDIO_CONFIG = Object.freeze({
   abilityPanDistance: 15,
   projectileMaxConcurrent: 10
 });
+const DEFAULT_LOOT_CLIENT_CONFIG = Object.freeze({
+  bagPickupRange: 2.25
+});
 const SPATIAL_AUDIO_MISSING_RETRY_MS = 2500;
 const spatialAudioConfig = {
   ...DEFAULT_SPATIAL_AUDIO_CONFIG
+};
+const lootClientConfig = {
+  ...DEFAULT_LOOT_CLIENT_CONFIG
 };
 const abilityAudioRegistry = new Map();
 const availableSoundUrls = new Set();
@@ -351,6 +363,13 @@ const entityRuntime = {
 
 const spellbookState = {
   signature: ""
+};
+const lootPickupState = {
+  active: false,
+  bagId: "",
+  x: 0,
+  y: 0,
+  nextAttemptAt: 0
 };
 const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
   maxParticles: 10,
@@ -888,6 +907,7 @@ function applyAbilityAudioDefaults(audio, eventType) {
 function applyGameplayClientConfig(payload) {
   const gameplay = payload && typeof payload === "object" ? payload : {};
   const audio = gameplay.audio && typeof gameplay.audio === "object" ? gameplay.audio : {};
+  const loot = gameplay.loot && typeof gameplay.loot === "object" ? gameplay.loot : {};
   spatialAudioConfig.abilitySpatialMaxDistance = clamp(
     Number(audio.abilitySpatialMaxDistance) || DEFAULT_SPATIAL_AUDIO_CONFIG.abilitySpatialMaxDistance,
     1,
@@ -902,6 +922,11 @@ function applyGameplayClientConfig(payload) {
     Math.floor(Number(audio.projectileMaxConcurrent) || DEFAULT_SPATIAL_AUDIO_CONFIG.projectileMaxConcurrent),
     1,
     64
+  );
+  lootClientConfig.bagPickupRange = clamp(
+    Number(loot.bagPickupRange) || DEFAULT_LOOT_CLIENT_CONFIG.bagPickupRange,
+    0.1,
+    50
   );
 }
 
@@ -4132,6 +4157,7 @@ function resetClientSessionState() {
   activeExplosions.length = 0;
   activeAreaEffectsById.clear();
   ambientParticleEmitters.clear();
+  clearAutoLootPickup(false);
   abilityRuntime.clear();
   dpsState.samples.length = 0;
   setDpsVisible(false);
@@ -4193,6 +4219,7 @@ function handleServerSelfProgress(msg) {
 }
 
 function handleServerLootPicked(msg) {
+  clearAutoLootPickup(true);
   if (Array.isArray(msg.itemsGained) && msg.itemsGained.length) {
     const summary = msg.itemsGained
       .map((entry) => {
@@ -4391,6 +4418,7 @@ const playerControlTools = sharedCreatePlayerControlTools
       keys,
       movementSync,
       mouseState,
+      autoMoveTarget,
       gameState,
       canvas,
       tileSize: TILE_SIZE,
@@ -4405,11 +4433,32 @@ function getCurrentInputVector() {
   return playerControlTools.getCurrentInputVector();
 }
 
+function getCurrentMovementVector() {
+  if (!playerControlTools) {
+    return { dx: 0, dy: 0 };
+  }
+  return playerControlTools.getCurrentMovementVector();
+}
+
 function sendMove() {
   if (!playerControlTools) {
     return;
   }
   playerControlTools.sendMove(socket);
+}
+
+function setAutoMoveTarget(x, y, stopDistance = 0.1) {
+  if (!playerControlTools) {
+    return;
+  }
+  playerControlTools.setAutoMoveTarget(x, y, stopDistance);
+}
+
+function clearAutoMoveTarget() {
+  if (!playerControlTools) {
+    return;
+  }
+  playerControlTools.clearAutoMoveTarget();
 }
 
 function triggerSwordSwing(worldX, worldY) {
@@ -4464,6 +4513,106 @@ function screenToWorld(sx, sy, self) {
 
 function getCurrentSelf() {
   return (lastRenderState && lastRenderState.self) || gameState.self;
+}
+
+function findLootBagById(bagId) {
+  const id = String(bagId || "").trim();
+  if (!id) {
+    return null;
+  }
+  const bags = (lastRenderState && Array.isArray(lastRenderState.lootBags) ? lastRenderState.lootBags : null) || gameState.lootBags;
+  for (const bag of bags) {
+    if (String(bag && bag.id) === id) {
+      return bag;
+    }
+  }
+  return null;
+}
+
+function clearAutoLootPickup(sendStopMove = false) {
+  const wasActive = lootPickupState.active || autoMoveTarget.active;
+  lootPickupState.active = false;
+  lootPickupState.bagId = "";
+  lootPickupState.x = 0;
+  lootPickupState.y = 0;
+  lootPickupState.nextAttemptAt = 0;
+  clearAutoMoveTarget();
+  if (sendStopMove && wasActive) {
+    sendMove();
+  }
+}
+
+function startAutoLootPickup(bag) {
+  if (!bag) {
+    return false;
+  }
+  lootPickupState.active = true;
+  lootPickupState.bagId = String(bag.id || "");
+  lootPickupState.x = Number(bag.x) || 0;
+  lootPickupState.y = Number(bag.y) || 0;
+  lootPickupState.nextAttemptAt = 0;
+  setAutoMoveTarget(lootPickupState.x + 0.5, lootPickupState.y + 0.5, 0.1);
+  sendMove();
+  return true;
+}
+
+function tryContextLootPickup() {
+  const self = getCurrentSelf();
+  const renderState = lastRenderState || gameState;
+  if (!self || !renderState || !Array.isArray(renderState.lootBags) || !renderState.lootBags.length) {
+    return false;
+  }
+  const cameraX = self.x + 0.5;
+  const cameraY = self.y + 0.5;
+  const hovered = getHoveredLootBag(renderState.lootBags, cameraX, cameraY);
+  if (!hovered || !hovered.bag) {
+    return false;
+  }
+  const bag = hovered.bag;
+  const dist = Math.hypot(bag.x + 0.5 - self.x, bag.y + 0.5 - self.y);
+  if (dist <= lootClientConfig.bagPickupRange) {
+    clearAutoLootPickup(false);
+    sendPickupBag(bag.x, bag.y);
+    return true;
+  }
+  return startAutoLootPickup(bag);
+}
+
+function updateAutoLootPickup(now = performance.now()) {
+  if (!lootPickupState.active) {
+    return;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    clearAutoLootPickup(true);
+    return;
+  }
+  const manualMove = getCurrentInputVector();
+  if (manualMove.dx || manualMove.dy) {
+    clearAutoLootPickup(false);
+    return;
+  }
+  const bag = findLootBagById(lootPickupState.bagId);
+  if (!bag) {
+    clearAutoLootPickup(true);
+    return;
+  }
+  lootPickupState.x = Number(bag.x) || 0;
+  lootPickupState.y = Number(bag.y) || 0;
+  setAutoMoveTarget(lootPickupState.x + 0.5, lootPickupState.y + 0.5, 0.1);
+  const dist = Math.hypot(lootPickupState.x + 0.5 - self.x, lootPickupState.y + 0.5 - self.y);
+  if (dist <= lootClientConfig.bagPickupRange) {
+    if (now < lootPickupState.nextAttemptAt) {
+      return;
+    }
+    lootPickupState.nextAttemptAt = now + 350;
+    const targetX = lootPickupState.x;
+    const targetY = lootPickupState.y;
+    clearAutoLootPickup(true);
+    sendPickupBag(targetX, targetY);
+    return;
+  }
+  sendMove();
 }
 
 function sendAbilityUse(abilityId, worldX, worldY) {
@@ -7559,7 +7708,10 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleSpellbookPanel,
       toggleDpsPanel,
       executeBoundAction,
+      tryContextLootPickup,
       sendMove,
+      cancelAutoLootPickup: () => clearAutoLootPickup(true),
+      updateAutoLootPickup,
       clearDragState,
       resetAbilityChanneling,
       stopAllSpatialLoops,

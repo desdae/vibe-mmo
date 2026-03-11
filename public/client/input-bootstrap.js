@@ -53,6 +53,7 @@
       }
 
       if (event.code in deps.keys) {
+        deps.cancelAutoLootPickup();
         deps.keys[event.code] = true;
         deps.sendMove();
         event.preventDefault();
@@ -79,6 +80,7 @@
         deps.sendMove();
       }
       deps.mouseState.leftDown = false;
+      deps.cancelAutoLootPickup();
       deps.clearDragState();
       deps.resetAbilityChanneling();
       deps.stopAllSpatialLoops();
@@ -95,6 +97,7 @@
       }
 
       deps.updateMouseScreenPosition(event);
+      deps.cancelAutoLootPickup();
       deps.mouseState.leftDown = true;
       deps.tryPrimaryAutoAction(true);
     }
@@ -109,6 +112,9 @@
       deps.resumeSpatialAudioContext();
       event.preventDefault();
       deps.updateMouseScreenPosition(event);
+       if (deps.tryContextLootPickup()) {
+        return;
+      }
       deps.executeBoundAction("mouse_right");
     }
 
@@ -155,6 +161,7 @@
       globalScope.setInterval(deps.updateDebugPanel, 250);
       globalScope.setInterval(deps.updateDpsPanel, 250);
       globalScope.setInterval(deps.tryPrimaryAutoAction, 50);
+      globalScope.setInterval(deps.updateAutoLootPickup, 75);
       deps.initializeDpsPanel();
       deps.loadInitialGameConfig();
       requestFrame(deps.render);
