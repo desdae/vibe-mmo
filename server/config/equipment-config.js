@@ -119,6 +119,26 @@ function buildEquipmentItemDef(baseItem) {
   };
 }
 
+function expandEquipmentSlotIds(itemSlots) {
+  const expanded = [];
+  for (const slotId of Array.isArray(itemSlots) ? itemSlots : []) {
+    const normalized = String(slotId || "").trim();
+    if (!normalized) {
+      continue;
+    }
+    if (normalized === "ring") {
+      expanded.push("ring1", "ring2");
+      continue;
+    }
+    if (normalized === "trinket") {
+      expanded.push("trinket1", "trinket2");
+      continue;
+    }
+    expanded.push(normalized);
+  }
+  return sanitizeStringArray(expanded);
+}
+
 function loadEquipmentConfigFromDisk(configPath) {
   const raw = fs.readFileSync(configPath, "utf8");
   const parsed = JSON.parse(raw);
@@ -164,13 +184,15 @@ function loadEquipmentConfigFromDisk(configPath) {
     .filter(Boolean);
 
   const maxItemLevel = baseItems.reduce((max, entry) => Math.max(max, entry.itemLevelRange[1]), 1);
+  const equipmentSlotIds = expandEquipmentSlotIds(itemSlots);
   const clientEquipmentConfig = {
-    itemSlots
+    itemSlots: equipmentSlotIds
   };
   const equipmentItemDefs = baseItems.map(buildEquipmentItemDef);
 
   return {
     itemSlots,
+    equipmentSlotIds,
     rarityEntries,
     baseItems,
     baseItemsById,

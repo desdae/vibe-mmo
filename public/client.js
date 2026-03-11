@@ -366,6 +366,23 @@ const equipmentConfigState = {
 const equipmentState = {
   slots: {}
 };
+const EQUIPMENT_SLOT_LAYOUT = Object.freeze({
+  head: { x: 50, y: 6, label: "Helm" },
+  shoulders: { x: 10, y: 16, label: "Shoulder" },
+  necklace: { x: 90, y: 16, label: "Amulet" },
+  chest: { x: 50, y: 34, label: "Chest" },
+  gloves: { x: 10, y: 38, label: "Gloves" },
+  bracers: { x: 90, y: 38, label: "Bracer" },
+  belt: { x: 50, y: 52, label: "Belt", kind: "belt" },
+  ring1: { x: 10, y: 57, label: "Ring 1" },
+  ring2: { x: 90, y: 57, label: "Ring 2" },
+  mainHand: { x: 10, y: 76, label: "Main Hand" },
+  offHand: { x: 90, y: 76, label: "Off Hand" },
+  pants: { x: 50, y: 73, label: "Pants" },
+  trinket1: { x: 10, y: 92, label: "Trinket 1" },
+  trinket2: { x: 90, y: 92, label: "Trinket 2" },
+  boots: { x: 50, y: 92, label: "Boots" }
+});
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 const debugState = {
@@ -449,6 +466,7 @@ const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
     "rgba(255, 210, 110, 0.38)"
   ])
 });
+const lootBagSpriteCache = new Map();
 
 function clamp(value, min, max) {
   if (sharedClamp) {
@@ -2900,6 +2918,9 @@ function getEquipmentSlotIdForItem(slotData) {
     return "";
   }
   const explicitSlot = String(slotData.slot || "").trim();
+  if (explicitSlot === "ring1" || explicitSlot === "ring2" || explicitSlot === "trinket1" || explicitSlot === "trinket2") {
+    return explicitSlot;
+  }
   if (explicitSlot) {
     return explicitSlot;
   }
@@ -2907,12 +2928,40 @@ function getEquipmentSlotIdForItem(slotData) {
   return String((itemDef && itemDef.slot) || "").trim();
 }
 
+function getEquipmentSlotFamily(slotId) {
+  const normalized = String(slotId || "").trim();
+  if (normalized === "ring1" || normalized === "ring2") {
+    return "ring";
+  }
+  if (normalized === "trinket1" || normalized === "trinket2") {
+    return "trinket";
+  }
+  return normalized;
+}
+
+function getCompatibleEquipmentSlotIds(slotData) {
+  const itemSlotId = getEquipmentSlotFamily(getEquipmentSlotIdForItem(slotData));
+  if (!itemSlotId) {
+    return [];
+  }
+  return equipmentConfigState.itemSlots.filter((slotId) => getEquipmentSlotFamily(slotId) === itemSlotId);
+}
+
+function resolvePreferredEquipmentSlotId(slotData) {
+  const compatibleSlots = getCompatibleEquipmentSlotIds(slotData);
+  if (!compatibleSlots.length) {
+    return "";
+  }
+  const emptySlotId = compatibleSlots.find((slotId) => !equipmentState.slots[slotId]);
+  return emptySlotId || compatibleSlots[0];
+}
+
 function equipInventoryItemAtIndex(index) {
   const slotData = inventoryState.slots[index];
   if (!slotData || !slotData.itemId) {
     return false;
   }
-  const slotId = getEquipmentSlotIdForItem(slotData);
+  const slotId = resolvePreferredEquipmentSlotId(slotData);
   if (!slotId) {
     return false;
   }
@@ -3024,25 +3073,34 @@ function updateEquipmentUI() {
   }
   const slotIds = Array.isArray(equipmentConfigState.itemSlots) ? equipmentConfigState.itemSlots : [];
   equipmentGrid.innerHTML = "";
+  const layoutEl = document.createElement("div");
+  layoutEl.className = "equipment-layout";
+
+  const figureEl = document.createElement("div");
+  figureEl.className = "equipment-figure";
+  layoutEl.appendChild(figureEl);
 
   for (const slotId of slotIds) {
-    const cell = document.createElement("div");
-    cell.className = "equipment-cell";
-
-    const label = document.createElement("div");
-    label.className = "equipment-slot-label";
-    label.textContent = humanizeKey(slotId);
-    cell.appendChild(label);
+    const slotLayout = EQUIPMENT_SLOT_LAYOUT[slotId] || {
+      x: 50,
+      y: 50,
+      label: humanizeKey(slotId)
+    };
+    const anchor = document.createElement("div");
+    const horizontalRole = slotLayout.x < 35 ? "left-anchor" : slotLayout.x > 65 ? "right-anchor" : "center-anchor";
+    anchor.className = `equipment-anchor ${horizontalRole}${slotLayout.kind === "belt" ? " belt-anchor" : ""}`;
+    anchor.style.left = `${slotLayout.x}%`;
+    anchor.style.top = `${slotLayout.y}%`;
 
     const slotEl = document.createElement("div");
-    slotEl.className = "inventory-slot equipment-slot";
+    slotEl.className = `inventory-slot equipment-slot${slotLayout.kind === "belt" ? " belt-slot" : ""}`;
     slotEl.dataset.slot = slotId;
-    slotEl.title = humanizeKey(slotId);
+    slotEl.title = slotLayout.label || humanizeKey(slotId);
     slotEl.addEventListener("dragover", (event) => {
       const draggedSlot = dragState.inventoryFrom;
       const slotData = draggedSlot !== null ? inventoryState.slots[draggedSlot] : null;
-      const draggedItemSlot = getEquipmentSlotIdForItem(slotData);
-      if (!dragState.itemId || draggedSlot === null || draggedItemSlot !== slotId) {
+      const compatibleSlots = getCompatibleEquipmentSlotIds(slotData);
+      if (!dragState.itemId || draggedSlot === null || !compatibleSlots.includes(slotId)) {
         return;
       }
       event.preventDefault();
@@ -3091,9 +3149,16 @@ function updateEquipmentUI() {
       slotEl.appendChild(iconEl);
     }
 
-    cell.appendChild(slotEl);
-    equipmentGrid.appendChild(cell);
+    const label = document.createElement("div");
+    label.className = "equipment-slot-label";
+    label.textContent = slotLayout.label || humanizeKey(slotId);
+
+    anchor.appendChild(slotEl);
+    anchor.appendChild(label);
+    layoutEl.appendChild(anchor);
   }
+
+  equipmentGrid.appendChild(layoutEl);
 }
 
 const sharedClientUiPanels = globalThis.VibeClientUiPanels || null;
@@ -4903,7 +4968,8 @@ const particleSystemTools = sharedCreateParticleSystemTools
   ? sharedCreateParticleSystemTools({
       emittersByKey: ambientParticleEmitters,
       hashString,
-      clamp
+      clamp,
+      globalMaxParticles: 280
     })
   : null;
 
@@ -7834,11 +7900,143 @@ function drawMob(mob, cameraX, cameraY, attackState = null) {
   mobRenderTools.drawMob(mob, cameraX, cameraY, attackState);
 }
 
+function createLootBagSprite(variant = 0) {
+  const spriteSize = 64;
+  const spriteCanvas = document.createElement("canvas");
+  spriteCanvas.width = spriteSize;
+  spriteCanvas.height = spriteSize;
+  const spriteCtx = spriteCanvas.getContext("2d");
+  if (!spriteCtx) {
+    return null;
+  }
+
+  const scatterPhase = ((Math.floor(Number(variant) || 0) % 628) / 100) * 0.6;
+  spriteCtx.translate(spriteSize * 0.5, spriteSize * 0.5);
+
+  spriteCtx.fillStyle = "rgba(16, 10, 5, 0.34)";
+  spriteCtx.beginPath();
+  spriteCtx.ellipse(0, 11, 15, 5.5, 0, 0, Math.PI * 2);
+  spriteCtx.fill();
+
+  for (let i = 0; i < 3; i += 1) {
+    const t = scatterPhase + i * 1.9;
+    const coinX = Math.cos(t) * (14 + i * 3) - (i === 1 ? 3 : 0);
+    const coinY = 8 + Math.sin(t * 1.4) * 2 + i * 1.5;
+    spriteCtx.save();
+    spriteCtx.translate(coinX, coinY);
+    spriteCtx.rotate(Math.sin(t * 2.2) * 0.24);
+    spriteCtx.fillStyle = "#d0a24d";
+    spriteCtx.strokeStyle = "#f7d47d";
+    spriteCtx.lineWidth = 1;
+    spriteCtx.beginPath();
+    spriteCtx.ellipse(0, 0, 4.3, 2.1, 0, 0, Math.PI * 2);
+    spriteCtx.fill();
+    spriteCtx.stroke();
+    spriteCtx.beginPath();
+    spriteCtx.ellipse(0, 0, 2.1, 0.9, 0, 0, Math.PI * 2);
+    spriteCtx.strokeStyle = "rgba(255, 242, 184, 0.8)";
+    spriteCtx.stroke();
+    spriteCtx.restore();
+  }
+
+  spriteCtx.fillStyle = "#5f3d22";
+  spriteCtx.beginPath();
+  spriteCtx.moveTo(-14, 7);
+  spriteCtx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
+  spriteCtx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
+  spriteCtx.bezierCurveTo(14, -8, 17, 1, 15, 7);
+  spriteCtx.bezierCurveTo(11, 13, -10, 13, -14, 7);
+  spriteCtx.fill();
+
+  spriteCtx.strokeStyle = "#8c653c";
+  spriteCtx.lineWidth = 1.6;
+  spriteCtx.beginPath();
+  spriteCtx.moveTo(-13, 6);
+  spriteCtx.bezierCurveTo(-11, 10, -3, 11, 3, 10);
+  spriteCtx.bezierCurveTo(8, 10, 12, 8, 13, 5);
+  spriteCtx.stroke();
+
+  spriteCtx.strokeStyle = "rgba(255, 237, 195, 0.25)";
+  spriteCtx.lineWidth = 1.1;
+  spriteCtx.beginPath();
+  spriteCtx.moveTo(-8, -1);
+  spriteCtx.quadraticCurveTo(-3, -4, 2, -2);
+  spriteCtx.quadraticCurveTo(6, -1, 8, 2);
+  spriteCtx.stroke();
+
+  spriteCtx.fillStyle = "#81532c";
+  spriteCtx.beginPath();
+  spriteCtx.moveTo(-8, -9);
+  spriteCtx.quadraticCurveTo(-4, -14, 0, -13);
+  spriteCtx.quadraticCurveTo(5, -14, 9, -9);
+  spriteCtx.lineTo(8, -4);
+  spriteCtx.quadraticCurveTo(3, -6, -2, -6);
+  spriteCtx.quadraticCurveTo(-6, -6, -9, -4);
+  spriteCtx.closePath();
+  spriteCtx.fill();
+
+  spriteCtx.strokeStyle = "#d8b27a";
+  spriteCtx.lineWidth = 1.8;
+  spriteCtx.beginPath();
+  spriteCtx.moveTo(-9, -3);
+  spriteCtx.quadraticCurveTo(-2, -1, 8, -3);
+  spriteCtx.stroke();
+  spriteCtx.lineWidth = 1.1;
+  spriteCtx.beginPath();
+  spriteCtx.moveTo(-7, -2);
+  spriteCtx.quadraticCurveTo(-2, 1, 6, -2);
+  spriteCtx.strokeStyle = "#a88457";
+  spriteCtx.stroke();
+
+  for (let i = 0; i < 5; i += 1) {
+    const t = scatterPhase + i * 0.92;
+    const coinX = Math.cos(t) * 7;
+    const coinY = -11 + Math.sin(t * 1.6) * 1.8 - i * 0.18;
+    spriteCtx.save();
+    spriteCtx.translate(coinX, coinY);
+    spriteCtx.rotate(Math.sin(t * 2.3) * 0.35);
+    spriteCtx.fillStyle = "#d09c43";
+    spriteCtx.strokeStyle = "#ffde88";
+    spriteCtx.lineWidth = 1;
+    spriteCtx.beginPath();
+    spriteCtx.ellipse(0, 0, 3.8, 2.2, 0, 0, Math.PI * 2);
+    spriteCtx.fill();
+    spriteCtx.stroke();
+    spriteCtx.beginPath();
+    spriteCtx.ellipse(0, 0, 1.7, 0.9, 0, 0, Math.PI * 2);
+    spriteCtx.strokeStyle = "rgba(255, 246, 204, 0.85)";
+    spriteCtx.stroke();
+    spriteCtx.restore();
+  }
+
+  spriteCtx.strokeStyle = "#2e1b0d";
+  spriteCtx.lineWidth = 1.6;
+  spriteCtx.beginPath();
+  spriteCtx.moveTo(-14, 7);
+  spriteCtx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
+  spriteCtx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
+  spriteCtx.bezierCurveTo(14, -8, 17, 1, 15, 7);
+  spriteCtx.bezierCurveTo(11, 13, -10, 13, -14, 7);
+  spriteCtx.stroke();
+
+  return spriteCanvas;
+}
+
+function getLootBagSprite(variant) {
+  const key = Math.abs(Math.floor(Number(variant) || 0)) % 8;
+  if (lootBagSpriteCache.has(key)) {
+    return lootBagSpriteCache.get(key);
+  }
+  const sprite = createLootBagSprite(key);
+  lootBagSpriteCache.set(key, sprite);
+  return sprite;
+}
+
 function drawLootBag(bag, cameraX, cameraY, frameNow = performance.now()) {
   const p = worldToScreen(bag.x + 0.5, bag.y + 0.5, cameraX, cameraY);
   const bagId = String((bag && bag.id) || `${bag.x}:${bag.y}`);
   const seed = hashString(`lootbag:${bagId}`);
-  const scatterPhase = ((seed % 628) / 100) * 0.6;
+  const sprite = getLootBagSprite(seed);
 
   if (particleSystemTools) {
     particleSystemTools.drawWorldEmitter({
@@ -7853,119 +8051,9 @@ function drawLootBag(bag, cameraX, cameraY, frameNow = performance.now()) {
       config: LOOT_BAG_SPARKLE_PARTICLE_CONFIG
     });
   }
-
-  ctx.save();
-  ctx.translate(p.x, p.y);
-
-  ctx.fillStyle = "rgba(16, 10, 5, 0.34)";
-  ctx.beginPath();
-  ctx.ellipse(0, 11, 15, 5.5, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  const floorCoins = 3;
-  for (let i = 0; i < floorCoins; i += 1) {
-    const t = scatterPhase + i * 1.9;
-    const coinX = Math.cos(t) * (14 + i * 3) - (i === 1 ? 3 : 0);
-    const coinY = 8 + Math.sin(t * 1.4) * 2 + i * 1.5;
-    ctx.save();
-    ctx.translate(coinX, coinY);
-    ctx.rotate(Math.sin(t * 2.2) * 0.24);
-    ctx.fillStyle = "#d0a24d";
-    ctx.strokeStyle = "#f7d47d";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 4.3, 2.1, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 2.1, 0.9, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255, 242, 184, 0.8)";
-    ctx.stroke();
-    ctx.restore();
+  if (sprite) {
+    ctx.drawImage(sprite, Math.round(p.x - sprite.width * 0.5), Math.round(p.y - sprite.height * 0.5));
   }
-
-  ctx.fillStyle = "#5f3d22";
-  ctx.beginPath();
-  ctx.moveTo(-14, 7);
-  ctx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
-  ctx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
-  ctx.bezierCurveTo(14, -8, 17, 1, 15, 7);
-  ctx.bezierCurveTo(11, 13, -10, 13, -14, 7);
-  ctx.fill();
-
-  ctx.strokeStyle = "#8c653c";
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(-13, 6);
-  ctx.bezierCurveTo(-11, 10, -3, 11, 3, 10);
-  ctx.bezierCurveTo(8, 10, 12, 8, 13, 5);
-  ctx.stroke();
-
-  ctx.strokeStyle = "rgba(255, 237, 195, 0.25)";
-  ctx.lineWidth = 1.1;
-  ctx.beginPath();
-  ctx.moveTo(-8, -1);
-  ctx.quadraticCurveTo(-3, -4, 2, -2);
-  ctx.quadraticCurveTo(6, -1, 8, 2);
-  ctx.stroke();
-
-  ctx.fillStyle = "#81532c";
-  ctx.beginPath();
-  ctx.moveTo(-8, -9);
-  ctx.quadraticCurveTo(-4, -14, 0, -13);
-  ctx.quadraticCurveTo(5, -14, 9, -9);
-  ctx.lineTo(8, -4);
-  ctx.quadraticCurveTo(3, -6, -2, -6);
-  ctx.quadraticCurveTo(-6, -6, -9, -4);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = "#d8b27a";
-  ctx.lineWidth = 1.8;
-  ctx.beginPath();
-  ctx.moveTo(-9, -3);
-  ctx.quadraticCurveTo(-2, -1, 8, -3);
-  ctx.stroke();
-  ctx.lineWidth = 1.1;
-  ctx.beginPath();
-  ctx.moveTo(-7, -2);
-  ctx.quadraticCurveTo(-2, 1, 6, -2);
-  ctx.strokeStyle = "#a88457";
-  ctx.stroke();
-
-  const topCoins = 5;
-  for (let i = 0; i < topCoins; i += 1) {
-    const t = scatterPhase + i * 0.92;
-    const coinX = Math.cos(t) * 7;
-    const coinY = -11 + Math.sin(t * 1.6) * 1.8 - i * 0.18;
-    ctx.save();
-    ctx.translate(coinX, coinY);
-    ctx.rotate(Math.sin(t * 2.3) * 0.35);
-    ctx.fillStyle = "#d09c43";
-    ctx.strokeStyle = "#ffde88";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 3.8, 2.2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 1.7, 0.9, 0, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(255, 246, 204, 0.85)";
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  ctx.strokeStyle = "#2e1b0d";
-  ctx.lineWidth = 1.6;
-  ctx.beginPath();
-  ctx.moveTo(-14, 7);
-  ctx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
-  ctx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
-  ctx.bezierCurveTo(14, -8, 17, 1, 15, 7);
-  ctx.bezierCurveTo(11, 13, -10, 13, -14, 7);
-  ctx.stroke();
-
-  ctx.restore();
 }
 
 const sharedClientRenderLoop = globalThis.VibeClientRenderLoop || null;

@@ -5,6 +5,21 @@
     return Math.max(min, Math.min(max, value));
   }
 
+  function createRuntimeCanvas(width, height) {
+    const w = Math.max(1, Math.ceil(Number(width) || 1));
+    const h = Math.max(1, Math.ceil(Number(height) || 1));
+    if (typeof OffscreenCanvas !== "undefined") {
+      return new OffscreenCanvas(w, h);
+    }
+    if (typeof document !== "undefined" && document && typeof document.createElement === "function") {
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      return canvas;
+    }
+    return null;
+  }
+
   function seededUnit(seed) {
     const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
     return x - Math.floor(x);
@@ -33,7 +48,7 @@
     return values[index];
   }
 
-  function drawSparkleParticle(ctx, x, y, particle, progress) {
+  function drawSparkleParticleVector(ctx, x, y, particle, progress) {
     const size = Math.max(1.25, Number(particle.sizePx) || 0);
     const twinkle = 0.65 + Math.sin(progress * Math.PI * 2 + particle.phase) * 0.25 + Number(particle.twinkle) * 0.2;
     const longArm = size * defaultClamp(twinkle, 0.45, 1.4);
@@ -73,7 +88,7 @@
     ctx.restore();
   }
 
-  function drawDotParticle(ctx, x, y, particle, progress) {
+  function drawDotParticleVector(ctx, x, y, particle, progress) {
     const size = Math.max(0.8, Number(particle.sizePx) || 0);
     ctx.save();
     ctx.globalAlpha = defaultClamp(Number(particle.alpha) || 0.5, 0, 1) * (1 - progress * 0.9);
@@ -97,6 +112,58 @@
 
     const clamp = typeof deps.clamp === "function" ? deps.clamp : defaultClamp;
     const hashString = typeof deps.hashString === "function" ? deps.hashString : (value) => String(value || "").length;
+    const particleSpriteCache = new Map();
+    const globalMaxParticles = Math.max(32, Math.floor(Number(deps.globalMaxParticles) || 320));
+
+    function buildParticleSpriteCacheKey(particle) {
+      const shape = String(particle.shape || "sparkle");
+      const size = Math.max(1, Math.round((Number(particle.sizePx) || 0) * 10) / 10);
+      const color = String(particle.color || "");
+      const glow = String(particle.glowColor || "");
+      return `${shape}|${size}|${color}|${glow}`;
+    }
+
+    function getCachedParticleSprite(particle) {
+      const key = buildParticleSpriteCacheKey(particle);
+      if (particleSpriteCache.has(key)) {
+        return particleSpriteCache.get(key);
+      }
+
+      const size = Math.max(1.25, Number(particle.sizePx) || 0);
+      const padding = Math.max(6, Math.ceil(size * 3.8));
+      const spriteSize = Math.max(8, Math.ceil(size * 8 + padding * 2));
+      const surface = createRuntimeCanvas(spriteSize, spriteSize);
+      if (!surface) {
+        particleSpriteCache.set(key, null);
+        return null;
+      }
+      const spriteCtx = surface.getContext("2d");
+      if (!spriteCtx) {
+        particleSpriteCache.set(key, null);
+        return null;
+      }
+
+      const spriteParticle = {
+        ...particle,
+        alpha: 1,
+        phase: 0,
+        rotation: 0,
+        twinkle: 1
+      };
+      const center = spriteSize * 0.5;
+      if (spriteParticle.shape === "dot") {
+        drawDotParticleVector(spriteCtx, center, center, spriteParticle, 0);
+      } else {
+        drawSparkleParticleVector(spriteCtx, center, center, spriteParticle, 0);
+      }
+
+      const sprite = {
+        image: surface,
+        halfSize: spriteSize * 0.5
+      };
+      particleSpriteCache.set(key, sprite);
+      return sprite;
+    }
 
     function spawnParticle(emitter, now, config) {
       emitter.spawnIndex += 1;
@@ -145,8 +212,13 @@
       }
       emitter.particles = particles;
 
-      const spawnRate = Math.max(0, Number(config.spawnRate) || 0);
-      const maxParticles = Math.max(0, Math.floor(Number(config.maxParticles) || 0));
+      const configuredMaxParticles = Math.max(0, Math.floor(Number(config.maxParticles) || 0));
+      const emitterCount = Math.max(1, emittersByKey.size || 1);
+      const perEmitterBudget = Math.max(1, Math.floor(globalMaxParticles / emitterCount));
+      const maxParticles = Math.min(configuredMaxParticles, perEmitterBudget);
+      const spawnScale =
+        configuredMaxParticles > 0 ? clamp(perEmitterBudget / configuredMaxParticles, 0.15, 1) : 0;
+      const spawnRate = Math.max(0, Number(config.spawnRate) || 0) * spawnScale;
       if (!emitter.initialized) {
         emitter.initialized = true;
         const burstCount = Math.max(0, Math.floor(Number(config.burstCount) || 0));
@@ -162,11 +234,35 @@
     }
 
     function drawParticle(ctx, particle, screenX, screenY, progress) {
-      if (particle.shape === "dot") {
-        drawDotParticle(ctx, screenX, screenY, particle, progress);
+      const sprite = getCachedParticleSprite(particle);
+      if (sprite && sprite.image) {
+        const twinkle =
+          particle.shape === "dot"
+            ? 1
+            : 0.65 + Math.sin(progress * Math.PI * 2 + particle.phase) * 0.25 + Number(particle.twinkle) * 0.2;
+        const alpha = clamp(Number(particle.alpha) || 0.7, 0, 1) * (1 - progress * 0.85);
+        const scale = particle.shape === "dot" ? 1 : clamp(twinkle, 0.45, 1.4);
+        ctx.save();
+        ctx.translate(screenX, screenY);
+        if (particle.shape !== "dot") {
+          ctx.rotate(Number(particle.rotation) || 0);
+        }
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(
+          sprite.image,
+          -sprite.halfSize * scale,
+          -sprite.halfSize * scale,
+          sprite.halfSize * 2 * scale,
+          sprite.halfSize * 2 * scale
+        );
+        ctx.restore();
         return;
       }
-      drawSparkleParticle(ctx, screenX, screenY, particle, progress);
+      if (particle.shape === "dot") {
+        drawDotParticleVector(ctx, screenX, screenY, particle, progress);
+        return;
+      }
+      drawSparkleParticleVector(ctx, screenX, screenY, particle, progress);
     }
 
     function drawWorldEmitter(raw) {

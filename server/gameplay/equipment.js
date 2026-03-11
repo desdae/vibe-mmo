@@ -84,10 +84,29 @@ function createEquipmentTools(options = {}) {
     return config && typeof config === "object" ? config : null;
   }
 
+  function getSlotFamily(slotId) {
+    const normalized = String(slotId || "").trim();
+    if (normalized === "ring1" || normalized === "ring2") {
+      return "ring";
+    }
+    if (normalized === "trinket1" || normalized === "trinket2") {
+      return "trinket";
+    }
+    return normalized;
+  }
+
   function createEmptyEquipmentSlots() {
     const config = getEquipmentConfig();
     const slots = {};
-    for (const slotId of config && Array.isArray(config.itemSlots) ? config.itemSlots : []) {
+    const slotIds =
+      config && Array.isArray(config.equipmentSlotIds)
+        ? config.equipmentSlotIds
+        : config && Array.isArray(config.clientEquipmentConfig?.itemSlots)
+          ? config.clientEquipmentConfig.itemSlots
+          : config && Array.isArray(config.itemSlots)
+            ? config.itemSlots
+            : [];
+    for (const slotId of slotIds) {
       slots[slotId] = null;
     }
     return slots;
@@ -549,17 +568,17 @@ function createEquipmentTools(options = {}) {
   function resolveEntrySlot(entry) {
     const directSlot = String(entry?.slot || "").trim();
     if (directSlot) {
-      return directSlot;
+      return getSlotFamily(directSlot);
     }
     const baseItem = getBaseItem(entry?.itemId);
-    return baseItem ? baseItem.slot : "";
+    return baseItem ? getSlotFamily(baseItem.slot) : "";
   }
 
   function canEquipEntryToSlot(entry, slotId) {
     if (!isEquipmentEntry(entry)) {
       return false;
     }
-    return resolveEntrySlot(entry) === String(slotId || "").trim();
+    return resolveEntrySlot(entry) === getSlotFamily(slotId);
   }
 
   function equipInventoryItem(player, inventoryIndex, slotId) {

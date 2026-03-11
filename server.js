@@ -222,7 +222,7 @@ let GLOBAL_DROP_CONFIG = { entries: [] };
 const coreServices = createCoreServices({
   sendJson,
   itemDefs: ITEM_CONFIG.itemDefs,
-  equipmentSlotIds: EQUIPMENT_CONFIG.itemSlots,
+  equipmentSlotIds: EQUIPMENT_CONFIG.equipmentSlotIds,
   inventoryCols: INVENTORY_COLS,
   inventoryRows: INVENTORY_ROWS,
   inventorySlotCount: INVENTORY_SLOT_COUNT,
