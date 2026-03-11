@@ -53,12 +53,14 @@
       deps.drawAbilityCastPreview(interpolatedState.self, cameraX, cameraY, frameNow);
       const hoveredMob = deps.getHoveredMob(interpolatedState.mobs, cameraX, cameraY);
       const hoveredBag = deps.getHoveredLootBag(interpolatedState.lootBags, cameraX, cameraY);
+      const hoveredVendor = deps.getHoveredVendor(cameraX, cameraY);
 
       for (const projectile of interpolatedState.projectiles) {
         deps.drawProjectile(projectile, cameraX, cameraY, frameNow);
       }
       deps.drawExplosionEffects(cameraX, cameraY);
       deps.drawAreaEffects(cameraX, cameraY, frameNow, "underlay");
+      deps.drawVendorNpc(cameraX, cameraY, frameNow);
 
       for (const bag of interpolatedState.lootBags) {
         deps.drawLootBag(bag, cameraX, cameraY, frameNow);
@@ -117,6 +119,9 @@
       }
       if (hoveredBag) {
         deps.drawLootBagTooltip(hoveredBag.bag, hoveredBag.p);
+      }
+      if (hoveredVendor) {
+        deps.drawVendorTooltip(hoveredVendor.vendor, hoveredVendor.p);
       }
 
       const latestSelf = gameState.self || interpolatedState.self;

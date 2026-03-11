@@ -18,9 +18,12 @@ function createPlayerTickSystem({
   executeAbilityByKind,
   abilityHandlerContext,
   normalizeDirection,
+  isBlockedPoint,
   playerMobMinSeparation,
   playerMobSeparationIterations
 }) {
+  const isBlocked = typeof isBlockedPoint === "function" ? isBlockedPoint : () => false;
+
   function resolvePlayerMobCollisions(player) {
     if (!player || player.hp <= 0) {
       return;
@@ -51,8 +54,12 @@ function createPlayerTickSystem({
         const overlap = playerMobMinSeparation - dist;
         const nx = dx / dist;
         const ny = dy / dist;
-        player.x = clamp(player.x + nx * overlap, 0, mapWidth - 1);
-        player.y = clamp(player.y + ny * overlap, 0, mapHeight - 1);
+        const nextX = clamp(player.x + nx * overlap, 0, mapWidth - 1);
+        const nextY = clamp(player.y + ny * overlap, 0, mapHeight - 1);
+        if (!isBlocked(nextX, nextY)) {
+          player.x = nextX;
+          player.y = nextY;
+        }
       }
     }
   }
@@ -124,9 +131,15 @@ function createPlayerTickSystem({
       const slowMultiplier =
         (Number(player.slowUntil) || 0) > now ? clamp(Number(player.slowMultiplier) || 1, 0.1, 1) : 1;
       const moveSpeed = Math.max(0.1, Number(player.moveSpeed) || basePlayerSpeed) * slowMultiplier;
+      const previousX = player.x;
+      const previousY = player.y;
       player.x = clamp(player.x + player.input.dx * moveSpeed * dt, 0, mapWidth - 1);
       player.y = clamp(player.y + player.input.dy * moveSpeed * dt, 0, mapHeight - 1);
       resolvePlayerMobCollisions(player);
+      if (isBlocked(player.x, player.y)) {
+        player.x = previousX;
+        player.y = previousY;
+      }
     }
   }
 

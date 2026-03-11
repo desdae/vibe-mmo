@@ -18,6 +18,7 @@ function createMobLifecycleTools({
   allocateSpawnerId,
   getServerConfig,
   getMobConfig,
+  townLayout,
   mapWidth,
   mapHeight,
   targetMobClusters,
@@ -25,6 +26,21 @@ function createMobLifecycleTools({
   maxClustersPerArea,
   logger = console
 }) {
+  function isPointExcludedByTown(x, y) {
+    if (!townLayout || townLayout.enabled === false) {
+      return false;
+    }
+    const padding = Math.max(0, Number(townLayout.mobExclusionPadding) || 0);
+    const px = Number(x) || 0;
+    const py = Number(y) || 0;
+    return (
+      px >= townLayout.minTileX - padding &&
+      px < townLayout.maxTileX + 1 + padding &&
+      py >= townLayout.minTileY - padding &&
+      py < townLayout.maxTileY + 1 + padding
+    );
+  }
+
   function createMob(spawner) {
     if (!spawner.clusterDef || !spawner.clusterDef.members.length) {
       return null;
@@ -32,7 +48,7 @@ function createMobLifecycleTools({
 
     const memberIndex = randomInt(0, spawner.clusterDef.members.length - 1);
     const mobDef = spawner.clusterDef.members[memberIndex];
-    const spawnPos = randomPointInRadius(spawner.x, spawner.y, 1.5);
+    const spawnPos = pickMobSpawnPosition(spawner.x, spawner.y);
     const mob = {
       id: String(allocateMobId()),
       spawnerId: spawner.id,
@@ -84,6 +100,16 @@ function createMobLifecycleTools({
     return mob;
   }
 
+  function pickMobSpawnPosition(originX, originY) {
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      const candidate = randomPointInRadius(originX, originY, 1.5);
+      if (!isPointExcludedByTown(candidate.x, candidate.y)) {
+        return candidate;
+      }
+    }
+    return { x: originX, y: originY };
+  }
+
   function getSpawnerCellKey(x, y) {
     const cellX = Math.floor(x / clusterAreaSize);
     const cellY = Math.floor(y / clusterAreaSize);
@@ -113,6 +139,9 @@ function createMobLifecycleTools({
       const angle = Math.random() * Math.PI * 2;
       const x = clamp(centerX + Math.cos(angle) * distanceFromCenter, 0, mapWidth - 1);
       const y = clamp(centerY + Math.sin(angle) * distanceFromCenter, 0, mapHeight - 1);
+      if (isPointExcludedByTown(x, y)) {
+        continue;
+      }
       const cellKey = getSpawnerCellKey(x, y);
       const existingInCell = clustersPerCell.get(cellKey) || 0;
       if (existingInCell >= maxClustersPerArea) {
@@ -183,7 +212,7 @@ function createMobLifecycleTools({
   }
 
   function respawnMob(mob) {
-    const spawnPos = randomPointInRadius(mob.spawnX, mob.spawnY, 1.5);
+    const spawnPos = pickMobSpawnPosition(mob.spawnX, mob.spawnY);
     mob.x = spawnPos.x;
     mob.y = spawnPos.y;
     mob.hp = mob.maxHp;

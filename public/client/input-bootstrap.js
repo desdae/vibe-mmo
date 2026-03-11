@@ -53,6 +53,7 @@
       }
 
       if (event.code in deps.keys) {
+        deps.cancelAutoVendorInteraction();
         deps.cancelAutoLootPickup();
         deps.keys[event.code] = true;
         deps.sendMove();
@@ -80,6 +81,7 @@
         deps.sendMove();
       }
       deps.mouseState.leftDown = false;
+      deps.cancelAutoVendorInteraction();
       deps.cancelAutoLootPickup();
       deps.clearDragState();
       deps.resetAbilityChanneling();
@@ -97,6 +99,7 @@
       }
 
       deps.updateMouseScreenPosition(event);
+      deps.cancelAutoVendorInteraction();
       deps.cancelAutoLootPickup();
       deps.mouseState.leftDown = true;
       deps.tryPrimaryAutoAction(true);
@@ -112,7 +115,10 @@
       deps.resumeSpatialAudioContext();
       event.preventDefault();
       deps.updateMouseScreenPosition(event);
-       if (deps.tryContextLootPickup()) {
+      if (deps.tryContextVendorInteraction()) {
+        return;
+      }
+      if (deps.tryContextLootPickup()) {
         return;
       }
       deps.executeBoundAction("mouse_right");
@@ -163,6 +169,7 @@
       globalScope.setInterval(deps.updateDpsPanel, 250);
       globalScope.setInterval(deps.refreshAdminBotList, 1500);
       globalScope.setInterval(deps.tryPrimaryAutoAction, 50);
+      globalScope.setInterval(deps.updateAutoVendorInteraction, 75);
       globalScope.setInterval(deps.updateAutoLootPickup, 75);
       deps.initializeDpsPanel();
       deps.loadInitialGameConfig();

@@ -10,21 +10,31 @@ function createBotTickSystem(options = {}) {
     typeof options.classConfigProvider === "function" ? options.classConfigProvider : () => null;
   const abilityDefsProvider =
     typeof options.abilityDefsProvider === "function" ? options.abilityDefsProvider : () => new Map();
+  const levelUpPlayerAbility =
+    typeof options.levelUpPlayerAbility === "function" ? options.levelUpPlayerAbility : () => false;
   const getAbilityRangeForLevel =
     typeof options.getAbilityRangeForLevel === "function" ? options.getAbilityRangeForLevel : () => 0;
   const usePlayerAbility = typeof options.usePlayerAbility === "function" ? options.usePlayerAbility : () => false;
   const tryPickupLootBag = typeof options.tryPickupLootBag === "function" ? options.tryPickupLootBag : () => false;
   const equipInventoryItem = typeof options.equipInventoryItem === "function" ? options.equipInventoryItem : () => false;
+  const getInventoryEntrySellValue =
+    typeof options.getInventoryEntrySellValue === "function" ? options.getInventoryEntrySellValue : () => 0;
+  const sellInventoryItemToVendor =
+    typeof options.sellInventoryItemToVendor === "function" ? options.sellInventoryItemToVendor : () => ({ ok: false });
   const randomPointInRadius =
     typeof options.randomPointInRadius === "function" ? options.randomPointInRadius : (x, y) => ({ x, y });
   const distance = typeof options.distance === "function" ? options.distance : () => Infinity;
   const normalizeDirection =
     typeof options.normalizeDirection === "function" ? options.normalizeDirection : () => null;
+  const townLayout = options.townLayout || null;
   const centerX = Number(options.centerX) || 0;
   const centerY = Number(options.centerY) || 0;
   const spawnRadius = Math.max(1, Number(options.spawnRadius) || 6);
   const bagPickupRange = Math.max(0.1, Number(options.bagPickupRange) || 1.5);
   const visibilityRange = Math.max(4, Number(options.visibilityRange) || 20);
+  const townLayoutTools = require("../../public/shared/town-layout");
+  const isPointInTown =
+    townLayoutTools && typeof townLayoutTools.isPointInTown === "function" ? townLayoutTools.isPointInTown : () => false;
 
   if (!players || !mobs || !lootBags || !activeAreaEffects || !projectiles || !createPlayer) {
     throw new Error("createBotTickSystem requires maps and createPlayer");
@@ -164,6 +174,34 @@ function createBotTickSystem(options = {}) {
     return total;
   }
 
+  function countMobsAroundPoint(x, y, maxRange = 2.25) {
+    let total = 0;
+    const radius = Math.max(0.1, Number(maxRange) || 2.25);
+    for (const mob of mobs.values()) {
+      if (!mob || !mob.alive) {
+        continue;
+      }
+      const dx = Number(mob.x) - Number(x);
+      const dy = Number(mob.y) - Number(y);
+      if (Math.hypot(dx, dy) <= radius) {
+        total += 1;
+      }
+    }
+    return total;
+  }
+
+  function getVendorNpc() {
+    return townLayout && townLayout.vendor ? townLayout.vendor : null;
+  }
+
+  function isNearVendor(player) {
+    const vendor = getVendorNpc();
+    if (!player || !vendor) {
+      return false;
+    }
+    return Math.hypot(Number(player.x) - Number(vendor.x), Number(player.y) - Number(vendor.y)) <= Math.max(0.5, Number(vendor.interactRange) || 2.25);
+  }
+
   function hasActiveOwnedSummon(player, abilityId, now) {
     for (const effect of activeAreaEffects.values()) {
       if (!effect || String(effect.kind || "") !== "summon") {
@@ -193,71 +231,180 @@ function createBotTickSystem(options = {}) {
     return usePlayerAbility(player, abilityId, direction.dx, direction.dy, targetDistance);
   }
 
-  function tryUseMageAbilities(player, target, targetDistance, now) {
+  function getKnownBotAbilities(player) {
     const abilityDefs = abilityDefsProvider();
-    if (player.abilityLevels.get("fireHydra") > 0) {
-      const hydraDef = abilityDefs.get("fireHydra");
-      const hydraRange = hydraDef ? getAbilityRangeForLevel(hydraDef, player.abilityLevels.get("fireHydra")) : 0;
-      if (hydraDef && targetDistance <= hydraRange && !hasActiveOwnedSummon(player, "fireHydra", now)) {
-        if (tryUseBotAbility(player, "fireHydra", target, targetDistance, now)) {
-          return true;
-        }
-      }
+    const entries = [];
+    if (!player || !player.abilityLevels || typeof player.abilityLevels.entries !== "function") {
+      return entries;
     }
-
-    const orderedAbilities = ["chainLightning", "lightningBeam", "fireball", "frostbolt", "arcaneMissiles", "blizzard"];
-    for (const abilityId of orderedAbilities) {
-      const abilityLevel = Math.max(0, Number(player.abilityLevels.get(abilityId) || 0));
-      if (abilityLevel <= 0) {
+    for (const [abilityId, rawLevel] of player.abilityLevels.entries()) {
+      const id = String(abilityId || "").trim();
+      const level = Math.max(0, Math.floor(Number(rawLevel) || 0));
+      if (!id || level <= 0) {
         continue;
       }
-      const abilityDef = abilityDefs.get(abilityId);
-      if (!abilityDef) {
+      const def = abilityDefs.get(id);
+      if (!def) {
         continue;
       }
-      const range = Math.max(0.5, getAbilityRangeForLevel(abilityDef, abilityLevel));
-      if (targetDistance > range) {
-        continue;
-      }
-      if (abilityId === "blizzard" && countNearbyMobs(target, Math.max(abilityDef.areaRadius || 0, 2)) < 2) {
-        continue;
-      }
-      if (tryUseBotAbility(player, abilityId, target, targetDistance, now)) {
-        return true;
-      }
+      const range = Math.max(0, Number(getAbilityRangeForLevel(def, level)) || Number(def.range) || 0);
+      entries.push({ id, level, def, range });
     }
-
-    return false;
+    return entries;
   }
 
-  function tryUseWarriorAbilities(player, target, targetDistance, now) {
-    const nearbyCount = countNearbyMobs(player, 2.4);
-    if (nearbyCount >= 2 && player.abilityLevels.get("warstomp") > 0) {
-      const stompDirection =
-        normalizeDirection(Number(target.x) - Number(player.x), Number(target.y) - Number(player.y)) ||
-        normalizeDirection(player.lastDirection?.dx, player.lastDirection?.dy);
-      if (stompDirection) {
-        player.input = { dx: 0, dy: 0 };
-        if (usePlayerAbility(player, "warstomp", stompDirection.dx, stompDirection.dy, targetDistance)) {
-          return true;
-        }
+  function getAbilityKindPriority(kind) {
+    const normalizedKind = String(kind || "").trim();
+    if (normalizedKind === "summon") {
+      return 70;
+    }
+    if (normalizedKind === "chain") {
+      return 64;
+    }
+    if (normalizedKind === "area") {
+      return 58;
+    }
+    if (normalizedKind === "beam") {
+      return 54;
+    }
+    if (normalizedKind === "projectile") {
+      return 46;
+    }
+    if (normalizedKind === "meleeCone") {
+      return 38;
+    }
+    return 10;
+  }
+
+  function isAbilityReady(player, ability) {
+    if (!player || !ability || !ability.def) {
+      return false;
+    }
+    const cooldownMs = Math.max(0, Number(ability.def.cooldownMs) || 0);
+    const lastUsedAt = Number(player.abilityLastUsedAt && player.abilityLastUsedAt.get(ability.id)) || 0;
+    if (cooldownMs > 0 && Date.now() - lastUsedAt < cooldownMs) {
+      return false;
+    }
+    return Number(player.mana) + 1e-6 >= Math.max(0, Number(ability.def.manaCost) || 0);
+  }
+
+  function getPreferredCombatDistance(player) {
+    const abilities = getKnownBotAbilities(player);
+    let bestRangedRange = 0;
+    let hasMelee = false;
+    for (const ability of abilities) {
+      const kind = String(ability.def.kind || "");
+      if (kind === "meleeCone") {
+        hasMelee = true;
+        continue;
+      }
+      if (kind === "area" && ability.range <= 0.1) {
+        hasMelee = true;
+        continue;
+      }
+      if (kind === "teleport") {
+        continue;
+      }
+      bestRangedRange = Math.max(bestRangedRange, ability.range);
+    }
+    if (bestRangedRange > 0.5) {
+      return Math.max(2.2, Math.min(7.5, bestRangedRange * 0.75));
+    }
+    if (hasMelee) {
+      return 1.45;
+    }
+    return 3;
+  }
+
+  function scoreBotAbilityUse(player, ability, target, targetDistance, now) {
+    if (!isAbilityReady(player, ability)) {
+      return -Infinity;
+    }
+    const def = ability.def;
+    const kind = String(def.kind || "");
+    const effectiveRange = Math.max(0, ability.range);
+    const areaRadius = Math.max(0, Number(def.areaRadius) || 0);
+    const nearbySelfMobs = countNearbyMobs(player, Math.max(1.8, areaRadius + 0.5));
+    const nearbyTargetMobs = countMobsAroundPoint(target.x, target.y, Math.max(1.4, areaRadius + 0.5));
+
+    if (kind === "teleport") {
+      return -Infinity;
+    }
+    if (kind === "summon") {
+      if (effectiveRange <= 0 || targetDistance > effectiveRange || hasActiveOwnedSummon(player, ability.id, now)) {
+        return -Infinity;
+      }
+      return getAbilityKindPriority(kind) + effectiveRange;
+    }
+    if (kind === "area") {
+      if (effectiveRange <= 0.1) {
+        return nearbySelfMobs >= 2 ? getAbilityKindPriority(kind) + nearbySelfMobs * 6 : -Infinity;
+      }
+      if (targetDistance > effectiveRange) {
+        return -Infinity;
+      }
+      return nearbyTargetMobs >= 2 ? getAbilityKindPriority(kind) + nearbyTargetMobs * 5 : -Infinity;
+    }
+    if (kind === "chain") {
+      if (targetDistance > effectiveRange) {
+        return -Infinity;
+      }
+      const jumpRange = Math.max(0.5, Number(def.jumpRange) || 3);
+      const chainTargets = countMobsAroundPoint(target.x, target.y, jumpRange);
+      return getAbilityKindPriority(kind) + chainTargets * 4 + Math.min(6, effectiveRange * 0.25);
+    }
+    if (kind === "beam") {
+      if (targetDistance > effectiveRange) {
+        return -Infinity;
+      }
+      return getAbilityKindPriority(kind) + Math.min(6, effectiveRange * 0.25);
+    }
+    if (kind === "projectile") {
+      if (targetDistance > effectiveRange) {
+        return -Infinity;
+      }
+      return getAbilityKindPriority(kind) + Math.min(5, effectiveRange * 0.2);
+    }
+    if (kind === "meleeCone") {
+      if (targetDistance > Math.max(1.25, effectiveRange + 0.1)) {
+        return -Infinity;
+      }
+      return getAbilityKindPriority(kind) + nearbySelfMobs * 2;
+    }
+    return -Infinity;
+  }
+
+  function tryUseBestCombatAbility(player, target, targetDistance, now) {
+    const abilities = getKnownBotAbilities(player);
+    let bestAbility = null;
+    let bestScore = -Infinity;
+    for (const ability of abilities) {
+      const score = scoreBotAbilityUse(player, ability, target, targetDistance, now);
+      if (score > bestScore) {
+        bestScore = score;
+        bestAbility = ability;
       }
     }
-
-    if (player.abilityLevels.get("slash") > 0 && targetDistance <= 1.95) {
-      return tryUseBotAbility(player, "slash", target, targetDistance, now);
+    if (!bestAbility || !Number.isFinite(bestScore)) {
+      return false;
     }
-    return false;
+    return tryUseBotAbility(player, bestAbility.id, target, targetDistance, now);
   }
 
   function updateBotMovementToward(player, target, desiredDistance = 0.5) {
     if (!player || !target) {
       return;
     }
-    const dx = Number(target.x) - Number(player.x);
-    const dy = Number(target.y) - Number(player.y);
+    const routedTarget = resolveBotTownPathWaypoint(player, target);
+    const waypoint = routedTarget && routedTarget.target ? routedTarget.target : target;
+    const effectiveDistance =
+      routedTarget && Number.isFinite(Number(routedTarget.desiredDistance))
+        ? Math.max(0, Number(routedTarget.desiredDistance) || 0)
+        : Math.max(0, Number(desiredDistance) || 0);
+    const dx = Number(waypoint.x) - Number(player.x);
+    const dy = Number(waypoint.y) - Number(player.y);
     const dist = Math.hypot(dx, dy);
-    if (!dist || dist <= Math.max(0, Number(desiredDistance) || 0)) {
+    if (!dist || dist <= effectiveDistance) {
       player.input = { dx: 0, dy: 0 };
       return;
     }
@@ -266,6 +413,167 @@ function createBotTickSystem(options = {}) {
     if (direction) {
       player.lastDirection = direction;
     }
+  }
+
+  function getTownGateRoutes() {
+    if (!townLayout || townLayout.enabled === false) {
+      return [];
+    }
+    const northCenterX = (Number(townLayout.northGate?.min) + Number(townLayout.northGate?.max)) * 0.5 + 0.5;
+    const southCenterX = (Number(townLayout.southGate?.min) + Number(townLayout.southGate?.max)) * 0.5 + 0.5;
+    const westCenterY = (Number(townLayout.westGate?.min) + Number(townLayout.westGate?.max)) * 0.5 + 0.5;
+    const eastCenterY = (Number(townLayout.eastGate?.min) + Number(townLayout.eastGate?.max)) * 0.5 + 0.5;
+    return [
+      {
+        key: "north",
+        gateCenter: { x: northCenterX, y: Number(townLayout.minTileY) + 0.5 },
+        outsidePoint: { x: northCenterX, y: Number(townLayout.minTileY) - 0.5 }
+      },
+      {
+        key: "south",
+        gateCenter: { x: southCenterX, y: Number(townLayout.maxTileY) + 0.5 },
+        outsidePoint: { x: southCenterX, y: Number(townLayout.maxTileY) + 1.5 }
+      },
+      {
+        key: "west",
+        gateCenter: { x: Number(townLayout.minTileX) + 0.5, y: westCenterY },
+        outsidePoint: { x: Number(townLayout.minTileX) - 0.5, y: westCenterY }
+      },
+      {
+        key: "east",
+        gateCenter: { x: Number(townLayout.maxTileX) + 0.5, y: eastCenterY },
+        outsidePoint: { x: Number(townLayout.maxTileX) + 1.5, y: eastCenterY }
+      }
+    ];
+  }
+
+  function getTownGateRouteByKey(routeKey) {
+    const normalizedKey = String(routeKey || "").trim().toLowerCase();
+    if (!normalizedKey) {
+      return null;
+    }
+    for (const route of getTownGateRoutes()) {
+      if (String(route.key || "") === normalizedKey) {
+        return route;
+      }
+    }
+    return null;
+  }
+
+  function clearBotTownRoute(player) {
+    if (player && player.botState) {
+      player.botState.townRoute = null;
+    }
+  }
+
+  function getTownRouteForTarget(player, target) {
+    if (!player || !target || !townLayout || townLayout.enabled === false) {
+      return null;
+    }
+    const playerInTown = isPointInTown(townLayout, player.x, player.y);
+    const targetInTown = isPointInTown(townLayout, target.x, target.y);
+    if (playerInTown === targetInTown) {
+      return null;
+    }
+
+    const routes = getTownGateRoutes();
+    let bestRoute = null;
+    let bestScore = Infinity;
+    for (const route of routes) {
+      const score = playerInTown
+        ? Math.hypot(Number(player.x) - route.gateCenter.x, Number(player.y) - route.gateCenter.y) +
+          Math.hypot(Number(target.x) - route.outsidePoint.x, Number(target.y) - route.outsidePoint.y)
+        : Math.hypot(Number(player.x) - route.outsidePoint.x, Number(player.y) - route.outsidePoint.y) +
+          Math.hypot(Number(target.x) - route.gateCenter.x, Number(target.y) - route.gateCenter.y);
+      if (score < bestScore) {
+        bestScore = score;
+        bestRoute = route;
+      }
+    }
+    return bestRoute;
+  }
+
+  function resolveBotTownPathWaypoint(player, target) {
+    if (!player || !player.botState || !townLayout || townLayout.enabled === false) {
+      return null;
+    }
+    const playerInTown = isPointInTown(townLayout, player.x, player.y);
+    const targetInTown = !!(target && isPointInTown(townLayout, target.x, target.y));
+    if (playerInTown === targetInTown) {
+      clearBotTownRoute(player);
+      return null;
+    }
+
+    const desiredMode = playerInTown ? "exit" : "enter";
+    let routeState = player.botState.townRoute && typeof player.botState.townRoute === "object" ? { ...player.botState.townRoute } : null;
+    let route =
+      routeState && routeState.mode === desiredMode ? getTownGateRouteByKey(routeState.gateKey) : null;
+    if (!route) {
+      route = getTownRouteForTarget(player, target);
+      if (!route) {
+        clearBotTownRoute(player);
+        return null;
+      }
+      routeState = {
+        mode: desiredMode,
+        gateKey: String(route.key || ""),
+        stage: desiredMode === "exit" ? "gate" : "outside"
+      };
+    }
+
+    const gateDistance = Math.hypot(Number(player.x) - route.gateCenter.x, Number(player.y) - route.gateCenter.y);
+    const outsideDistance = Math.hypot(Number(player.x) - route.outsidePoint.x, Number(player.y) - route.outsidePoint.y);
+    const gateReachDistance = 0.28;
+    const outsideReachDistance = 0.38;
+    const gateReleaseDistance = 0.55;
+
+    if (desiredMode === "exit") {
+      if (routeState.stage === "gate") {
+        if (gateDistance <= gateReachDistance) {
+          routeState.stage = "outside";
+        } else {
+          player.botState.townRoute = routeState;
+          return {
+            target: route.gateCenter,
+            desiredDistance: gateReachDistance
+          };
+        }
+      }
+      if (!playerInTown && gateDistance >= gateReleaseDistance) {
+        clearBotTownRoute(player);
+        return null;
+      }
+      if (outsideDistance <= outsideReachDistance && !playerInTown) {
+        clearBotTownRoute(player);
+        return null;
+      }
+      player.botState.townRoute = routeState;
+      return {
+        target: route.outsidePoint,
+        desiredDistance: outsideReachDistance
+      };
+    }
+
+    if (routeState.stage === "outside") {
+      if (outsideDistance <= outsideReachDistance) {
+        routeState.stage = "gate";
+      } else {
+        player.botState.townRoute = routeState;
+        return {
+          target: route.outsidePoint,
+          desiredDistance: outsideReachDistance
+        };
+      }
+    }
+    if (playerInTown && gateDistance <= gateReachDistance) {
+      clearBotTownRoute(player);
+      return null;
+    }
+    player.botState.townRoute = routeState;
+    return {
+      target: route.gateCenter,
+      desiredDistance: gateReachDistance
+    };
   }
 
   function serializeItemEntry(entry) {
@@ -280,9 +588,114 @@ function createBotTickSystem(options = {}) {
       qty: Math.max(0, Math.floor(Number(entry.qty) || 0)),
       rarity: String(entry.rarity || ""),
       slot: String(entry.slot || ""),
+      weaponClass: String(entry.weaponClass || ""),
       itemLevel: Math.max(0, Math.floor(Number(entry.itemLevel) || 0)),
-      isEquipment: !!entry.isEquipment
+      isEquipment: !!entry.isEquipment,
+      baseStats: entry.baseStats && typeof entry.baseStats === "object" ? { ...entry.baseStats } : null,
+      tags: Array.isArray(entry.tags) ? entry.tags.map((value) => String(value || "")).filter(Boolean) : [],
+      affixes: Array.isArray(entry.affixes) ? entry.affixes.map((affix) => ({ ...affix, modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : [] })) : [],
+      prefixes: Array.isArray(entry.prefixes) ? entry.prefixes.map((affix) => ({ ...affix, modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : [] })) : [],
+      suffixes: Array.isArray(entry.suffixes) ? entry.suffixes.map((affix) => ({ ...affix, modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : [] })) : [],
+      copperValue: Math.max(0, Math.floor(Number(getInventoryEntrySellValue(entry)) || 0))
     };
+  }
+
+  function getSellableInventoryIndexes(player) {
+    const results = [];
+    if (!player || !Array.isArray(player.inventorySlots)) {
+      return results;
+    }
+    for (let index = 0; index < player.inventorySlots.length; index += 1) {
+      const entry = player.inventorySlots[index];
+      if (!entry || !entry.isEquipment) {
+        continue;
+      }
+      if (chooseEquipmentSlotForEntry(player, entry)) {
+        continue;
+      }
+      const copperValue = Math.max(0, Math.floor(Number(getInventoryEntrySellValue(entry)) || 0));
+      if (copperValue <= 0) {
+        continue;
+      }
+      results.push(index);
+    }
+    return results;
+  }
+
+  function shouldBotVisitVendor(player, nearestMobDistance = Infinity) {
+    if (!player || !townLayout || townLayout.enabled === false || !getVendorNpc()) {
+      return false;
+    }
+    if (player.botState && player.botState.followTargetPlayerId) {
+      return false;
+    }
+    const sellableIndexes = getSellableInventoryIndexes(player);
+    if (!sellableIndexes.length) {
+      return false;
+    }
+    const usedSlots = Array.isArray(player.inventorySlots) ? player.inventorySlots.filter(Boolean).length : 0;
+    const capacity = Array.isArray(player.inventorySlots) ? player.inventorySlots.length : 0;
+    const crowded = capacity > 0 && usedSlots / capacity >= 0.6;
+    const safeToLeave = !Number.isFinite(nearestMobDistance) || nearestMobDistance > Math.max(6, visibilityRange * 0.45);
+    return crowded || sellableIndexes.length >= 3 || safeToLeave;
+  }
+
+  function autoSpendBotSkillPoints(player, now) {
+    if (!player || Math.max(0, Number(player.skillPoints) || 0) <= 0) {
+      return false;
+    }
+    if (Number(player.botState?.nextSkillSpendAt) > now) {
+      return false;
+    }
+    const abilities = getKnownBotAbilities(player).sort((a, b) => {
+      if (a.level !== b.level) {
+        return a.level - b.level;
+      }
+      const priorityDelta = getAbilityKindPriority(b.def.kind) - getAbilityKindPriority(a.def.kind);
+      if (priorityDelta !== 0) {
+        return priorityDelta;
+      }
+      return a.id.localeCompare(b.id);
+    });
+    let changed = false;
+    let iterations = 0;
+    while (Math.max(0, Number(player.skillPoints) || 0) > 0 && abilities.length && iterations < 16) {
+      const nextAbility = abilities[iterations % abilities.length];
+      if (!nextAbility || !levelUpPlayerAbility(player, nextAbility.id)) {
+        break;
+      }
+      changed = true;
+      iterations += 1;
+    }
+    if (player.botState) {
+      player.botState.nextSkillSpendAt = now + (changed ? 800 : 1500);
+    }
+    return changed;
+  }
+
+  function runBotVendorRoutine(player, now) {
+    const vendor = getVendorNpc();
+    if (!player || !vendor) {
+      return false;
+    }
+    const sellableIndexes = getSellableInventoryIndexes(player);
+    if (!sellableIndexes.length) {
+      return false;
+    }
+    if (!isNearVendor(player)) {
+      updateBotMovementToward(player, vendor, Math.max(0.3, Number(vendor.interactRange) - 0.35 || 1.5));
+      return true;
+    }
+    if (Number(player.botState?.nextVendorActionAt) > now) {
+      player.input = { dx: 0, dy: 0 };
+      return true;
+    }
+    player.input = { dx: 0, dy: 0 };
+    const saleResult = sellInventoryItemToVendor(player, sellableIndexes[0], vendor.id);
+    if (player.botState) {
+      player.botState.nextVendorActionAt = now + (saleResult && saleResult.ok ? 180 : 700);
+    }
+    return true;
   }
 
   function buildBotSummary(bot) {
@@ -422,6 +835,7 @@ function createBotTickSystem(options = {}) {
       autoEquipBot(player);
       player.botState.nextEquipCheckAt = now + 1200;
     }
+    autoSpendBotSkillPoints(player, now);
 
     const followTarget =
       player.botState.followTargetPlayerId ? players.get(String(player.botState.followTargetPlayerId)) || null : null;
@@ -436,24 +850,13 @@ function createBotTickSystem(options = {}) {
       if (nearestMobToLeader.mob && nearestMobToLeader.distance <= visibilityRange) {
         const combatTarget = nearestMobToLeader.mob;
         const combatDistance = distance(player, combatTarget);
-        let followedAttackUsed = false;
-        if (String(player.classType || "").toLowerCase() === "mage") {
-          followedAttackUsed = tryUseMageAbilities(player, combatTarget, combatDistance, now);
-          if (!followedAttackUsed && combatDistance > 6.5) {
-            updateBotMovementToward(player, combatTarget, 6);
-            return;
-          }
-        } else {
-          followedAttackUsed = tryUseWarriorAbilities(player, combatTarget, combatDistance, now);
-          if (!followedAttackUsed && combatDistance > 1.6) {
-            updateBotMovementToward(player, combatTarget, 1.4);
-            return;
-          }
-        }
+        const followedAttackUsed = tryUseBestCombatAbility(player, combatTarget, combatDistance, now);
         if (followedAttackUsed) {
           player.input = { dx: 0, dy: 0 };
           return;
         }
+        updateBotMovementToward(player, combatTarget, getPreferredCombatDistance(player));
+        return;
       }
       if (distanceToLeader > followDistance + 0.25) {
         updateBotMovementToward(player, followTarget, followDistance || 3.5);
@@ -477,9 +880,16 @@ function createBotTickSystem(options = {}) {
 
     const nearestMob = findNearestMob(player);
     const targetMob = nearestMob.mob;
+    if (shouldBotVisitVendor(player, nearestMob.distance)) {
+      if (runBotVendorRoutine(player, now)) {
+        return;
+      }
+    }
     if (!targetMob) {
       if (nearbyBag.bag) {
         updateBotMovementToward(player, nearbyBag.bag, 0.7);
+      } else if (shouldBotVisitVendor(player, Infinity)) {
+        runBotVendorRoutine(player, now);
       } else {
         player.input = { dx: 0, dy: 0 };
       }
@@ -491,25 +901,15 @@ function createBotTickSystem(options = {}) {
       updateBotMovementToward(player, nearbyBag.bag, 0.7);
       return;
     }
-    let abilityUsed = false;
-    if (String(player.classType || "").toLowerCase() === "mage") {
-      abilityUsed = tryUseMageAbilities(player, targetMob, targetDistance, now);
-      if (!abilityUsed) {
-        const desiredRange = targetDistance <= 8 ? 6 : 7.5;
-        updateBotMovementToward(player, targetMob, desiredRange);
-      }
-    } else {
-      abilityUsed = tryUseWarriorAbilities(player, targetMob, targetDistance, now);
-      if (!abilityUsed) {
-        updateBotMovementToward(player, targetMob, 1.45);
-      }
-    }
+    const abilityUsed = tryUseBestCombatAbility(player, targetMob, targetDistance, now);
 
     if (abilityUsed) {
       player.botState.targetMobId = String(targetMob.id || "");
       player.input = { dx: 0, dy: 0 };
       return;
     }
+
+    updateBotMovementToward(player, targetMob, getPreferredCombatDistance(player));
 
     if (nearbyBag.bag && nearbyBag.distance < targetDistance - 1.5) {
       updateBotMovementToward(player, nearbyBag.bag, 0.7);

@@ -53,6 +53,7 @@ function createPlayerFactory(options = {}) {
     typeof options.syncPlayerCopperFromInventory === "function" ? options.syncPlayerCopperFromInventory : () => {};
   const expNeededForLevel =
     typeof options.expNeededForLevel === "function" ? options.expNeededForLevel : () => 20;
+  const sanitizeSpawn = typeof options.sanitizeSpawn === "function" ? options.sanitizeSpawn : (spawn) => spawn;
   const players = options.players instanceof Map ? options.players : null;
 
   if (!players) {
@@ -69,7 +70,8 @@ function createPlayerFactory(options = {}) {
       return { error: "Join requires non-empty name and a valid classType from class config." };
     }
 
-    const spawn = params.spawn && typeof params.spawn === "object" ? params.spawn : { x: 0, y: 0 };
+    const requestedSpawn = params.spawn && typeof params.spawn === "object" ? params.spawn : { x: 0, y: 0 };
+    const spawn = sanitizeSpawn(requestedSpawn) || requestedSpawn;
     const player = {
       id: allocatePlayerId(),
       entityType: "player",
@@ -83,9 +85,13 @@ function createPlayerFactory(options = {}) {
               nextDecisionAt: 0,
               nextLootCheckAt: 0,
               nextEquipCheckAt: 0,
+              nextSkillSpendAt: 0,
+              nextVendorActionAt: 0,
               nextStatusAt: 0,
               targetMobId: "",
               targetBagId: "",
+              vendorMode: "",
+              townRoute: null,
               followTargetPlayerId: "",
               followDistance: 0
             }

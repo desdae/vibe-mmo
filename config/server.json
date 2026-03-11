@@ -4,6 +4,6 @@
     "mobDamageMultiplier": 1.0,
     "mobSpeedMultiplier": 1.0,
     "mobRespawnMultiplier": 1.0,
-    "dropchanceMultiplier": 1.0,
+    "dropchanceMultiplier": 10.0,
     "mobSpawnMultiplier": 1.0
 }

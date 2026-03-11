@@ -4,6 +4,16 @@
     "height": 1000,
     "visibilityRange": 20
   },
+  "town": {
+    "enabled": true,
+    "size": 15,
+    "wallThickness": 1,
+    "exitWidth": 3,
+    "vendorId": "starter_vendor",
+    "vendorName": "Town Quartermaster",
+    "vendorInteractRange": 2.25,
+    "mobExclusionPadding": 1.5
+  },
   "tickMs": 50,
   "player": {
     "baseSpeed": 6,

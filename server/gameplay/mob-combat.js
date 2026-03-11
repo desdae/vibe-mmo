@@ -7,6 +7,8 @@ function createMobCombatTools(options = {}) {
   const normalizeDirection =
     typeof options.normalizeDirection === "function" ? options.normalizeDirection : () => null;
   const distance = typeof options.distance === "function" ? options.distance : () => Infinity;
+  const isSafePlayerPoint =
+    typeof options.isSafePlayerPoint === "function" ? options.isSafePlayerPoint : () => false;
   const players = options.players;
   const defaultAggroRange = Math.max(0.25, Number(options.defaultAggroRange) || 5);
   const defaultAttackRange = Math.max(0.1, Number(options.defaultAttackRange) || 1.25);
@@ -52,6 +54,9 @@ function createMobCombatTools(options = {}) {
 
     for (const player of players.values()) {
       if (player.hp <= 0) {
+        continue;
+      }
+      if (isSafePlayerPoint(player.x, player.y)) {
         continue;
       }
       const d = distance(mob, player);

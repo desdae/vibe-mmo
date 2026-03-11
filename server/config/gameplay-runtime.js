@@ -6,6 +6,16 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
     height: 1000,
     visibilityRange: 20
   },
+  town: {
+    enabled: true,
+    size: 15,
+    wallThickness: 1,
+    exitWidth: 3,
+    vendorId: "starter_vendor",
+    vendorName: "Town Quartermaster",
+    vendorInteractRange: 2.25,
+    mobExclusionPadding: 1.5
+  },
   tickMs: 50,
   player: {
     baseSpeed: 6,
@@ -55,6 +65,7 @@ function loadGameplayRuntimeConfig(gameplayConfigPath) {
     mapWidth: gameplayConfig.map.width,
     mapHeight: gameplayConfig.map.height,
     visibilityRange: gameplayConfig.map.visibilityRange,
+    townConfig: gameplayConfig.town,
     tickMs: gameplayConfig.tickMs,
     basePlayerSpeed: gameplayConfig.player.baseSpeed,
     targetMobClusters: gameplayConfig.clusterSpawning.targetClusters,

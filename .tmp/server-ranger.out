@@ -1,0 +1,4 @@
+[config] Loaded C:\SL\ailab\vibemmo\config\server.json: expMultiplier=10, mobHealthMultiplier=1, mobDamageMultiplier=1, mobSpeedMultiplier=1, mobRespawnMultiplier=1, dropChanceMultiplier=10, mobSpawnMultiplier=1
+[config] Watching C:\SL\ailab\vibemmo\config\server.json for changes (poll 1000ms)
+[config] Watching C:\SL\ailab\vibemmo\data\abilities.json for changes (poll 1000ms)
+[config] Watching C:\SL\ailab\vibemmo\data\mobs.json for changes (poll 1000ms)

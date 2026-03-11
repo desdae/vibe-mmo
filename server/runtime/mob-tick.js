@@ -1,3 +1,5 @@
+const townLayoutTools = require("../../public/shared/town-layout");
+
 function createMobTickSystem({
   mobs,
   players,
@@ -13,6 +15,7 @@ function createMobTickSystem({
   distance,
   normalizeDirection,
   clampToSpawnRadius,
+  townLayout,
   respawnMob,
   tickMobDotEffects,
   clearMobCast,
@@ -28,6 +31,28 @@ function createMobTickSystem({
   getMobLeashRadius,
   resolveAllPlayersAgainstMobs
 }) {
+  const isPointInTown =
+    typeof townLayoutTools.isPointInTown === "function" ? townLayoutTools.isPointInTown : () => false;
+
+  function isMoveEnteringTown(currentX, currentY, nextX, nextY) {
+    if (!townLayout || townLayout.enabled === false) {
+      return false;
+    }
+    const currentInTown = isPointInTown(townLayout, currentX, currentY);
+    const nextInTown = isPointInTown(townLayout, nextX, nextY);
+    return !currentInTown && nextInTown;
+  }
+
+  function moveMobWithTownGuard(mob, nextX, nextY, leashRadius) {
+    const nextPos = clampToSpawnRadius(nextX, nextY, mob.spawnX, mob.spawnY, leashRadius);
+    if (!isMoveEnteringTown(mob.x, mob.y, nextPos.x, nextPos.y)) {
+      mob.x = nextPos.x;
+      mob.y = nextPos.y;
+      return true;
+    }
+    return false;
+  }
+
   function resolveMobOverlaps(now = Date.now()) {
     const aliveMobs = [];
     for (const mob of mobs.values()) {
@@ -75,10 +100,14 @@ function createMobTickSystem({
             getMobLeashRadius(b, now)
           );
 
-          a.x = nextA.x;
-          a.y = nextA.y;
-          b.x = nextB.x;
-          b.y = nextB.y;
+          if (!isMoveEnteringTown(a.x, a.y, nextA.x, nextA.y)) {
+            a.x = nextA.x;
+            a.y = nextA.y;
+          }
+          if (!isMoveEnteringTown(b.x, b.y, nextB.x, nextB.y)) {
+            b.x = nextB.x;
+            b.y = nextB.y;
+          }
         }
       }
     }
@@ -128,15 +157,12 @@ function createMobTickSystem({
           const homeDir = normalizeDirection(mob.spawnX - mob.x, mob.spawnY - mob.y);
           if (homeDir) {
             const returnRadius = Math.max(mobWanderRadius, distFromSpawn);
-            const nextPos = clampToSpawnRadius(
+            moveMobWithTownGuard(
+              mob,
               mob.x + homeDir.dx * mobSpeed * 0.8 * dt,
               mob.y + homeDir.dy * mobSpeed * 0.8 * dt,
-              mob.spawnX,
-              mob.spawnY,
               returnRadius
             );
-            mob.x = nextPos.x;
-            mob.y = nextPos.y;
           }
           continue;
         }
@@ -154,6 +180,11 @@ function createMobTickSystem({
       } else {
         mob.chaseTargetPlayerId = null;
         mob.chaseUntil = 0;
+      }
+
+      if (forcedTarget && isPointInTown(townLayout, forcedTarget.x, forcedTarget.y)) {
+        startMobReturnToSpawn(mob);
+        continue;
       }
 
       if (forcedTarget && getMobDistanceFromSpawn(mob) >= mobProvokedLeashRadius - 0.05) {
@@ -201,15 +232,15 @@ function createMobTickSystem({
             const moveDir = shouldRetreat ? { dx: -chaseDir.dx, dy: -chaseDir.dy } : chaseDir;
             const leashRadius = forcedTarget ? mobProvokedLeashRadius : getMobLeashRadius(mob, now);
             const speedScale = shouldRetreat ? 0.92 : 1;
-            const nextPos = clampToSpawnRadius(
+            const moved = moveMobWithTownGuard(
+              mob,
               mob.x + moveDir.dx * mobSpeed * speedScale * dt,
               mob.y + moveDir.dy * mobSpeed * speedScale * dt,
-              mob.spawnX,
-              mob.spawnY,
               leashRadius
             );
-            mob.x = nextPos.x;
-            mob.y = nextPos.y;
+            if (!moved && forcedTarget) {
+              startMobReturnToSpawn(mob);
+            }
           }
         }
         continue;
@@ -225,15 +256,12 @@ function createMobTickSystem({
         continue;
       }
 
-      const nextPos = clampToSpawnRadius(
+      moveMobWithTownGuard(
+        mob,
         mob.x + dir.dx * mobSpeed * 0.7 * dt,
         mob.y + dir.dy * mobSpeed * 0.7 * dt,
-        mob.spawnX,
-        mob.spawnY,
         getMobLeashRadius(mob, now)
       );
-      mob.x = nextPos.x;
-      mob.y = nextPos.y;
     }
 
     resolveMobOverlaps(now);

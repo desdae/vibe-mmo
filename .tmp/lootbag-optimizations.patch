@@ -1,0 +1,441 @@
+diff --git a/public/client.js b/public/client.js
+index 77f830b..ea4c200 100644
+--- a/public/client.js
++++ b/public/client.js
+@@ -449,6 +466,7 @@ const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
+     "rgba(255, 210, 110, 0.38)"
+   ])
+ });
++const lootBagSpriteCache = new Map();
+ 
+ function clamp(value, min, max) {
+   if (sharedClamp) {
+@@ -4903,7 +4968,8 @@ const particleSystemTools = sharedCreateParticleSystemTools
+   ? sharedCreateParticleSystemTools({
+       emittersByKey: ambientParticleEmitters,
+       hashString,
+-      clamp
++      clamp,
++      globalMaxParticles: 280
+     })
+   : null;
+ 
+@@ -7834,11 +7900,143 @@ function drawMob(mob, cameraX, cameraY, attackState = null) {
+   mobRenderTools.drawMob(mob, cameraX, cameraY, attackState);
+ }
+ 
++function createLootBagSprite(variant = 0) {
++  const spriteSize = 64;
++  const spriteCanvas = document.createElement("canvas");
++  spriteCanvas.width = spriteSize;
++  spriteCanvas.height = spriteSize;
++  const spriteCtx = spriteCanvas.getContext("2d");
++  if (!spriteCtx) {
++    return null;
++  }
++
++  const scatterPhase = ((Math.floor(Number(variant) || 0) % 628) / 100) * 0.6;
++  spriteCtx.translate(spriteSize * 0.5, spriteSize * 0.5);
++
++  spriteCtx.fillStyle = "rgba(16, 10, 5, 0.34)";
++  spriteCtx.beginPath();
++  spriteCtx.ellipse(0, 11, 15, 5.5, 0, 0, Math.PI * 2);
++  spriteCtx.fill();
++
++  for (let i = 0; i < 3; i += 1) {
++    const t = scatterPhase + i * 1.9;
++    const coinX = Math.cos(t) * (14 + i * 3) - (i === 1 ? 3 : 0);
++    const coinY = 8 + Math.sin(t * 1.4) * 2 + i * 1.5;
++    spriteCtx.save();
++    spriteCtx.translate(coinX, coinY);
++    spriteCtx.rotate(Math.sin(t * 2.2) * 0.24);
++    spriteCtx.fillStyle = "#d0a24d";
++    spriteCtx.strokeStyle = "#f7d47d";
++    spriteCtx.lineWidth = 1;
++    spriteCtx.beginPath();
++    spriteCtx.ellipse(0, 0, 4.3, 2.1, 0, 0, Math.PI * 2);
++    spriteCtx.fill();
++    spriteCtx.stroke();
++    spriteCtx.beginPath();
++    spriteCtx.ellipse(0, 0, 2.1, 0.9, 0, 0, Math.PI * 2);
++    spriteCtx.strokeStyle = "rgba(255, 242, 184, 0.8)";
++    spriteCtx.stroke();
++    spriteCtx.restore();
++  }
++
++  spriteCtx.fillStyle = "#5f3d22";
++  spriteCtx.beginPath();
++  spriteCtx.moveTo(-14, 7);
++  spriteCtx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
++  spriteCtx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
++  spriteCtx.bezierCurveTo(14, -8, 17, 1, 15, 7);
++  spriteCtx.bezierCurveTo(11, 13, -10, 13, -14, 7);
++  spriteCtx.fill();
++
++  spriteCtx.strokeStyle = "#8c653c";
++  spriteCtx.lineWidth = 1.6;
++  spriteCtx.beginPath();
++  spriteCtx.moveTo(-13, 6);
++  spriteCtx.bezierCurveTo(-11, 10, -3, 11, 3, 10);
++  spriteCtx.bezierCurveTo(8, 10, 12, 8, 13, 5);
++  spriteCtx.stroke();
++
++  spriteCtx.strokeStyle = "rgba(255, 237, 195, 0.25)";
++  spriteCtx.lineWidth = 1.1;
++  spriteCtx.beginPath();
++  spriteCtx.moveTo(-8, -1);
++  spriteCtx.quadraticCurveTo(-3, -4, 2, -2);
++  spriteCtx.quadraticCurveTo(6, -1, 8, 2);
++  spriteCtx.stroke();
++
++  spriteCtx.fillStyle = "#81532c";
++  spriteCtx.beginPath();
++  spriteCtx.moveTo(-8, -9);
++  spriteCtx.quadraticCurveTo(-4, -14, 0, -13);
++  spriteCtx.quadraticCurveTo(5, -14, 9, -9);
++  spriteCtx.lineTo(8, -4);
++  spriteCtx.quadraticCurveTo(3, -6, -2, -6);
++  spriteCtx.quadraticCurveTo(-6, -6, -9, -4);
++  spriteCtx.closePath();
++  spriteCtx.fill();
++
++  spriteCtx.strokeStyle = "#d8b27a";
++  spriteCtx.lineWidth = 1.8;
++  spriteCtx.beginPath();
++  spriteCtx.moveTo(-9, -3);
++  spriteCtx.quadraticCurveTo(-2, -1, 8, -3);
++  spriteCtx.stroke();
++  spriteCtx.lineWidth = 1.1;
++  spriteCtx.beginPath();
++  spriteCtx.moveTo(-7, -2);
++  spriteCtx.quadraticCurveTo(-2, 1, 6, -2);
++  spriteCtx.strokeStyle = "#a88457";
++  spriteCtx.stroke();
++
++  for (let i = 0; i < 5; i += 1) {
++    const t = scatterPhase + i * 0.92;
++    const coinX = Math.cos(t) * 7;
++    const coinY = -11 + Math.sin(t * 1.6) * 1.8 - i * 0.18;
++    spriteCtx.save();
++    spriteCtx.translate(coinX, coinY);
++    spriteCtx.rotate(Math.sin(t * 2.3) * 0.35);
++    spriteCtx.fillStyle = "#d09c43";
++    spriteCtx.strokeStyle = "#ffde88";
++    spriteCtx.lineWidth = 1;
++    spriteCtx.beginPath();
++    spriteCtx.ellipse(0, 0, 3.8, 2.2, 0, 0, Math.PI * 2);
++    spriteCtx.fill();
++    spriteCtx.stroke();
++    spriteCtx.beginPath();
++    spriteCtx.ellipse(0, 0, 1.7, 0.9, 0, 0, Math.PI * 2);
++    spriteCtx.strokeStyle = "rgba(255, 246, 204, 0.85)";
++    spriteCtx.stroke();
++    spriteCtx.restore();
++  }
++
++  spriteCtx.strokeStyle = "#2e1b0d";
++  spriteCtx.lineWidth = 1.6;
++  spriteCtx.beginPath();
++  spriteCtx.moveTo(-14, 7);
++  spriteCtx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
++  spriteCtx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
++  spriteCtx.bezierCurveTo(14, -8, 17, 1, 15, 7);
++  spriteCtx.bezierCurveTo(11, 13, -10, 13, -14, 7);
++  spriteCtx.stroke();
++
++  return spriteCanvas;
++}
++
++function getLootBagSprite(variant) {
++  const key = Math.abs(Math.floor(Number(variant) || 0)) % 8;
++  if (lootBagSpriteCache.has(key)) {
++    return lootBagSpriteCache.get(key);
++  }
++  const sprite = createLootBagSprite(key);
++  lootBagSpriteCache.set(key, sprite);
++  return sprite;
++}
++
+ function drawLootBag(bag, cameraX, cameraY, frameNow = performance.now()) {
+   const p = worldToScreen(bag.x + 0.5, bag.y + 0.5, cameraX, cameraY);
+   const bagId = String((bag && bag.id) || `${bag.x}:${bag.y}`);
+   const seed = hashString(`lootbag:${bagId}`);
+-  const scatterPhase = ((seed % 628) / 100) * 0.6;
++  const sprite = getLootBagSprite(seed);
+@@ -7853,119 +8051,9 @@ function drawLootBag(bag, cameraX, cameraY, frameNow = performance.now()) {
+       config: LOOT_BAG_SPARKLE_PARTICLE_CONFIG
+     });
+   }
+-
+-  ctx.save();
+-  ctx.translate(p.x, p.y);
+-
+-  ctx.fillStyle = "rgba(16, 10, 5, 0.34)";
+-  ctx.beginPath();
+-  ctx.ellipse(0, 11, 15, 5.5, 0, 0, Math.PI * 2);
+-  ctx.fill();
+-
+-  const floorCoins = 3;
+-  for (let i = 0; i < floorCoins; i += 1) {
+-    const t = scatterPhase + i * 1.9;
+-    const coinX = Math.cos(t) * (14 + i * 3) - (i === 1 ? 3 : 0);
+-    const coinY = 8 + Math.sin(t * 1.4) * 2 + i * 1.5;
+-    ctx.save();
+-    ctx.translate(coinX, coinY);
+-    ctx.rotate(Math.sin(t * 2.2) * 0.24);
+-    ctx.fillStyle = "#d0a24d";
+-    ctx.strokeStyle = "#f7d47d";
+-    ctx.lineWidth = 1;
+-    ctx.beginPath();
+-    ctx.ellipse(0, 0, 4.3, 2.1, 0, 0, Math.PI * 2);
+-    ctx.fill();
+-    ctx.stroke();
+-    ctx.beginPath();
+-    ctx.ellipse(0, 0, 2.1, 0.9, 0, 0, Math.PI * 2);
+-    ctx.strokeStyle = "rgba(255, 242, 184, 0.8)";
+-    ctx.stroke();
+-    ctx.restore();
+-  }
+-
+-  ctx.fillStyle = "#5f3d22";
+-  ctx.beginPath();
+-  ctx.moveTo(-14, 7);
+-  ctx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
+-  ctx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
+-  ctx.bezierCurveTo(14, -8, 17, 1, 15, 7);
+-  ctx.bezierCurveTo(11, 13, -10, 13, -14, 7);
+-  ctx.fill();
+-
+-  ctx.strokeStyle = "#8c653c";
+-  ctx.lineWidth = 1.6;
+-  ctx.beginPath();
+-  ctx.moveTo(-13, 6);
+-  ctx.bezierCurveTo(-11, 10, -3, 11, 3, 10);
+-  ctx.bezierCurveTo(8, 10, 12, 8, 13, 5);
+-  ctx.stroke();
+-
+-  ctx.strokeStyle = "rgba(255, 237, 195, 0.25)";
+-  ctx.lineWidth = 1.1;
+-  ctx.beginPath();
+-  ctx.moveTo(-8, -1);
+-  ctx.quadraticCurveTo(-3, -4, 2, -2);
+-  ctx.quadraticCurveTo(6, -1, 8, 2);
+-  ctx.stroke();
+-
+-  ctx.fillStyle = "#81532c";
+-  ctx.beginPath();
+-  ctx.moveTo(-8, -9);
+-  ctx.quadraticCurveTo(-4, -14, 0, -13);
+-  ctx.quadraticCurveTo(5, -14, 9, -9);
+-  ctx.lineTo(8, -4);
+-  ctx.quadraticCurveTo(3, -6, -2, -6);
+-  ctx.quadraticCurveTo(-6, -6, -9, -4);
+-  ctx.closePath();
+-  ctx.fill();
+-
+-  ctx.strokeStyle = "#d8b27a";
+-  ctx.lineWidth = 1.8;
+-  ctx.beginPath();
+-  ctx.moveTo(-9, -3);
+-  ctx.quadraticCurveTo(-2, -1, 8, -3);
+-  ctx.stroke();
+-  ctx.lineWidth = 1.1;
+-  ctx.beginPath();
+-  ctx.moveTo(-7, -2);
+-  ctx.quadraticCurveTo(-2, 1, 6, -2);
+-  ctx.strokeStyle = "#a88457";
+-  ctx.stroke();
+-
+-  const topCoins = 5;
+-  for (let i = 0; i < topCoins; i += 1) {
+-    const t = scatterPhase + i * 0.92;
+-    const coinX = Math.cos(t) * 7;
+-    const coinY = -11 + Math.sin(t * 1.6) * 1.8 - i * 0.18;
+-    ctx.save();
+-    ctx.translate(coinX, coinY);
+-    ctx.rotate(Math.sin(t * 2.3) * 0.35);
+-    ctx.fillStyle = "#d09c43";
+-    ctx.strokeStyle = "#ffde88";
+-    ctx.lineWidth = 1;
+-    ctx.beginPath();
+-    ctx.ellipse(0, 0, 3.8, 2.2, 0, 0, Math.PI * 2);
+-    ctx.fill();
+-    ctx.stroke();
+-    ctx.beginPath();
+-    ctx.ellipse(0, 0, 1.7, 0.9, 0, 0, Math.PI * 2);
+-    ctx.strokeStyle = "rgba(255, 246, 204, 0.85)";
+-    ctx.stroke();
+-    ctx.restore();
++  if (sprite) {
++    ctx.drawImage(sprite, Math.round(p.x - sprite.width * 0.5), Math.round(p.y - sprite.height * 0.5));
+   }
+-
+-  ctx.strokeStyle = "#2e1b0d";
+-  ctx.lineWidth = 1.6;
+-  ctx.beginPath();
+-  ctx.moveTo(-14, 7);
+-  ctx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
+-  ctx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
+-  ctx.bezierCurveTo(14, -8, 17, 1, 15, 7);
+-  ctx.bezierCurveTo(11, 13, -10, 13, -14, 7);
+-  ctx.stroke();
+-
+-  ctx.restore();
+ }
+diff --git a/public/client/particle-system.js b/public/client/particle-system.js
+index 2bb34bf..34725f8 100644
+--- a/public/client/particle-system.js
++++ b/public/client/particle-system.js
+@@ -5,6 +5,21 @@
+     return Math.max(min, Math.min(max, value));
+   }
+ 
++  function createRuntimeCanvas(width, height) {
++    const w = Math.max(1, Math.ceil(Number(width) || 1));
++    const h = Math.max(1, Math.ceil(Number(height) || 1));
++    if (typeof OffscreenCanvas !== "undefined") {
++      return new OffscreenCanvas(w, h);
++    }
++    if (typeof document !== "undefined" && document && typeof document.createElement === "function") {
++      const canvas = document.createElement("canvas");
++      canvas.width = w;
++      canvas.height = h;
++      return canvas;
++    }
++    return null;
++  }
++
+   function seededUnit(seed) {
+     const x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+     return x - Math.floor(x);
+@@ -33,7 +48,7 @@
+     return values[index];
+   }
+ 
+-  function drawSparkleParticle(ctx, x, y, particle, progress) {
++  function drawSparkleParticleVector(ctx, x, y, particle, progress) {
+     const size = Math.max(1.25, Number(particle.sizePx) || 0);
+     const twinkle = 0.65 + Math.sin(progress * Math.PI * 2 + particle.phase) * 0.25 + Number(particle.twinkle) * 0.2;
+     const longArm = size * defaultClamp(twinkle, 0.45, 1.4);
+@@ -73,7 +88,7 @@
+     ctx.restore();
+   }
+ 
+-  function drawDotParticle(ctx, x, y, particle, progress) {
++  function drawDotParticleVector(ctx, x, y, particle, progress) {
+     const size = Math.max(0.8, Number(particle.sizePx) || 0);
+     ctx.save();
+     ctx.globalAlpha = defaultClamp(Number(particle.alpha) || 0.5, 0, 1) * (1 - progress * 0.9);
+@@ -97,6 +112,58 @@
+ 
+     const clamp = typeof deps.clamp === "function" ? deps.clamp : defaultClamp;
+     const hashString = typeof deps.hashString === "function" ? deps.hashString : (value) => String(value || "").length;
++    const particleSpriteCache = new Map();
++    const globalMaxParticles = Math.max(32, Math.floor(Number(deps.globalMaxParticles) || 320));
++
++    function buildParticleSpriteCacheKey(particle) {
++      const shape = String(particle.shape || "sparkle");
++      const size = Math.max(1, Math.round((Number(particle.sizePx) || 0) * 10) / 10);
++      const color = String(particle.color || "");
++      const glow = String(particle.glowColor || "");
++      return `${shape}|${size}|${color}|${glow}`;
++    }
++
++    function getCachedParticleSprite(particle) {
++      const key = buildParticleSpriteCacheKey(particle);
++      if (particleSpriteCache.has(key)) {
++        return particleSpriteCache.get(key);
++      }
++
++      const size = Math.max(1.25, Number(particle.sizePx) || 0);
++      const padding = Math.max(6, Math.ceil(size * 3.8));
++      const spriteSize = Math.max(8, Math.ceil(size * 8 + padding * 2));
++      const surface = createRuntimeCanvas(spriteSize, spriteSize);
++      if (!surface) {
++        particleSpriteCache.set(key, null);
++        return null;
++      }
++      const spriteCtx = surface.getContext("2d");
++      if (!spriteCtx) {
++        particleSpriteCache.set(key, null);
++        return null;
++      }
++
++      const spriteParticle = {
++        ...particle,
++        alpha: 1,
++        phase: 0,
++        rotation: 0,
++        twinkle: 1
++      };
++      const center = spriteSize * 0.5;
++      if (spriteParticle.shape === "dot") {
++        drawDotParticleVector(spriteCtx, center, center, spriteParticle, 0);
++      } else {
++        drawSparkleParticleVector(spriteCtx, center, center, spriteParticle, 0);
++      }
++
++      const sprite = {
++        image: surface,
++        halfSize: spriteSize * 0.5
++      };
++      particleSpriteCache.set(key, sprite);
++      return sprite;
++    }
+ 
+     function spawnParticle(emitter, now, config) {
+       emitter.spawnIndex += 1;
+@@ -145,8 +212,13 @@
+       }
+       emitter.particles = particles;
+ 
+-      const spawnRate = Math.max(0, Number(config.spawnRate) || 0);
+-      const maxParticles = Math.max(0, Math.floor(Number(config.maxParticles) || 0));
++      const configuredMaxParticles = Math.max(0, Math.floor(Number(config.maxParticles) || 0));
++      const emitterCount = Math.max(1, emittersByKey.size || 1);
++      const perEmitterBudget = Math.max(1, Math.floor(globalMaxParticles / emitterCount));
++      const maxParticles = Math.min(configuredMaxParticles, perEmitterBudget);
++      const spawnScale =
++        configuredMaxParticles > 0 ? clamp(perEmitterBudget / configuredMaxParticles, 0.15, 1) : 0;
++      const spawnRate = Math.max(0, Number(config.spawnRate) || 0) * spawnScale;
+       if (!emitter.initialized) {
+         emitter.initialized = true;
+         const burstCount = Math.max(0, Math.floor(Number(config.burstCount) || 0));
+@@ -162,11 +234,35 @@
+     }
+ 
+     function drawParticle(ctx, particle, screenX, screenY, progress) {
++      const sprite = getCachedParticleSprite(particle);
++      if (sprite && sprite.image) {
++        const twinkle =
++          particle.shape === "dot"
++            ? 1
++            : 0.65 + Math.sin(progress * Math.PI * 2 + particle.phase) * 0.25 + Number(particle.twinkle) * 0.2;
++        const alpha = clamp(Number(particle.alpha) || 0.7, 0, 1) * (1 - progress * 0.85);
++        const scale = particle.shape === "dot" ? 1 : clamp(twinkle, 0.45, 1.4);
++        ctx.save();
++        ctx.translate(screenX, screenY);
++        if (particle.shape !== "dot") {
++          ctx.rotate(Number(particle.rotation) || 0);
++        }
++        ctx.globalAlpha = alpha;
++        ctx.drawImage(
++          sprite.image,
++          -sprite.halfSize * scale,
++          -sprite.halfSize * scale,
++          sprite.halfSize * 2 * scale,
++          sprite.halfSize * 2 * scale
++        );
++        ctx.restore();
++        return;
++      }
+       if (particle.shape === "dot") {
+-        drawDotParticle(ctx, screenX, screenY, particle, progress);
++        drawDotParticleVector(ctx, screenX, screenY, particle, progress);
+         return;
+       }
+-      drawSparkleParticle(ctx, screenX, screenY, particle, progress);
++      drawSparkleParticleVector(ctx, screenX, screenY, particle, progress);
+     }
+ 
+     function drawWorldEmitter(raw) {

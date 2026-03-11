@@ -4,6 +4,7 @@ const { parseGameplayInt, parseGameplayNumber } = require("../gameplay/number-ut
 function buildGameplayConfig(parsed, defaults) {
   const src = parsed && typeof parsed === "object" ? parsed : {};
   const map = src.map && typeof src.map === "object" ? src.map : {};
+  const town = src.town && typeof src.town === "object" ? src.town : {};
   const player = src.player && typeof src.player === "object" ? src.player : {};
   const projectile = src.projectile && typeof src.projectile === "object" ? src.projectile : {};
   const clusterSpawning =
@@ -18,6 +19,26 @@ function buildGameplayConfig(parsed, defaults) {
       width: parseGameplayInt(map.width, defaults.map.width, 10, 10000),
       height: parseGameplayInt(map.height, defaults.map.height, 10, 10000),
       visibilityRange: parseGameplayNumber(map.visibilityRange, defaults.map.visibilityRange, 1, 100)
+    },
+    town: {
+      enabled: town.enabled !== undefined ? !!town.enabled : defaults.town.enabled,
+      size: parseGameplayInt(town.size, defaults.town.size, 7, 101),
+      wallThickness: parseGameplayInt(town.wallThickness, defaults.town.wallThickness, 1, 8),
+      exitWidth: parseGameplayInt(town.exitWidth, defaults.town.exitWidth, 1, 15),
+      vendorId: String(town.vendorId || defaults.town.vendorId).trim() || defaults.town.vendorId,
+      vendorName: String(town.vendorName || defaults.town.vendorName).trim() || defaults.town.vendorName,
+      vendorInteractRange: parseGameplayNumber(
+        town.vendorInteractRange,
+        defaults.town.vendorInteractRange,
+        0.5,
+        20
+      ),
+      mobExclusionPadding: parseGameplayNumber(
+        town.mobExclusionPadding,
+        defaults.town.mobExclusionPadding,
+        0,
+        20
+      )
     },
     tickMs: parseGameplayInt(src.tickMs, defaults.tickMs, 10, 1000),
     player: {

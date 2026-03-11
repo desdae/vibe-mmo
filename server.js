@@ -2,6 +2,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { WebSocketServer } = require("ws");
+const townLayoutTools = require("./public/shared/town-layout");
 const { executeAbilityByKind } = require("./server/ability-handlers");
 const { createAbilityHandlerContext } = require("./server/ability-handlers/context");
 const { createAreaEffectTools } = require("./server/gameplay/area-effects");
@@ -72,6 +73,7 @@ const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spa
 const { createPlayerCommandTools } = require("./server/gameplay/player-commands");
 const { createPlayerFactory } = require("./server/gameplay/player-factory");
 const { createEquipmentTools } = require("./server/gameplay/equipment");
+const { createVendorTools } = require("./server/gameplay/vendor");
 const { createCoreServices } = require("./server/runtime/core-services");
 const { createBotTickSystem } = require("./server/runtime/bot-tick");
 const {
@@ -121,6 +123,7 @@ const {
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
   visibilityRange: VISIBILITY_RANGE,
+  townConfig: TOWN_CONFIG,
   tickMs: TICK_MS,
   basePlayerSpeed: BASE_PLAYER_SPEED,
   targetMobClusters: TARGET_MOB_CLUSTERS,
@@ -150,6 +153,46 @@ const {
 const DEFAULT_ABILITY_KIND = "meleeCone";
 
 const publicDir = path.join(__dirname, "public");
+const computeTownLayout =
+  typeof townLayoutTools.computeTownLayout === "function" ? townLayoutTools.computeTownLayout : () => null;
+const serializeTownLayout =
+  typeof townLayoutTools.serializeTownLayout === "function" ? townLayoutTools.serializeTownLayout : () => null;
+const isPointInTown =
+  typeof townLayoutTools.isPointInTown === "function" ? townLayoutTools.isPointInTown : () => false;
+const isPointBlockedByTownWall =
+  typeof townLayoutTools.isPointBlockedByTownWall === "function"
+    ? townLayoutTools.isPointBlockedByTownWall
+    : () => false;
+const TOWN_LAYOUT = computeTownLayout(MAP_WIDTH, MAP_HEIGHT, TOWN_CONFIG);
+
+function randomTownInteriorSpawn() {
+  if (!TOWN_LAYOUT || TOWN_LAYOUT.enabled === false) {
+    return null;
+  }
+  const inset = Math.max(1, Math.floor(Number(TOWN_LAYOUT.wallThickness) || 1));
+  const minTileX = Math.min(TOWN_LAYOUT.maxTileX, TOWN_LAYOUT.minTileX + inset);
+  const maxTileX = Math.max(minTileX, TOWN_LAYOUT.maxTileX - inset);
+  const minTileY = Math.min(TOWN_LAYOUT.maxTileY, TOWN_LAYOUT.minTileY + inset);
+  const maxTileY = Math.max(minTileY, TOWN_LAYOUT.maxTileY - inset);
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const tileX = minTileX + Math.floor(Math.random() * (maxTileX - minTileX + 1));
+    const tileY = minTileY + Math.floor(Math.random() * (maxTileY - minTileY + 1));
+    const spawn = {
+      x: clamp(tileX + 0.5, 0, MAP_WIDTH - 1),
+      y: clamp(tileY + 0.5, 0, MAP_HEIGHT - 1)
+    };
+    if (!isPointBlockedByTownWall(TOWN_LAYOUT, spawn.x, spawn.y)) {
+      return spawn;
+    }
+  }
+  const vendor = TOWN_LAYOUT.vendor || null;
+  return vendor
+    ? {
+        x: clamp(Number(vendor.x) + 0.5, 0, MAP_WIDTH - 1),
+        y: clamp(Number(vendor.y) + 0.5, 0, MAP_HEIGHT - 1)
+      }
+    : null;
+}
 
 function mergeEquipmentItemDefsIntoItemConfig(itemConfig, equipmentConfig) {
   if (!itemConfig || !equipmentConfig) {
@@ -203,7 +246,7 @@ const spatialTools = createSpatialTools({
 });
 const randomPointInRadius = spatialTools.randomPointInRadius;
 const clampToSpawnRadius = spatialTools.clampToSpawnRadius;
-const randomSpawn = spatialTools.randomSpawn;
+const randomSpawn = () => randomTownInteriorSpawn() || spatialTools.randomSpawn();
 const inVisibilityRange = spatialTools.inVisibilityRange;
 
 const ITEM_CONFIG = loadItemConfigFromDisk(ITEM_CONFIG_PATH);
@@ -301,7 +344,9 @@ const server = createGameHttpServer({
     items: ITEM_CONFIG.clientItemDefs,
     equipment: ITEM_CONFIG.clientEquipmentConfig,
     gameplay: {
-      audio: GAMEPLAY_CONFIG.audio
+      audio: GAMEPLAY_CONFIG.audio,
+      loot: GAMEPLAY_CONFIG.loot,
+      town: serializeTownLayout(TOWN_LAYOUT)
     },
     sounds: buildSoundManifest()
   })
@@ -365,6 +410,21 @@ const getPlayerModifiedAbilityCooldownMs = equipmentTools.getPlayerModifiedAbili
 const getPlayerModifiedAbilityCastMs = equipmentTools.getPlayerModifiedAbilityCastMs;
 const equipInventoryItem = equipmentTools.equipInventoryItem;
 const unequipEquipmentItem = equipmentTools.unequipEquipmentItem;
+const vendorTools = createVendorTools({
+  townLayout: TOWN_LAYOUT,
+  itemDefs: ITEM_CONFIG.itemDefs,
+  equipmentConfigProvider: () => EQUIPMENT_CONFIG,
+  addItemsToInventory,
+  sendInventoryState,
+  syncPlayerCopperFromInventory,
+  sendSelfProgress,
+  sendJson,
+  copperItemId: ITEM_COPPER_ID
+});
+const getVendorNpc = vendorTools.getVendorNpc;
+const isPlayerNearVendor = vendorTools.isPlayerNearVendor;
+const getInventoryEntrySellValue = vendorTools.getInventoryEntrySellValue;
+const sellInventoryItemToVendor = vendorTools.sellInventoryItemToVendor;
 const playerFactory = createPlayerFactory({
   classConfigProvider: () => CLASS_CONFIG,
   allocatePlayerId,
@@ -374,6 +434,13 @@ const playerFactory = createPlayerFactory({
   addItemsToInventory,
   syncPlayerCopperFromInventory,
   expNeededForLevel,
+  sanitizeSpawn: (spawn) => {
+    if (!isPointBlockedByTownWall(TOWN_LAYOUT, spawn && spawn.x, spawn && spawn.y)) {
+      return spawn;
+    }
+    const vendor = getVendorNpc();
+    return vendor ? { x: vendor.x, y: vendor.y } : spawn;
+  },
   players
 });
 const createPlayer = playerFactory.createPlayer;
@@ -462,6 +529,7 @@ const mobLifecycleTools = createMobLifecycleTools({
   allocateSpawnerId,
   getServerConfig: () => SERVER_CONFIG,
   getMobConfig: () => MOB_CONFIG,
+  townLayout: TOWN_LAYOUT,
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
   targetMobClusters: TARGET_MOB_CLUSTERS,
@@ -604,10 +672,14 @@ const botTickSystem = createBotTickSystem({
   createPlayer,
   classConfigProvider: () => CLASS_CONFIG,
   abilityDefsProvider: () => ABILITY_CONFIG.abilityDefs,
+  levelUpPlayerAbility,
   getAbilityRangeForLevel,
   usePlayerAbility,
   tryPickupLootBag,
   equipInventoryItem,
+  getInventoryEntrySellValue,
+  sellInventoryItemToVendor,
+  townLayout: TOWN_LAYOUT,
   randomPointInRadius,
   distance,
   normalizeDirection,
@@ -733,6 +805,7 @@ const playerTickSystem = createPlayerTickSystem({
   executeAbilityByKind,
   abilityHandlerContext,
   normalizeDirection,
+  isBlockedPoint: (x, y) => isPointBlockedByTownWall(TOWN_LAYOUT, x, y),
   playerMobMinSeparation: PLAYER_MOB_MIN_SEPARATION,
   playerMobSeparationIterations: PLAYER_MOB_SEPARATION_ITERATIONS
 });
@@ -762,6 +835,7 @@ const mobCombatTools = createMobCombatTools({
   clamp,
   normalizeDirection,
   distance,
+  isSafePlayerPoint: (x, y) => isPointInTown(TOWN_LAYOUT, x, y),
   defaultAggroRange: MOB_AGGRO_RANGE,
   defaultAttackRange: MOB_ATTACK_RANGE,
   defaultWanderRadius: MOB_WANDER_RADIUS,
@@ -815,6 +889,7 @@ const mobTickSystem = createMobTickSystem({
   distance,
   normalizeDirection,
   clampToSpawnRadius,
+  townLayout: TOWN_LAYOUT,
   respawnMob,
   tickMobDotEffects,
   clearMobCast,
@@ -873,6 +948,10 @@ const runtimeBootstrap = createRuntimeBootstrap({
     updatePlayerCastTarget,
     levelUpPlayerAbility,
     tryPickupLootBag,
+    getVendorNpc,
+    isPlayerNearVendor,
+    getInventoryEntrySellValue,
+    sellInventoryItemToVendor,
     mergeOrSwapInventorySlots,
     equipInventoryItem,
     unequipEquipmentItem,

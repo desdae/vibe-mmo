@@ -255,6 +255,24 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "sell_inventory_item") {
+    const inventoryIndex = Math.floor(Number(msg.inventoryIndex));
+    const vendorId = String(msg.vendorId || "").trim();
+    if (!Number.isFinite(inventoryIndex)) {
+      return { player };
+    }
+    const result = deps.sellInventoryItemToVendor(player, inventoryIndex, vendorId || null);
+    if (!result || !result.ok) {
+      deps.sendJson(player.ws, {
+        type: "vendor_sale_result",
+        ok: false,
+        inventoryIndex,
+        message: result && result.message ? result.message : "Could not sell item."
+      });
+    }
+    return { player };
+  }
+
   if (msg.type === "inventory_move") {
     const from = Math.floor(Number(msg.from));
     const to = Math.floor(Number(msg.to));
