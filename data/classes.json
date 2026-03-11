@@ -24,7 +24,9 @@
             {"id":"arcaneMissiles", "level": 1}, 
             {"id":"blizzard", "level": 1},
             {"id":"blink", "level": 1}, 
-            {"id":"arcaneBeam", "level": 1}
+            {"id":"arcaneBeam", "level": 1},
+            {"id":"lightningBeam", "level": 1},
+            {"id":"chainLightning", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 50}],
         "speed": 1.7

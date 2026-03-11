@@ -63,6 +63,7 @@ function createAreaEffectTools(options = {}) {
       radius: Math.max(0.1, Number(radius) || 0.1),
       damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
       damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+      damageMode: String(payload.damageMode || "overTime").trim().toLowerCase() || "overTime",
       dotDamageMin: Math.max(0, Number(payload.dotDamageMin) || 0),
       dotDamageMax: Math.max(0, Number(payload.dotDamageMax) || 0),
       dotDurationMs: Math.max(0, Math.floor(Number(payload.dotDurationMs) || 0)),
@@ -76,7 +77,8 @@ function createAreaEffectTools(options = {}) {
       endsAt: now + durationMs,
       durationMs,
       tickIntervalMs,
-      nextTickAt: now
+      nextTickAt: now,
+      hitTargetIds: new Set()
     };
     activeAreaEffects.set(effect.id, effect);
     queueExplosionEvent(effect.x, effect.y, effect.radius, effect.abilityId);
@@ -123,6 +125,7 @@ function createAreaEffectTools(options = {}) {
       width: beamWidth,
       damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
       damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+      damageMode: String(payload.damageMode || "overTime").trim().toLowerCase() || "overTime",
       dotDamageMin: Math.max(0, Number(payload.dotDamageMin) || 0),
       dotDamageMax: Math.max(0, Number(payload.dotDamageMax) || 0),
       dotDurationMs: Math.max(0, Math.floor(Number(payload.dotDurationMs) || 0)),
@@ -131,7 +134,8 @@ function createAreaEffectTools(options = {}) {
       endsAt: now + durationMs,
       durationMs,
       tickIntervalMs,
-      nextTickAt: now
+      nextTickAt: now,
+      hitTargetIds: new Set()
     };
     activeAreaEffects.set(effect.id, effect);
     return effect;
@@ -191,9 +195,18 @@ function createAreaEffectTools(options = {}) {
             if (!isMobInsideBeamEffect(mob, effect)) {
               continue;
             }
-            const tickDamage = rollScaledTickDamage(effect.damageMin, effect.damageMax, tickIntervalMs);
+            if (effect.damageMode === "instant" && effect.hitTargetIds && effect.hitTargetIds.has(String(mob.id))) {
+              continue;
+            }
+            const tickDamage =
+              effect.damageMode === "instant"
+                ? randomInt(effect.damageMin, effect.damageMax)
+                : rollScaledTickDamage(effect.damageMin, effect.damageMax, tickIntervalMs);
             if (tickDamage > 0) {
               const dealt = applyDamageToMob(mob, tickDamage, effect.ownerId);
+              if (effect.damageMode === "instant" && effect.hitTargetIds) {
+                effect.hitTargetIds.add(String(mob.id));
+              }
               if (mob.alive && dealt > 0 && effect.dotDurationMs > 0 && effect.dotDamageMax > 0) {
                 applyDotToMob(
                   mob,

@@ -358,6 +358,7 @@ const createEmptyEquipmentSlots = equipmentTools.createEmptyEquipmentSlots;
 const rollEquipmentDropsAt = equipmentTools.rollEquipmentDropsAt;
 const getPlayerModifiedAbilityDamageRange = equipmentTools.getPlayerModifiedAbilityDamageRange;
 const getPlayerModifiedAbilityDotDamageRange = equipmentTools.getPlayerModifiedAbilityDotDamageRange;
+const getPlayerModifiedAbilityChainStats = equipmentTools.getPlayerModifiedAbilityChainStats;
 const getPlayerModifiedAbilityCooldownMs = equipmentTools.getPlayerModifiedAbilityCooldownMs;
 const getPlayerModifiedAbilityCastMs = equipmentTools.getPlayerModifiedAbilityCastMs;
 const equipInventoryItem = equipmentTools.equipInventoryItem;
@@ -398,6 +399,10 @@ const abilityHandlerContext = createAbilityHandlerContext({
     entity && entity.ws
       ? getPlayerModifiedAbilityDotDamageRange(entity, abilityDef, abilityLevel)
       : getAbilityDotDamageRange(abilityDef, abilityLevel),
+  getAbilityChainStatsForEntity: (entity, abilityDef, abilityLevel) =>
+    entity && entity.ws
+      ? getPlayerModifiedAbilityChainStats(entity, abilityDef, abilityLevel)
+      : { jumpCountBonus: 0, jumpDamageReductionPercent: 0 },
   markAbilityUsed: (...args) => markAbilityUsed(...args),
   applyDamageToMob: (...args) => applyDamageToMob(...args),
   applyAbilityHitEffectsToMob: (...args) => applyAbilityHitEffectsToMob(...args),

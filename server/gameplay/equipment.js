@@ -413,6 +413,22 @@ function createEquipmentTools(options = {}) {
     return "";
   }
 
+  function getPlayerAbilityModifierTotal(player, abilityDef, statPath) {
+    const target = String(statPath || "").trim();
+    if (!target) {
+      return 0;
+    }
+    let total = getEquippedStatTotal(player, target);
+    const school = inferAbilitySchool(abilityDef);
+    if (school) {
+      total += getEquippedStatTotal(player, `damageSchool.${school}.${target}`);
+    }
+    for (const tag of inferAbilityTags(abilityDef)) {
+      total += getEquippedStatTotal(player, `spellTag.${tag}.${target}`);
+    }
+    return total;
+  }
+
   function applyDamageBonusesToRange(baseRange, percentBonus, flatMin, flatMax) {
     const min = Math.max(0, Number(baseRange[0]) || 0);
     const max = Math.max(min, Number(baseRange[1]) || min);
@@ -448,6 +464,13 @@ function createEquipmentTools(options = {}) {
       percentBonus += getEquippedStatTotal(player, `spellTag.${tag}.damagePercent`);
     }
     return applyDamageBonusesToRange(baseRange, percentBonus, 0, 0);
+  }
+
+  function getPlayerModifiedAbilityChainStats(player, abilityDef) {
+    return {
+      jumpCountBonus: getPlayerAbilityModifierTotal(player, abilityDef, "jumpCount"),
+      jumpDamageReductionPercent: getPlayerAbilityModifierTotal(player, abilityDef, "jumpDamageReductionPercent")
+    };
   }
 
   function recomputePlayerDerivedStats(player) {
@@ -609,6 +632,7 @@ function createEquipmentTools(options = {}) {
     getEquippedStatTotal,
     getPlayerModifiedAbilityDamageRange,
     getPlayerModifiedAbilityDotDamageRange,
+    getPlayerModifiedAbilityChainStats,
     getPlayerModifiedAbilityCooldownMs,
     getPlayerModifiedAbilityCastMs,
     recomputePlayerDerivedStats,

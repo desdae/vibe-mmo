@@ -28,6 +28,10 @@
         iconRenderer: "arcane_beam",
         areaEffectRenderer: "arcane_beam"
       },
+      chain: {
+        iconRenderer: "lightning_beam",
+        areaEffectRenderer: "lightning_beam"
+      },
       teleport: {
         iconRenderer: "blink"
       }
@@ -66,6 +70,14 @@
       arcanebeam: {
         iconRenderer: "arcane_beam",
         areaEffectRenderer: "arcane_beam"
+      },
+      lightningbeam: {
+        iconRenderer: "lightning_beam",
+        areaEffectRenderer: "lightning_beam"
+      },
+      chainlightning: {
+        iconRenderer: "lightning_beam",
+        areaEffectRenderer: "lightning_beam"
       },
       blink: {
         iconRenderer: "blink"

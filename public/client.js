@@ -1845,7 +1845,11 @@ function buildAbilityTooltip(abilityId) {
   appendTooltipNumber(lines, "Range", effectiveRange);
 
   if (totalDamageMax > 0) {
-    const damageLabel = (kind === "area" || kind === "beam") && durationMs > 0 ? "Damage / Second" : "Damage";
+    const damageLabel =
+      ((kind === "area") || (kind === "beam" && String(ability.damageMode || "").toLowerCase() === "overTime")) &&
+      durationMs > 0
+        ? "Damage / Second"
+        : "Damage";
     lines.push(`${damageLabel}: ${totalDamageMin} - ${totalDamageMax}`);
   }
 
@@ -1874,6 +1878,13 @@ function buildAbilityTooltip(abilityId) {
   if (kind === "beam") {
     appendTooltipNumber(lines, "Beam Width", ability.beamWidth);
     appendTooltipNumber(lines, "Duration", durationMs, formatMsAsSeconds);
+  }
+
+  if (kind === "chain") {
+    appendTooltipNumber(lines, "Beam Width", ability.beamWidth);
+    appendTooltipNumber(lines, "Jump Range", ability.jumpRange);
+    appendTooltipNumber(lines, "Jumps", ability.jumpCount, (v) => `${Math.round(v)}`);
+    appendTooltipNumber(lines, "Jump Damage Loss", ability.jumpDamageReduction, (v) => `${Math.round(v * 100)}%`);
   }
 
   if (kind === "teleport") {
@@ -2546,6 +2557,47 @@ function drawArcaneBeamActionIcon(iconCtx, size) {
   iconCtx.restore();
 }
 
+function drawLightningBeamActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.save();
+  iconCtx.translate(mid, mid);
+  iconCtx.rotate(-Math.PI / 4.5);
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+
+  iconCtx.strokeStyle = "rgba(119, 203, 255, 0.34)";
+  iconCtx.lineWidth = 8.5;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-12, -8);
+  iconCtx.lineTo(-4, -3);
+  iconCtx.lineTo(-8, 2);
+  iconCtx.lineTo(0, 3);
+  iconCtx.lineTo(-2, 10);
+  iconCtx.lineTo(12, -3);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(219, 245, 255, 0.98)";
+  iconCtx.lineWidth = 3.4;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-12, -8);
+  iconCtx.lineTo(-4, -3);
+  iconCtx.lineTo(-8, 2);
+  iconCtx.lineTo(0, 3);
+  iconCtx.lineTo(-2, 10);
+  iconCtx.lineTo(12, -3);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "rgba(122, 223, 255, 0.9)";
+  iconCtx.lineWidth = 1.5;
+  iconCtx.beginPath();
+  iconCtx.moveTo(-7, -10);
+  iconCtx.lineTo(-1, -2);
+  iconCtx.moveTo(3, 0);
+  iconCtx.lineTo(9, 8);
+  iconCtx.stroke();
+  iconCtx.restore();
+}
+
 function drawBlinkActionIcon(iconCtx, size) {
   const mid = size / 2;
   iconCtx.save();
@@ -2651,6 +2703,7 @@ const ABILITY_ICON_RENDERERS = Object.freeze({
   arcane_missiles: drawArcaneMissilesActionIcon,
   blizzard: drawBlizzardActionIcon,
   arcane_beam: drawArcaneBeamActionIcon,
+  lightning_beam: drawLightningBeamActionIcon,
   blink: drawBlinkActionIcon,
   fireball: drawFireballActionIcon,
   warstomp: drawWarstompActionIcon,
@@ -3830,6 +3883,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
       name: String(normalizedEntry.name || id),
       description: String(normalizedEntry.description || ""),
       kind: String(normalizedEntry.kind || "meleeCone"),
+      damageMode: String(normalizedEntry.damageMode || "instant"),
       cooldownMs: Math.max(0, Math.floor(Number(normalizedEntry.cooldownMs) || 0)),
       range: Math.max(0, Number(normalizedEntry.range) || 0),
       speed: Math.max(0, Number(normalizedEntry.speed) || 0),
@@ -3844,6 +3898,10 @@ function applyClassAndAbilityDefs(classes, abilities) {
       explosionRadius: Math.max(0, Number(normalizedEntry.explosionRadius) || 0),
       explosionDamageMultiplier: Math.max(0, Number(normalizedEntry.explosionDamageMultiplier) || 0),
       beamWidth: Math.max(0, Number(normalizedEntry.beamWidth) || 0),
+      jumpCount: Math.max(0, Number(normalizedEntry.jumpCount) || 0),
+      jumpRange: Math.max(0, Number(normalizedEntry.jumpRange) || 0),
+      jumpDamageReduction: clamp(Number(normalizedEntry.jumpDamageReduction) || 0, 0, 0.95),
+      jumpCountPerLevel: Math.max(0, Number(normalizedEntry.jumpCountPerLevel) || 0),
       stunDurationMs: Math.max(0, Math.floor(Number(normalizedEntry.stunDurationMs) || 0)),
       slowDurationMs: Math.max(0, Math.floor(Number(normalizedEntry.slowDurationMs) || 0)),
       slowMultiplier: clamp(Number(normalizedEntry.slowMultiplier) || 1, 0.1, 1)
@@ -5218,6 +5276,181 @@ function drawArcaneBeamAreaEffect(effect, cameraX, cameraY, now) {
   ctx.restore();
 }
 
+function buildParametricJaggedBeamPoints(start, end, seed, options = {}) {
+  const segmentCount = Math.max(4, Math.floor(Number(options.segmentCount) || 12));
+  const amplitudePx = Math.max(0, Number(options.amplitudePx) || 12);
+  const phase = Number(options.phase) || 0;
+  const taperPower = Math.max(0.4, Number(options.taperPower) || 1.1);
+  const waveFrequency = Math.max(0.5, Number(options.waveFrequency) || 3.4);
+  const noiseMix = clamp(Number(options.noiseMix) || 0.55, 0, 1);
+  const points = [];
+  const beamDx = end.x - start.x;
+  const beamDy = end.y - start.y;
+  const beamLengthPx = Math.max(1, Math.hypot(beamDx, beamDy));
+  const dirX = beamDx / beamLengthPx;
+  const dirY = beamDy / beamLengthPx;
+  const perpX = -dirY;
+  const perpY = dirX;
+  const seedBase = Math.floor(Number(seed) || 0);
+
+  for (let i = 0; i <= segmentCount; i += 1) {
+    const t = i / segmentCount;
+    let offset = 0;
+    if (i > 0 && i < segmentCount) {
+      const envelope = Math.pow(Math.sin(t * Math.PI), taperPower);
+      const jitter = seededUnit(seedBase, 100 + i * 17) * 2 - 1;
+      const wavePhase = phase + t * Math.PI * 2 * waveFrequency + seededUnit(seedBase, 200 + i * 19) * Math.PI;
+      const wave = Math.sin(wavePhase);
+      offset = amplitudePx * envelope * (jitter * noiseMix + wave * (1 - noiseMix));
+    }
+    points.push({
+      x: start.x + beamDx * t + perpX * offset,
+      y: start.y + beamDy * t + perpY * offset
+    });
+  }
+  return points;
+}
+
+function strokeBeamPolyline(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 1; i < points.length; i += 1) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.stroke();
+}
+
+function drawParametricJaggedBeam(start, end, seed, now, options = {}) {
+  const alpha = clamp(Number(options.alpha) || 1, 0, 1);
+  if (alpha <= 0) {
+    return;
+  }
+  const widthPx = Math.max(2, Number(options.widthPx) || 14);
+  const outerGlowColor = options.outerGlowColor || [122, 208, 255];
+  const coreColor = options.coreColor || [180, 235, 255];
+  const hotColor = options.hotColor || [248, 251, 255];
+  const branchColor = options.branchColor || coreColor;
+  const burstColor = options.burstColor || coreColor;
+  const phase = now * (Number(options.phaseSpeed) || 0.0095) + (Number(options.phaseOffset) || 0);
+  const mainPoints = buildParametricJaggedBeamPoints(start, end, seed, {
+    segmentCount: options.segmentCount,
+    amplitudePx: options.amplitudePx ?? widthPx * 0.9,
+    phase,
+    taperPower: options.taperPower,
+    waveFrequency: options.waveFrequency,
+    noiseMix: options.noiseMix
+  });
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.strokeStyle = `rgba(${outerGlowColor[0]}, ${outerGlowColor[1]}, ${outerGlowColor[2]}, ${(0.32 * alpha).toFixed(3)})`;
+  ctx.lineWidth = widthPx * 1.65;
+  strokeBeamPolyline(mainPoints);
+
+  ctx.strokeStyle = `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${(0.92 * alpha).toFixed(3)})`;
+  ctx.lineWidth = widthPx * 0.72;
+  strokeBeamPolyline(mainPoints);
+
+  ctx.strokeStyle = `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.98 * alpha).toFixed(3)})`;
+  ctx.lineWidth = Math.max(1.2, widthPx * 0.22);
+  strokeBeamPolyline(mainPoints);
+
+  const branchCount = Math.max(0, Math.floor(Number(options.branchCount) || 0));
+  for (let branchIndex = 0; branchIndex < branchCount; branchIndex += 1) {
+    const startT = 0.18 + seededUnit(seed, 310 + branchIndex * 29) * 0.6;
+    const endT = Math.min(0.98, startT + 0.08 + seededUnit(seed, 311 + branchIndex * 29) * 0.22);
+    const baseAngle = (seededUnit(seed, 312 + branchIndex * 29) - 0.5) * Math.PI * 1.2;
+    const directionX = end.x - start.x;
+    const directionY = end.y - start.y;
+    const len = Math.max(1, Math.hypot(directionX, directionY));
+    const dirX = directionX / len;
+    const dirY = directionY / len;
+    const perpX = -dirY;
+    const perpY = dirX;
+    const startPoint = {
+      x: start.x + directionX * startT,
+      y: start.y + directionY * startT
+    };
+    const branchLength = widthPx * (1.8 + seededUnit(seed, 313 + branchIndex * 29) * 2.7);
+    const branchDirSign = seededUnit(seed, 314 + branchIndex * 29) * 2 - 1;
+    const endPoint = {
+      x:
+        startPoint.x +
+        dirX * branchLength * (0.25 + (endT - startT) * 0.8) +
+        perpX * branchLength * 0.7 * branchDirSign * Math.cos(baseAngle),
+      y:
+        startPoint.y +
+        dirY * branchLength * (0.25 + (endT - startT) * 0.8) +
+        perpY * branchLength * 0.7 * branchDirSign * Math.cos(baseAngle)
+    };
+    const branchPoints = buildParametricJaggedBeamPoints(startPoint, endPoint, seed + branchIndex * 997, {
+      segmentCount: Math.max(4, Math.floor((Number(options.segmentCount) || 10) * 0.45)),
+      amplitudePx: Math.max(2, widthPx * 0.32),
+      phase: phase * 1.24 + branchIndex * 0.9,
+      taperPower: 0.95,
+      waveFrequency: 2.8,
+      noiseMix: 0.62
+    });
+    ctx.strokeStyle = `rgba(${branchColor[0]}, ${branchColor[1]}, ${branchColor[2]}, ${(0.52 * alpha).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1, widthPx * 0.16);
+    strokeBeamPolyline(branchPoints);
+  }
+
+  const burstRadius = Math.max(5, widthPx * 0.9);
+  for (const point of [start, end]) {
+    const burst = ctx.createRadialGradient(point.x, point.y, 0, point.x, point.y, burstRadius);
+    burst.addColorStop(0, `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.95 * alpha).toFixed(3)})`);
+    burst.addColorStop(0.42, `rgba(${burstColor[0]}, ${burstColor[1]}, ${burstColor[2]}, ${(0.4 * alpha).toFixed(3)})`);
+    burst.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = burst;
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, burstRadius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+function drawLightningBeamAreaEffect(effect, cameraX, cameraY, now) {
+  const dir = normalizeDirection(effect.dx, effect.dy) || { dx: 0, dy: -1 };
+  const lengthTiles = Math.max(0.2, Number(effect.length) || Number(effect.radius) || 1);
+  const widthTiles = Math.max(0.2, Number(effect.width) || 0.6);
+  const startX = Number.isFinite(Number(effect.startX)) ? Number(effect.startX) : effect.x;
+  const startY = Number.isFinite(Number(effect.startY)) ? Number(effect.startY) : effect.y;
+  const endX = startX + dir.dx * lengthTiles;
+  const endY = startY + dir.dy * lengthTiles;
+  const start = worldToScreen(startX + 0.5, startY + 0.5, cameraX, cameraY);
+  const end = worldToScreen(endX + 0.5, endY + 0.5, cameraX, cameraY);
+  const beamWidthPx = Math.max(3, widthTiles * TILE_SIZE);
+  const fadeIn = clamp((now - effect.startedAt) / 55, 0, 1);
+  const fadeOut = 1 - clamp((now - effect.endsAt + 130) / 130, 0, 1);
+  const alpha = clamp(fadeIn * fadeOut, 0, 1);
+  const seed = Number(effect.seed) || hashString(`${effect.id || "lightning"}:${effect.startedAt || 0}`);
+
+  drawParametricJaggedBeam(start, end, seed, now, {
+    alpha,
+    widthPx: beamWidthPx,
+    segmentCount: Math.max(8, Math.round(lengthTiles * 3.5)),
+    amplitudePx: beamWidthPx * 1.05,
+    taperPower: 0.78,
+    waveFrequency: 4.8,
+    noiseMix: 0.68,
+    phaseSpeed: 0.022,
+    outerGlowColor: [92, 198, 255],
+    coreColor: [141, 228, 255],
+    hotColor: [250, 252, 255],
+    branchColor: [179, 239, 255],
+    burstColor: [143, 218, 255],
+    branchCount: Math.max(2, Math.round(lengthTiles * 0.4))
+  });
+}
+
 function drawBlizzardAreaEffect(effect, cameraX, cameraY, now) {
   const center = worldToScreen(effect.x + 0.5, effect.y + 0.5, cameraX, cameraY);
   const radiusPx = Math.max(8, effect.radius * TILE_SIZE);
@@ -5357,7 +5590,8 @@ function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
 
 const ABILITY_AREA_EFFECT_RENDERERS = Object.freeze({
   blizzard: drawBlizzardAreaEffect,
-  arcane_beam: drawArcaneBeamAreaEffect
+  arcane_beam: drawArcaneBeamAreaEffect,
+  lightning_beam: drawLightningBeamAreaEffect
 });
 
 const ABILITY_CAST_PREVIEW_RENDERERS = Object.freeze({

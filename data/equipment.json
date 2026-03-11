@@ -2063,6 +2063,26 @@
         { "stat": "spellTag.beam.damagePercent", "rollRange": [10, 18] }
       ]
     },
+    {
+      "id": "of_forking_t1",
+      "name": "of Forking",
+      "minItemLevel": 10,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "chainTag"],
+      "modifiers": [
+        { "stat": "spellTag.chain.jumpCount", "rollRange": [0.25, 0.75] }
+      ]
+    },
+    {
+      "id": "of_conductance_t1",
+      "name": "of Conductance",
+      "minItemLevel": 10,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "lightningSchool"],
+      "modifiers": [
+        { "stat": "damageSchool.lightning.jumpDamageReductionPercent", "rollRange": [4, 10] }
+      ]
+    },
 
     {
       "id": "of_mending_t1",

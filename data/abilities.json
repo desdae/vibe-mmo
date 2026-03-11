@@ -288,6 +288,67 @@
     ],
     "tags": ["mage", "beam"]
   },
+  "lightningBeam": {
+    "id": "lightningBeam",
+    "name": "Lightning Beam",
+    "description": "Fires a jagged lightning line that damages every enemy in its path.",
+    "delivery": {
+      "type": "beam",
+      "castTime": 0.35,
+      "cooldown": 0.6,
+      "resourceCost": { "mana": 7 }
+    },
+    "targeting": {
+      "range": 8,
+      "duration": 0.18,
+      "width": 0.6,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [6, 9],
+        "school": "lightning",
+        "scalingPerLevel": [0.7, 1.2]
+      }
+    ],
+    "tags": ["mage", "beam", "lightning"]
+  },
+  "chainLightning": {
+    "id": "chainLightning",
+    "name": "Chain Lightning",
+    "description": "Shocks a target, then jumps to nearby enemies with reduced damage each jump.",
+    "delivery": {
+      "type": "chain",
+      "castTime": 0.45,
+      "cooldown": 1.0,
+      "resourceCost": { "mana": 8 }
+    },
+    "targeting": {
+      "range": 8,
+      "jumpRange": 4.5,
+      "jumpCount": 4,
+      "jumpDamageReduction": 0.2,
+      "width": 0.55,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [5, 8],
+        "school": "lightning",
+        "scalingPerLevel": [0.6, 1.0]
+      }
+    ],
+    "progression": {
+      "perLevel": {
+        "targeting.jumpCount": 0.3333
+      }
+    },
+    "tags": ["mage", "chain", "lightning"]
+  },
   "slash": {
     "id": "slash",
     "name": "Slash",

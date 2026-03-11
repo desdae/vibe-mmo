@@ -86,6 +86,7 @@
     selfarea: "area",
     area: "area",
     beam: "beam",
+    chain: "chain",
     teleport: "teleport"
   });
 
@@ -291,6 +292,32 @@
       const beamWidth = firstFiniteNumber([targeting.width, targeting.beamWidth, entry.beamWidth, entry.width], 0);
       if (beamWidth > 0) {
         normalized.beamWidth = beamWidth;
+      }
+
+      const jumpCount = firstFiniteNumber([targeting.jumpCount, entry.jumpCount], 0);
+      if (jumpCount > 0) {
+        normalized.jumpCount = jumpCount;
+      }
+
+      const jumpRange = firstFiniteNumber([targeting.jumpRange, entry.jumpRange], 0);
+      if (jumpRange > 0) {
+        normalized.jumpRange = jumpRange;
+      }
+
+      const jumpDamageReduction = firstFiniteNumber(
+        [targeting.jumpDamageReduction, entry.jumpDamageReduction],
+        0
+      );
+      if (jumpDamageReduction > 0) {
+        normalized.jumpDamageReduction = jumpDamageReduction;
+      }
+
+      const jumpCountPerLevel = firstFiniteNumber(
+        [getProgressionPerLevelValue(entry, "targeting.jumpCount"), entry.jumpCountPerLevel],
+        0
+      );
+      if (jumpCountPerLevel > 0) {
+        normalized.jumpCountPerLevel = jumpCountPerLevel;
       }
 
       const spreadDeg = firstFiniteNumber([targeting.spreadDeg, targeting.spreadAngle, entry.spreadDeg, entry.spreadAngle], 0);

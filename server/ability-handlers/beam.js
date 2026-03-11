@@ -35,6 +35,7 @@ function executeBeamAbility({ player, abilityDef, abilityLevel, targetDx, target
     damageMin,
     damageMax,
     {
+      damageMode: String(abilityDef.damageMode || "instant").trim().toLowerCase() || "instant",
       dotDamageMin,
       dotDamageMax,
       dotDurationMs,

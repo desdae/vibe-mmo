@@ -36,9 +36,14 @@ const OMITTED_CLIENT_FIELDS = new Set([
   "slowDurationMs",
   "slowAmount",
   "slowMultiplier",
+  "jumpCount",
+  "jumpRange",
+  "jumpDamageReduction",
+  "jumpCountPerLevel",
   "homingRange",
   "homingTurnRate",
-  "turnRate"
+  "turnRate",
+  "damageMode"
 ]);
 
 function loadAbilityConfigFromDisk(configPath, options) {
@@ -118,7 +123,14 @@ function loadAbilityConfigFromDisk(configPath, options) {
       0,
       Math.round((Number(entry.cooldownReductionPerLevel) || 0) * 1000)
     );
-    const beamWidth = kind === "beam" ? Math.max(0.2, Number(entry.beamWidth) || Number(entry.width) || 0.8) : 0;
+    const beamWidth =
+      kind === "beam" || kind === "chain"
+        ? Math.max(0.2, Number(entry.beamWidth) || Number(entry.width) || 0.8)
+        : 0;
+    const jumpCount = Math.max(0, Number(entry.jumpCount) || 0);
+    const jumpRange = Math.max(0, Number(entry.jumpRange) || 0);
+    const jumpDamageReduction = clamp(Number(entry.jumpDamageReduction) || 0, 0, 0.95);
+    const jumpCountPerLevel = Math.max(0, Number(entry.jumpCountPerLevel) || 0);
     const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000));
     const slowDurationMsRaw = Number(entry.slowDurationMs);
     const slowDurationSecRaw = Number(entry.slowDuration);
@@ -146,6 +158,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
       (effect) => effect && typeof effect === "object" && String(effect.type || "").toLowerCase() === "damage"
     );
     const damageSchool = String(firstDamageEffect?.school || "").trim().toLowerCase();
+    const damageMode = String(firstDamageEffect?.mode || "").trim().toLowerCase() || "instant";
 
     const def = {
       id,
@@ -155,6 +168,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
         ? entry.tags.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
         : [],
       damageSchool,
+      damageMode,
       kind,
       cooldownMs,
       manaCost: Math.max(0, Number(entry.manaCost) || 0),
@@ -182,6 +196,10 @@ function loadAbilityConfigFromDisk(configPath, options) {
       rangePerLevel,
       cooldownReductionPerLevelMs,
       beamWidth,
+      jumpCount,
+      jumpRange,
+      jumpDamageReduction,
+      jumpCountPerLevel,
       stunDurationMs,
       slowDurationMs,
       slowMultiplier,
@@ -219,6 +237,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
       description: def.description,
       tags: def.tags,
       damageSchool: def.damageSchool,
+      damageMode: def.damageMode,
       kind: def.kind,
       cooldownMs: def.cooldownMs,
       range: def.range,
@@ -241,6 +260,10 @@ function loadAbilityConfigFromDisk(configPath, options) {
       explosionDamageMultiplier: def.explosionDamageMultiplier,
       areaRadius: def.areaRadius,
       beamWidth: def.beamWidth,
+      jumpCount: def.jumpCount,
+      jumpRange: def.jumpRange,
+      jumpDamageReduction: def.jumpDamageReduction,
+      jumpCountPerLevel: def.jumpCountPerLevel,
       durationMs: def.durationMs,
       stunDurationMs: def.stunDurationMs,
       slowDurationMs: def.slowDurationMs,

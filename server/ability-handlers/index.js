@@ -2,6 +2,7 @@ const melee = require("./melee");
 const projectile = require("./projectile");
 const area = require("./area");
 const beam = require("./beam");
+const chain = require("./chain");
 const teleport = require("./teleport");
 
 const handlersByKind = new Map([
@@ -9,6 +10,7 @@ const handlersByKind = new Map([
   ["projectile", projectile],
   ["area", area],
   ["beam", beam],
+  ["chain", chain],
   ["teleport", teleport]
 ]);
 
@@ -27,4 +29,3 @@ module.exports = {
   getAbilityHandler,
   executeAbilityByKind
 };
-
