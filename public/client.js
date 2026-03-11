@@ -744,6 +744,22 @@ function toAbilityVisualKey(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function registerStaticAbilityHashMappings() {
+  const byId = abilityVisualRegistry && abilityVisualRegistry.byId ? abilityVisualRegistry.byId : {};
+  for (const key of Object.keys(byId)) {
+    const id = toAbilityVisualKey(key);
+    if (!id) {
+      continue;
+    }
+    const hash = hashString32(id);
+    if (!abilityIdsByHash.has(hash)) {
+      abilityIdsByHash.set(hash, id);
+    }
+  }
+}
+
+registerStaticAbilityHashMappings();
+
 function getAbilityVisualHooks(actionId, actionDef = null, kindOverride = "") {
   const idKey = toAbilityVisualKey(actionId);
   const def = actionDef || getActionDefById(actionId);
@@ -3792,6 +3808,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
   abilityAudioRegistry.clear();
   abilityDefsById.clear();
   abilityIdsByHash.clear();
+  registerStaticAbilityHashMappings();
   classDefsById.clear();
 
   for (const ability of Array.isArray(abilities) ? abilities : []) {
