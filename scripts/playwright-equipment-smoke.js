@@ -114,8 +114,11 @@ async function killNearestMob(page) {
 }
 
 async function moveToNearestBagAndLoot(page) {
-  for (let step = 0; step < 40; step += 1) {
+  for (let step = 0; step < 70; step += 1) {
     const snapshot = await getState(page);
+    if (snapshot.inventory.some((slot) => slot && slot.isEquipment)) {
+      return snapshot;
+    }
     if (!snapshot.self || snapshot.lootBags.length === 0) {
       await sleep(150);
       continue;
@@ -124,9 +127,9 @@ async function moveToNearestBagAndLoot(page) {
     const bag = getNearestEntity(snapshot.self, snapshot.lootBags);
     const dir = normalizeDirection(bag.x - snapshot.self.x, bag.y - snapshot.self.y);
     const dist = Math.hypot(bag.x - snapshot.self.x, bag.y - snapshot.self.y);
-    if (dist <= 1.8 || !dir) {
+    if (dist <= 2.25 || !dir) {
       await page.evaluate(() => window.__vibemmoTest.pickupNearestBag());
-      await sleep(450);
+      await sleep(550);
       const nextSnapshot = await getState(page);
       if (nextSnapshot.inventory.some((slot) => slot && slot.isEquipment)) {
         return nextSnapshot;
@@ -137,6 +140,7 @@ async function moveToNearestBagAndLoot(page) {
     await page.evaluate((moveDir) => window.__vibemmoTest.setMove(moveDir.dx, moveDir.dy), dir);
     await sleep(PICKUP_STEP_MS + 200);
     await page.evaluate(() => window.__vibemmoTest.stopMove());
+    await page.evaluate(() => window.__vibemmoTest.pickupNearestBag());
     await sleep(100);
   }
 
@@ -144,6 +148,7 @@ async function moveToNearestBagAndLoot(page) {
 }
 
 async function equipFirstEquipmentItem(page) {
+  await page.keyboard.press("KeyI");
   await page.keyboard.press("KeyC");
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const snapshot = await getState(page);
@@ -156,10 +161,7 @@ async function equipFirstEquipmentItem(page) {
       throw new Error("No equipment item found in inventory.");
     }
     const slot = snapshot.inventory[inventoryIndex].slot;
-    await page.evaluate(
-      (payload) => window.__vibemmoTest.equipInventoryIndex(payload.index, payload.slot),
-      { index: inventoryIndex, slot }
-    );
+    await page.click(`#inventory-grid .inventory-slot[data-index="${inventoryIndex}"]`, { button: "right" });
     await sleep(300);
     const nextSnapshot = await getState(page);
     if (nextSnapshot.equipment && nextSnapshot.equipment[slot] && nextSnapshot.equipment[slot].itemId) {

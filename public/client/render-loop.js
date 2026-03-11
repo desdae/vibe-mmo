@@ -60,7 +60,7 @@
       deps.drawAreaEffects(cameraX, cameraY, frameNow);
 
       for (const bag of interpolatedState.lootBags) {
-        deps.drawLootBag(bag, cameraX, cameraY);
+        deps.drawLootBag(bag, cameraX, cameraY, frameNow);
       }
 
       for (const mob of interpolatedState.mobs) {
@@ -98,6 +98,7 @@
       deps.pruneSkeletonArcherWalkRuntime();
       deps.pruneWarriorAnimRuntime();
       deps.pruneProjectileVisualRuntime(frameNow);
+      deps.pruneAmbientParticleEmitters(frameNow);
 
       for (const other of interpolatedState.players) {
         deps.drawPlayer(other, cameraX, cameraY, false);

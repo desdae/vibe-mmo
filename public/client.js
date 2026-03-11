@@ -77,6 +77,11 @@ const sharedNormalizeDirection =
   sharedVectorUtils && typeof sharedVectorUtils.normalizeDirection === "function"
     ? sharedVectorUtils.normalizeDirection
     : null;
+const sharedClientParticleSystem = globalThis.VibeClientParticleSystem || null;
+const sharedCreateParticleSystemTools =
+  sharedClientParticleSystem && typeof sharedClientParticleSystem.createParticleSystemTools === "function"
+    ? sharedClientParticleSystem.createParticleSystemTools
+    : null;
 const protocol = globalThis.VibeProtocol || {
   ENTITY_PROTO_TYPE: 1,
   ENTITY_PROTO_VERSION: 7,
@@ -282,6 +287,7 @@ const snapshots = [];
 const floatingDamageNumbers = [];
 const activeExplosions = [];
 const activeAreaEffectsById = new Map();
+const ambientParticleEmitters = new Map();
 const actionSlotEls = new Map();
 const actionBindings = new Map();
 let actionBindingsClassType = null;
@@ -346,6 +352,44 @@ const entityRuntime = {
 const spellbookState = {
   signature: ""
 };
+const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
+  maxParticles: 10,
+  spawnRate: 6.4,
+  burstCount: 6,
+  idleTimeoutMs: 1600,
+  spawnBox: Object.freeze({
+    minX: -0.18,
+    maxX: 0.18,
+    minY: -0.48,
+    maxY: -0.14
+  }),
+  velocity: Object.freeze({
+    minX: -0.018,
+    maxX: 0.018,
+    minY: -0.16,
+    maxY: -0.05
+  }),
+  acceleration: Object.freeze({
+    minX: 0,
+    maxX: 0,
+    minY: 0.025,
+    maxY: 0.07
+  }),
+  lifeMs: Object.freeze([800, 1400]),
+  sizePx: Object.freeze([3.1, 7.2]),
+  alpha: Object.freeze([0.62, 1]),
+  twinkle: Object.freeze([0.75, 1.3]),
+  rotation: Object.freeze([0, Math.PI * 2]),
+  spin: Object.freeze([-1.15, 1.15]),
+  phase: Object.freeze([0, Math.PI * 2]),
+  shapes: Object.freeze(["sparkle", "sparkle", "sparkle", "sparkle", "dot"]),
+  colors: Object.freeze(["#fff8dc", "#ffefbb", "#ffd978"]),
+  glowColors: Object.freeze([
+    "rgba(255, 247, 218, 0.52)",
+    "rgba(255, 226, 144, 0.44)",
+    "rgba(255, 210, 110, 0.38)"
+  ])
+});
 
 function clamp(value, min, max) {
   if (sharedClamp) {
@@ -2717,6 +2761,35 @@ function ensureInventorySlotsLength() {
   }
 }
 
+function getEquipmentSlotIdForItem(slotData) {
+  if (!slotData || !slotData.itemId) {
+    return "";
+  }
+  const explicitSlot = String(slotData.slot || "").trim();
+  if (explicitSlot) {
+    return explicitSlot;
+  }
+  const itemDef = itemDefsById.get(slotData.itemId);
+  return String((itemDef && itemDef.slot) || "").trim();
+}
+
+function equipInventoryItemAtIndex(index) {
+  const slotData = inventoryState.slots[index];
+  if (!slotData || !slotData.itemId) {
+    return false;
+  }
+  const slotId = getEquipmentSlotIdForItem(slotData);
+  if (!slotId) {
+    return false;
+  }
+  sendJsonMessage({
+    type: "equip_item",
+    inventoryIndex: index,
+    slot: slotId
+  });
+  return true;
+}
+
 function updateInventoryUI() {
   if (!inventoryGrid || !inventoryPanel) {
     return;
@@ -2779,6 +2852,10 @@ function updateInventoryUI() {
       slotEl.classList.add("has-item");
       slotEl.draggable = true;
       slotEl.title = buildItemTooltip(slotData);
+      slotEl.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        equipInventoryItemAtIndex(i);
+      });
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "inventory";
         dragState.inventoryFrom = i;
@@ -2828,12 +2905,10 @@ function updateEquipmentUI() {
     slotEl.dataset.slot = slotId;
     slotEl.title = humanizeKey(slotId);
     slotEl.addEventListener("dragover", (event) => {
-      const itemId = dragState.itemId;
-      const itemDef = itemDefsById.get(itemId);
       const draggedSlot = dragState.inventoryFrom;
       const slotData = draggedSlot !== null ? inventoryState.slots[draggedSlot] : null;
-      const draggedItemSlot = String((slotData && slotData.slot) || (itemDef && itemDef.slot) || "").trim();
-      if (!itemId || draggedSlot === null || draggedItemSlot !== slotId) {
+      const draggedItemSlot = getEquipmentSlotIdForItem(slotData);
+      if (!dragState.itemId || draggedSlot === null || draggedItemSlot !== slotId) {
         return;
       }
       event.preventDefault();
@@ -4056,6 +4131,7 @@ function resetClientSessionState() {
   floatingDamageNumbers.length = 0;
   activeExplosions.length = 0;
   activeAreaEffectsById.clear();
+  ambientParticleEmitters.clear();
   abilityRuntime.clear();
   dpsState.samples.length = 0;
   setDpsVisible(false);
@@ -4506,6 +4582,13 @@ const vfxRuntimeTools = sharedCreateVfxRuntimeTools
       playMobEventSound
     })
   : null;
+const particleSystemTools = sharedCreateParticleSystemTools
+  ? sharedCreateParticleSystemTools({
+      emittersByKey: ambientParticleEmitters,
+      hashString,
+      clamp
+    })
+  : null;
 
 function addFloatingDamageEvents(events) {
   if (!vfxRuntimeTools) {
@@ -4547,6 +4630,13 @@ function addMobDeathEvents(events) {
     return;
   }
   vfxRuntimeTools.addMobDeathEvents(events);
+}
+
+function pruneAmbientParticleEmitters(now = performance.now()) {
+  if (!particleSystemTools) {
+    return;
+  }
+  particleSystemTools.pruneEmitters(now);
 }
 
 function updateMobCastSpatialAudio(mobs, frameNow) {
@@ -7251,15 +7341,138 @@ function drawMob(mob, cameraX, cameraY, attackState = null) {
   mobRenderTools.drawMob(mob, cameraX, cameraY, attackState);
 }
 
-function drawLootBag(bag, cameraX, cameraY) {
+function drawLootBag(bag, cameraX, cameraY, frameNow = performance.now()) {
   const p = worldToScreen(bag.x + 0.5, bag.y + 0.5, cameraX, cameraY);
-  const size = 11;
+  const bagId = String((bag && bag.id) || `${bag.x}:${bag.y}`);
+  const seed = hashString(`lootbag:${bagId}`);
+  const scatterPhase = ((seed % 628) / 100) * 0.6;
 
-  ctx.fillStyle = "#7d5a30";
-  ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
-  ctx.strokeStyle = "#d4aa67";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
+  if (particleSystemTools) {
+    particleSystemTools.drawWorldEmitter({
+      key: `lootbag:sparkles:${bagId}`,
+      x: bag.x + 0.5,
+      y: bag.y + 0.5,
+      cameraX,
+      cameraY,
+      now: frameNow,
+      ctx,
+      worldToScreen,
+      config: LOOT_BAG_SPARKLE_PARTICLE_CONFIG
+    });
+  }
+
+  ctx.save();
+  ctx.translate(p.x, p.y);
+
+  ctx.fillStyle = "rgba(16, 10, 5, 0.34)";
+  ctx.beginPath();
+  ctx.ellipse(0, 11, 15, 5.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const floorCoins = 3;
+  for (let i = 0; i < floorCoins; i += 1) {
+    const t = scatterPhase + i * 1.9;
+    const coinX = Math.cos(t) * (14 + i * 3) - (i === 1 ? 3 : 0);
+    const coinY = 8 + Math.sin(t * 1.4) * 2 + i * 1.5;
+    ctx.save();
+    ctx.translate(coinX, coinY);
+    ctx.rotate(Math.sin(t * 2.2) * 0.24);
+    ctx.fillStyle = "#d0a24d";
+    ctx.strokeStyle = "#f7d47d";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 4.3, 2.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 2.1, 0.9, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255, 242, 184, 0.8)";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.fillStyle = "#5f3d22";
+  ctx.beginPath();
+  ctx.moveTo(-14, 7);
+  ctx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
+  ctx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
+  ctx.bezierCurveTo(14, -8, 17, 1, 15, 7);
+  ctx.bezierCurveTo(11, 13, -10, 13, -14, 7);
+  ctx.fill();
+
+  ctx.strokeStyle = "#8c653c";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-13, 6);
+  ctx.bezierCurveTo(-11, 10, -3, 11, 3, 10);
+  ctx.bezierCurveTo(8, 10, 12, 8, 13, 5);
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(255, 237, 195, 0.25)";
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(-8, -1);
+  ctx.quadraticCurveTo(-3, -4, 2, -2);
+  ctx.quadraticCurveTo(6, -1, 8, 2);
+  ctx.stroke();
+
+  ctx.fillStyle = "#81532c";
+  ctx.beginPath();
+  ctx.moveTo(-8, -9);
+  ctx.quadraticCurveTo(-4, -14, 0, -13);
+  ctx.quadraticCurveTo(5, -14, 9, -9);
+  ctx.lineTo(8, -4);
+  ctx.quadraticCurveTo(3, -6, -2, -6);
+  ctx.quadraticCurveTo(-6, -6, -9, -4);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = "#d8b27a";
+  ctx.lineWidth = 1.8;
+  ctx.beginPath();
+  ctx.moveTo(-9, -3);
+  ctx.quadraticCurveTo(-2, -1, 8, -3);
+  ctx.stroke();
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  ctx.moveTo(-7, -2);
+  ctx.quadraticCurveTo(-2, 1, 6, -2);
+  ctx.strokeStyle = "#a88457";
+  ctx.stroke();
+
+  const topCoins = 5;
+  for (let i = 0; i < topCoins; i += 1) {
+    const t = scatterPhase + i * 0.92;
+    const coinX = Math.cos(t) * 7;
+    const coinY = -11 + Math.sin(t * 1.6) * 1.8 - i * 0.18;
+    ctx.save();
+    ctx.translate(coinX, coinY);
+    ctx.rotate(Math.sin(t * 2.3) * 0.35);
+    ctx.fillStyle = "#d09c43";
+    ctx.strokeStyle = "#ffde88";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 3.8, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 1.7, 0.9, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255, 246, 204, 0.85)";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.strokeStyle = "#2e1b0d";
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(-14, 7);
+  ctx.bezierCurveTo(-16, 1, -13, -8, -7, -10);
+  ctx.bezierCurveTo(-2, -12, 2, -12, 8, -10);
+  ctx.bezierCurveTo(14, -8, 17, 1, 15, 7);
+  ctx.bezierCurveTo(11, 13, -10, 13, -14, 7);
+  ctx.stroke();
+
+  ctx.restore();
 }
 
 const sharedClientRenderLoop = globalThis.VibeClientRenderLoop || null;
@@ -7310,6 +7523,7 @@ const renderLoopTools = sharedCreateRenderLoopTools
       pruneSkeletonArcherWalkRuntime,
       pruneWarriorAnimRuntime,
       pruneProjectileVisualRuntime,
+      pruneAmbientParticleEmitters,
       drawPlayer,
       drawPlayerEffectAnimations,
       drawPlayerCastBar,
