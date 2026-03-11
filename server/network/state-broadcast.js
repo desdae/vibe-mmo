@@ -66,12 +66,15 @@ function collectNearbyEntitiesForPlayer(player, deps) {
 }
 
 function sendEntityMeta(player, entityUpdate, deps) {
-  const { sendJson, sendBinary, encodeMobMetaPacket, encodeProjectileMetaPacket } = deps;
+  const {
+    sendBinary,
+    encodePlayerMetaPacket,
+    encodeMobMetaPacket,
+    encodeProjectileMetaPacket,
+    encodeLootBagMetaPacket
+  } = deps;
   if (entityUpdate.playerMeta.length) {
-    sendJson(player.ws, {
-      type: "player_meta",
-      players: entityUpdate.playerMeta
-    });
+    sendBinary(player.ws, encodePlayerMetaPacket(entityUpdate.playerMeta));
   }
   if (entityUpdate.mobMeta.length) {
     sendBinary(player.ws, encodeMobMetaPacket(entityUpdate.mobMeta));
@@ -80,16 +83,12 @@ function sendEntityMeta(player, entityUpdate, deps) {
     sendBinary(player.ws, encodeProjectileMetaPacket(entityUpdate.projectileMeta));
   }
   if (entityUpdate.lootBagMeta.length) {
-    sendJson(player.ws, {
-      type: "lootbag_meta",
-      bags: entityUpdate.lootBagMeta
-    });
+    sendBinary(player.ws, encodeLootBagMetaPacket(entityUpdate.lootBagMeta));
   }
 }
 
 function sendCastAndCombatAnimationEvents(player, nearbyPlayerObjects, nearbyMobObjects, now, deps) {
   const {
-    sendJson,
     sendBinary,
     buildPlayerSwingEventsForRecipient,
     buildPlayerCastEventsForRecipient,
@@ -98,48 +97,27 @@ function sendCastAndCombatAnimationEvents(player, nearbyPlayerObjects, nearbyMob
     buildMobBiteEventsForRecipient,
     buildMobEffectEventsForRecipient,
     buildSelfPlayerEffectUpdate,
-    encodeMobEffectEventPacket
+    encodeMobEffectEventPacket,
+    encodePlayerSwingPacket,
+    encodeCastEventPacket,
+    encodePlayerEffectPacket,
+    encodeMobBitePacket
   } = deps;
 
   const swingEvents = buildPlayerSwingEventsForRecipient(player, nearbyPlayerObjects);
   if (swingEvents.length) {
-    sendJson(player.ws, {
-      type: "player_swings",
-      swings: swingEvents
-    });
+    sendBinary(player.ws, encodePlayerSwingPacket(swingEvents));
   }
 
   const castEvents = buildPlayerCastEventsForRecipient(player, nearbyPlayerObjects, now);
-  if (castEvents.casts.length || castEvents.self) {
-    sendJson(player.ws, {
-      type: "player_casts",
-      casts: castEvents.casts,
-      self: castEvents.self
-    });
-  }
-
-  const nearbyPlayerEffects = buildPlayerEffectEventsForRecipient(player, nearbyPlayerObjects, now);
-  if (nearbyPlayerEffects.length) {
-    sendJson(player.ws, {
-      type: "player_effects_nearby",
-      effects: nearbyPlayerEffects
-    });
-  }
-
   const mobCastEvents = buildMobCastEventsForRecipient(player, nearbyMobObjects, now);
-  if (mobCastEvents.length) {
-    sendJson(player.ws, {
-      type: "mob_casts",
-      casts: mobCastEvents
-    });
+  if (castEvents.casts.length || castEvents.self || mobCastEvents.length) {
+    sendBinary(player.ws, encodeCastEventPacket(castEvents.casts, mobCastEvents, castEvents.self));
   }
 
   const biteEvents = buildMobBiteEventsForRecipient(player, nearbyMobObjects);
   if (biteEvents.length) {
-    sendJson(player.ws, {
-      type: "mob_bites",
-      bites: biteEvents
-    });
+    sendBinary(player.ws, encodeMobBitePacket(biteEvents));
   }
 
   const mobEffectEvents = buildMobEffectEventsForRecipient(player, nearbyMobObjects, now);
@@ -148,11 +126,9 @@ function sendCastAndCombatAnimationEvents(player, nearbyPlayerObjects, nearbyMob
   }
 
   const selfEffectUpdate = buildSelfPlayerEffectUpdate(player, now);
-  if (selfEffectUpdate) {
-    sendJson(player.ws, {
-      type: "player_effects",
-      ...selfEffectUpdate
-    });
+  const nearbyPlayerEffects = buildPlayerEffectEventsForRecipient(player, nearbyPlayerObjects, now);
+  if (selfEffectUpdate || nearbyPlayerEffects.length) {
+    sendBinary(player.ws, encodePlayerEffectPacket(selfEffectUpdate, nearbyPlayerEffects));
   }
 }
 
@@ -187,7 +163,7 @@ function sendVisibleDamageEvents(player, deps) {
 }
 
 function sendVisibleExplosionEvents(player, deps) {
-  const { pendingExplosionEvents, sendJson, inVisibilityRange, VISIBILITY_RANGE } = deps;
+  const { pendingExplosionEvents, sendBinary, encodeExplosionEventPacket, inVisibilityRange, VISIBILITY_RANGE } = deps;
   if (!pendingExplosionEvents.length) {
     return;
   }
@@ -199,15 +175,18 @@ function sendVisibleExplosionEvents(player, deps) {
     }
   }
   if (visibleExplosionEvents.length) {
-    sendJson(player.ws, {
-      type: "explosion_events",
-      events: visibleExplosionEvents
-    });
+    sendBinary(player.ws, encodeExplosionEventPacket(visibleExplosionEvents));
   }
 }
 
 function sendVisibleProjectileHitEvents(player, deps) {
-  const { pendingProjectileHitEvents, sendJson, inVisibilityRange, VISIBILITY_RANGE } = deps;
+  const {
+    pendingProjectileHitEvents,
+    sendBinary,
+    encodeProjectileHitEventPacket,
+    inVisibilityRange,
+    VISIBILITY_RANGE
+  } = deps;
   if (!pendingProjectileHitEvents.length) {
     return;
   }
@@ -218,15 +197,12 @@ function sendVisibleProjectileHitEvents(player, deps) {
     }
   }
   if (visibleProjectileHitEvents.length) {
-    sendJson(player.ws, {
-      type: "projectile_hit_events",
-      events: visibleProjectileHitEvents
-    });
+    sendBinary(player.ws, encodeProjectileHitEventPacket(visibleProjectileHitEvents));
   }
 }
 
 function sendVisibleMobDeathEvents(player, deps) {
-  const { pendingMobDeathEvents, sendJson, inVisibilityRange, VISIBILITY_RANGE } = deps;
+  const { pendingMobDeathEvents, sendBinary, encodeMobDeathEventPacket, inVisibilityRange, VISIBILITY_RANGE } = deps;
   if (!pendingMobDeathEvents.length) {
     return;
   }
@@ -237,22 +213,42 @@ function sendVisibleMobDeathEvents(player, deps) {
     }
   }
   if (visibleMobDeathEvents.length) {
-    sendJson(player.ws, {
-      type: "mob_death_events",
-      events: visibleMobDeathEvents
-    });
+    sendBinary(player.ws, encodeMobDeathEventPacket(visibleMobDeathEvents));
   }
 }
 
-function clearPendingWorldEvents(deps) {
-  deps.pendingDamageEvents.length = 0;
-  deps.pendingExplosionEvents.length = 0;
-  deps.pendingProjectileHitEvents.length = 0;
-  deps.pendingMobDeathEvents.length = 0;
+function getCosmeticEventFlushInterval(deps) {
+  const load =
+    deps.pendingDamageEvents.length +
+    deps.pendingExplosionEvents.length +
+    deps.pendingProjectileHitEvents.length +
+    deps.pendingMobDeathEvents.length;
+  if (load >= 180) {
+    return 3;
+  }
+  if (load >= 80) {
+    return 2;
+  }
+  return 1;
 }
 
-function broadcastStateToPlayers(deps, now = Date.now()) {
+function clearPendingWorldEvents(deps, options = {}) {
+  const clearDamage = options.clearDamage !== false;
+  const clearCosmetic = options.clearCosmetic !== false;
+  if (clearDamage) {
+    deps.pendingDamageEvents.length = 0;
+  }
+  if (clearCosmetic) {
+    deps.pendingExplosionEvents.length = 0;
+    deps.pendingProjectileHitEvents.length = 0;
+    deps.pendingMobDeathEvents.length = 0;
+  }
+}
+
+function broadcastStateToPlayers(deps, now = Date.now(), options = {}) {
   const { players, buildEntityUpdatePacket, sendBinary } = deps;
+  const sendCosmeticBursts = options.sendCosmeticBursts !== false;
+  const sendDamageBursts = options.sendDamageBursts !== false;
 
   for (const player of players.values()) {
     const nearby = collectNearbyEntitiesForPlayer(player, deps);
@@ -267,22 +263,36 @@ function broadcastStateToPlayers(deps, now = Date.now()) {
     sendEntityMeta(player, entityUpdate, deps);
     sendCastAndCombatAnimationEvents(player, nearby.nearbyPlayerObjects, nearby.nearbyMobObjects, now, deps);
     sendAreaEffectEvents(player, now, deps);
-    sendVisibleDamageEvents(player, deps);
-    sendVisibleExplosionEvents(player, deps);
-    sendVisibleProjectileHitEvents(player, deps);
-    sendVisibleMobDeathEvents(player, deps);
+    if (sendDamageBursts) {
+      sendVisibleDamageEvents(player, deps);
+    }
+    if (sendCosmeticBursts) {
+      sendVisibleExplosionEvents(player, deps);
+      sendVisibleProjectileHitEvents(player, deps);
+      sendVisibleMobDeathEvents(player, deps);
+    }
 
     if (entityUpdate.packet) {
       sendBinary(player.ws, entityUpdate.packet);
     }
   }
 
-  clearPendingWorldEvents(deps);
+  clearPendingWorldEvents(deps, {
+    clearDamage: sendDamageBursts,
+    clearCosmetic: sendCosmeticBursts
+  });
 }
 
 function createStateBroadcaster(deps) {
+  let tickCounter = 0;
   return function broadcast(now = Date.now()) {
-    broadcastStateToPlayers(deps, now);
+    tickCounter += 1;
+    const flushInterval = getCosmeticEventFlushInterval(deps);
+    const shouldFlushBursts = tickCounter % flushInterval === 0;
+    broadcastStateToPlayers(deps, now, {
+      sendDamageBursts: shouldFlushBursts,
+      sendCosmeticBursts: shouldFlushBursts
+    });
   };
 }
 

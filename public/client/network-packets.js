@@ -21,6 +21,12 @@
       typeof deps.decodeDamageEventFlags === "function"
         ? deps.decodeDamageEventFlags
         : (flags) => ({ targetType: flags & (1 << 0) ? "player" : "mob", fromSelf: !!(flags & (1 << 1)) });
+    const decodeUnitDirectionComponent =
+      typeof deps.decodeUnitDirectionComponent === "function"
+        ? deps.decodeUnitDirectionComponent
+        : (value) => clamp((Number(value) || 0) / 127, -1, 1);
+    const resolveAbilityIdHash =
+      typeof deps.resolveAbilityIdHash === "function" ? deps.resolveAbilityIdHash : () => "";
 
     const {
       ENTITY_PROTO_TYPE,
@@ -35,6 +41,28 @@
       PROJECTILE_META_PROTO_VERSION,
       DAMAGE_EVENT_PROTO_TYPE,
       DAMAGE_EVENT_PROTO_VERSION,
+      PLAYER_META_PROTO_TYPE,
+      PLAYER_META_PROTO_VERSION,
+      LOOTBAG_META_PROTO_TYPE,
+      LOOTBAG_META_PROTO_VERSION,
+      PLAYER_SWING_PROTO_TYPE,
+      PLAYER_SWING_PROTO_VERSION,
+      CAST_EVENT_PROTO_TYPE,
+      CAST_EVENT_PROTO_VERSION,
+      PLAYER_EFFECT_PROTO_TYPE,
+      PLAYER_EFFECT_PROTO_VERSION,
+      MOB_BITE_PROTO_TYPE,
+      MOB_BITE_PROTO_VERSION,
+      EXPLOSION_EVENT_PROTO_TYPE,
+      EXPLOSION_EVENT_PROTO_VERSION,
+      PROJECTILE_HIT_EVENT_PROTO_TYPE,
+      PROJECTILE_HIT_EVENT_PROTO_VERSION,
+      MOB_DEATH_EVENT_PROTO_TYPE,
+      MOB_DEATH_EVENT_PROTO_VERSION,
+      CAST_EVENT_KIND_PLAYER,
+      CAST_EVENT_KIND_MOB,
+      CAST_EVENT_KIND_SELF,
+      CAST_EVENT_FLAG_ACTIVE,
       MOB_EFFECT_FLAG_STUN,
       MOB_EFFECT_FLAG_SLOW,
       MOB_EFFECT_FLAG_REMOVE,
@@ -69,6 +97,15 @@
         parseMobMetaBinaryPacket: () => {},
         parseProjectileMetaBinaryPacket: () => {},
         parseDamageEventBinaryPacket: () => {},
+        parsePlayerMetaBinaryPacket: () => {},
+        parseLootBagMetaBinaryPacket: () => {},
+        parsePlayerSwingBinaryPacket: () => {},
+        parseCastEventBinaryPacket: () => {},
+        parsePlayerEffectBinaryPacket: () => {},
+        parseMobBiteBinaryPacket: () => {},
+        parseExplosionEventBinaryPacket: () => {},
+        parseProjectileHitEventBinaryPacket: () => {},
+        parseMobDeathEventBinaryPacket: () => {},
         parseBinaryPacket: () => {}
       };
     }
@@ -95,6 +132,28 @@
       typeof deps.upsertAreaEffectState === "function" ? deps.upsertAreaEffectState : () => {};
     const addFloatingDamageEvents =
       typeof deps.addFloatingDamageEvents === "function" ? deps.addFloatingDamageEvents : () => {};
+    const applyPlayerMetaEntries =
+      typeof deps.applyPlayerMetaEntries === "function" ? deps.applyPlayerMetaEntries : () => {};
+    const applyLootBagMetaEntries =
+      typeof deps.applyLootBagMetaEntries === "function" ? deps.applyLootBagMetaEntries : () => {};
+    const applyPlayerCastStates =
+      typeof deps.applyPlayerCastStates === "function" ? deps.applyPlayerCastStates : () => {};
+    const applyMobCastStates =
+      typeof deps.applyMobCastStates === "function" ? deps.applyMobCastStates : () => {};
+    const applyPlayerEffects =
+      typeof deps.applyPlayerEffects === "function" ? deps.applyPlayerEffects : () => {};
+    const applyNearbyPlayerEffects =
+      typeof deps.applyNearbyPlayerEffects === "function" ? deps.applyNearbyPlayerEffects : () => {};
+    const triggerRemotePlayerSwing =
+      typeof deps.triggerRemotePlayerSwing === "function" ? deps.triggerRemotePlayerSwing : () => {};
+    const triggerRemoteMobBite =
+      typeof deps.triggerRemoteMobBite === "function" ? deps.triggerRemoteMobBite : () => {};
+    const addExplosionEvents =
+      typeof deps.addExplosionEvents === "function" ? deps.addExplosionEvents : () => {};
+    const addProjectileHitEvents =
+      typeof deps.addProjectileHitEvents === "function" ? deps.addProjectileHitEvents : () => {};
+    const addMobDeathEvents =
+      typeof deps.addMobDeathEvents === "function" ? deps.addMobDeathEvents : () => {};
 
     function parseEntityBinaryPacket(arrayBuffer) {
       const view = new DataView(arrayBuffer);
@@ -678,28 +737,40 @@
       if (view.byteLength < 4) {
         return;
       }
-      if (
-        view.getUint8(0) !== PROJECTILE_META_PROTO_TYPE ||
-        view.getUint8(1) !== PROJECTILE_META_PROTO_VERSION
-      ) {
+      if (view.getUint8(0) !== PROJECTILE_META_PROTO_TYPE) {
+        return;
+      }
+      const version = view.getUint8(1);
+      if (version !== 1 && version !== PROJECTILE_META_PROTO_VERSION) {
         return;
       }
 
       const count = view.getUint16(2, true);
       let offset = 4;
       for (let i = 0; i < count; i += 1) {
-        if (offset + 2 > view.byteLength) {
-          break;
+        let id = 0;
+        let abilityId = "";
+        if (version >= 2) {
+          if (offset + 5 > view.byteLength) {
+            break;
+          }
+          id = view.getUint8(offset);
+          abilityId = resolveAbilityIdHash(view.getUint32(offset + 1, true));
+          offset += 5;
+        } else {
+          if (offset + 2 > view.byteLength) {
+            break;
+          }
+          id = view.getUint8(offset);
+          const abilityLen = view.getUint8(offset + 1);
+          offset += 2;
+          if (offset + abilityLen > view.byteLength) {
+            break;
+          }
+          const abilityBytes = new Uint8Array(arrayBuffer, offset, abilityLen);
+          abilityId = textDecoder.decode(abilityBytes).trim().toLowerCase();
+          offset += abilityLen;
         }
-        const id = view.getUint8(offset);
-        const abilityLen = view.getUint8(offset + 1);
-        offset += 2;
-        if (offset + abilityLen > view.byteLength) {
-          break;
-        }
-        const abilityBytes = new Uint8Array(arrayBuffer, offset, abilityLen);
-        const abilityId = textDecoder.decode(abilityBytes).trim().toLowerCase();
-        offset += abilityLen;
 
         entityRuntime.projectileMeta.set(id, { abilityId });
         const existing = entityRuntime.projectiles.get(id);
@@ -710,6 +781,342 @@
       }
 
       syncEntityArraysToGameState();
+    }
+
+    function parsePlayerMetaBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (view.getUint8(0) !== PLAYER_META_PROTO_TYPE || view.getUint8(1) !== PLAYER_META_PROTO_VERSION) {
+        return;
+      }
+
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      const players = [];
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 3 > view.byteLength) {
+          break;
+        }
+        const id = view.getUint8(offset);
+        const nameLen = view.getUint8(offset + 1);
+        const classLen = view.getUint8(offset + 2);
+        offset += 3;
+        if (offset + nameLen + classLen > view.byteLength) {
+          break;
+        }
+        const name = textDecoder.decode(new Uint8Array(arrayBuffer, offset, nameLen)).trim() || `P${id}`;
+        offset += nameLen;
+        const classType = textDecoder.decode(new Uint8Array(arrayBuffer, offset, classLen)).trim() || getDefaultClassId();
+        offset += classLen;
+        players.push({ id, name, classType });
+      }
+
+      if (players.length) {
+        applyPlayerMetaEntries(players);
+        syncEntityArraysToGameState();
+      }
+    }
+
+    function parseLootBagMetaBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (view.getUint8(0) !== LOOTBAG_META_PROTO_TYPE || view.getUint8(1) !== LOOTBAG_META_PROTO_VERSION) {
+        return;
+      }
+
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      const bags = [];
+      for (let bagIndex = 0; bagIndex < count; bagIndex += 1) {
+        if (offset + 2 > view.byteLength) {
+          break;
+        }
+        const id = view.getUint8(offset);
+        const itemCount = view.getUint8(offset + 1);
+        offset += 2;
+        const items = [];
+        for (let itemIndex = 0; itemIndex < itemCount; itemIndex += 1) {
+          if (offset + 3 > view.byteLength) {
+            break;
+          }
+          const qty = view.getUint16(offset, true);
+          const itemIdLen = view.getUint8(offset + 2);
+          offset += 3;
+          if (offset + itemIdLen > view.byteLength) {
+            break;
+          }
+          const itemId = textDecoder.decode(new Uint8Array(arrayBuffer, offset, itemIdLen)).trim();
+          offset += itemIdLen;
+          items.push({ itemId, qty });
+        }
+        bags.push({ id, items });
+      }
+
+      if (bags.length) {
+        applyLootBagMetaEntries(bags);
+        syncEntityArraysToGameState();
+      }
+    }
+
+    function parsePlayerSwingBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (view.getUint8(0) !== PLAYER_SWING_PROTO_TYPE || view.getUint8(1) !== PLAYER_SWING_PROTO_VERSION) {
+        return;
+      }
+
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 3 > view.byteLength) {
+          break;
+        }
+        const id = view.getUint8(offset);
+        const dx = decodeUnitDirectionComponent(view.getInt8(offset + 1));
+        const dy = decodeUnitDirectionComponent(view.getInt8(offset + 2));
+        offset += 3;
+        triggerRemotePlayerSwing(id, dx, dy);
+      }
+    }
+
+    function parseCastEventBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (view.getUint8(0) !== CAST_EVENT_PROTO_TYPE || view.getUint8(1) !== CAST_EVENT_PROTO_VERSION) {
+        return;
+      }
+
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      const playerCasts = [];
+      const mobCasts = [];
+      let selfCast = null;
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 3 > view.byteLength) {
+          break;
+        }
+        const kind = view.getUint8(offset);
+        const id = view.getUint8(offset + 1);
+        const flags = view.getUint8(offset + 2);
+        offset += 3;
+        const active = !!(flags & CAST_EVENT_FLAG_ACTIVE);
+        if (active && offset + 8 > view.byteLength) {
+          break;
+        }
+        const target = active
+          ? {
+              id,
+              active: true,
+              abilityId: resolveAbilityIdHash(view.getUint32(offset, true)),
+              durationMs: view.getUint16(offset + 4, true),
+              elapsedMs: view.getUint16(offset + 6, true)
+            }
+          : { id, active: false };
+        if (active) {
+          offset += 8;
+        }
+
+        if (kind === CAST_EVENT_KIND_SELF) {
+          selfCast = active ? { active: true, abilityId: target.abilityId, durationMs: target.durationMs, elapsedMs: target.elapsedMs } : { active: false };
+        } else if (kind === CAST_EVENT_KIND_MOB) {
+          mobCasts.push(target);
+        } else if (kind === CAST_EVENT_KIND_PLAYER) {
+          playerCasts.push(target);
+        }
+      }
+
+      if (playerCasts.length || selfCast) {
+        applyPlayerCastStates({
+          casts: playerCasts,
+          self: selfCast
+        });
+      }
+      if (mobCasts.length) {
+        applyMobCastStates({ casts: mobCasts });
+      }
+    }
+
+    function parsePlayerEffectBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 5) {
+        return;
+      }
+      if (view.getUint8(0) !== PLAYER_EFFECT_PROTO_TYPE || view.getUint8(1) !== PLAYER_EFFECT_PROTO_VERSION) {
+        return;
+      }
+
+      const selfFlags = view.getUint8(2);
+      const count = view.getUint16(3, true);
+      let offset = 5;
+
+      function readEffectPayload(flags, target) {
+        if (flags & MOB_EFFECT_FLAG_STUN) {
+          target.stunnedMs = view.getUint16(offset, true);
+          target.stunDurationMs = view.getUint16(offset + 2, true);
+          offset += 4;
+        }
+        if (flags & MOB_EFFECT_FLAG_SLOW) {
+          target.slowedMs = view.getUint16(offset, true);
+          target.slowDurationMs = view.getUint16(offset + 2, true);
+          target.slowMultiplierQ = view.getUint16(offset + 4, true);
+          offset += 6;
+        }
+        if (flags & MOB_EFFECT_FLAG_BURN) {
+          target.burningMs = view.getUint16(offset, true);
+          target.burnDurationMs = view.getUint16(offset + 2, true);
+          offset += 4;
+        }
+      }
+
+      if (selfFlags) {
+        if (selfFlags === MOB_EFFECT_FLAG_REMOVE) {
+          applyPlayerEffects({});
+        } else {
+          const selfEffect = {};
+          readEffectPayload(selfFlags, selfEffect);
+          applyPlayerEffects(selfEffect);
+        }
+      }
+
+      const effects = [];
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 2 > view.byteLength) {
+          break;
+        }
+        const id = view.getUint8(offset);
+        const flags = view.getUint8(offset + 1);
+        offset += 2;
+        const effect = { id };
+        if (flags !== MOB_EFFECT_FLAG_REMOVE) {
+          readEffectPayload(flags, effect);
+        }
+        effects.push(effect);
+      }
+
+      if (effects.length) {
+        applyNearbyPlayerEffects({ effects });
+      }
+    }
+
+    function parseMobBiteBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (view.getUint8(0) !== MOB_BITE_PROTO_TYPE || view.getUint8(1) !== MOB_BITE_PROTO_VERSION) {
+        return;
+      }
+
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 7 > view.byteLength) {
+          break;
+        }
+        const id = view.getUint8(offset);
+        const dx = decodeUnitDirectionComponent(view.getInt8(offset + 1));
+        const dy = decodeUnitDirectionComponent(view.getInt8(offset + 2));
+        const abilityId = resolveAbilityIdHash(view.getUint32(offset + 3, true));
+        offset += 7;
+        triggerRemoteMobBite(id, dx, dy, abilityId);
+      }
+    }
+
+    function parseExplosionEventBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (view.getUint8(0) !== EXPLOSION_EVENT_PROTO_TYPE || view.getUint8(1) !== EXPLOSION_EVENT_PROTO_VERSION) {
+        return;
+      }
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      const events = [];
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 10 > view.byteLength) {
+          break;
+        }
+        events.push({
+          x: dequantizePos(view.getUint16(offset, true)),
+          y: dequantizePos(view.getUint16(offset + 2, true)),
+          radius: dequantizePos(view.getUint16(offset + 4, true)),
+          abilityId: resolveAbilityIdHash(view.getUint32(offset + 6, true))
+        });
+        offset += 10;
+      }
+      if (events.length) {
+        addExplosionEvents(events);
+      }
+    }
+
+    function parseProjectileHitEventBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (
+        view.getUint8(0) !== PROJECTILE_HIT_EVENT_PROTO_TYPE ||
+        view.getUint8(1) !== PROJECTILE_HIT_EVENT_PROTO_VERSION
+      ) {
+        return;
+      }
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      const events = [];
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 8 > view.byteLength) {
+          break;
+        }
+        events.push({
+          x: dequantizePos(view.getUint16(offset, true)),
+          y: dequantizePos(view.getUint16(offset + 2, true)),
+          abilityId: resolveAbilityIdHash(view.getUint32(offset + 4, true))
+        });
+        offset += 8;
+      }
+      if (events.length) {
+        addProjectileHitEvents(events);
+      }
+    }
+
+    function parseMobDeathEventBinaryPacket(arrayBuffer) {
+      const view = new DataView(arrayBuffer);
+      if (view.byteLength < 4) {
+        return;
+      }
+      if (view.getUint8(0) !== MOB_DEATH_EVENT_PROTO_TYPE || view.getUint8(1) !== MOB_DEATH_EVENT_PROTO_VERSION) {
+        return;
+      }
+      const count = view.getUint16(2, true);
+      let offset = 4;
+      const events = [];
+      for (let index = 0; index < count; index += 1) {
+        if (offset + 5 > view.byteLength) {
+          break;
+        }
+        const x = dequantizePos(view.getUint16(offset, true));
+        const y = dequantizePos(view.getUint16(offset + 2, true));
+        const mobTypeLen = view.getUint8(offset + 4);
+        offset += 5;
+        if (offset + mobTypeLen > view.byteLength) {
+          break;
+        }
+        const mobType = textDecoder.decode(new Uint8Array(arrayBuffer, offset, mobTypeLen)).trim() || "Mob";
+        offset += mobTypeLen;
+        events.push({ x, y, mobType });
+      }
+      if (events.length) {
+        addMobDeathEvents(events);
+      }
     }
 
     function parseDamageEventBinaryPacket(arrayBuffer) {
@@ -776,6 +1183,42 @@
         parseProjectileMetaBinaryPacket(arrayBuffer);
         return;
       }
+      if (type === PLAYER_META_PROTO_TYPE) {
+        parsePlayerMetaBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === LOOTBAG_META_PROTO_TYPE) {
+        parseLootBagMetaBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === PLAYER_SWING_PROTO_TYPE) {
+        parsePlayerSwingBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === CAST_EVENT_PROTO_TYPE) {
+        parseCastEventBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === PLAYER_EFFECT_PROTO_TYPE) {
+        parsePlayerEffectBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === MOB_BITE_PROTO_TYPE) {
+        parseMobBiteBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === EXPLOSION_EVENT_PROTO_TYPE) {
+        parseExplosionEventBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === PROJECTILE_HIT_EVENT_PROTO_TYPE) {
+        parseProjectileHitEventBinaryPacket(arrayBuffer);
+        return;
+      }
+      if (type === MOB_DEATH_EVENT_PROTO_TYPE) {
+        parseMobDeathEventBinaryPacket(arrayBuffer);
+        return;
+      }
       if (type === DAMAGE_EVENT_PROTO_TYPE) {
         parseDamageEventBinaryPacket(arrayBuffer);
       }
@@ -787,6 +1230,15 @@
       parseAreaEffectBinaryPacket,
       parseMobMetaBinaryPacket,
       parseProjectileMetaBinaryPacket,
+      parsePlayerMetaBinaryPacket,
+      parseLootBagMetaBinaryPacket,
+      parsePlayerSwingBinaryPacket,
+      parseCastEventBinaryPacket,
+      parsePlayerEffectBinaryPacket,
+      parseMobBiteBinaryPacket,
+      parseExplosionEventBinaryPacket,
+      parseProjectileHitEventBinaryPacket,
+      parseMobDeathEventBinaryPacket,
       parseDamageEventBinaryPacket,
       parseBinaryPacket
     };

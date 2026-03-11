@@ -12,15 +12,44 @@ const {
   PROJECTILE_META_PROTO_VERSION,
   DAMAGE_EVENT_PROTO_TYPE,
   DAMAGE_EVENT_PROTO_VERSION,
+  PLAYER_META_PROTO_TYPE,
+  PLAYER_META_PROTO_VERSION,
+  LOOTBAG_META_PROTO_TYPE,
+  LOOTBAG_META_PROTO_VERSION,
+  PLAYER_SWING_PROTO_TYPE,
+  PLAYER_SWING_PROTO_VERSION,
+  CAST_EVENT_PROTO_TYPE,
+  CAST_EVENT_PROTO_VERSION,
+  PLAYER_EFFECT_PROTO_TYPE,
+  PLAYER_EFFECT_PROTO_VERSION,
+  MOB_BITE_PROTO_TYPE,
+  MOB_BITE_PROTO_VERSION,
+  EXPLOSION_EVENT_PROTO_TYPE,
+  EXPLOSION_EVENT_PROTO_VERSION,
+  PROJECTILE_HIT_EVENT_PROTO_TYPE,
+  PROJECTILE_HIT_EVENT_PROTO_VERSION,
+  MOB_DEATH_EVENT_PROTO_TYPE,
+  MOB_DEATH_EVENT_PROTO_VERSION,
   MOB_EFFECT_FLAG_STUN,
   MOB_EFFECT_FLAG_SLOW,
+  MOB_EFFECT_FLAG_REMOVE,
   MOB_EFFECT_FLAG_BURN,
+  CAST_EVENT_KIND_PLAYER,
+  CAST_EVENT_KIND_MOB,
+  CAST_EVENT_KIND_SELF,
+  CAST_EVENT_FLAG_ACTIVE,
   AREA_EFFECT_OP_UPSERT,
   AREA_EFFECT_OP_REMOVE,
   AREA_EFFECT_KIND_AREA,
   AREA_EFFECT_KIND_BEAM
 } = PROTOCOL;
-const { clamp, quantizePos, encodeDamageEventFlags } = PROTOCOL_CODECS;
+const {
+  clamp,
+  quantizePos,
+  encodeDamageEventFlags,
+  hashString32,
+  encodeUnitDirectionComponent
+} = PROTOCOL_CODECS;
 
 function encodeMobEffectEventPacket(events) {
   const bytes = [];
@@ -143,23 +172,326 @@ function encodeMobMetaPacket(mobsMeta) {
 }
 
 function encodeProjectileMetaPacket(projectileMeta) {
-  const parts = [];
   const header = Buffer.alloc(4);
   header.writeUInt8(PROJECTILE_META_PROTO_TYPE, 0);
   header.writeUInt8(PROJECTILE_META_PROTO_VERSION, 1);
   header.writeUInt16LE(projectileMeta.length, 2);
-  parts.push(header);
 
+  const body = Buffer.alloc(projectileMeta.length * 5);
+  let offset = 0;
   for (const meta of projectileMeta) {
     const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
-    const abilityBytesRaw = Buffer.from(String((meta && meta.abilityId) || ""), "utf8");
-    const abilityBytes = abilityBytesRaw.length > 255 ? abilityBytesRaw.subarray(0, 255) : abilityBytesRaw;
+    body.writeUInt8(id, offset);
+    body.writeUInt32LE(hashString32(meta && meta.abilityId), offset + 1);
+    offset += 5;
+  }
+
+  return Buffer.concat([header, body]);
+}
+
+function encodePlayerMetaPacket(playersMeta) {
+  const parts = [];
+  const header = Buffer.alloc(4);
+  header.writeUInt8(PLAYER_META_PROTO_TYPE, 0);
+  header.writeUInt8(PLAYER_META_PROTO_VERSION, 1);
+  header.writeUInt16LE(playersMeta.length, 2);
+  parts.push(header);
+
+  for (const meta of playersMeta) {
+    const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
+    const nameBytesRaw = Buffer.from(String((meta && meta.name) || `P${id}`), "utf8");
+    const classBytesRaw = Buffer.from(String((meta && meta.classType) || ""), "utf8");
+    const nameBytes = nameBytesRaw.length > 255 ? nameBytesRaw.subarray(0, 255) : nameBytesRaw;
+    const classBytes = classBytesRaw.length > 255 ? classBytesRaw.subarray(0, 255) : classBytesRaw;
+    const recordHeader = Buffer.alloc(3);
+    recordHeader.writeUInt8(id, 0);
+    recordHeader.writeUInt8(nameBytes.length, 1);
+    recordHeader.writeUInt8(classBytes.length, 2);
+    parts.push(recordHeader);
+    if (nameBytes.length) {
+      parts.push(nameBytes);
+    }
+    if (classBytes.length) {
+      parts.push(classBytes);
+    }
+  }
+
+  return Buffer.concat(parts);
+}
+
+function encodeLootBagMetaPacket(lootBagMeta) {
+  const parts = [];
+  const header = Buffer.alloc(4);
+  header.writeUInt8(LOOTBAG_META_PROTO_TYPE, 0);
+  header.writeUInt8(LOOTBAG_META_PROTO_VERSION, 1);
+  header.writeUInt16LE(lootBagMeta.length, 2);
+  parts.push(header);
+
+  for (const meta of lootBagMeta) {
+    const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
+    const items = Array.isArray(meta && meta.items) ? meta.items : [];
+    const itemCount = clamp(items.length, 0, 255);
     const recordHeader = Buffer.alloc(2);
     recordHeader.writeUInt8(id, 0);
-    recordHeader.writeUInt8(abilityBytes.length, 1);
+    recordHeader.writeUInt8(itemCount, 1);
     parts.push(recordHeader);
-    if (abilityBytes.length) {
-      parts.push(abilityBytes);
+
+    for (let index = 0; index < itemCount; index += 1) {
+      const item = items[index];
+      const itemIdBytesRaw = Buffer.from(String((item && item.itemId) || ""), "utf8");
+      const itemIdBytes = itemIdBytesRaw.length > 255 ? itemIdBytesRaw.subarray(0, 255) : itemIdBytesRaw;
+      const qty = clamp(Math.floor(Number(item && item.qty) || 0), 0, 65535);
+      const itemHeader = Buffer.alloc(3);
+      itemHeader.writeUInt16LE(qty, 0);
+      itemHeader.writeUInt8(itemIdBytes.length, 2);
+      parts.push(itemHeader);
+      if (itemIdBytes.length) {
+        parts.push(itemIdBytes);
+      }
+    }
+  }
+
+  return Buffer.concat(parts);
+}
+
+function encodePlayerSwingPacket(events) {
+  const header = Buffer.alloc(4);
+  header.writeUInt8(PLAYER_SWING_PROTO_TYPE, 0);
+  header.writeUInt8(PLAYER_SWING_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+
+  const body = Buffer.alloc(events.length * 3);
+  let offset = 0;
+  for (const event of events) {
+    body.writeUInt8(clamp(Math.floor(Number(event && event.id) || 0), 0, 255), offset);
+    body.writeInt8(encodeUnitDirectionComponent(event && event.dx), offset + 1);
+    body.writeInt8(encodeUnitDirectionComponent(event && event.dy), offset + 2);
+    offset += 3;
+  }
+
+  return Buffer.concat([header, body]);
+}
+
+function getCastRecordSize(record) {
+  return record && record.active ? 11 : 3;
+}
+
+function writeCastRecord(buffer, offset, record, kind) {
+  buffer.writeUInt8(clamp(kind, 0, 255), offset);
+  buffer.writeUInt8(clamp(Math.floor(Number(record && record.id) || 0), 0, 255), offset + 1);
+  buffer.writeUInt8(record && record.active ? CAST_EVENT_FLAG_ACTIVE : 0, offset + 2);
+  if (!(record && record.active)) {
+    return offset + 3;
+  }
+
+  buffer.writeUInt32LE(hashString32(record.abilityId), offset + 3);
+  buffer.writeUInt16LE(clamp(Math.floor(Number(record.durationMs) || 0), 1, 65535), offset + 7);
+  buffer.writeUInt16LE(clamp(Math.floor(Number(record.elapsedMs) || 0), 0, 65535), offset + 9);
+  return offset + 11;
+}
+
+function encodeCastEventPacket(remotePlayerCasts, remoteMobCasts, selfCast) {
+  const remotePlayers = Array.isArray(remotePlayerCasts) ? remotePlayerCasts : [];
+  const remoteMobs = Array.isArray(remoteMobCasts) ? remoteMobCasts : [];
+  const selfEntry = selfCast && typeof selfCast === "object" ? selfCast : null;
+  const totalCount = remotePlayers.length + remoteMobs.length + (selfEntry ? 1 : 0);
+  const header = Buffer.alloc(4);
+  header.writeUInt8(CAST_EVENT_PROTO_TYPE, 0);
+  header.writeUInt8(CAST_EVENT_PROTO_VERSION, 1);
+  header.writeUInt16LE(totalCount, 2);
+
+  let bodySize = 0;
+  for (const record of remotePlayers) {
+    bodySize += getCastRecordSize(record);
+  }
+  for (const record of remoteMobs) {
+    bodySize += getCastRecordSize(record);
+  }
+  if (selfEntry) {
+    bodySize += getCastRecordSize(selfEntry);
+  }
+
+  const body = Buffer.alloc(bodySize);
+  let offset = 0;
+  for (const record of remotePlayers) {
+    offset = writeCastRecord(body, offset, record, CAST_EVENT_KIND_PLAYER);
+  }
+  for (const record of remoteMobs) {
+    offset = writeCastRecord(body, offset, record, CAST_EVENT_KIND_MOB);
+  }
+  if (selfEntry) {
+    offset = writeCastRecord(body, offset, selfEntry, CAST_EVENT_KIND_SELF);
+  }
+
+  return Buffer.concat([header, body]);
+}
+
+function getEffectPayloadFlags(effect) {
+  let flags = 0;
+  if ((Number(effect && effect.stunnedMs) || 0) > 0) {
+    flags |= MOB_EFFECT_FLAG_STUN;
+  }
+  if ((Number(effect && effect.slowedMs) || 0) > 0) {
+    flags |= MOB_EFFECT_FLAG_SLOW;
+  }
+  if ((Number(effect && effect.burningMs) || 0) > 0) {
+    flags |= MOB_EFFECT_FLAG_BURN;
+  }
+  return flags;
+}
+
+function getEffectPayloadSize(flags) {
+  let size = 0;
+  if (flags & MOB_EFFECT_FLAG_STUN) {
+    size += 4;
+  }
+  if (flags & MOB_EFFECT_FLAG_SLOW) {
+    size += 6;
+  }
+  if (flags & MOB_EFFECT_FLAG_BURN) {
+    size += 4;
+  }
+  return size;
+}
+
+function writeEffectPayload(buffer, offset, flags, effect) {
+  if (flags & MOB_EFFECT_FLAG_STUN) {
+    const stunnedMs = clamp(Math.floor(Number(effect.stunnedMs) || 0), 1, 65535);
+    const stunDurationMs = clamp(Math.floor(Number(effect.stunDurationMs) || stunnedMs), 1, 65535);
+    buffer.writeUInt16LE(stunnedMs, offset);
+    buffer.writeUInt16LE(stunDurationMs, offset + 2);
+    offset += 4;
+  }
+  if (flags & MOB_EFFECT_FLAG_SLOW) {
+    const slowedMs = clamp(Math.floor(Number(effect.slowedMs) || 0), 1, 65535);
+    const slowDurationMs = clamp(Math.floor(Number(effect.slowDurationMs) || slowedMs), 1, 65535);
+    const slowMultiplierQ = clamp(Math.floor(Number(effect.slowMultiplierQ) || 1000), 1, 1000);
+    buffer.writeUInt16LE(slowedMs, offset);
+    buffer.writeUInt16LE(slowDurationMs, offset + 2);
+    buffer.writeUInt16LE(slowMultiplierQ, offset + 4);
+    offset += 6;
+  }
+  if (flags & MOB_EFFECT_FLAG_BURN) {
+    const burningMs = clamp(Math.floor(Number(effect.burningMs) || 0), 1, 65535);
+    const burnDurationMs = clamp(Math.floor(Number(effect.burnDurationMs) || burningMs), 1, 65535);
+    buffer.writeUInt16LE(burningMs, offset);
+    buffer.writeUInt16LE(burnDurationMs, offset + 2);
+    offset += 4;
+  }
+  return offset;
+}
+
+function encodePlayerEffectPacket(selfEffect, nearbyEffects) {
+  const selfState = selfEffect && typeof selfEffect === "object" ? selfEffect : null;
+  const effects = Array.isArray(nearbyEffects) ? nearbyEffects : [];
+  const selfFlags = selfState ? getEffectPayloadFlags(selfState) || MOB_EFFECT_FLAG_REMOVE : 0;
+
+  const header = Buffer.alloc(5);
+  header.writeUInt8(PLAYER_EFFECT_PROTO_TYPE, 0);
+  header.writeUInt8(PLAYER_EFFECT_PROTO_VERSION, 1);
+  header.writeUInt8(selfFlags, 2);
+  header.writeUInt16LE(effects.length, 3);
+
+  let bodySize = getEffectPayloadSize(selfFlags);
+  for (const effect of effects) {
+    const flags = getEffectPayloadFlags(effect) || MOB_EFFECT_FLAG_REMOVE;
+    bodySize += 2 + getEffectPayloadSize(flags);
+  }
+
+  const body = Buffer.alloc(bodySize);
+  let offset = 0;
+  if (selfFlags) {
+    offset = writeEffectPayload(body, offset, selfFlags, selfState);
+  }
+  for (const effect of effects) {
+    const flags = getEffectPayloadFlags(effect) || MOB_EFFECT_FLAG_REMOVE;
+    body.writeUInt8(clamp(Math.floor(Number(effect && effect.id) || 0), 0, 255), offset);
+    body.writeUInt8(flags, offset + 1);
+    offset += 2;
+    offset = writeEffectPayload(body, offset, flags, effect || {});
+  }
+
+  return Buffer.concat([header, body]);
+}
+
+function encodeMobBitePacket(events) {
+  const header = Buffer.alloc(4);
+  header.writeUInt8(MOB_BITE_PROTO_TYPE, 0);
+  header.writeUInt8(MOB_BITE_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+
+  const body = Buffer.alloc(events.length * 7);
+  let offset = 0;
+  for (const event of events) {
+    body.writeUInt8(clamp(Math.floor(Number(event && event.id) || 0), 0, 255), offset);
+    body.writeInt8(encodeUnitDirectionComponent(event && event.dx), offset + 1);
+    body.writeInt8(encodeUnitDirectionComponent(event && event.dy), offset + 2);
+    body.writeUInt32LE(hashString32(event && event.abilityId), offset + 3);
+    offset += 7;
+  }
+
+  return Buffer.concat([header, body]);
+}
+
+function quantizeDistance(value) {
+  return clamp(Math.round(Math.max(0, Number(value) || 0) * 64), 0, 65535);
+}
+
+function encodeExplosionEventPacket(events) {
+  const header = Buffer.alloc(4);
+  header.writeUInt8(EXPLOSION_EVENT_PROTO_TYPE, 0);
+  header.writeUInt8(EXPLOSION_EVENT_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+
+  const body = Buffer.alloc(events.length * 10);
+  let offset = 0;
+  for (const event of events) {
+    body.writeUInt16LE(quantizePos(Number(event && event.x)), offset);
+    body.writeUInt16LE(quantizePos(Number(event && event.y)), offset + 2);
+    body.writeUInt16LE(quantizeDistance(event && event.radius), offset + 4);
+    body.writeUInt32LE(hashString32(event && event.abilityId), offset + 6);
+    offset += 10;
+  }
+
+  return Buffer.concat([header, body]);
+}
+
+function encodeProjectileHitEventPacket(events) {
+  const header = Buffer.alloc(4);
+  header.writeUInt8(PROJECTILE_HIT_EVENT_PROTO_TYPE, 0);
+  header.writeUInt8(PROJECTILE_HIT_EVENT_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+
+  const body = Buffer.alloc(events.length * 8);
+  let offset = 0;
+  for (const event of events) {
+    body.writeUInt16LE(quantizePos(Number(event && event.x)), offset);
+    body.writeUInt16LE(quantizePos(Number(event && event.y)), offset + 2);
+    body.writeUInt32LE(hashString32(event && event.abilityId), offset + 4);
+    offset += 8;
+  }
+
+  return Buffer.concat([header, body]);
+}
+
+function encodeMobDeathEventPacket(events) {
+  const parts = [];
+  const header = Buffer.alloc(4);
+  header.writeUInt8(MOB_DEATH_EVENT_PROTO_TYPE, 0);
+  header.writeUInt8(MOB_DEATH_EVENT_PROTO_VERSION, 1);
+  header.writeUInt16LE(events.length, 2);
+  parts.push(header);
+
+  for (const event of events) {
+    const mobTypeBytesRaw = Buffer.from(String((event && event.mobType) || "Mob"), "utf8");
+    const mobTypeBytes = mobTypeBytesRaw.length > 255 ? mobTypeBytesRaw.subarray(0, 255) : mobTypeBytesRaw;
+    const recordHeader = Buffer.alloc(5);
+    recordHeader.writeUInt16LE(quantizePos(Number(event && event.x)), 0);
+    recordHeader.writeUInt16LE(quantizePos(Number(event && event.y)), 2);
+    recordHeader.writeUInt8(mobTypeBytes.length, 4);
+    parts.push(recordHeader);
+    if (mobTypeBytes.length) {
+      parts.push(mobTypeBytes);
     }
   }
 
@@ -196,5 +528,14 @@ module.exports = {
   encodeAreaEffectEventPacket,
   encodeMobMetaPacket,
   encodeProjectileMetaPacket,
+  encodePlayerMetaPacket,
+  encodeLootBagMetaPacket,
+  encodePlayerSwingPacket,
+  encodeCastEventPacket,
+  encodePlayerEffectPacket,
+  encodeMobBitePacket,
+  encodeExplosionEventPacket,
+  encodeProjectileHitEventPacket,
+  encodeMobDeathEventPacket,
   encodeDamageEventPacket
 };

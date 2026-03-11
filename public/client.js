@@ -134,6 +134,28 @@ const {
   PROJECTILE_META_PROTO_VERSION,
   DAMAGE_EVENT_PROTO_TYPE,
   DAMAGE_EVENT_PROTO_VERSION,
+  PLAYER_META_PROTO_TYPE,
+  PLAYER_META_PROTO_VERSION,
+  LOOTBAG_META_PROTO_TYPE,
+  LOOTBAG_META_PROTO_VERSION,
+  PLAYER_SWING_PROTO_TYPE,
+  PLAYER_SWING_PROTO_VERSION,
+  CAST_EVENT_PROTO_TYPE,
+  CAST_EVENT_PROTO_VERSION,
+  PLAYER_EFFECT_PROTO_TYPE,
+  PLAYER_EFFECT_PROTO_VERSION,
+  MOB_BITE_PROTO_TYPE,
+  MOB_BITE_PROTO_VERSION,
+  EXPLOSION_EVENT_PROTO_TYPE,
+  EXPLOSION_EVENT_PROTO_VERSION,
+  PROJECTILE_HIT_EVENT_PROTO_TYPE,
+  PROJECTILE_HIT_EVENT_PROTO_VERSION,
+  MOB_DEATH_EVENT_PROTO_TYPE,
+  MOB_DEATH_EVENT_PROTO_VERSION,
+  CAST_EVENT_KIND_PLAYER,
+  CAST_EVENT_KIND_MOB,
+  CAST_EVENT_KIND_SELF,
+  CAST_EVENT_FLAG_ACTIVE,
   DAMAGE_EVENT_FLAG_TARGET_PLAYER,
   DAMAGE_EVENT_FLAG_FROM_SELF,
   MOB_EFFECT_FLAG_STUN,
@@ -172,6 +194,22 @@ const decodeDamageEventFlags =
         targetType: flags & DAMAGE_EVENT_FLAG_TARGET_PLAYER ? "player" : "mob",
         fromSelf: !!(flags & DAMAGE_EVENT_FLAG_FROM_SELF)
       });
+const decodeUnitDirectionComponent =
+  sharedProtocolCodecs && typeof sharedProtocolCodecs.decodeUnitDirectionComponent === "function"
+    ? sharedProtocolCodecs.decodeUnitDirectionComponent
+    : (value) => clamp((Number(value) || 0) / 127, -1, 1);
+const hashString32 =
+  sharedProtocolCodecs && typeof sharedProtocolCodecs.hashString32 === "function"
+    ? sharedProtocolCodecs.hashString32
+    : (value) => {
+        const input = String(value || "");
+        let hash = 2166136261;
+        for (let index = 0; index < input.length; index += 1) {
+          hash ^= input.charCodeAt(index) & 0xff;
+          hash = Math.imul(hash, 16777619);
+        }
+        return hash >>> 0;
+      };
 
 let socket = null;
 let myId = null;
@@ -305,6 +343,7 @@ const actionBindings = new Map();
 let actionBindingsClassType = null;
 const classDefsById = new Map();
 const abilityDefsById = new Map();
+const abilityIdsByHash = new Map();
 const abilityRuntime = new Map();
 const itemDefsById = new Map();
 const iconUrlCache = new Map();
@@ -3740,10 +3779,19 @@ function applyItemDefs(items) {
   updateActionBarUI(getCurrentSelf());
 }
 
+function resolveAbilityIdHash(hashValue) {
+  const hash = Number(hashValue) >>> 0;
+  if (!hash) {
+    return "";
+  }
+  return abilityIdsByHash.get(hash) || "";
+}
+
 function applyClassAndAbilityDefs(classes, abilities) {
   stopAllAbilityChannelAudio();
   abilityAudioRegistry.clear();
   abilityDefsById.clear();
+  abilityIdsByHash.clear();
   classDefsById.clear();
 
   for (const ability of Array.isArray(abilities) ? abilities : []) {
@@ -3803,6 +3851,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
     }
 
     abilityDefsById.set(id, normalizedAbility);
+    abilityIdsByHash.set(hashString32(id), id);
   }
 
   const classOptions = [];
@@ -4005,6 +4054,28 @@ const networkPacketParsers = sharedCreateNetworkPacketParsers
       PROJECTILE_META_PROTO_VERSION,
       DAMAGE_EVENT_PROTO_TYPE,
       DAMAGE_EVENT_PROTO_VERSION,
+      PLAYER_META_PROTO_TYPE,
+      PLAYER_META_PROTO_VERSION,
+      LOOTBAG_META_PROTO_TYPE,
+      LOOTBAG_META_PROTO_VERSION,
+      PLAYER_SWING_PROTO_TYPE,
+      PLAYER_SWING_PROTO_VERSION,
+      CAST_EVENT_PROTO_TYPE,
+      CAST_EVENT_PROTO_VERSION,
+      PLAYER_EFFECT_PROTO_TYPE,
+      PLAYER_EFFECT_PROTO_VERSION,
+      MOB_BITE_PROTO_TYPE,
+      MOB_BITE_PROTO_VERSION,
+      EXPLOSION_EVENT_PROTO_TYPE,
+      EXPLOSION_EVENT_PROTO_VERSION,
+      PROJECTILE_HIT_EVENT_PROTO_TYPE,
+      PROJECTILE_HIT_EVENT_PROTO_VERSION,
+      MOB_DEATH_EVENT_PROTO_TYPE,
+      MOB_DEATH_EVENT_PROTO_VERSION,
+      CAST_EVENT_KIND_PLAYER,
+      CAST_EVENT_KIND_MOB,
+      CAST_EVENT_KIND_SELF,
+      CAST_EVENT_FLAG_ACTIVE,
       MOB_EFFECT_FLAG_STUN,
       MOB_EFFECT_FLAG_SLOW,
       MOB_EFFECT_FLAG_REMOVE,
@@ -4031,7 +4102,9 @@ const networkPacketParsers = sharedCreateNetworkPacketParsers
       clamp,
       getDefaultClassId,
       dequantizePos,
+      decodeUnitDirectionComponent,
       decodeDamageEventFlags,
+      resolveAbilityIdHash,
       entityRuntime,
       gameState,
       remotePlayerCasts,
@@ -4049,7 +4122,18 @@ const networkPacketParsers = sharedCreateNetworkPacketParsers
       syncSelfToGameState,
       pushSnapshot,
       upsertAreaEffectState,
-      addFloatingDamageEvents
+      addFloatingDamageEvents,
+      applyPlayerMetaEntries: applyPlayerMeta,
+      applyLootBagMetaEntries: applyLootBagMeta,
+      applyPlayerCastStates,
+      applyMobCastStates,
+      applyPlayerEffects,
+      applyNearbyPlayerEffects,
+      triggerRemotePlayerSwing,
+      triggerRemoteMobBite,
+      addExplosionEvents,
+      addProjectileHitEvents,
+      addMobDeathEvents
     })
   : null;
 

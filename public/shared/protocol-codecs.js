@@ -9,6 +9,7 @@
   const POS_SCALE = Math.max(1, Number(protocol.POS_SCALE) || 64);
   const DAMAGE_EVENT_FLAG_TARGET_PLAYER = Number(protocol.DAMAGE_EVENT_FLAG_TARGET_PLAYER) || 0;
   const DAMAGE_EVENT_FLAG_FROM_SELF = Number(protocol.DAMAGE_EVENT_FLAG_FROM_SELF) || 0;
+  const DIRECTION_SCALE = 127;
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -41,10 +42,31 @@
     };
   }
 
+  function hashString32(value) {
+    const input = String(value || "");
+    let hash = 2166136261;
+    for (let index = 0; index < input.length; index += 1) {
+      hash ^= input.charCodeAt(index) & 0xff;
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function encodeUnitDirectionComponent(value) {
+    return clamp(Math.round(clamp(Number(value) || 0, -1, 1) * DIRECTION_SCALE), -127, 127);
+  }
+
+  function decodeUnitDirectionComponent(value) {
+    return clamp((Number(value) || 0) / DIRECTION_SCALE, -1, 1);
+  }
+
   return Object.freeze({
     clamp,
     quantizePos,
     dequantizePos,
+    hashString32,
+    encodeUnitDirectionComponent,
+    decodeUnitDirectionComponent,
     encodeDamageEventFlags,
     decodeDamageEventFlags
   });
