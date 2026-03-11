@@ -1,0 +1,2305 @@
+{
+  "itemSlots": [
+    "head",
+    "chest",
+    "shoulders",
+    "ring",
+    "necklace",
+    "trinket",
+    "bracers",
+    "gloves",
+    "pants",
+    "belt",
+    "boots",
+    "offHand",
+    "mainHand"
+  ],
+  "itemRarities": {
+    "normal": {
+      "prefixCount": [0, 0],
+      "suffixCount": [0, 0],
+      "dropWeight": 1000000
+    },
+    "magic": {
+      "prefixCount": [0, 1],
+      "suffixCount": [1, 1],
+      "dropWeight": 100000
+    },
+    "rare": {
+      "prefixCount": [1, 2],
+      "suffixCount": [1, 2],
+      "dropWeight": 100000000
+    },
+    "epic": {
+      "prefixCount": [2, 3],
+      "suffixCount": [2, 3],
+      "dropWeight": 1000
+    },
+    "legendary": {
+      "prefixCount": [3, 4],
+      "suffixCount": [3, 4],
+      "dropWeight": 100
+    },
+    "mythic": {
+      "prefixCount": [4, 5],
+      "suffixCount": [4, 5],
+      "dropWeight": 10
+    },
+    "divine": {
+      "prefixCount": [5, 6],
+      "suffixCount": [5, 6],
+      "dropWeight": 1
+    }
+  },
+  "baseItems": [
+    {
+      "id": "rusted_sword",
+      "name": "Rusted Sword",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [1, 5],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.0,
+        "baseDamageMin": 2,
+        "baseDamageMax": 4
+      }
+    },
+    {
+      "id": "apprentice_wand",
+      "name": "Apprentice Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [1, 5],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.1,
+        "baseDamageMin": 1,
+        "baseDamageMax": 3,
+        "spellPower": 2
+      }
+    },
+    {
+      "id": "splinter_staff",
+      "name": "Splinter Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [1, 5],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 0.9,
+        "baseDamageMin": 2,
+        "baseDamageMax": 5,
+        "spellPower": 3
+      }
+    },
+    {
+      "id": "cracked_buckler",
+      "name": "Cracked Buckler",
+      "slot": "offHand",
+      "itemLevelRange": [1, 5],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 4,
+        "blockChance": 0.03
+      }
+    },
+    {
+      "id": "tattered_cap",
+      "name": "Tattered Cap",
+      "slot": "head",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 3
+      }
+    },
+    {
+      "id": "worn_tunic",
+      "name": "Worn Tunic",
+      "slot": "chest",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 6
+      }
+    },
+    {
+      "id": "cloth_shoulderpads",
+      "name": "Cloth Shoulderpads",
+      "slot": "shoulders",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 2
+      }
+    },
+    {
+      "id": "frayed_bracers",
+      "name": "Frayed Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 2
+      }
+    },
+    {
+      "id": "rope_belt",
+      "name": "Rope Belt",
+      "slot": "belt",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 2
+      }
+    },
+    {
+      "id": "patched_gloves",
+      "name": "Patched Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 2
+      }
+    },
+    {
+      "id": "patched_pants",
+      "name": "Patched Pants",
+      "slot": "pants",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 4
+      }
+    },
+    {
+      "id": "patched_boots",
+      "name": "Patched Boots",
+      "slot": "boots",
+      "itemLevelRange": [1, 5],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 2
+      }
+    },
+    {
+      "id": "copper_ring",
+      "name": "Copper Ring",
+      "slot": "ring",
+      "itemLevelRange": [1, 5],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "bone_charm",
+      "name": "Bone Charm",
+      "slot": "necklace",
+      "itemLevelRange": [1, 5],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "minor_totem",
+      "name": "Minor Totem",
+      "slot": "trinket",
+      "itemLevelRange": [1, 5],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "iron_sword",
+      "name": "Iron Sword",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [6, 10],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.0,
+        "baseDamageMin": 4,
+        "baseDamageMax": 7
+      }
+    },
+    {
+      "id": "ember_wand",
+      "name": "Ember Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [6, 10],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.15,
+        "baseDamageMin": 2,
+        "baseDamageMax": 5,
+        "spellPower": 4
+      }
+    },
+    {
+      "id": "oak_staff",
+      "name": "Oak Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [6, 10],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 0.95,
+        "baseDamageMin": 4,
+        "baseDamageMax": 8,
+        "spellPower": 5
+      }
+    },
+    {
+      "id": "iron_buckler",
+      "name": "Iron Buckler",
+      "slot": "offHand",
+      "itemLevelRange": [6, 10],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 8,
+        "blockChance": 0.04
+      }
+    },
+    {
+      "id": "leather_hood",
+      "name": "Leather Hood",
+      "slot": "head",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 6
+      }
+    },
+    {
+      "id": "leather_vest",
+      "name": "Leather Vest",
+      "slot": "chest",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 12
+      }
+    },
+    {
+      "id": "leather_shoulders",
+      "name": "Leather Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 4
+      }
+    },
+    {
+      "id": "leather_bracers",
+      "name": "Leather Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 4
+      }
+    },
+    {
+      "id": "studded_belt",
+      "name": "Studded Belt",
+      "slot": "belt",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 4
+      }
+    },
+    {
+      "id": "grip_gloves",
+      "name": "Grip Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 4
+      }
+    },
+    {
+      "id": "hide_leggings",
+      "name": "Hide Leggings",
+      "slot": "pants",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 8
+      }
+    },
+    {
+      "id": "trail_boots",
+      "name": "Trail Boots",
+      "slot": "boots",
+      "itemLevelRange": [6, 10],
+      "tags": ["armor", "light"],
+      "baseStats": {
+        "armor": 4
+      }
+    },
+    {
+      "id": "silver_ring",
+      "name": "Silver Ring",
+      "slot": "ring",
+      "itemLevelRange": [6, 10],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "moon_pendant",
+      "name": "Moon Pendant",
+      "slot": "necklace",
+      "itemLevelRange": [6, 10],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "shaman_totem",
+      "name": "Shaman Totem",
+      "slot": "trinket",
+      "itemLevelRange": [6, 10],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "steel_sword",
+      "name": "Steel Sword",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [11, 15],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.02,
+        "baseDamageMin": 7,
+        "baseDamageMax": 11
+      }
+    },
+    {
+      "id": "scholar_wand",
+      "name": "Scholar Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [11, 15],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.18,
+        "baseDamageMin": 4,
+        "baseDamageMax": 7,
+        "spellPower": 7
+      }
+    },
+    {
+      "id": "runed_staff",
+      "name": "Runed Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [11, 15],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 0.96,
+        "baseDamageMin": 6,
+        "baseDamageMax": 12,
+        "spellPower": 8
+      }
+    },
+    {
+      "id": "kite_shield",
+      "name": "Kite Shield",
+      "slot": "offHand",
+      "itemLevelRange": [11, 15],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 14,
+        "blockChance": 0.05
+      }
+    },
+    {
+      "id": "scout_hood",
+      "name": "Scout Hood",
+      "slot": "head",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 10
+      }
+    },
+    {
+      "id": "brigandine",
+      "name": "Brigandine",
+      "slot": "chest",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 20
+      }
+    },
+    {
+      "id": "scout_shoulders",
+      "name": "Scout Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 7
+      }
+    },
+    {
+      "id": "scout_bracers",
+      "name": "Scout Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 7
+      }
+    },
+    {
+      "id": "plated_belt",
+      "name": "Plated Belt",
+      "slot": "belt",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 7
+      }
+    },
+    {
+      "id": "gauntlets",
+      "name": "Gauntlets",
+      "slot": "gloves",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 7
+      }
+    },
+    {
+      "id": "war_leggings",
+      "name": "War Leggings",
+      "slot": "pants",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 14
+      }
+    },
+    {
+      "id": "march_boots",
+      "name": "March Boots",
+      "slot": "boots",
+      "itemLevelRange": [11, 15],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 7
+      }
+    },
+    {
+      "id": "gold_ring",
+      "name": "Gold Ring",
+      "slot": "ring",
+      "itemLevelRange": [11, 15],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "sun_amulet",
+      "name": "Sun Amulet",
+      "slot": "necklace",
+      "itemLevelRange": [11, 15],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "seer_token",
+      "name": "Seer Token",
+      "slot": "trinket",
+      "itemLevelRange": [11, 15],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "knight_blade",
+      "name": "Knight Blade",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [16, 20],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.03,
+        "baseDamageMin": 10,
+        "baseDamageMax": 15
+      }
+    },
+    {
+      "id": "flare_wand",
+      "name": "Flare Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [16, 20],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.2,
+        "baseDamageMin": 6,
+        "baseDamageMax": 10,
+        "spellPower": 10
+      }
+    },
+    {
+      "id": "ivory_staff",
+      "name": "Ivory Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [16, 20],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 0.98,
+        "baseDamageMin": 8,
+        "baseDamageMax": 16,
+        "spellPower": 11
+      }
+    },
+    {
+      "id": "tower_guard",
+      "name": "Tower Guard",
+      "slot": "offHand",
+      "itemLevelRange": [16, 20],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 20,
+        "blockChance": 0.06
+      }
+    },
+    {
+      "id": "hunter_hood",
+      "name": "Hunter Hood",
+      "slot": "head",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 14
+      }
+    },
+    {
+      "id": "chain_cuirass",
+      "name": "Chain Cuirass",
+      "slot": "chest",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 28
+      }
+    },
+    {
+      "id": "chain_shoulders",
+      "name": "Chain Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 10
+      }
+    },
+    {
+      "id": "chain_bracers",
+      "name": "Chain Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 10
+      }
+    },
+    {
+      "id": "soldier_belt",
+      "name": "Soldier Belt",
+      "slot": "belt",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 10
+      }
+    },
+    {
+      "id": "chain_gloves",
+      "name": "Chain Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 10
+      }
+    },
+    {
+      "id": "chain_greaves",
+      "name": "Chain Greaves",
+      "slot": "pants",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 20
+      }
+    },
+    {
+      "id": "field_boots",
+      "name": "Field Boots",
+      "slot": "boots",
+      "itemLevelRange": [16, 20],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 10
+      }
+    },
+    {
+      "id": "opal_ring",
+      "name": "Opal Ring",
+      "slot": "ring",
+      "itemLevelRange": [16, 20],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "star_locket",
+      "name": "Star Locket",
+      "slot": "necklace",
+      "itemLevelRange": [16, 20],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "focus_idol",
+      "name": "Focus Idol",
+      "slot": "trinket",
+      "itemLevelRange": [16, 20],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "templar_blade",
+      "name": "Templar Blade",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [21, 25],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.04,
+        "baseDamageMin": 14,
+        "baseDamageMax": 20
+      }
+    },
+    {
+      "id": "storm_wand",
+      "name": "Storm Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [21, 25],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.22,
+        "baseDamageMin": 8,
+        "baseDamageMax": 13,
+        "spellPower": 14
+      }
+    },
+    {
+      "id": "sage_staff",
+      "name": "Sage Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [21, 25],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 1.0,
+        "baseDamageMin": 11,
+        "baseDamageMax": 21,
+        "spellPower": 15
+      }
+    },
+    {
+      "id": "ward_shield",
+      "name": "Ward Shield",
+      "slot": "offHand",
+      "itemLevelRange": [21, 25],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 28,
+        "blockChance": 0.07
+      }
+    },
+    {
+      "id": "ranger_hood",
+      "name": "Ranger Hood",
+      "slot": "head",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 19
+      }
+    },
+    {
+      "id": "scale_armor",
+      "name": "Scale Armor",
+      "slot": "chest",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 38
+      }
+    },
+    {
+      "id": "scale_shoulders",
+      "name": "Scale Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 13
+      }
+    },
+    {
+      "id": "scale_bracers",
+      "name": "Scale Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 13
+      }
+    },
+    {
+      "id": "warbelt",
+      "name": "Warbelt",
+      "slot": "belt",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 13
+      }
+    },
+    {
+      "id": "scale_gloves",
+      "name": "Scale Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 13
+      }
+    },
+    {
+      "id": "scale_leggings",
+      "name": "Scale Leggings",
+      "slot": "pants",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 26
+      }
+    },
+    {
+      "id": "sabaton_boots",
+      "name": "Sabaton Boots",
+      "slot": "boots",
+      "itemLevelRange": [21, 25],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 13
+      }
+    },
+    {
+      "id": "ruby_ring",
+      "name": "Ruby Ring",
+      "slot": "ring",
+      "itemLevelRange": [21, 25],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "royal_amulet",
+      "name": "Royal Amulet",
+      "slot": "necklace",
+      "itemLevelRange": [21, 25],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "battle_relic",
+      "name": "Battle Relic",
+      "slot": "trinket",
+      "itemLevelRange": [21, 25],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "runesteel_blade",
+      "name": "Runesteel Blade",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [26, 30],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.05,
+        "baseDamageMin": 18,
+        "baseDamageMax": 26
+      }
+    },
+    {
+      "id": "emberglass_wand",
+      "name": "Emberglass Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [26, 30],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.24,
+        "baseDamageMin": 11,
+        "baseDamageMax": 17,
+        "spellPower": 18
+      }
+    },
+    {
+      "id": "elder_staff",
+      "name": "Elder Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [26, 30],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 1.02,
+        "baseDamageMin": 14,
+        "baseDamageMax": 28,
+        "spellPower": 20
+      }
+    },
+    {
+      "id": "bastion_shield",
+      "name": "Bastion Shield",
+      "slot": "offHand",
+      "itemLevelRange": [26, 30],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 38,
+        "blockChance": 0.08
+      }
+    },
+    {
+      "id": "hawk_hood",
+      "name": "Hawk Hood",
+      "slot": "head",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 24
+      }
+    },
+    {
+      "id": "warden_plate",
+      "name": "Warden Plate",
+      "slot": "chest",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 48
+      }
+    },
+    {
+      "id": "warden_shoulders",
+      "name": "Warden Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 17
+      }
+    },
+    {
+      "id": "warden_bracers",
+      "name": "Warden Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 17
+      }
+    },
+    {
+      "id": "fortress_belt",
+      "name": "Fortress Belt",
+      "slot": "belt",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 17
+      }
+    },
+    {
+      "id": "ironclad_gloves",
+      "name": "Ironclad Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 17
+      }
+    },
+    {
+      "id": "ironclad_leggings",
+      "name": "Ironclad Leggings",
+      "slot": "pants",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 34
+      }
+    },
+    {
+      "id": "ironclad_boots",
+      "name": "Ironclad Boots",
+      "slot": "boots",
+      "itemLevelRange": [26, 30],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 17
+      }
+    },
+    {
+      "id": "sapphire_ring",
+      "name": "Sapphire Ring",
+      "slot": "ring",
+      "itemLevelRange": [26, 30],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "oracle_amulet",
+      "name": "Oracle Amulet",
+      "slot": "necklace",
+      "itemLevelRange": [26, 30],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "sigil_relic",
+      "name": "Sigil Relic",
+      "slot": "trinket",
+      "itemLevelRange": [26, 30],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "dragontooth_blade",
+      "name": "Dragontooth Blade",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [31, 35],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.06,
+        "baseDamageMin": 23,
+        "baseDamageMax": 32
+      }
+    },
+    {
+      "id": "frostglass_wand",
+      "name": "Frostglass Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [31, 35],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.25,
+        "baseDamageMin": 14,
+        "baseDamageMax": 21,
+        "spellPower": 23
+      }
+    },
+    {
+      "id": "highmage_staff",
+      "name": "Highmage Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [31, 35],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 1.03,
+        "baseDamageMin": 18,
+        "baseDamageMax": 35,
+        "spellPower": 25
+      }
+    },
+    {
+      "id": "citadel_shield",
+      "name": "Citadel Shield",
+      "slot": "offHand",
+      "itemLevelRange": [31, 35],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 49,
+        "blockChance": 0.09
+      }
+    },
+    {
+      "id": "storm_hood",
+      "name": "Storm Hood",
+      "slot": "head",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 30
+      }
+    },
+    {
+      "id": "guardian_plate",
+      "name": "Guardian Plate",
+      "slot": "chest",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 60
+      }
+    },
+    {
+      "id": "guardian_shoulders",
+      "name": "Guardian Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 21
+      }
+    },
+    {
+      "id": "guardian_bracers",
+      "name": "Guardian Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 21
+      }
+    },
+    {
+      "id": "titan_belt",
+      "name": "Titan Belt",
+      "slot": "belt",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 21
+      }
+    },
+    {
+      "id": "titan_grips",
+      "name": "Titan Grips",
+      "slot": "gloves",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 21
+      }
+    },
+    {
+      "id": "titan_greaves",
+      "name": "Titan Greaves",
+      "slot": "pants",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 42
+      }
+    },
+    {
+      "id": "titan_boots",
+      "name": "Titan Boots",
+      "slot": "boots",
+      "itemLevelRange": [31, 35],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 21
+      }
+    },
+    {
+      "id": "emerald_ring",
+      "name": "Emerald Ring",
+      "slot": "ring",
+      "itemLevelRange": [31, 35],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "astral_amulet",
+      "name": "Astral Amulet",
+      "slot": "necklace",
+      "itemLevelRange": [31, 35],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "soul_relic",
+      "name": "Soul Relic",
+      "slot": "trinket",
+      "itemLevelRange": [31, 35],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "voidsteel_blade",
+      "name": "Voidsteel Blade",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [36, 40],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.07,
+        "baseDamageMin": 29,
+        "baseDamageMax": 39
+      }
+    },
+    {
+      "id": "sunflare_wand",
+      "name": "Sunflare Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [36, 40],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.27,
+        "baseDamageMin": 18,
+        "baseDamageMax": 26,
+        "spellPower": 29
+      }
+    },
+    {
+      "id": "archmage_staff",
+      "name": "Archmage Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [36, 40],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 1.04,
+        "baseDamageMin": 23,
+        "baseDamageMax": 43,
+        "spellPower": 32
+      }
+    },
+    {
+      "id": "bulwark_shield",
+      "name": "Bulwark Shield",
+      "slot": "offHand",
+      "itemLevelRange": [36, 40],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 61,
+        "blockChance": 0.1
+      }
+    },
+    {
+      "id": "shadow_hood",
+      "name": "Shadow Hood",
+      "slot": "head",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 37
+      }
+    },
+    {
+      "id": "colossus_plate",
+      "name": "Colossus Plate",
+      "slot": "chest",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 74
+      }
+    },
+    {
+      "id": "colossus_shoulders",
+      "name": "Colossus Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 25
+      }
+    },
+    {
+      "id": "colossus_bracers",
+      "name": "Colossus Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 25
+      }
+    },
+    {
+      "id": "colossus_belt",
+      "name": "Colossus Belt",
+      "slot": "belt",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 25
+      }
+    },
+    {
+      "id": "colossus_gloves",
+      "name": "Colossus Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 25
+      }
+    },
+    {
+      "id": "colossus_leggings",
+      "name": "Colossus Leggings",
+      "slot": "pants",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 50
+      }
+    },
+    {
+      "id": "colossus_boots",
+      "name": "Colossus Boots",
+      "slot": "boots",
+      "itemLevelRange": [36, 40],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 25
+      }
+    },
+    {
+      "id": "diamond_ring",
+      "name": "Diamond Ring",
+      "slot": "ring",
+      "itemLevelRange": [36, 40],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "celestial_amulet",
+      "name": "Celestial Amulet",
+      "slot": "necklace",
+      "itemLevelRange": [36, 40],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "void_relic",
+      "name": "Void Relic",
+      "slot": "trinket",
+      "itemLevelRange": [36, 40],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "mythsteel_blade",
+      "name": "Mythsteel Blade",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [41, 45],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.08,
+        "baseDamageMin": 36,
+        "baseDamageMax": 48
+      }
+    },
+    {
+      "id": "starfire_wand",
+      "name": "Starfire Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [41, 45],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.28,
+        "baseDamageMin": 22,
+        "baseDamageMax": 31,
+        "spellPower": 36
+      }
+    },
+    {
+      "id": "worldtree_staff",
+      "name": "Worldtree Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [41, 45],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 1.05,
+        "baseDamageMin": 28,
+        "baseDamageMax": 52,
+        "spellPower": 40
+      }
+    },
+    {
+      "id": "aegis_shield",
+      "name": "Aegis Shield",
+      "slot": "offHand",
+      "itemLevelRange": [41, 45],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 75,
+        "blockChance": 0.11
+      }
+    },
+    {
+      "id": "farsight_hood",
+      "name": "Farsight Hood",
+      "slot": "head",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 45
+      }
+    },
+    {
+      "id": "mythic_plate",
+      "name": "Mythic Plate",
+      "slot": "chest",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 90
+      }
+    },
+    {
+      "id": "mythic_shoulders",
+      "name": "Mythic Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 30
+      }
+    },
+    {
+      "id": "mythic_bracers",
+      "name": "Mythic Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 30
+      }
+    },
+    {
+      "id": "mythic_belt",
+      "name": "Mythic Belt",
+      "slot": "belt",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 30
+      }
+    },
+    {
+      "id": "mythic_gauntlets",
+      "name": "Mythic Gauntlets",
+      "slot": "gloves",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 30
+      }
+    },
+    {
+      "id": "mythic_leggings",
+      "name": "Mythic Leggings",
+      "slot": "pants",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 60
+      }
+    },
+    {
+      "id": "mythic_boots",
+      "name": "Mythic Boots",
+      "slot": "boots",
+      "itemLevelRange": [41, 45],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 30
+      }
+    },
+    {
+      "id": "phoenix_ring",
+      "name": "Phoenix Ring",
+      "slot": "ring",
+      "itemLevelRange": [41, 45],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "eternal_amulet",
+      "name": "Eternal Amulet",
+      "slot": "necklace",
+      "itemLevelRange": [41, 45],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "fate_relic",
+      "name": "Fate Relic",
+      "slot": "trinket",
+      "itemLevelRange": [41, 45],
+      "tags": ["trinket"],
+      "baseStats": {}
+    },
+
+    {
+      "id": "divine_edge",
+      "name": "Divine Edge",
+      "slot": "mainHand",
+      "weaponClass": "sword",
+      "itemLevelRange": [46, 50],
+      "tags": ["weapon", "melee", "physical"],
+      "baseStats": {
+        "attackSpeed": 1.1,
+        "baseDamageMin": 44,
+        "baseDamageMax": 58
+      }
+    },
+    {
+      "id": "comet_wand",
+      "name": "Comet Wand",
+      "slot": "mainHand",
+      "weaponClass": "wand",
+      "itemLevelRange": [46, 50],
+      "tags": ["weapon", "caster"],
+      "baseStats": {
+        "attackSpeed": 1.3,
+        "baseDamageMin": 27,
+        "baseDamageMax": 37,
+        "spellPower": 44
+      }
+    },
+    {
+      "id": "cosmos_staff",
+      "name": "Cosmos Staff",
+      "slot": "mainHand",
+      "weaponClass": "staff",
+      "itemLevelRange": [46, 50],
+      "tags": ["weapon", "caster", "twoHanded"],
+      "baseStats": {
+        "attackSpeed": 1.06,
+        "baseDamageMin": 34,
+        "baseDamageMax": 62,
+        "spellPower": 48
+      }
+    },
+    {
+      "id": "seraph_shield",
+      "name": "Seraph Shield",
+      "slot": "offHand",
+      "itemLevelRange": [46, 50],
+      "tags": ["offhand", "shield", "armor"],
+      "baseStats": {
+        "armor": 90,
+        "blockChance": 0.12
+      }
+    },
+    {
+      "id": "oracle_hood",
+      "name": "Oracle Hood",
+      "slot": "head",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "medium"],
+      "baseStats": {
+        "armor": 54
+      }
+    },
+    {
+      "id": "seraph_plate",
+      "name": "Seraph Plate",
+      "slot": "chest",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 108
+      }
+    },
+    {
+      "id": "seraph_shoulders",
+      "name": "Seraph Shoulders",
+      "slot": "shoulders",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 36
+      }
+    },
+    {
+      "id": "seraph_bracers",
+      "name": "Seraph Bracers",
+      "slot": "bracers",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 36
+      }
+    },
+    {
+      "id": "seraph_belt",
+      "name": "Seraph Belt",
+      "slot": "belt",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "utility"],
+      "baseStats": {
+        "armor": 36
+      }
+    },
+    {
+      "id": "seraph_gloves",
+      "name": "Seraph Gloves",
+      "slot": "gloves",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 36
+      }
+    },
+    {
+      "id": "seraph_leggings",
+      "name": "Seraph Leggings",
+      "slot": "pants",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 72
+      }
+    },
+    {
+      "id": "seraph_boots",
+      "name": "Seraph Boots",
+      "slot": "boots",
+      "itemLevelRange": [46, 50],
+      "tags": ["armor", "heavy"],
+      "baseStats": {
+        "armor": 36
+      }
+    },
+    {
+      "id": "halo_ring",
+      "name": "Halo Ring",
+      "slot": "ring",
+      "itemLevelRange": [46, 50],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "cosmic_amulet",
+      "name": "Cosmic Amulet",
+      "slot": "necklace",
+      "itemLevelRange": [46, 50],
+      "tags": ["jewelry"],
+      "baseStats": {}
+    },
+    {
+      "id": "divinity_relic",
+      "name": "Divinity Relic",
+      "slot": "trinket",
+      "itemLevelRange": [46, 50],
+      "tags": ["trinket"],
+      "baseStats": {}
+    }
+  ],
+  "prefixes": [
+    {
+      "id": "savage_t1",
+      "name": "Savage",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket", "gloves"],
+      "tags": ["offensive", "globalDamage"],
+      "modifiers": [
+        { "stat": "damage.global.percent", "rollRange": [4, 8] }
+      ]
+    },
+    {
+      "id": "savage_t2",
+      "name": "Brutal",
+      "minItemLevel": 12,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket", "gloves"],
+      "tags": ["offensive", "globalDamage"],
+      "modifiers": [
+        { "stat": "damage.global.percent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "savage_t3",
+      "name": "Merciless",
+      "minItemLevel": 25,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket", "gloves"],
+      "tags": ["offensive", "globalDamage"],
+      "modifiers": [
+        { "stat": "damage.global.percent", "rollRange": [14, 22] }
+      ]
+    },
+    {
+      "id": "savage_t4",
+      "name": "Annihilating",
+      "minItemLevel": 40,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket", "gloves"],
+      "tags": ["offensive", "globalDamage"],
+      "modifiers": [
+        { "stat": "damage.global.percent", "rollRange": [22, 32] }
+      ]
+    },
+
+    {
+      "id": "emberforged_t1",
+      "name": "Emberforged",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "fire"],
+      "modifiers": [
+        { "stat": "damageSchool.fire.percent", "rollRange": [6, 12] }
+      ]
+    },
+    {
+      "id": "emberforged_t2",
+      "name": "Flamebound",
+      "minItemLevel": 16,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "fire"],
+      "modifiers": [
+        { "stat": "damageSchool.fire.percent", "rollRange": [12, 20] }
+      ]
+    },
+    {
+      "id": "emberforged_t3",
+      "name": "Infernal",
+      "minItemLevel": 34,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "fire"],
+      "modifiers": [
+        { "stat": "damageSchool.fire.percent", "rollRange": [20, 32] }
+      ]
+    },
+
+    {
+      "id": "chilling_t1",
+      "name": "Chilling",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "frost"],
+      "modifiers": [
+        { "stat": "damageSchool.frost.percent", "rollRange": [6, 12] }
+      ]
+    },
+    {
+      "id": "chilling_t2",
+      "name": "Winterbound",
+      "minItemLevel": 16,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "frost"],
+      "modifiers": [
+        { "stat": "damageSchool.frost.percent", "rollRange": [12, 20] }
+      ]
+    },
+    {
+      "id": "chilling_t3",
+      "name": "Glacial",
+      "minItemLevel": 34,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "frost"],
+      "modifiers": [
+        { "stat": "damageSchool.frost.percent", "rollRange": [20, 32] }
+      ]
+    },
+
+    {
+      "id": "mystic_t1",
+      "name": "Mystic",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "arcane"],
+      "modifiers": [
+        { "stat": "damageSchool.arcane.percent", "rollRange": [6, 12] }
+      ]
+    },
+    {
+      "id": "mystic_t2",
+      "name": "Runic",
+      "minItemLevel": 16,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "arcane"],
+      "modifiers": [
+        { "stat": "damageSchool.arcane.percent", "rollRange": [12, 20] }
+      ]
+    },
+    {
+      "id": "mystic_t3",
+      "name": "Astral",
+      "minItemLevel": 34,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "arcane"],
+      "modifiers": [
+        { "stat": "damageSchool.arcane.percent", "rollRange": [20, 32] }
+      ]
+    },
+
+    {
+      "id": "heavy_t1",
+      "name": "Heavy",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "gloves"],
+      "tags": ["offensive", "physicalPercent"],
+      "modifiers": [
+        { "stat": "damageSchool.physical.percent", "rollRange": [6, 12] }
+      ]
+    },
+    {
+      "id": "heavy_t2",
+      "name": "Crushing",
+      "minItemLevel": 16,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "gloves"],
+      "tags": ["offensive", "physicalPercent"],
+      "modifiers": [
+        { "stat": "damageSchool.physical.percent", "rollRange": [12, 20] }
+      ]
+    },
+    {
+      "id": "heavy_t3",
+      "name": "Titanic",
+      "minItemLevel": 34,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "gloves"],
+      "tags": ["offensive", "physicalPercent"],
+      "modifiers": [
+        { "stat": "damageSchool.physical.percent", "rollRange": [20, 32] }
+      ]
+    },
+
+    {
+      "id": "deadly_t1",
+      "name": "Deadly",
+      "minItemLevel": 8,
+      "allowedSlots": ["mainHand", "ring", "gloves", "necklace"],
+      "tags": ["offensive", "critChance"],
+      "modifiers": [
+        { "stat": "critChance.percent", "rollRange": [2, 4] }
+      ]
+    },
+    {
+      "id": "deadly_t2",
+      "name": "Lethal",
+      "minItemLevel": 24,
+      "allowedSlots": ["mainHand", "ring", "gloves", "necklace"],
+      "tags": ["offensive", "critChance"],
+      "modifiers": [
+        { "stat": "critChance.percent", "rollRange": [4, 7] }
+      ]
+    },
+    {
+      "id": "deadly_t3",
+      "name": "Executioner",
+      "minItemLevel": 42,
+      "allowedSlots": ["mainHand", "ring", "gloves", "necklace"],
+      "tags": ["offensive", "critChance"],
+      "modifiers": [
+        { "stat": "critChance.percent", "rollRange": [7, 11] }
+      ]
+    },
+
+    {
+      "id": "stout_t1",
+      "name": "Stout",
+      "minItemLevel": 1,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "belt", "pants", "boots", "ring", "necklace", "trinket"],
+      "tags": ["defensive", "health"],
+      "modifiers": [
+        { "stat": "maxHealth.flat", "rollRange": [8, 16] }
+      ]
+    },
+    {
+      "id": "stout_t2",
+      "name": "Robust",
+      "minItemLevel": 10,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "belt", "pants", "boots", "ring", "necklace", "trinket"],
+      "tags": ["defensive", "health"],
+      "modifiers": [
+        { "stat": "maxHealth.flat", "rollRange": [16, 30] }
+      ]
+    },
+    {
+      "id": "stout_t3",
+      "name": "Vigorous",
+      "minItemLevel": 22,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "belt", "pants", "boots", "ring", "necklace", "trinket"],
+      "tags": ["defensive", "health"],
+      "modifiers": [
+        { "stat": "maxHealth.flat", "rollRange": [30, 52] }
+      ]
+    },
+    {
+      "id": "stout_t4",
+      "name": "Colossal",
+      "minItemLevel": 38,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "belt", "pants", "boots", "ring", "necklace", "trinket"],
+      "tags": ["defensive", "health"],
+      "modifiers": [
+        { "stat": "maxHealth.flat", "rollRange": [52, 85] }
+      ]
+    },
+
+    {
+      "id": "reinforced_t1",
+      "name": "Reinforced",
+      "minItemLevel": 1,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots", "offHand"],
+      "tags": ["defensive", "armorPercent"],
+      "modifiers": [
+        { "stat": "armor.percent", "rollRange": [5, 10] }
+      ]
+    },
+    {
+      "id": "reinforced_t2",
+      "name": "Fortified",
+      "minItemLevel": 18,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots", "offHand"],
+      "tags": ["defensive", "armorPercent"],
+      "modifiers": [
+        { "stat": "armor.percent", "rollRange": [10, 18] }
+      ]
+    },
+    {
+      "id": "reinforced_t3",
+      "name": "Impenetrable",
+      "minItemLevel": 36,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots", "offHand"],
+      "tags": ["defensive", "armorPercent"],
+      "modifiers": [
+        { "stat": "armor.percent", "rollRange": [18, 28] }
+      ]
+    }
+  ],
+  "suffixes": [
+    {
+      "id": "of_striking_t1",
+      "name": "of Striking",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "gloves"],
+      "tags": ["offensive", "flatDamage", "physical"],
+      "modifiers": [
+        { "stat": "damage.physical.flatMin", "rollRange": [1, 2] },
+        { "stat": "damage.physical.flatMax", "rollRange": [2, 4] }
+      ]
+    },
+    {
+      "id": "of_striking_t2",
+      "name": "of Slaying",
+      "minItemLevel": 10,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "gloves"],
+      "tags": ["offensive", "flatDamage", "physical"],
+      "modifiers": [
+        { "stat": "damage.physical.flatMin", "rollRange": [2, 4] },
+        { "stat": "damage.physical.flatMax", "rollRange": [4, 7] }
+      ]
+    },
+    {
+      "id": "of_striking_t3",
+      "name": "of Butchery",
+      "minItemLevel": 20,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "gloves"],
+      "tags": ["offensive", "flatDamage", "physical"],
+      "modifiers": [
+        { "stat": "damage.physical.flatMin", "rollRange": [4, 7] },
+        { "stat": "damage.physical.flatMax", "rollRange": [7, 12] }
+      ]
+    },
+    {
+      "id": "of_striking_t4",
+      "name": "of Carnage",
+      "minItemLevel": 35,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "gloves"],
+      "tags": ["offensive", "flatDamage", "physical"],
+      "modifiers": [
+        { "stat": "damage.physical.flatMin", "rollRange": [7, 11] },
+        { "stat": "damage.physical.flatMax", "rollRange": [12, 18] }
+      ]
+    },
+
+    {
+      "id": "of_precision_t1",
+      "name": "of Precision",
+      "minItemLevel": 12,
+      "allowedSlots": ["mainHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "critDamage"],
+      "modifiers": [
+        { "stat": "critDamage.percent", "rollRange": [8, 16] }
+      ]
+    },
+    {
+      "id": "of_precision_t2",
+      "name": "of Ruin",
+      "minItemLevel": 28,
+      "allowedSlots": ["mainHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "critDamage"],
+      "modifiers": [
+        { "stat": "critDamage.percent", "rollRange": [16, 28] }
+      ]
+    },
+    {
+      "id": "of_precision_t3",
+      "name": "of Cataclysm",
+      "minItemLevel": 44,
+      "allowedSlots": ["mainHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "critDamage"],
+      "modifiers": [
+        { "stat": "critDamage.percent", "rollRange": [28, 42] }
+      ]
+    },
+
+    {
+      "id": "of_quickness_t1",
+      "name": "of Quickness",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "gloves", "ring"],
+      "tags": ["offensive", "attackSpeed"],
+      "modifiers": [
+        { "stat": "attackSpeed.percent", "rollRange": [3, 6] }
+      ]
+    },
+    {
+      "id": "of_quickness_t2",
+      "name": "of Swiftness",
+      "minItemLevel": 15,
+      "allowedSlots": ["mainHand", "gloves", "ring"],
+      "tags": ["offensive", "attackSpeed"],
+      "modifiers": [
+        { "stat": "attackSpeed.percent", "rollRange": [6, 10] }
+      ]
+    },
+    {
+      "id": "of_quickness_t3",
+      "name": "of Lightning",
+      "minItemLevel": 32,
+      "allowedSlots": ["mainHand", "gloves", "ring"],
+      "tags": ["offensive", "attackSpeed"],
+      "modifiers": [
+        { "stat": "attackSpeed.percent", "rollRange": [10, 16] }
+      ]
+    },
+
+    {
+      "id": "of_focus_t1",
+      "name": "of Focus",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "offHand", "gloves", "ring", "necklace"],
+      "requiredItemTagsAny": ["caster", "jewelry", "offhand"],
+      "tags": ["offensive", "castSpeed"],
+      "modifiers": [
+        { "stat": "castSpeed.percent", "rollRange": [4, 7] }
+      ]
+    },
+    {
+      "id": "of_focus_t2",
+      "name": "of Concentration",
+      "minItemLevel": 18,
+      "allowedSlots": ["mainHand", "offHand", "gloves", "ring", "necklace"],
+      "requiredItemTagsAny": ["caster", "jewelry", "offhand"],
+      "tags": ["offensive", "castSpeed"],
+      "modifiers": [
+        { "stat": "castSpeed.percent", "rollRange": [7, 12] }
+      ]
+    },
+    {
+      "id": "of_focus_t3",
+      "name": "of Spellweaving",
+      "minItemLevel": 36,
+      "allowedSlots": ["mainHand", "offHand", "gloves", "ring", "necklace"],
+      "requiredItemTagsAny": ["caster", "jewelry", "offhand"],
+      "tags": ["offensive", "castSpeed"],
+      "modifiers": [
+        { "stat": "castSpeed.percent", "rollRange": [12, 18] }
+      ]
+    },
+
+    {
+      "id": "of_bolts_t1",
+      "name": "of Bolts",
+      "minItemLevel": 8,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "projectileTag"],
+      "modifiers": [
+        { "stat": "spellTag.projectile.damagePercent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "of_bursts_t1",
+      "name": "of Bursts",
+      "minItemLevel": 8,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "areaTag"],
+      "modifiers": [
+        { "stat": "spellTag.area.damagePercent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "of_rays_t1",
+      "name": "of Rays",
+      "minItemLevel": 18,
+      "allowedSlots": ["mainHand", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["offensive", "beamTag"],
+      "modifiers": [
+        { "stat": "spellTag.beam.damagePercent", "rollRange": [10, 18] }
+      ]
+    },
+
+    {
+      "id": "of_mending_t1",
+      "name": "of Mending",
+      "minItemLevel": 1,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "belt", "pants", "boots", "necklace", "trinket"],
+      "tags": ["sustain", "healthRegen"],
+      "modifiers": [
+        { "stat": "healthRegen.flat", "rollRange": [0.3, 0.8] }
+      ]
+    },
+    {
+      "id": "of_mending_t2",
+      "name": "of Renewal",
+      "minItemLevel": 15,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "belt", "pants", "boots", "necklace", "trinket"],
+      "tags": ["sustain", "healthRegen"],
+      "modifiers": [
+        { "stat": "healthRegen.flat", "rollRange": [0.8, 1.8] }
+      ]
+    },
+    {
+      "id": "of_mending_t3",
+      "name": "of Rebirth",
+      "minItemLevel": 33,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "belt", "pants", "boots", "necklace", "trinket"],
+      "tags": ["sustain", "healthRegen"],
+      "modifiers": [
+        { "stat": "healthRegen.flat", "rollRange": [1.8, 3.5] }
+      ]
+    },
+
+    {
+      "id": "of_thought_t1",
+      "name": "of Thought",
+      "minItemLevel": 1,
+      "allowedSlots": ["head", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaRegen"],
+      "modifiers": [
+        { "stat": "manaRegen.flat", "rollRange": [0.4, 1.0] }
+      ]
+    },
+    {
+      "id": "of_thought_t2",
+      "name": "of Clarity",
+      "minItemLevel": 15,
+      "allowedSlots": ["head", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaRegen"],
+      "modifiers": [
+        { "stat": "manaRegen.flat", "rollRange": [1.0, 2.0] }
+      ]
+    },
+    {
+      "id": "of_thought_t3",
+      "name": "of Insight",
+      "minItemLevel": 33,
+      "allowedSlots": ["head", "offHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaRegen"],
+      "modifiers": [
+        { "stat": "manaRegen.flat", "rollRange": [2.0, 4.0] }
+      ]
+    },
+
+    {
+      "id": "vampiric_t1",
+      "name": "Vampiric",
+      "minItemLevel": 12,
+      "allowedSlots": ["mainHand", "ring", "necklace", "gloves"],
+      "tags": ["sustain", "lifeSteal"],
+      "modifiers": [
+        { "stat": "lifeSteal.percent", "rollRange": [1, 2] }
+      ]
+    },
+    {
+      "id": "vampiric_t2",
+      "name": "Bloodthirsty",
+      "minItemLevel": 26,
+      "allowedSlots": ["mainHand", "ring", "necklace", "gloves"],
+      "tags": ["sustain", "lifeSteal"],
+      "modifiers": [
+        { "stat": "lifeSteal.percent", "rollRange": [2, 4] }
+      ]
+    },
+    {
+      "id": "vampiric_t3",
+      "name": "Soul-Drinking",
+      "minItemLevel": 42,
+      "allowedSlots": ["mainHand", "ring", "necklace", "gloves"],
+      "tags": ["sustain", "lifeSteal"],
+      "modifiers": [
+        { "stat": "lifeSteal.percent", "rollRange": [4, 6] }
+      ]
+    },
+
+    {
+      "id": "sapping_t1",
+      "name": "Sapping",
+      "minItemLevel": 14,
+      "allowedSlots": ["mainHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaSteal"],
+      "modifiers": [
+        { "stat": "manaSteal.percent", "rollRange": [1, 2] }
+      ]
+    },
+    {
+      "id": "sapping_t2",
+      "name": "Draining",
+      "minItemLevel": 30,
+      "allowedSlots": ["mainHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaSteal"],
+      "modifiers": [
+        { "stat": "manaSteal.percent", "rollRange": [2, 4] }
+      ]
+    },
+
+    {
+      "id": "of_harvest_t1",
+      "name": "of Harvest",
+      "minItemLevel": 1,
+      "allowedSlots": ["mainHand", "belt", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "lifeOnKill"],
+      "modifiers": [
+        { "stat": "lifeOnKill.flat", "rollRange": [2, 5] }
+      ]
+    },
+    {
+      "id": "of_harvest_t2",
+      "name": "of Reaping",
+      "minItemLevel": 18,
+      "allowedSlots": ["mainHand", "belt", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "lifeOnKill"],
+      "modifiers": [
+        { "stat": "lifeOnKill.flat", "rollRange": [5, 10] }
+      ]
+    },
+    {
+      "id": "of_harvest_t3",
+      "name": "of Slaughter",
+      "minItemLevel": 36,
+      "allowedSlots": ["mainHand", "belt", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "lifeOnKill"],
+      "modifiers": [
+        { "stat": "lifeOnKill.flat", "rollRange": [10, 18] }
+      ]
+    },
+
+    {
+      "id": "of_echoes_t1",
+      "name": "of Echoes",
+      "minItemLevel": 1,
+      "allowedSlots": ["offHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaOnKill"],
+      "modifiers": [
+        { "stat": "manaOnKill.flat", "rollRange": [2, 5] }
+      ]
+    },
+    {
+      "id": "of_echoes_t2",
+      "name": "of Resonance",
+      "minItemLevel": 18,
+      "allowedSlots": ["offHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaOnKill"],
+      "modifiers": [
+        { "stat": "manaOnKill.flat", "rollRange": [5, 10] }
+      ]
+    },
+    {
+      "id": "of_echoes_t3",
+      "name": "of Overflow",
+      "minItemLevel": 36,
+      "allowedSlots": ["offHand", "ring", "necklace", "trinket"],
+      "tags": ["sustain", "manaOnKill"],
+      "modifiers": [
+        { "stat": "manaOnKill.flat", "rollRange": [10, 18] }
+      ]
+    },
+
+    {
+      "id": "thorned_t1",
+      "name": "Thorned",
+      "minItemLevel": 1,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots", "offHand"],
+      "tags": ["defensive", "thorns"],
+      "modifiers": [
+        { "stat": "thorns.flat", "rollRange": [2, 5] }
+      ]
+    },
+    {
+      "id": "thorned_t2",
+      "name": "Barbed",
+      "minItemLevel": 16,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots", "offHand"],
+      "tags": ["defensive", "thorns"],
+      "modifiers": [
+        { "stat": "thorns.flat", "rollRange": [5, 11] }
+      ]
+    },
+    {
+      "id": "thorned_t3",
+      "name": "Spiked",
+      "minItemLevel": 34,
+      "allowedSlots": ["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots", "offHand"],
+      "tags": ["defensive", "thorns"],
+      "modifiers": [
+        { "stat": "thorns.flat", "rollRange": [11, 22] }
+      ]
+    },
+
+    {
+      "id": "of_fleetness_t1",
+      "name": "of Fleetness",
+      "minItemLevel": 1,
+      "allowedSlots": ["boots"],
+      "tags": ["utility", "moveSpeed"],
+      "modifiers": [
+        { "stat": "moveSpeed.percent", "rollRange": [4, 8] }
+      ]
+    },
+    {
+      "id": "of_fleetness_t2",
+      "name": "of the Wind",
+      "minItemLevel": 20,
+      "allowedSlots": ["boots"],
+      "tags": ["utility", "moveSpeed"],
+      "modifiers": [
+        { "stat": "moveSpeed.percent", "rollRange": [8, 14] }
+      ]
+    },
+    {
+      "id": "of_fleetness_t3",
+      "name": "of Stormstriding",
+      "minItemLevel": 40,
+      "allowedSlots": ["boots"],
+      "tags": ["utility", "moveSpeed"],
+      "modifiers": [
+        { "stat": "moveSpeed.percent", "rollRange": [14, 20] }
+      ]
+    }
+  ]
+}

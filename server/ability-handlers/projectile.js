@@ -9,8 +9,14 @@ function executeProjectileAbility({ player, abilityDef, abilityLevel, targetDx, 
   const speed = Math.max(0.1, Number(abilityDef.speed) || 1);
   const range = Math.max(0.25, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 6);
   const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
-  const [damageMin, damageMax] = ctx.getAbilityDamageRange(abilityDef, abilityLevel);
-  const [dotDamageMin, dotDamageMax] = ctx.getAbilityDotDamageRange(abilityDef, abilityLevel);
+  const [damageMin, damageMax] =
+    typeof ctx.getAbilityDamageRangeForEntity === "function"
+      ? ctx.getAbilityDamageRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityDamageRange(abilityDef, abilityLevel);
+  const [dotDamageMin, dotDamageMax] =
+    typeof ctx.getAbilityDotDamageRangeForEntity === "function"
+      ? ctx.getAbilityDotDamageRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityDotDamageRange(abilityDef, abilityLevel);
   const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
   const dotSchool = String(abilityDef.dotSchool || "generic").trim().toLowerCase() || "generic";
   const projectileCount = ctx.clamp(Math.floor(Number(abilityDef.projectileCount) || 1), 1, 12);

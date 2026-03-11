@@ -23,6 +23,55 @@ function createInventoryTools(options = {}) {
     return Array.from({ length: inventorySlotCount }, () => null);
   }
 
+  function cloneInventoryEntry(entry, qtyOverride = null) {
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+    const copy = {
+      itemId: String(entry.itemId || ""),
+      qty: Math.max(0, Math.floor(Number(qtyOverride !== null ? qtyOverride : entry.qty) || 0))
+    };
+    const passthroughKeys = [
+      "instanceId",
+      "name",
+      "rarity",
+      "slot",
+      "weaponClass",
+      "itemLevel",
+      "isEquipment"
+    ];
+    for (const key of passthroughKeys) {
+      if (entry[key] !== undefined && entry[key] !== null && entry[key] !== "") {
+        copy[key] = entry[key];
+      }
+    }
+    if (Array.isArray(entry.tags)) {
+      copy.tags = entry.tags.map((value) => String(value || "")).filter(Boolean);
+    }
+    if (entry.baseStats && typeof entry.baseStats === "object") {
+      copy.baseStats = { ...entry.baseStats };
+    }
+    if (Array.isArray(entry.affixes)) {
+      copy.affixes = entry.affixes.map((affix) => ({
+        ...affix,
+        modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : []
+      }));
+    }
+    if (Array.isArray(entry.prefixes)) {
+      copy.prefixes = entry.prefixes.map((affix) => ({
+        ...affix,
+        modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : []
+      }));
+    }
+    if (Array.isArray(entry.suffixes)) {
+      copy.suffixes = entry.suffixes.map((affix) => ({
+        ...affix,
+        modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : []
+      }));
+    }
+    return copy;
+  }
+
   function addItemsToInventory(player, entries) {
     const normalizedEntries = normalizeItemEntries(entries);
     if (!normalizedEntries.length || !player || !Array.isArray(player.inventorySlots)) {
@@ -34,6 +83,7 @@ function createInventoryTools(options = {}) {
     }
 
     const addedByItem = new Map();
+    const addedUniqueEntries = [];
     const leftover = [];
     let changed = false;
 
@@ -45,10 +95,27 @@ function createInventoryTools(options = {}) {
 
       let remaining = entry.qty;
       const stackSize = itemDef.stackSize;
+      const isUniqueInstance = entry.instanceId !== undefined && entry.instanceId !== null;
+
+      if (isUniqueInstance) {
+        const emptyIndex = player.inventorySlots.findIndex((slot) => !slot);
+        if (emptyIndex < 0) {
+          leftover.push(cloneInventoryEntry(entry, 1));
+          continue;
+        }
+        player.inventorySlots[emptyIndex] = cloneInventoryEntry(entry, 1);
+        changed = true;
+        addedUniqueEntries.push({
+          itemId: entry.itemId,
+          qty: 1,
+          name: String(entry.name || itemDef.name || entry.itemId)
+        });
+        continue;
+      }
 
       for (let i = 0; i < player.inventorySlots.length && remaining > 0; i += 1) {
         const slot = player.inventorySlots[i];
-        if (!slot || slot.itemId !== entry.itemId) {
+        if (!slot || slot.itemId !== entry.itemId || slot.instanceId !== undefined && slot.instanceId !== null) {
           continue;
         }
         if (slot.qty >= stackSize) {
@@ -71,7 +138,7 @@ function createInventoryTools(options = {}) {
           continue;
         }
         const putQty = Math.min(stackSize, remaining);
-        player.inventorySlots[i] = { itemId: entry.itemId, qty: putQty };
+        player.inventorySlots[i] = cloneInventoryEntry(entry, putQty);
         remaining -= putQty;
         changed = true;
         addedByItem.set(entry.itemId, (addedByItem.get(entry.itemId) || 0) + putQty);
@@ -85,11 +152,14 @@ function createInventoryTools(options = {}) {
       }
     }
 
-    const added = Array.from(addedByItem.entries()).map(([itemId, qty]) => ({
-      itemId,
-      qty,
-      name: itemDefs.get(itemId)?.name || itemId
-    }));
+    const added = [
+      ...addedUniqueEntries,
+      ...Array.from(addedByItem.entries()).map(([itemId, qty]) => ({
+        itemId,
+        qty,
+        name: itemDefs.get(itemId)?.name || itemId
+      }))
+    ];
 
     return {
       added,
@@ -129,6 +199,11 @@ function createInventoryTools(options = {}) {
     }
 
     if (from.itemId === to.itemId) {
+      if (from.instanceId !== undefined || to.instanceId !== undefined) {
+        slots[fromIndex] = to;
+        slots[toIndex] = from;
+        return true;
+      }
       const stackSize = itemDefs.get(from.itemId)?.stackSize || 1;
       if (to.qty < stackSize) {
         const moveQty = Math.min(from.qty, stackSize - to.qty);

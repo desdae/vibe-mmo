@@ -55,10 +55,14 @@ function createJoinedPlayer(ws, msg, deps) {
     y: spawn.y,
     hp: classDef.baseHealth,
     maxHp: classDef.baseHealth,
+    baseHealth: classDef.baseHealth,
     mana: classDef.baseMana,
     maxMana: classDef.baseMana,
+    baseMana: classDef.baseMana,
     manaRegen: classDef.manaRegen,
+    baseManaRegen: classDef.manaRegen,
     moveSpeed: classDef.movementSpeed,
+    baseMoveSpeed: classDef.movementSpeed,
     activeHeals: [],
     activeManaRestores: [],
     activeDots: new Map(),
@@ -83,6 +87,7 @@ function createJoinedPlayer(ws, msg, deps) {
     burnAppliedAt: 0,
     burnDurationMs: 0,
     inventorySlots: deps.createEmptyInventorySlots(),
+    equipmentSlots: deps.createEmptyEquipmentSlots(),
     input: { dx: 0, dy: 0 },
     lastDirection: { dx: 0, dy: 1 },
     lastSwingDirection: { dx: 0, dy: 1 },
@@ -109,6 +114,7 @@ function createJoinedPlayer(ws, msg, deps) {
     },
     map: { width: deps.MAP_WIDTH, height: deps.MAP_HEIGHT },
     visibilityRange: deps.VISIBILITY_RANGE,
+    equipment: deps.ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] },
     sounds: deps.buildSoundManifest()
   });
   deps.sendJson(ws, {
@@ -120,7 +126,12 @@ function createJoinedPlayer(ws, msg, deps) {
     type: "item_defs",
     items: deps.ITEM_CONFIG.clientItemDefs
   });
+  deps.sendJson(ws, {
+    type: "equipment_config",
+    equipment: deps.ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] }
+  });
   deps.sendInventoryState(player);
+  deps.sendEquipmentState(player);
   deps.sendSelfProgress(player);
 
   return { player };
@@ -317,6 +328,32 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     }
     if (deps.mergeOrSwapInventorySlots(player, from, to)) {
       deps.sendInventoryState(player);
+    }
+    return { player };
+  }
+
+  if (msg.type === "equip_item") {
+    const inventoryIndex = Math.floor(Number(msg.inventoryIndex));
+    const slotId = String(msg.slot || "").trim();
+    if (!Number.isFinite(inventoryIndex) || !slotId) {
+      return { player };
+    }
+    if (deps.equipInventoryItem(player, inventoryIndex, slotId)) {
+      deps.sendInventoryState(player);
+      deps.sendEquipmentState(player);
+    }
+    return { player };
+  }
+
+  if (msg.type === "unequip_item") {
+    const slotId = String(msg.slot || "").trim();
+    const targetIndex = Number.isFinite(Number(msg.targetIndex)) ? Math.floor(Number(msg.targetIndex)) : null;
+    if (!slotId) {
+      return { player };
+    }
+    if (deps.unequipEquipmentItem(player, slotId, targetIndex)) {
+      deps.sendInventoryState(player);
+      deps.sendEquipmentState(player);
     }
     return { player };
   }

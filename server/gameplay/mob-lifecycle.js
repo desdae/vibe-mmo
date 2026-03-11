@@ -10,6 +10,7 @@ function createMobLifecycleTools({
   queueMobDeathEvent,
   rollGlobalDropsForPlayer,
   rollMobDrops,
+  rollEquipmentDropsAt,
   createLootBag,
   normalizeItemEntries,
   grantPlayerExp,
@@ -164,7 +165,8 @@ function createMobLifecycleTools({
     const killer = killerPlayerId ? players.get(String(killerPlayerId)) : null;
     const globalDrops = rollGlobalDropsForPlayer(killer);
     const mobDrops = rollMobDrops(mob);
-    createLootBag(mob.x, mob.y, normalizeItemEntries([...globalDrops, ...mobDrops]));
+    const equipmentDrops = rollEquipmentDropsAt(mob.x, mob.y);
+    createLootBag(mob.x, mob.y, normalizeItemEntries([...globalDrops, ...mobDrops, ...equipmentDrops]));
 
     if (killer) {
       const expGained = Math.floor((Number(mob.maxHp) || 0) / 10);

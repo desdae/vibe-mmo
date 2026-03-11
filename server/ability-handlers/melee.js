@@ -47,7 +47,10 @@ function executeMeleeConeAbility({ player, abilityDef, abilityLevel, targetDx, t
     return false;
   }
 
-  const [damageMin, damageMax] = ctx.getAbilityDamageRange(abilityDef, abilityLevel);
+  const [damageMin, damageMax] =
+    typeof ctx.getAbilityDamageRangeForEntity === "function"
+      ? ctx.getAbilityDamageRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityDamageRange(abilityDef, abilityLevel);
   const dealt = ctx.applyDamageToMob(closestMob, ctx.randomInt(damageMin, damageMax), player.id);
   ctx.applyAbilityHitEffectsToMob(closestMob, player.id, abilityDef, abilityLevel, dealt, now);
   return true;

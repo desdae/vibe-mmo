@@ -1,6 +1,53 @@
 function createNormalizeItemEntries({ itemDefs }) {
+  function cloneEntry(entry, qtyOverride = null) {
+    const copy = {
+      itemId: String(entry.itemId || ""),
+      qty: Math.max(0, Math.floor(Number(qtyOverride !== null ? qtyOverride : entry.qty) || 0))
+    };
+    const passthroughKeys = [
+      "instanceId",
+      "name",
+      "rarity",
+      "slot",
+      "weaponClass",
+      "itemLevel",
+      "isEquipment"
+    ];
+    for (const key of passthroughKeys) {
+      if (entry[key] !== undefined && entry[key] !== null && entry[key] !== "") {
+        copy[key] = entry[key];
+      }
+    }
+    if (Array.isArray(entry.tags)) {
+      copy.tags = entry.tags.map((value) => String(value || "")).filter(Boolean);
+    }
+    if (entry.baseStats && typeof entry.baseStats === "object") {
+      copy.baseStats = { ...entry.baseStats };
+    }
+    if (Array.isArray(entry.affixes)) {
+      copy.affixes = entry.affixes.map((affix) => ({
+        ...affix,
+        modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : []
+      }));
+    }
+    if (Array.isArray(entry.prefixes)) {
+      copy.prefixes = entry.prefixes.map((affix) => ({
+        ...affix,
+        modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : []
+      }));
+    }
+    if (Array.isArray(entry.suffixes)) {
+      copy.suffixes = entry.suffixes.map((affix) => ({
+        ...affix,
+        modifiers: Array.isArray(affix?.modifiers) ? affix.modifiers.map((modifier) => ({ ...modifier })) : []
+      }));
+    }
+    return copy;
+  }
+
   return function normalizeItemEntries(entries) {
     const merged = new Map();
+    const uniqueEntries = [];
     for (const entry of Array.isArray(entries) ? entries : []) {
       if (!entry) {
         continue;
@@ -13,10 +60,17 @@ function createNormalizeItemEntries({ itemDefs }) {
       if (!itemDefs.has(itemId)) {
         continue;
       }
+      if (entry.instanceId !== undefined && entry.instanceId !== null) {
+        uniqueEntries.push(cloneEntry(entry, 1));
+        continue;
+      }
       merged.set(itemId, (merged.get(itemId) || 0) + qty);
     }
 
-    return Array.from(merged.entries()).map(([itemId, qty]) => ({ itemId, qty }));
+    return [
+      ...uniqueEntries,
+      ...Array.from(merged.entries()).map(([itemId, qty]) => ({ itemId, qty }))
+    ];
   };
 }
 
@@ -47,9 +101,14 @@ function createDropRollTools({
       }
 
       if (rule.kind === "chance") {
-        const chance = clamp((Number(rule.chance) || 0) * chanceMultiplier, 0, 1);
-        if (Math.random() < chance) {
-          drops.push({ itemId: rule.itemId, qty: 1 });
+        const baseChance = clamp(Number(rule.chance) || 0, 0, 1);
+        const effectiveChance = Math.max(0, baseChance * chanceMultiplier);
+        const guaranteedDrops = Math.max(0, Math.floor(effectiveChance));
+        const fractionalChance = effectiveChance - guaranteedDrops;
+        const bonusDrop = Math.random() < fractionalChance ? 1 : 0;
+        const totalDrops = guaranteedDrops + bonusDrop;
+        if (totalDrops > 0) {
+          drops.push({ itemId: rule.itemId, qty: totalDrops });
         }
       }
     }

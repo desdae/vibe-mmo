@@ -5,6 +5,7 @@ function createWorldState() {
   let nextMobId = 1;
   let nextLootBagId = 1;
   let nextAreaEffectId = 1;
+  let nextItemInstanceId = 1;
 
   const players = new Map();
   const projectiles = new Map();
@@ -37,6 +38,10 @@ function createWorldState() {
     return String(nextAreaEffectId++);
   }
 
+  function allocateItemInstanceId() {
+    return String(nextItemInstanceId++);
+  }
+
   return {
     players,
     projectiles,
@@ -49,7 +54,8 @@ function createWorldState() {
     allocateSpawnerId,
     allocateMobId,
     allocateLootBagId,
-    allocateAreaEffectId
+    allocateAreaEffectId,
+    allocateItemInstanceId
   };
 }
 

@@ -142,11 +142,19 @@ function loadAbilityConfigFromDisk(configPath, options) {
     const homingRange = Math.max(0, Number(entry.homingRange) || homingRangeDefault);
     const homingTurnRate = Math.max(0, Number(entry.homingTurnRate ?? entry.turnRate) || homingTurnRateDefault);
     const emitProjectiles = buildEmitProjectilesConfig(entry, id);
+    const firstDamageEffect = (Array.isArray(entry.effects) ? entry.effects : []).find(
+      (effect) => effect && typeof effect === "object" && String(effect.type || "").toLowerCase() === "damage"
+    );
+    const damageSchool = String(firstDamageEffect?.school || "").trim().toLowerCase();
 
     const def = {
       id,
       name: String(entry.name || id).slice(0, 48),
       description: String(entry.description || "").slice(0, 240),
+      tags: Array.isArray(entry.tags)
+        ? entry.tags.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
+        : [],
+      damageSchool,
       kind,
       cooldownMs,
       manaCost: Math.max(0, Number(entry.manaCost) || 0),
@@ -209,6 +217,8 @@ function loadAbilityConfigFromDisk(configPath, options) {
       id: def.id,
       name: def.name,
       description: def.description,
+      tags: def.tags,
+      damageSchool: def.damageSchool,
       kind: def.kind,
       cooldownMs: def.cooldownMs,
       range: def.range,

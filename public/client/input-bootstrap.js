@@ -25,6 +25,12 @@
         return;
       }
 
+      if (event.code === "KeyC" && !deps.gameUI.classList.contains("hidden")) {
+        deps.toggleEquipmentPanel();
+        event.preventDefault();
+        return;
+      }
+
       if (event.code === "KeyP" && !deps.gameUI.classList.contains("hidden")) {
         deps.toggleSpellbookPanel();
         event.preventDefault();

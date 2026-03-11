@@ -388,6 +388,20 @@ body {
   z-index: 6;
 }
 
+#equipment-panel {
+  position: fixed;
+  left: 12px;
+  bottom: 96px;
+  width: min(280px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(1, 11, 19, 0.86);
+  border: 1px solid rgba(83, 147, 177, 0.35);
+  backdrop-filter: blur(2px);
+  z-index: 6;
+}
+
 #spellbook-panel {
   position: fixed;
   right: 12px;
@@ -417,6 +431,45 @@ body {
   display: grid;
   grid-template-columns: repeat(5, 50px);
   gap: 6px;
+}
+
+#equipment-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  #equipment-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    bottom: 96px;
+  }
+}
+
+.equipment-cell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(8, 18, 29, 0.72);
+  border: 1px solid rgba(132, 184, 208, 0.18);
+}
+
+.equipment-slot-label {
+  font-size: 11px;
+  color: #d4e6f8;
+  opacity: 0.92;
+  line-height: 1.2;
+  flex: 1;
+}
+
+.equipment-slot {
+  flex: 0 0 auto;
 }
 
 .inventory-slot {

@@ -10,8 +10,14 @@ function executeBeamAbility({ player, abilityDef, abilityLevel, targetDx, target
   if (beamLength <= 0 || beamDurationMs <= 0) {
     return false;
   }
-  const [damageMin, damageMax] = ctx.getAbilityDamageRange(abilityDef, abilityLevel);
-  const [dotDamageMin, dotDamageMax] = ctx.getAbilityDotDamageRange(abilityDef, abilityLevel);
+  const [damageMin, damageMax] =
+    typeof ctx.getAbilityDamageRangeForEntity === "function"
+      ? ctx.getAbilityDamageRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityDamageRange(abilityDef, abilityLevel);
+  const [dotDamageMin, dotDamageMax] =
+    typeof ctx.getAbilityDotDamageRangeForEntity === "function"
+      ? ctx.getAbilityDotDamageRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityDotDamageRange(abilityDef, abilityLevel);
   const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
   const beamWidth = Math.max(0.2, Number(abilityDef.beamWidth) || 0.8);
 

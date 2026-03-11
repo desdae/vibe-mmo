@@ -1,0 +1,534 @@
+function cloneModifier(modifier) {
+  if (!modifier || typeof modifier !== "object") {
+    return null;
+  }
+  return {
+    stat: String(modifier.stat || ""),
+    value: Number(modifier.value) || 0
+  };
+}
+
+function cloneAffix(affix) {
+  if (!affix || typeof affix !== "object") {
+    return null;
+  }
+  return {
+    id: String(affix.id || ""),
+    name: String(affix.name || ""),
+    kind: String(affix.kind || ""),
+    modifiers: (Array.isArray(affix.modifiers) ? affix.modifiers : []).map(cloneModifier).filter(Boolean)
+  };
+}
+
+function cloneItemEntry(entry) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+  const copy = {
+    itemId: String(entry.itemId || ""),
+    qty: Math.max(0, Math.floor(Number(entry.qty) || 0))
+  };
+  const passthroughKeys = [
+    "instanceId",
+    "name",
+    "rarity",
+    "slot",
+    "weaponClass",
+    "itemLevel",
+    "isEquipment"
+  ];
+  for (const key of passthroughKeys) {
+    if (entry[key] !== undefined && entry[key] !== null && entry[key] !== "") {
+      copy[key] = entry[key];
+    }
+  }
+  if (Array.isArray(entry.tags)) {
+    copy.tags = entry.tags.map((value) => String(value || "")).filter(Boolean);
+  }
+  if (entry.baseStats && typeof entry.baseStats === "object") {
+    copy.baseStats = { ...entry.baseStats };
+  }
+  if (Array.isArray(entry.affixes)) {
+    copy.affixes = entry.affixes.map(cloneAffix).filter(Boolean);
+  }
+  if (Array.isArray(entry.prefixes)) {
+    copy.prefixes = entry.prefixes.map(cloneAffix).filter(Boolean);
+  }
+  if (Array.isArray(entry.suffixes)) {
+    copy.suffixes = entry.suffixes.map(cloneAffix).filter(Boolean);
+  }
+  return copy;
+}
+
+function createEquipmentTools(options = {}) {
+  const equipmentConfigProvider =
+    typeof options.equipmentConfigProvider === "function" ? options.equipmentConfigProvider : () => null;
+  const getServerConfig = typeof options.getServerConfig === "function" ? options.getServerConfig : () => ({});
+  const allocateItemInstanceId =
+    typeof options.allocateItemInstanceId === "function" ? options.allocateItemInstanceId : () => String(Date.now());
+  const randomInt =
+    typeof options.randomInt === "function"
+      ? options.randomInt
+      : (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+  const clamp =
+    typeof options.clamp === "function" ? options.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
+  const mapWidth = Math.max(1, Number(options.mapWidth) || 1);
+  const mapHeight = Math.max(1, Number(options.mapHeight) || 1);
+  const getAbilityDamageRange =
+    typeof options.getAbilityDamageRange === "function" ? options.getAbilityDamageRange : () => [0, 0];
+  const getAbilityDotDamageRange =
+    typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
+
+  function getEquipmentConfig() {
+    const config = equipmentConfigProvider();
+    return config && typeof config === "object" ? config : null;
+  }
+
+  function createEmptyEquipmentSlots() {
+    const config = getEquipmentConfig();
+    const slots = {};
+    for (const slotId of config && Array.isArray(config.itemSlots) ? config.itemSlots : []) {
+      slots[slotId] = null;
+    }
+    return slots;
+  }
+
+  function isEquipmentItemId(itemId) {
+    const config = getEquipmentConfig();
+    return !!(config && config.baseItemsById instanceof Map && config.baseItemsById.has(String(itemId || "")));
+  }
+
+  function getBaseItem(itemId) {
+    const config = getEquipmentConfig();
+    return config && config.baseItemsById instanceof Map ? config.baseItemsById.get(String(itemId || "")) || null : null;
+  }
+
+  function isEquipmentEntry(entry) {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+    if (entry.instanceId !== undefined && entry.instanceId !== null) {
+      return true;
+    }
+    return isEquipmentItemId(entry.itemId);
+  }
+
+  function rollModifierValue(modifier) {
+    const min = Number(modifier.rollMin) || 0;
+    const max = Number(modifier.rollMax) || min;
+    const low = Math.min(min, max);
+    const high = Math.max(min, max);
+    const areIntegers = Math.abs(low - Math.round(low)) < 0.001 && Math.abs(high - Math.round(high)) < 0.001;
+    if (areIntegers) {
+      return randomInt(Math.round(low), Math.round(high));
+    }
+    const raw = low + Math.random() * (high - low);
+    return Math.round(raw * 100) / 100;
+  }
+
+  function chooseWeighted(entries) {
+    const list = Array.isArray(entries) ? entries.filter(Boolean) : [];
+    if (!list.length) {
+      return null;
+    }
+    let totalWeight = 0;
+    for (const entry of list) {
+      totalWeight += Math.max(0.0001, Number(entry.dropWeight) || 0.0001);
+    }
+    let roll = Math.random() * totalWeight;
+    for (const entry of list) {
+      roll -= Math.max(0.0001, Number(entry.dropWeight) || 0.0001);
+      if (roll <= 0) {
+        return entry;
+      }
+    }
+    return list[list.length - 1];
+  }
+
+  function pickUniqueEntries(pool, count) {
+    const available = Array.isArray(pool) ? pool.slice() : [];
+    const results = [];
+    let remaining = Math.max(0, Math.floor(Number(count) || 0));
+    while (remaining > 0 && available.length > 0) {
+      const index = randomInt(0, available.length - 1);
+      results.push(available[index]);
+      available.splice(index, 1);
+      remaining -= 1;
+    }
+    return results;
+  }
+
+  function buildAffixInstances(entries, kind) {
+    return entries.map((affix) => ({
+      id: affix.id,
+      name: affix.name,
+      kind,
+      modifiers: affix.modifiers.map((modifier) => ({
+        stat: modifier.stat,
+        value: rollModifierValue(modifier)
+      }))
+    }));
+  }
+
+  function getDropItemLevel(x, y) {
+    const config = getEquipmentConfig();
+    const maxItemLevel = Math.max(1, Number(config?.maxItemLevel) || 1);
+    const cx = mapWidth * 0.5;
+    const cy = mapHeight * 0.5;
+    const maxRadius = Math.max(1, Math.hypot(cx, cy));
+    const dist = Math.hypot((Number(x) || 0) - cx, (Number(y) || 0) - cy);
+    const ratio = clamp(dist / maxRadius, 0, 1);
+    return clamp(Math.round(1 + ratio * (maxItemLevel - 1)), 1, maxItemLevel);
+  }
+
+  function pickBaseItemForLevel(slotId, itemLevel) {
+    const config = getEquipmentConfig();
+    const candidates = (Array.isArray(config?.baseItems) ? config.baseItems : []).filter((entry) => entry.slot === slotId);
+    if (!candidates.length) {
+      return null;
+    }
+    const exact = candidates.filter((entry) => itemLevel >= entry.itemLevelRange[0] && itemLevel <= entry.itemLevelRange[1]);
+    if (exact.length) {
+      return exact[randomInt(0, exact.length - 1)];
+    }
+    let best = candidates[0];
+    let bestDistance = Infinity;
+    for (const entry of candidates) {
+      const mid = (entry.itemLevelRange[0] + entry.itemLevelRange[1]) * 0.5;
+      const delta = Math.abs(mid - itemLevel);
+      if (delta < bestDistance) {
+        bestDistance = delta;
+        best = entry;
+      }
+    }
+    return best;
+  }
+
+  function filterAffixPool(pool, baseItem, itemLevel) {
+    return (Array.isArray(pool) ? pool : []).filter((entry) => {
+      if (!entry || itemLevel < entry.minItemLevel) {
+        return false;
+      }
+      if (Array.isArray(entry.allowedSlots) && entry.allowedSlots.length && !entry.allowedSlots.includes(baseItem.slot)) {
+        return false;
+      }
+      if (Array.isArray(entry.requiredItemTagsAny) && entry.requiredItemTagsAny.length) {
+        const tagSet = new Set(Array.isArray(baseItem.tags) ? baseItem.tags : []);
+        let matched = false;
+        for (const tag of entry.requiredItemTagsAny) {
+          if (tagSet.has(tag)) {
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
+  function buildEquipmentDisplayName(baseItem, prefixes, suffixes) {
+    const prefixText = prefixes.map((entry) => entry.name).filter(Boolean).join(" ");
+    const suffixText = suffixes.map((entry) => entry.name).filter(Boolean).join(" ");
+    const parts = [];
+    if (prefixText) {
+      parts.push(prefixText);
+    }
+    parts.push(baseItem.name);
+    if (suffixText) {
+      parts.push(suffixText);
+    }
+    return parts.join(" ");
+  }
+
+  function rollEquipmentItemAt(x, y) {
+    const config = getEquipmentConfig();
+    if (!config || !Array.isArray(config.itemSlots) || !config.itemSlots.length) {
+      return null;
+    }
+    const slotId = config.itemSlots[randomInt(0, config.itemSlots.length - 1)];
+    const itemLevel = getDropItemLevel(x, y);
+    const baseItem = pickBaseItemForLevel(slotId, itemLevel);
+    if (!baseItem) {
+      return null;
+    }
+    const rarity = chooseWeighted(config.rarityEntries);
+    if (!rarity) {
+      return null;
+    }
+
+    const prefixPool = filterAffixPool(config.prefixes, baseItem, itemLevel);
+    const suffixPool = filterAffixPool(config.suffixes, baseItem, itemLevel);
+    const prefixCount = randomInt(rarity.prefixMin, rarity.prefixMax);
+    const suffixCount = randomInt(rarity.suffixMin, rarity.suffixMax);
+    const prefixes = buildAffixInstances(pickUniqueEntries(prefixPool, prefixCount), "prefix");
+    const suffixes = buildAffixInstances(pickUniqueEntries(suffixPool, suffixCount), "suffix");
+    const affixes = [...prefixes, ...suffixes];
+
+    return {
+      itemId: baseItem.id,
+      qty: 1,
+      instanceId: String(allocateItemInstanceId()),
+      name: buildEquipmentDisplayName(baseItem, prefixes, suffixes),
+      rarity: rarity.id,
+      slot: baseItem.slot,
+      weaponClass: baseItem.weaponClass,
+      itemLevel,
+      isEquipment: true,
+      tags: Array.isArray(baseItem.tags) ? [...baseItem.tags] : [],
+      baseStats: { ...baseItem.baseStats },
+      affixes,
+      prefixes,
+      suffixes
+    };
+  }
+
+  function rollEquipmentDropsAt(x, y) {
+    const baseChance = 0.2;
+    const chanceMultiplier = Math.max(0, Number(getServerConfig()?.dropChanceMultiplier) || 1);
+    const effectiveChance = baseChance * chanceMultiplier;
+    const guaranteed = Math.max(0, Math.floor(effectiveChance));
+    const fractional = effectiveChance - guaranteed;
+    const extra = Math.random() < fractional ? 1 : 0;
+    const count = guaranteed + extra;
+    const drops = [];
+    for (let i = 0; i < count; i += 1) {
+      const rolled = rollEquipmentItemAt(x, y);
+      if (rolled) {
+        drops.push(rolled);
+      }
+    }
+    return drops;
+  }
+
+  function getEquippedEntries(player) {
+    const equipmentSlots = player && player.equipmentSlots && typeof player.equipmentSlots === "object" ? player.equipmentSlots : {};
+    return Object.values(equipmentSlots).filter(Boolean);
+  }
+
+  function getEquippedStatTotal(player, statPath) {
+    const target = String(statPath || "").trim();
+    if (!target) {
+      return 0;
+    }
+    let total = 0;
+    for (const entry of getEquippedEntries(player)) {
+      for (const affix of Array.isArray(entry.affixes) ? entry.affixes : []) {
+        for (const modifier of Array.isArray(affix.modifiers) ? affix.modifiers : []) {
+          if (String(modifier.stat || "") !== target) {
+            continue;
+          }
+          total += Number(modifier.value) || 0;
+        }
+      }
+    }
+    return total;
+  }
+
+  function inferAbilityTags(abilityDef) {
+    const tags = new Set();
+    for (const tag of Array.isArray(abilityDef?.tags) ? abilityDef.tags : []) {
+      const normalized = String(tag || "").trim().toLowerCase();
+      if (normalized) {
+        tags.add(normalized);
+      }
+    }
+    const kind = String(abilityDef?.kind || "").trim().toLowerCase();
+    if (kind === "projectile") {
+      tags.add("projectile");
+    } else if (kind === "area" || kind === "selfarea") {
+      tags.add("area");
+    } else if (kind === "beam") {
+      tags.add("beam");
+    } else if (kind === "meleecone") {
+      tags.add("melee");
+    }
+    return Array.from(tags);
+  }
+
+  function inferAbilitySchool(abilityDef, fallback = "") {
+    const normalizedFallback = String(fallback || "").trim().toLowerCase();
+    if (normalizedFallback && normalizedFallback !== "generic") {
+      return normalizedFallback;
+    }
+    const directSchool = String(abilityDef && abilityDef.damageSchool || "").trim().toLowerCase();
+    if (directSchool) {
+      return directSchool;
+    }
+    const tags = inferAbilityTags(abilityDef);
+    for (const school of ["fire", "frost", "arcane", "physical"]) {
+      if (tags.includes(school)) {
+        return school;
+      }
+    }
+    return "";
+  }
+
+  function applyDamageBonusesToRange(baseRange, percentBonus, flatMin, flatMax) {
+    const min = Math.max(0, Number(baseRange[0]) || 0);
+    const max = Math.max(min, Number(baseRange[1]) || min);
+    const scale = Math.max(0, 1 + percentBonus / 100);
+    const nextMin = Math.max(0, Math.floor((min + flatMin) * scale));
+    const nextMax = Math.max(nextMin, Math.ceil((max + flatMax) * scale));
+    return [nextMin, nextMax];
+  }
+
+  function getPlayerModifiedAbilityDamageRange(player, abilityDef, abilityLevel) {
+    const baseRange = getAbilityDamageRange(abilityDef, abilityLevel);
+    const school = inferAbilitySchool(abilityDef);
+    let percentBonus = getEquippedStatTotal(player, "damage.global.percent");
+    if (school) {
+      percentBonus += getEquippedStatTotal(player, `damageSchool.${school}.percent`);
+    }
+    for (const tag of inferAbilityTags(abilityDef)) {
+      percentBonus += getEquippedStatTotal(player, `spellTag.${tag}.damagePercent`);
+    }
+    const flatMin = school ? getEquippedStatTotal(player, `damage.${school}.flatMin`) : 0;
+    const flatMax = school ? getEquippedStatTotal(player, `damage.${school}.flatMax`) : 0;
+    return applyDamageBonusesToRange(baseRange, percentBonus, flatMin, flatMax);
+  }
+
+  function getPlayerModifiedAbilityDotDamageRange(player, abilityDef, abilityLevel) {
+    const baseRange = getAbilityDotDamageRange(abilityDef, abilityLevel);
+    const school = inferAbilitySchool(abilityDef, abilityDef && abilityDef.dotSchool);
+    let percentBonus = getEquippedStatTotal(player, "damage.global.percent");
+    if (school) {
+      percentBonus += getEquippedStatTotal(player, `damageSchool.${school}.percent`);
+    }
+    for (const tag of inferAbilityTags(abilityDef)) {
+      percentBonus += getEquippedStatTotal(player, `spellTag.${tag}.damagePercent`);
+    }
+    return applyDamageBonusesToRange(baseRange, percentBonus, 0, 0);
+  }
+
+  function recomputePlayerDerivedStats(player) {
+    if (!player) {
+      return;
+    }
+    const maxHealthFlat = getEquippedStatTotal(player, "maxHealth.flat");
+    const maxHealthPercent = getEquippedStatTotal(player, "maxHealth.percent");
+    const maxManaFlat = getEquippedStatTotal(player, "maxMana.flat");
+    const maxManaPercent = getEquippedStatTotal(player, "maxMana.percent");
+    const manaRegenFlat = getEquippedStatTotal(player, "manaRegen.flat");
+    const manaRegenPercent = getEquippedStatTotal(player, "manaRegen.percent");
+    const moveSpeedPercent = getEquippedStatTotal(player, "moveSpeed.percent");
+
+    const nextMaxHp = clamp(
+      Math.round((Math.max(1, Number(player.baseHealth) || 1) + maxHealthFlat) * (1 + maxHealthPercent / 100)),
+      1,
+      255
+    );
+    const nextMaxMana = Math.max(
+      0,
+      Math.round((Math.max(0, Number(player.baseMana) || 0) + maxManaFlat) * (1 + maxManaPercent / 100))
+    );
+    const nextManaRegen = Math.max(
+      0,
+      (Math.max(0, Number(player.baseManaRegen) || 0) + manaRegenFlat) * (1 + manaRegenPercent / 100)
+    );
+    const nextMoveSpeed = Math.max(0.1, (Math.max(0.1, Number(player.baseMoveSpeed) || 0.1) * (1 + moveSpeedPercent / 100)));
+
+    player.maxHp = nextMaxHp;
+    player.hp = clamp(Number(player.hp) || 0, 0, player.maxHp);
+    player.maxMana = nextMaxMana;
+    player.mana = clamp(Number(player.mana) || 0, 0, player.maxMana);
+    player.manaRegen = nextManaRegen;
+    player.moveSpeed = nextMoveSpeed;
+  }
+
+  function resolveEntrySlot(entry) {
+    const directSlot = String(entry?.slot || "").trim();
+    if (directSlot) {
+      return directSlot;
+    }
+    const baseItem = getBaseItem(entry?.itemId);
+    return baseItem ? baseItem.slot : "";
+  }
+
+  function canEquipEntryToSlot(entry, slotId) {
+    if (!isEquipmentEntry(entry)) {
+      return false;
+    }
+    return resolveEntrySlot(entry) === String(slotId || "").trim();
+  }
+
+  function equipInventoryItem(player, inventoryIndex, slotId) {
+    if (!player || !Array.isArray(player.inventorySlots) || !player.equipmentSlots) {
+      return false;
+    }
+    if (!Number.isInteger(inventoryIndex) || inventoryIndex < 0 || inventoryIndex >= player.inventorySlots.length) {
+      return false;
+    }
+    const targetSlot = String(slotId || "").trim();
+    if (!targetSlot || !(targetSlot in player.equipmentSlots)) {
+      return false;
+    }
+
+    const sourceEntry = player.inventorySlots[inventoryIndex];
+    if (!canEquipEntryToSlot(sourceEntry, targetSlot)) {
+      return false;
+    }
+
+    const equippedEntry = player.equipmentSlots[targetSlot];
+    player.equipmentSlots[targetSlot] = cloneItemEntry(sourceEntry);
+    player.inventorySlots[inventoryIndex] = equippedEntry ? cloneItemEntry(equippedEntry) : null;
+    recomputePlayerDerivedStats(player);
+    return true;
+  }
+
+  function unequipEquipmentItem(player, slotId, targetIndex = null) {
+    if (!player || !Array.isArray(player.inventorySlots) || !player.equipmentSlots) {
+      return false;
+    }
+    const sourceSlot = String(slotId || "").trim();
+    if (!sourceSlot || !(sourceSlot in player.equipmentSlots)) {
+      return false;
+    }
+    const equippedEntry = player.equipmentSlots[sourceSlot];
+    if (!equippedEntry) {
+      return false;
+    }
+
+    let destinationIndex = Number.isInteger(targetIndex) ? targetIndex : -1;
+    if (
+      destinationIndex >= 0 &&
+      destinationIndex < player.inventorySlots.length &&
+      !player.inventorySlots[destinationIndex]
+    ) {
+      player.inventorySlots[destinationIndex] = cloneItemEntry(equippedEntry);
+      player.equipmentSlots[sourceSlot] = null;
+      recomputePlayerDerivedStats(player);
+      return true;
+    }
+
+    destinationIndex = player.inventorySlots.findIndex((slot) => !slot);
+    if (destinationIndex < 0) {
+      return false;
+    }
+
+    player.inventorySlots[destinationIndex] = cloneItemEntry(equippedEntry);
+    player.equipmentSlots[sourceSlot] = null;
+    recomputePlayerDerivedStats(player);
+    return true;
+  }
+
+  return {
+    cloneItemEntry,
+    createEmptyEquipmentSlots,
+    isEquipmentItemId,
+    isEquipmentEntry,
+    rollEquipmentDropsAt,
+    getEquippedStatTotal,
+    getPlayerModifiedAbilityDamageRange,
+    getPlayerModifiedAbilityDotDamageRange,
+    recomputePlayerDerivedStats,
+    equipInventoryItem,
+    unequipEquipmentItem
+  };
+}
+
+module.exports = {
+  createEquipmentTools
+};

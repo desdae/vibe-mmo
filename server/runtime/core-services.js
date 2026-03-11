@@ -10,6 +10,7 @@ function createCoreServices({
   inventoryCols,
   inventoryRows,
   inventorySlotCount,
+  equipmentSlotIds,
   copperItemId,
   baseExpToNext,
   expGrowthFactor,
@@ -29,12 +30,14 @@ function createCoreServices({
   const playerMessageTools = createPlayerMessageTools({
     sendJson,
     itemDefs,
+    equipmentSlotIds,
     inventoryCols,
     inventoryRows,
     inventorySlotCount
   });
   const sendSelfProgress = playerMessageTools.sendSelfProgress;
   const sendInventoryState = playerMessageTools.sendInventoryState;
+  const sendEquipmentState = playerMessageTools.sendEquipmentState;
   const serializeBagItemsForMeta = (items) =>
     playerMessageTools.serializeBagItemsForMeta(items, normalizeItemEntries);
 
@@ -89,6 +92,7 @@ function createCoreServices({
     normalizeItemEntries,
     sendSelfProgress,
     sendInventoryState,
+    sendEquipmentState,
     serializeBagItemsForMeta,
     createEmptyInventorySlots,
     addItemsToInventory,

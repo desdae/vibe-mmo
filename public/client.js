@@ -24,6 +24,8 @@ const spellbookGrid = document.getElementById("spellbook-grid");
 const actionBar = document.getElementById("action-bar");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
+const equipmentPanel = document.getElementById("equipment-panel");
+const equipmentGrid = document.getElementById("equipment-grid");
 const debugPanel = document.getElementById("debug-panel");
 const debugNet = document.getElementById("debug-net");
 const dpsPanel = document.getElementById("dps-panel");
@@ -291,6 +293,7 @@ const iconUrlCache = new Map();
 const dragState = {
   source: "",
   inventoryFrom: null,
+  equipmentSlot: "",
   fromActionSlot: "",
   itemId: "",
   actionBinding: ""
@@ -299,6 +302,12 @@ const inventoryState = {
   cols: 5,
   rows: 2,
   slots: []
+};
+const equipmentConfigState = {
+  itemSlots: []
+};
+const equipmentState = {
+  slots: {}
 };
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -584,6 +593,7 @@ function setStatus(text) {
 function clearDragState() {
   dragState.source = "";
   dragState.inventoryFrom = null;
+  dragState.equipmentSlot = "";
   dragState.fromActionSlot = "";
   dragState.itemId = "";
   dragState.actionBinding = "";
@@ -1499,6 +1509,151 @@ function formatMsAsSeconds(ms) {
   return `${seconds.toFixed(seconds >= 10 || Number.isInteger(seconds) ? 0 : 1)}s`;
 }
 
+function formatTooltipNumber(value, fallbackDecimals = 2) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return "0";
+  }
+  if (Math.abs(n - Math.round(n)) < 0.001) {
+    return String(Math.round(n));
+  }
+  return n.toFixed(fallbackDecimals);
+}
+
+function normalizeAffixModifierEntries(modifiers) {
+  if (Array.isArray(modifiers)) {
+    return modifiers
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") {
+          return null;
+        }
+        const stat = String(entry.stat || entry.key || "").trim();
+        if (!stat) {
+          return null;
+        }
+        const rawValue =
+          entry.value !== undefined
+            ? entry.value
+            : entry.amount !== undefined
+              ? entry.amount
+              : entry.roll !== undefined
+                ? entry.roll
+                : null;
+        const value = Number(rawValue);
+        if (!Number.isFinite(value) || value === 0) {
+          return null;
+        }
+        return { stat, value };
+      })
+      .filter(Boolean);
+  }
+
+  if (!modifiers || typeof modifiers !== "object") {
+    return [];
+  }
+
+  const entries = [];
+  for (const [stat, rawValue] of Object.entries(modifiers)) {
+    const value = Number(rawValue);
+    if (!stat || !Number.isFinite(value) || value === 0) {
+      continue;
+    }
+    entries.push({ stat, value });
+  }
+  return entries;
+}
+
+function humanizeModifierStat(statPath) {
+  const stat = String(statPath || "").trim();
+  if (!stat) {
+    return "Modifier";
+  }
+  const lower = stat.toLowerCase();
+  const damageSchoolMatch = lower.match(/^damageschool\.([a-z0-9_]+)\.percent$/);
+  if (damageSchoolMatch) {
+    return `${toTitleCaseWords(damageSchoolMatch[1].replace(/[_-]+/g, " "))} Damage`;
+  }
+  const spellTagMatch = lower.match(/^spelltag\.([a-z0-9_]+)\.damagepercent$/);
+  if (spellTagMatch) {
+    return `${toTitleCaseWords(spellTagMatch[1].replace(/[_-]+/g, " "))} Ability Damage`;
+  }
+  if (lower === "damage.global.percent") {
+    return "Global Damage";
+  }
+  const cleaned = stat
+    .replace(/\.percent$/i, "")
+    .replace(/\.flat(min|max)?$/i, "")
+    .replace(/\.damagepercent$/i, "")
+    .replace(/\./g, " ");
+  return humanizeKey(cleaned);
+}
+
+function formatAffixModifier(modifier) {
+  if (!modifier || typeof modifier !== "object") {
+    return "";
+  }
+  const stat = String(modifier.stat || "").trim();
+  if (!stat) {
+    return "";
+  }
+  const value = Number(modifier.value);
+  if (!Number.isFinite(value) || value === 0) {
+    return "";
+  }
+  const sign = value > 0 ? "+" : "-";
+  const absValue = Math.abs(value);
+  const isPercent = /\.percent$/i.test(stat) || /\.damagepercent$/i.test(stat);
+  const valueText = `${sign}${formatTooltipNumber(absValue)}${isPercent ? "%" : ""}`;
+  return `${valueText} ${humanizeModifierStat(stat)}`;
+}
+
+function getItemInstanceAffixes(itemData) {
+  if (!itemData || typeof itemData !== "object") {
+    return [];
+  }
+  const result = [];
+  const pushAffixArray = (list) => {
+    for (const affix of Array.isArray(list) ? list : []) {
+      if (!affix || typeof affix !== "object") {
+        continue;
+      }
+      const name = String(affix.name || affix.id || "").trim();
+      const modifiers = normalizeAffixModifierEntries(affix.modifiers || affix.stats || affix.values);
+      if (!name && !modifiers.length) {
+        continue;
+      }
+      result.push({
+        name,
+        modifiers
+      });
+    }
+  };
+
+  pushAffixArray(itemData.affixes);
+  pushAffixArray(itemData.prefixes);
+  pushAffixArray(itemData.suffixes);
+  return result;
+}
+
+function formatEquipmentBaseStatLine(statKey, value) {
+  const key = String(statKey || "").trim();
+  const n = Number(value);
+  if (!key || !Number.isFinite(n) || n === 0) {
+    return "";
+  }
+  const labelMap = {
+    armor: "Armor",
+    blockChance: "Block Chance",
+    attackSpeed: "Attack Speed",
+    baseDamageMin: "Base Damage Min",
+    baseDamageMax: "Base Damage Max",
+    spellPower: "Spell Power"
+  };
+  const label = labelMap[key] || humanizeKey(key);
+  const isPercent = /chance$/i.test(key);
+  return `${label}: ${formatTooltipNumber(n)}${isPercent ? "%" : ""}`;
+}
+
 function buildAbilityTooltip(abilityId) {
   const action = getActionDefById(abilityId);
   const abilityIdKey = String(abilityId || "");
@@ -1603,17 +1758,40 @@ function buildAbilityTooltip(abilityId) {
   return lines.join("\n");
 }
 
-function buildItemTooltip(itemId, qty = null) {
-  const def = itemDefsById.get(String(itemId || ""));
+function buildItemTooltip(itemInput, qty = null) {
+  const itemData = itemInput && typeof itemInput === "object" ? itemInput : null;
+  const itemId = itemData ? String(itemData.itemId || "") : String(itemInput || "");
+  const def = itemDefsById.get(itemId);
   if (!def) {
-    return String(itemId || "Item");
+    return itemId || "Item";
   }
 
-  const lines = [qty && qty > 0 ? `${def.name} x${Math.floor(qty)}` : def.name];
+  const resolvedQty = qty !== null ? qty : itemData ? itemData.qty : null;
+  const displayName = String((itemData && itemData.name) || def.name || itemId || "Item");
+  const lines = [resolvedQty && resolvedQty > 0 ? `${displayName} x${Math.floor(resolvedQty)}` : displayName];
+  if (itemData && typeof itemData.rarity === "string" && itemData.rarity.trim()) {
+    lines.push(`Rarity: ${toTitleCaseWords(itemData.rarity.trim())}`);
+  }
+  if (itemData && Number.isFinite(Number(itemData.itemLevel))) {
+    lines.push(`Item Level: ${Math.max(1, Math.floor(Number(itemData.itemLevel)))}`);
+  }
+  if (itemData && typeof itemData.slot === "string" && itemData.slot.trim()) {
+    lines.push(`Slot: ${humanizeKey(itemData.slot.trim())}`);
+  } else if (def && typeof def.slot === "string" && def.slot.trim()) {
+    lines.push(`Slot: ${humanizeKey(def.slot.trim())}`);
+  }
   if (def.description) {
     lines.push(String(def.description));
   }
   appendTooltipNumber(lines, "Stack Size", def.stackSize);
+  if (def && def.isEquipment && def.baseStats && typeof def.baseStats === "object") {
+    for (const [statKey, statValue] of Object.entries(def.baseStats)) {
+      const rendered = formatEquipmentBaseStatLine(statKey, statValue);
+      if (rendered) {
+        lines.push(rendered);
+      }
+    }
+  }
 
   const effect = def.effect && typeof def.effect === "object" ? def.effect : null;
   if (effect && effect.type) {
@@ -1640,7 +1818,19 @@ function buildItemTooltip(itemId, qty = null) {
       continue;
     }
     if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      lines.push(`${humanizeKey(key)}: ${Math.abs(value - Math.round(value)) < 0.001 ? Math.round(value) : value.toFixed(2)}`);
+      lines.push(`${humanizeKey(key)}: ${formatTooltipNumber(value)}`);
+    }
+  }
+
+  const affixes = getItemInstanceAffixes(itemData);
+  if (affixes.length) {
+    lines.push("Affixes:");
+    for (const affix of affixes) {
+      const prefix = affix.name ? `${affix.name}: ` : "";
+      const modifierText = affix.modifiers.map(formatAffixModifier).filter(Boolean).join(", ");
+      if (prefix || modifierText) {
+        lines.push(`- ${prefix}${modifierText || "No modifiers"}`);
+      }
     }
   }
 
@@ -2003,6 +2193,7 @@ function updateSpellbookUI(self) {
       dragState.source = "spellbook";
       dragState.actionBinding = makeActionBinding(abilityId);
       dragState.inventoryFrom = null;
+      dragState.equipmentSlot = "";
       dragState.fromActionSlot = "";
       dragState.itemId = "";
       event.dataTransfer.effectAllowed = "copyMove";
@@ -2348,6 +2539,7 @@ function getItemIconUrl(itemId) {
   const key = `item_icon:${itemId}`;
   return createIconUrl(key, (iconCtx, size) => {
     const mid = size / 2;
+    const itemDef = itemDefsById.get(itemId);
     iconCtx.fillStyle = "rgba(18, 29, 42, 0.95)";
     iconCtx.fillRect(0, 0, size, size);
 
@@ -2400,6 +2592,76 @@ function getItemIconUrl(itemId) {
 
       iconCtx.fillStyle = "#dce6f3";
       iconCtx.fillRect(mid - 4.5, mid - 14, 9, 5);
+      return;
+    }
+
+    if (itemDef && itemDef.isEquipment) {
+      const slot = String(itemDef.slot || "").trim();
+      const weaponClass = String(itemDef.weaponClass || "").trim().toLowerCase();
+      iconCtx.strokeStyle = "rgba(222, 235, 247, 0.92)";
+      iconCtx.lineWidth = 2.2;
+      iconCtx.lineCap = "round";
+      iconCtx.lineJoin = "round";
+
+      if (weaponClass === "sword") {
+        iconCtx.strokeStyle = "#d7dee8";
+        iconCtx.beginPath();
+        iconCtx.moveTo(mid - 8, mid + 10);
+        iconCtx.lineTo(mid + 8, mid - 10);
+        iconCtx.stroke();
+        iconCtx.strokeStyle = "#9d7b53";
+        iconCtx.beginPath();
+        iconCtx.moveTo(mid - 4, mid + 12);
+        iconCtx.lineTo(mid - 10, mid + 6);
+        iconCtx.moveTo(mid - 2, mid + 6);
+        iconCtx.lineTo(mid + 4, mid + 12);
+        iconCtx.stroke();
+        return;
+      }
+
+      if (weaponClass === "wand" || weaponClass === "staff") {
+        iconCtx.strokeStyle = "#8b673f";
+        iconCtx.beginPath();
+        iconCtx.moveTo(mid - 8, mid + 12);
+        iconCtx.lineTo(mid + 7, mid - 10);
+        iconCtx.stroke();
+        iconCtx.fillStyle = weaponClass === "staff" ? "#8fd2ff" : "#cfa8ff";
+        iconCtx.beginPath();
+        iconCtx.arc(mid + 9, mid - 12, 5, 0, Math.PI * 2);
+        iconCtx.fill();
+        return;
+      }
+
+      if (slot === "offHand") {
+        iconCtx.fillStyle = "#d8dfe8";
+        iconCtx.strokeStyle = "#95a0ae";
+        iconCtx.beginPath();
+        iconCtx.arc(mid, mid, 11, 0, Math.PI * 2);
+        iconCtx.fill();
+        iconCtx.stroke();
+        iconCtx.beginPath();
+        iconCtx.arc(mid, mid, 3.5, 0, Math.PI * 2);
+        iconCtx.stroke();
+        return;
+      }
+
+      if (slot === "ring" || slot === "necklace" || slot === "trinket") {
+        iconCtx.strokeStyle = slot === "trinket" ? "#8fd2ff" : "#e2bb62";
+        iconCtx.lineWidth = 3;
+        iconCtx.beginPath();
+        iconCtx.arc(mid, mid, 9, 0, Math.PI * 2);
+        iconCtx.stroke();
+        return;
+      }
+
+      iconCtx.fillStyle = "#a7b8c9";
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid, 8);
+      iconCtx.lineTo(size - 10, mid);
+      iconCtx.lineTo(mid, size - 8);
+      iconCtx.lineTo(10, mid);
+      iconCtx.closePath();
+      iconCtx.fill();
       return;
     }
 
@@ -2468,7 +2730,7 @@ function updateInventoryUI() {
     slotEl.className = "inventory-slot";
     slotEl.dataset.index = String(i);
     slotEl.addEventListener("dragover", (event) => {
-      if (dragState.inventoryFrom === null) {
+      if (dragState.inventoryFrom === null && !dragState.equipmentSlot) {
         return;
       }
       event.preventDefault();
@@ -2480,29 +2742,38 @@ function updateInventoryUI() {
     slotEl.addEventListener("drop", (event) => {
       event.preventDefault();
       slotEl.classList.remove("drag-hover");
-      if (dragState.inventoryFrom === null) {
-        return;
-      }
-      const from = dragState.inventoryFrom;
-      const to = i;
+      const fromInventory = dragState.inventoryFrom;
+      const fromEquipmentSlot = dragState.equipmentSlot;
       clearDragState();
-      if (from === to) {
+      if (fromInventory !== null) {
+        const to = i;
+        if (fromInventory === to) {
+          return;
+        }
+        sendJsonMessage({
+          type: "inventory_move",
+          from: fromInventory,
+          to
+        });
         return;
       }
-      sendJsonMessage({
-        type: "inventory_move",
-        from,
-        to
-      });
+      if (fromEquipmentSlot) {
+        sendJsonMessage({
+          type: "unequip_item",
+          slot: fromEquipmentSlot,
+          targetIndex: i
+        });
+      }
     });
 
     if (slotData && slotData.itemId) {
       slotEl.classList.add("has-item");
       slotEl.draggable = true;
-      slotEl.title = buildItemTooltip(slotData.itemId, slotData.qty);
+      slotEl.title = buildItemTooltip(slotData);
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "inventory";
         dragState.inventoryFrom = i;
+        dragState.equipmentSlot = "";
         dragState.fromActionSlot = "";
         dragState.itemId = slotData.itemId;
         dragState.actionBinding = "";
@@ -2524,6 +2795,86 @@ function updateInventoryUI() {
     }
 
     inventoryGrid.appendChild(slotEl);
+  }
+}
+
+function updateEquipmentUI() {
+  if (!equipmentGrid || !equipmentPanel) {
+    return;
+  }
+  const slotIds = Array.isArray(equipmentConfigState.itemSlots) ? equipmentConfigState.itemSlots : [];
+  equipmentGrid.innerHTML = "";
+
+  for (const slotId of slotIds) {
+    const cell = document.createElement("div");
+    cell.className = "equipment-cell";
+
+    const label = document.createElement("div");
+    label.className = "equipment-slot-label";
+    label.textContent = humanizeKey(slotId);
+    cell.appendChild(label);
+
+    const slotEl = document.createElement("div");
+    slotEl.className = "inventory-slot equipment-slot";
+    slotEl.dataset.slot = slotId;
+    slotEl.title = humanizeKey(slotId);
+    slotEl.addEventListener("dragover", (event) => {
+      const itemId = dragState.itemId;
+      const itemDef = itemDefsById.get(itemId);
+      const draggedSlot = dragState.inventoryFrom;
+      const slotData = draggedSlot !== null ? inventoryState.slots[draggedSlot] : null;
+      const draggedItemSlot = String((slotData && slotData.slot) || (itemDef && itemDef.slot) || "").trim();
+      if (!itemId || draggedSlot === null || draggedItemSlot !== slotId) {
+        return;
+      }
+      event.preventDefault();
+      slotEl.classList.add("drag-hover");
+    });
+    slotEl.addEventListener("dragleave", () => {
+      slotEl.classList.remove("drag-hover");
+    });
+    slotEl.addEventListener("drop", (event) => {
+      event.preventDefault();
+      slotEl.classList.remove("drag-hover");
+      if (!dragState.itemId || dragState.inventoryFrom === null) {
+        clearDragState();
+        return;
+      }
+      const inventoryIndex = dragState.inventoryFrom;
+      clearDragState();
+      sendJsonMessage({
+        type: "equip_item",
+        inventoryIndex,
+        slot: slotId
+      });
+    });
+
+    const slotData = equipmentState.slots[slotId] || null;
+    if (slotData && slotData.itemId) {
+      slotEl.classList.add("has-item");
+      slotEl.draggable = true;
+      slotEl.title = buildItemTooltip(slotData);
+      slotEl.addEventListener("dragstart", (event) => {
+        dragState.source = "equipment";
+        dragState.inventoryFrom = null;
+        dragState.equipmentSlot = slotId;
+        dragState.fromActionSlot = "";
+        dragState.itemId = slotData.itemId;
+        dragState.actionBinding = "";
+        event.dataTransfer.effectAllowed = "move";
+      });
+      slotEl.addEventListener("dragend", () => {
+        clearDragState();
+      });
+
+      const iconEl = document.createElement("div");
+      iconEl.className = "inv-icon";
+      iconEl.style.backgroundImage = `url(${getItemIconUrl(slotData.itemId)})`;
+      slotEl.appendChild(iconEl);
+    }
+
+    cell.appendChild(slotEl);
+    equipmentGrid.appendChild(cell);
   }
 }
 
@@ -2562,6 +2913,23 @@ function toggleInventoryPanel() {
     return;
   }
   uiPanelTools.toggleInventoryPanel();
+}
+
+function setEquipmentVisible(visible) {
+  if (!equipmentPanel) {
+    return;
+  }
+  equipmentPanel.classList.toggle("hidden", !visible);
+  if (visible) {
+    updateEquipmentUI();
+  }
+}
+
+function toggleEquipmentPanel() {
+  if (!equipmentPanel) {
+    return;
+  }
+  setEquipmentVisible(equipmentPanel.classList.contains("hidden"));
 }
 
 function setSpellbookVisible(visible) {
@@ -2666,6 +3034,7 @@ function ensureActionBarInitialized() {
       dragState.fromActionSlot = slotId;
       dragState.actionBinding = binding;
       dragState.inventoryFrom = null;
+      dragState.equipmentSlot = "";
       dragState.itemId = "";
       event.dataTransfer.effectAllowed = "move";
     });
@@ -3209,7 +3578,7 @@ function applyLootBagMeta(metaBags) {
             return {
               itemId,
               qty,
-              name: (itemDef && itemDef.name) || String(entry.name || itemId)
+              name: String(entry.name || (itemDef && itemDef.name) || itemId)
             };
           })
           .filter(Boolean)
@@ -3240,10 +3609,17 @@ function applyItemDefs(items) {
       stackSize: Math.max(1, Math.floor(Number(entry.stackSize) || 1)),
       description: String(entry.description || ""),
       icon: String(entry.icon || ""),
-      effect: entry.effect && typeof entry.effect === "object" ? entry.effect : null
+      effect: entry.effect && typeof entry.effect === "object" ? entry.effect : null,
+      isEquipment: !!entry.isEquipment,
+      slot: String(entry.slot || ""),
+      weaponClass: String(entry.weaponClass || ""),
+      baseStats: entry.baseStats && typeof entry.baseStats === "object" ? { ...entry.baseStats } : null,
+      itemLevelRange: Array.isArray(entry.itemLevelRange) ? entry.itemLevelRange.map((value) => Number(value) || 0) : null,
+      tags: Array.isArray(entry.tags) ? entry.tags.map((value) => String(value || "")).filter(Boolean) : []
     });
   }
   updateInventoryUI();
+  updateEquipmentUI();
   updateActionBarUI(getCurrentSelf());
 }
 
@@ -3389,6 +3765,9 @@ async function loadInitialGameConfig() {
     if (payload && typeof payload === "object" && payload.gameplay) {
       applyGameplayClientConfig(payload.gameplay);
     }
+    if (payload && typeof payload === "object" && payload.equipment) {
+      applyEquipmentConfig(payload.equipment);
+    }
     if (Array.isArray(payload.items)) {
       applyItemDefs(payload.items);
     }
@@ -3396,6 +3775,68 @@ async function loadInitialGameConfig() {
   } catch (_error) {
     return false;
   }
+}
+
+function parseItemStateEntry(raw) {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const itemId = String(raw.itemId || "").trim();
+  const qty = Math.max(0, Math.floor(Number(raw.qty) || 0));
+  if (!itemId || qty <= 0) {
+    return null;
+  }
+  const slot = { itemId, qty };
+  if (raw.instanceId !== undefined && raw.instanceId !== null) {
+    slot.instanceId = String(raw.instanceId);
+  }
+  if (typeof raw.name === "string" && raw.name.trim()) {
+    slot.name = raw.name.trim();
+  }
+  if (typeof raw.rarity === "string" && raw.rarity.trim()) {
+    slot.rarity = raw.rarity.trim();
+  }
+  if (typeof raw.slot === "string" && raw.slot.trim()) {
+    slot.slot = raw.slot.trim();
+  }
+  if (typeof raw.weaponClass === "string" && raw.weaponClass.trim()) {
+    slot.weaponClass = raw.weaponClass.trim();
+  }
+  if (raw.isEquipment) {
+    slot.isEquipment = true;
+  }
+  if (Number.isFinite(Number(raw.itemLevel))) {
+    slot.itemLevel = Math.max(1, Math.floor(Number(raw.itemLevel)));
+  }
+  if (raw.baseStats && typeof raw.baseStats === "object") {
+    slot.baseStats = { ...raw.baseStats };
+  }
+  if (Array.isArray(raw.tags)) {
+    slot.tags = raw.tags.map((value) => String(value || "")).filter(Boolean);
+  }
+  if (Array.isArray(raw.affixes)) {
+    slot.affixes = raw.affixes;
+  }
+  if (Array.isArray(raw.prefixes)) {
+    slot.prefixes = raw.prefixes;
+  }
+  if (Array.isArray(raw.suffixes)) {
+    slot.suffixes = raw.suffixes;
+  }
+  return slot;
+}
+
+function applyEquipmentConfig(equipment) {
+  const slotIds = Array.isArray(equipment && equipment.itemSlots)
+    ? equipment.itemSlots.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  equipmentConfigState.itemSlots = slotIds;
+  const nextSlots = {};
+  for (const slotId of slotIds) {
+    nextSlots[slotId] = equipmentState.slots[slotId] || null;
+  }
+  equipmentState.slots = nextSlots;
+  updateEquipmentUI();
 }
 
 function applyInventoryState(msg) {
@@ -3406,23 +3847,26 @@ function applyInventoryState(msg) {
 
   for (let i = 0; i < targetLength; i += 1) {
     const raw = Array.isArray(msg.slots) ? msg.slots[i] : null;
-    if (!raw) {
-      nextSlots.push(null);
-      continue;
-    }
-    const itemId = String(raw.itemId || "").trim();
-    const qty = Math.max(0, Math.floor(Number(raw.qty) || 0));
-    if (!itemId || qty <= 0) {
-      nextSlots.push(null);
-      continue;
-    }
-    nextSlots.push({ itemId, qty });
+    nextSlots.push(parseItemStateEntry(raw));
   }
 
   inventoryState.cols = cols;
   inventoryState.rows = rows;
   inventoryState.slots = nextSlots;
   updateInventoryUI();
+}
+
+function applyEquipmentState(msg) {
+  if (Array.isArray(msg && msg.itemSlots) && msg.itemSlots.length) {
+    applyEquipmentConfig({ itemSlots: msg.itemSlots });
+  }
+  const nextSlots = {};
+  for (const slotId of equipmentConfigState.itemSlots) {
+    const raw = msg && msg.slots && typeof msg.slots === "object" ? msg.slots[slotId] : null;
+    nextSlots[slotId] = parseItemStateEntry(raw);
+  }
+  equipmentState.slots = nextSlots;
+  updateEquipmentUI();
 }
 
 const sharedClientNetworkPackets = globalThis.VibeClientNetworkPackets || null;
@@ -3576,10 +4020,13 @@ function resetClientSessionState() {
   gameState.mobs = [];
   gameState.lootBags = [];
   inventoryState.slots = [];
+  equipmentState.slots = {};
   entityRuntime.lootBagMeta.clear();
   setInventoryVisible(false);
+  setEquipmentVisible(false);
   setSpellbookVisible(false);
   updateInventoryUI();
+  updateEquipmentUI();
   remotePlayerSwings.clear();
   remotePlayerCasts.clear();
   remotePlayerStuns.clear();
@@ -3667,7 +4114,7 @@ function handleServerLootPicked(msg) {
         const itemId = String(entry.itemId || "");
         const qty = Math.max(0, Math.floor(Number(entry.qty) || 0));
         const itemDef = itemDefsById.get(itemId);
-        return `${(itemDef && itemDef.name) || String(entry.name || itemId)} x${qty}`;
+        return `${String(entry.name || (itemDef && itemDef.name) || itemId)} x${qty}`;
       })
       .join(", ");
     if (summary) {
@@ -3728,6 +4175,9 @@ const serverMessageHandlers = {
     if (msg && typeof msg === "object" && msg.sounds) {
       applySoundManifest(msg.sounds);
     }
+    if (msg && typeof msg === "object" && msg.equipment) {
+      applyEquipmentConfig(msg.equipment);
+    }
     applyClassAndAbilityDefs(msg.classes, msg.abilities);
   },
   welcome: (msg) => {
@@ -3740,6 +4190,9 @@ const serverMessageHandlers = {
     if (msg && typeof msg === "object" && msg.sounds) {
       applySoundManifest(msg.sounds);
     }
+    if (msg && typeof msg === "object" && msg.equipment) {
+      applyEquipmentConfig(msg.equipment);
+    }
     gameState.map = msg.map || gameState.map;
     gameState.visibilityRange = msg.visibilityRange || gameState.visibilityRange;
     resetClientSessionState();
@@ -3750,7 +4203,9 @@ const serverMessageHandlers = {
   },
   class_defs: (msg) => applyClassAndAbilityDefs(msg.classes, msg.abilities),
   item_defs: (msg) => applyItemDefs(msg.items),
+  equipment_config: (msg) => applyEquipmentConfig(msg.equipment),
   inventory_state: (msg) => applyInventoryState(msg),
+  equipment_state: (msg) => applyEquipmentState(msg),
   player_meta: (msg) => {
     applyPlayerMeta(msg.players);
     syncEntityArraysToGameState();
@@ -3838,6 +4293,7 @@ function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
   updateInventoryUI();
+  updateEquipmentUI();
 }
 
 const sharedClientPlayerControls = globalThis.VibeClientPlayerControls || null;
@@ -6876,6 +7332,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       resumeSpatialAudioContext,
       toggleDebugPanel,
       toggleInventoryPanel,
+      toggleEquipmentPanel,
       toggleSpellbookPanel,
       toggleDpsPanel,
       executeBoundAction,

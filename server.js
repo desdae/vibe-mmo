@@ -36,6 +36,7 @@ const {
 } = require("./server/config/server-config");
 const { loadGameplayRuntimeConfig } = require("./server/config/gameplay-runtime");
 const { loadItemConfigFromDisk } = require("./server/config/item-config");
+const { loadEquipmentConfigFromDisk } = require("./server/config/equipment-config");
 const { loadClassConfigFromDisk } = require("./server/config/class-config");
 const { loadMobConfigFromDisk } = require("./server/config/mob-config");
 const { createAbilityNormalizationTools } = require("./server/config/ability-normalization");
@@ -69,6 +70,7 @@ const { createProjectileEffectTools } = require("./server/gameplay/projectile-ef
 const { createProjectileRuntimeTools } = require("./server/gameplay/projectile-runtime");
 const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spawn");
 const { createPlayerCommandTools } = require("./server/gameplay/player-commands");
+const { createEquipmentTools } = require("./server/gameplay/equipment");
 const { createCoreServices } = require("./server/runtime/core-services");
 const {
   normalizeDirection,
@@ -100,6 +102,7 @@ const SERVER_CONFIG_PATH = path.join(__dirname, "config", "server.json");
 const GAMEPLAY_CONFIG_PATH = path.join(__dirname, "config", "gameplay.json");
 const CLASS_CONFIG_PATH = path.join(__dirname, "data", "classes.json");
 const ABILITY_CONFIG_PATH = path.join(__dirname, "data", "abilities.json");
+const EQUIPMENT_CONFIG_PATH = path.join(__dirname, "data", "equipment.json");
 
 const gameplayRuntime = loadGameplayRuntimeConfig(GAMEPLAY_CONFIG_PATH);
 const GAMEPLAY_CONFIG = gameplayRuntime.gameplayConfig;
@@ -136,6 +139,20 @@ const {
 const DEFAULT_ABILITY_KIND = "meleeCone";
 
 const publicDir = path.join(__dirname, "public");
+
+function mergeEquipmentItemDefsIntoItemConfig(itemConfig, equipmentConfig) {
+  if (!itemConfig || !equipmentConfig) {
+    return;
+  }
+  for (const entry of Array.isArray(equipmentConfig.equipmentItemDefs) ? equipmentConfig.equipmentItemDefs : []) {
+    if (!entry || !entry.id || itemConfig.itemDefs.has(entry.id)) {
+      continue;
+    }
+    itemConfig.itemDefs.set(entry.id, entry);
+    itemConfig.clientItemDefs.push(entry);
+  }
+  itemConfig.clientEquipmentConfig = equipmentConfig.clientEquipmentConfig;
+}
 const preferredIndexFileName = IS_PROD_MODE ? "index.prod.html" : "index.dev.html";
 const selectedIndexFileName = fs.existsSync(path.join(publicDir, preferredIndexFileName))
   ? preferredIndexFileName
@@ -179,6 +196,8 @@ const randomSpawn = spatialTools.randomSpawn;
 const inVisibilityRange = spatialTools.inVisibilityRange;
 
 const ITEM_CONFIG = loadItemConfigFromDisk(ITEM_CONFIG_PATH);
+const EQUIPMENT_CONFIG = loadEquipmentConfigFromDisk(EQUIPMENT_CONFIG_PATH);
+mergeEquipmentItemDefsIntoItemConfig(ITEM_CONFIG, EQUIPMENT_CONFIG);
 let SERVER_CONFIG;
 try {
   SERVER_CONFIG = loadServerConfigFromDisk(SERVER_CONFIG_PATH);
@@ -194,6 +213,7 @@ let GLOBAL_DROP_CONFIG = { entries: [] };
 const coreServices = createCoreServices({
   sendJson,
   itemDefs: ITEM_CONFIG.itemDefs,
+  equipmentSlotIds: EQUIPMENT_CONFIG.itemSlots,
   inventoryCols: INVENTORY_COLS,
   inventoryRows: INVENTORY_ROWS,
   inventorySlotCount: INVENTORY_SLOT_COUNT,
@@ -212,6 +232,7 @@ const coreServices = createCoreServices({
 const normalizeItemEntries = coreServices.normalizeItemEntries;
 const sendSelfProgress = coreServices.sendSelfProgress;
 const sendInventoryState = coreServices.sendInventoryState;
+const sendEquipmentState = coreServices.sendEquipmentState;
 const serializeBagItemsForMeta = coreServices.serializeBagItemsForMeta;
 const createEmptyInventorySlots = coreServices.createEmptyInventorySlots;
 const addItemsToInventory = coreServices.addItemsToInventory;
@@ -267,6 +288,7 @@ const server = createGameHttpServer({
     classes: CLASS_CONFIG.clientClassDefs,
     abilities: ABILITY_CONFIG.clientAbilityDefs,
     items: ITEM_CONFIG.clientItemDefs,
+    equipment: ITEM_CONFIG.clientEquipmentConfig,
     gameplay: {
       audio: GAMEPLAY_CONFIG.audio
     },
@@ -289,6 +311,7 @@ const allocateSpawnerId = worldState.allocateSpawnerId;
 const allocateMobId = worldState.allocateMobId;
 const allocateLootBagId = worldState.allocateLootBagId;
 const allocateAreaEffectId = worldState.allocateAreaEffectId;
+const allocateItemInstanceId = worldState.allocateItemInstanceId;
 const worldEventQueues = createWorldEventQueues({
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT
@@ -310,6 +333,24 @@ const classAbilityDefsBroadcaster = createClassAbilityDefsBroadcaster({
   abilityConfigProvider: () => ABILITY_CONFIG
 });
 const broadcastClassAndAbilityDefs = classAbilityDefsBroadcaster.broadcastClassAndAbilityDefs;
+
+const equipmentTools = createEquipmentTools({
+  equipmentConfigProvider: () => EQUIPMENT_CONFIG,
+  getServerConfig: () => SERVER_CONFIG,
+  allocateItemInstanceId,
+  randomInt,
+  clamp,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  getAbilityDamageRange,
+  getAbilityDotDamageRange
+});
+const createEmptyEquipmentSlots = equipmentTools.createEmptyEquipmentSlots;
+const rollEquipmentDropsAt = equipmentTools.rollEquipmentDropsAt;
+const getPlayerModifiedAbilityDamageRange = equipmentTools.getPlayerModifiedAbilityDamageRange;
+const getPlayerModifiedAbilityDotDamageRange = equipmentTools.getPlayerModifiedAbilityDotDamageRange;
+const equipInventoryItem = equipmentTools.equipInventoryItem;
+const unequipEquipmentItem = equipmentTools.unequipEquipmentItem;
 
 const projectileSpawnTools = createProjectileSpawnTools({
   normalizeDirection,
@@ -337,7 +378,15 @@ const abilityHandlerContext = createAbilityHandlerContext({
   rotateDirection,
   getAbilityRangeForLevel,
   getAbilityDamageRange,
+  getAbilityDamageRangeForEntity: (entity, abilityDef, abilityLevel) =>
+    entity && entity.ws
+      ? getPlayerModifiedAbilityDamageRange(entity, abilityDef, abilityLevel)
+      : getAbilityDamageRange(abilityDef, abilityLevel),
   getAbilityDotDamageRange,
+  getAbilityDotDamageRangeForEntity: (entity, abilityDef, abilityLevel) =>
+    entity && entity.ws
+      ? getPlayerModifiedAbilityDotDamageRange(entity, abilityDef, abilityLevel)
+      : getAbilityDotDamageRange(abilityDef, abilityLevel),
   markAbilityUsed: (...args) => markAbilityUsed(...args),
   applyDamageToMob: (...args) => applyDamageToMob(...args),
   applyAbilityHitEffectsToMob: (...args) => applyAbilityHitEffectsToMob(...args),
@@ -374,6 +423,7 @@ const mobLifecycleTools = createMobLifecycleTools({
   queueMobDeathEvent,
   rollGlobalDropsForPlayer,
   rollMobDrops,
+  rollEquipmentDropsAt,
   createLootBag,
   normalizeItemEntries,
   grantPlayerExp,
@@ -728,10 +778,12 @@ const runtimeBootstrap = createRuntimeBootstrap({
     randomSpawn,
     expNeededForLevel,
     createEmptyInventorySlots,
+    createEmptyEquipmentSlots,
     normalizeItemEntries,
     addItemsToInventory,
     syncPlayerCopperFromInventory,
     sendInventoryState,
+    sendEquipmentState,
     sendSelfProgress,
     clamp,
     normalizeDirection,
@@ -740,6 +792,8 @@ const runtimeBootstrap = createRuntimeBootstrap({
     levelUpPlayerAbility,
     tryPickupLootBag,
     mergeOrSwapInventorySlots,
+    equipInventoryItem,
+    unequipEquipmentItem,
     consumeInventoryItem,
     addHealOverTimeEffect,
     addManaOverTimeEffect
