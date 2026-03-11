@@ -24,11 +24,11 @@ function createMobCombatTools(options = {}) {
     if (combat) {
       return combat;
     }
-    const fallbackDamageMin = clamp(Math.floor(Number(mob?.damageMin) || 1), 0, 255);
+    const fallbackDamageMin = clamp(Math.floor(Number(mob?.damageMin) || 1), 0, 65535);
     const fallbackDamageMax = clamp(
       Math.floor(Number(mob?.damageMax) || fallbackDamageMin),
       fallbackDamageMin,
-      255
+      65535
     );
     return {
       behavior: "melee",

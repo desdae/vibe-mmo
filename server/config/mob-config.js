@@ -19,10 +19,10 @@ function loadMobConfigFromDisk(configPath, itemDefs, abilityDefs, mapSize, serve
       continue;
     }
 
-    const health = clamp(Math.round((Number(mobEntry.health) || 1) * healthMultiplier), 1, 255);
+    const health = clamp(Math.round((Number(mobEntry.health) || 1) * healthMultiplier), 1, 65535);
     const [damageMinRaw, damageMaxRaw] = parseNumericRange(mobEntry.damage, 1, 1);
-    const damageMin = clamp(Math.round(damageMinRaw * damageMultiplier), 0, 255);
-    const damageMax = clamp(Math.round(damageMaxRaw * damageMultiplier), damageMin, 255);
+    const damageMin = clamp(Math.round(damageMinRaw * damageMultiplier), 0, 65535);
+    const damageMax = clamp(Math.round(damageMaxRaw * damageMultiplier), damageMin, 65535);
     const baseSpeed = clamp(Number(mobEntry.speed) || 0.5, 0.05, 20);
     const [respawnMinRaw, respawnMaxRaw] = parseNumericRange(mobEntry.respawnTime, 30, 30);
     const respawnMinMs = Math.max(1000, Math.round(respawnMinRaw * 1000 * respawnMultiplier));

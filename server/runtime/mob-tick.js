@@ -16,7 +16,11 @@ function createMobTickSystem({
   normalizeDirection,
   clampToSpawnRadius,
   townLayout,
+  ensureObservedSpawnerCoverage,
+  refreshMobObservation,
+  despawnUnobservedMobs,
   respawnMob,
+  isSpawnerObserved,
   tickMobDotEffects,
   clearMobCast,
   completeMobAbilityCast,
@@ -117,9 +121,19 @@ function createMobTickSystem({
     const now = Date.now();
     const dt = tickMs / 1000;
 
+    if (typeof refreshMobObservation === "function") {
+      refreshMobObservation(now);
+    }
+    if (typeof despawnUnobservedMobs === "function") {
+      despawnUnobservedMobs(now);
+    }
+    if (typeof ensureObservedSpawnerCoverage === "function") {
+      ensureObservedSpawnerCoverage(now);
+    }
+
     for (const mob of mobs.values()) {
       if (!mob.alive) {
-        if (now >= mob.respawnAt) {
+        if (now >= mob.respawnAt && (!isSpawnerObserved || isSpawnerObserved(mob.spawnX, mob.spawnY))) {
           respawnMob(mob);
         }
         continue;

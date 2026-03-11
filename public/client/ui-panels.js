@@ -119,7 +119,8 @@
         return;
       }
 
-      debugNet.textContent = `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps | FPS: ${getFps(now).toFixed(1)}`;
+      debugNet.textContent =
+        `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps | FPS: ${getFps(now).toFixed(1)} | Mobs: ${Math.max(0, Math.floor(Number(debugState.totalMobCount) || 0))}`;
     }
 
     function setDebugEnabled(enabled) {

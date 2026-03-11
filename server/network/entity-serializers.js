@@ -14,6 +14,7 @@ function serializeMob(mob) {
   return {
     id: mob.id,
     name: mob.type || "Mob",
+    level: Math.max(1, Math.floor(Number(mob.level) || 1)),
     renderStyle: mob.renderStyle || null,
     x: mob.x,
     y: mob.y,

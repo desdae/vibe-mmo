@@ -10,7 +10,9 @@
     }
 
     function drawMobTooltip(mob, p) {
-      const label = String(mob.name || "Mob");
+      const name = String(mob.name || "Mob");
+      const level = Math.max(1, Math.floor(Number(mob.level) || 1));
+      const label = `${name} [${level}]`;
       ctx.font = "12px Segoe UI";
       ctx.textAlign = "center";
       const paddingX = 8;

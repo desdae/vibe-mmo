@@ -185,17 +185,17 @@
       if (selfMode === SELF_MODE_FULL) {
         const xq = view.getUint16(offset, true);
         const yq = view.getUint16(offset + 2, true);
-        const hp = view.getUint8(offset + 4);
-        const maxHp = view.getUint8(offset + 5);
-        const mana = view.getUint16(offset + 6, true) / MANA_SCALE;
-        const maxMana = view.getUint16(offset + 8, true) / MANA_SCALE;
-        const pendingHeal = view.getUint16(offset + 10, true) / HEAL_SCALE;
-        const pendingMana = view.getUint16(offset + 12, true) / MANA_SCALE;
-        const copper = view.getUint16(offset + 14, true);
-        const level = view.getUint16(offset + 16, true);
-        const exp = view.getUint32(offset + 18, true);
-        const expToNext = view.getUint32(offset + 22, true);
-        offset += 26;
+        const hp = view.getUint16(offset + 4, true);
+        const maxHp = view.getUint16(offset + 6, true);
+        const mana = view.getUint16(offset + 8, true) / MANA_SCALE;
+        const maxMana = view.getUint16(offset + 10, true) / MANA_SCALE;
+        const pendingHeal = view.getUint16(offset + 12, true) / HEAL_SCALE;
+        const pendingMana = view.getUint16(offset + 14, true) / MANA_SCALE;
+        const copper = view.getUint16(offset + 16, true);
+        const level = view.getUint16(offset + 18, true);
+        const exp = view.getUint32(offset + 20, true);
+        const expToNext = view.getUint32(offset + 24, true);
+        offset += 28;
         const prevSelf = entityRuntime.self;
         entityRuntime.self = {
           x: xq / POS_SCALE,
@@ -243,12 +243,12 @@
         base._xq = clamp(base._xq + dx, 0, 65535);
         base._yq = clamp(base._yq + dy, 0, 65535);
         if (selfFlags & DELTA_FLAG_HP_CHANGED) {
-          base.hp = view.getUint8(offset);
-          offset += 1;
+          base.hp = view.getUint16(offset, true);
+          offset += 2;
         }
         if (selfFlags & DELTA_FLAG_MAX_HP_CHANGED) {
-          base.maxHp = view.getUint8(offset);
-          offset += 1;
+          base.maxHp = view.getUint16(offset, true);
+          offset += 2;
         }
         if (selfFlags & DELTA_FLAG_MANA_CHANGED) {
           base.mana = view.getUint16(offset, true) / MANA_SCALE;
@@ -297,9 +297,9 @@
         const id = view.getUint16(offset, true);
         const xq = view.getUint16(offset + 2, true);
         const yq = view.getUint16(offset + 4, true);
-        const hp = view.getUint8(offset + 6);
-        const maxHp = view.getUint8(offset + 7);
-        offset += 8;
+        const hp = view.getUint16(offset + 6, true);
+        const maxHp = view.getUint16(offset + 8, true);
+        offset += 10;
 
         const meta = entityRuntime.playerMeta.get(id);
         entityRuntime.players.set(id, {
@@ -346,12 +346,12 @@
         entity._xq = clamp(entity._xq + dx, 0, 65535);
         entity._yq = clamp(entity._yq + dy, 0, 65535);
         if (flags & DELTA_FLAG_HP_CHANGED) {
-          entity.hp = view.getUint8(offset);
-          offset += 1;
+          entity.hp = view.getUint16(offset, true);
+          offset += 2;
         }
         if (flags & DELTA_FLAG_MAX_HP_CHANGED) {
-          entity.maxHp = view.getUint8(offset);
-          offset += 1;
+          entity.maxHp = view.getUint16(offset, true);
+          offset += 2;
         }
         entity.x = entity._xq / POS_SCALE;
         entity.y = entity._yq / POS_SCALE;
@@ -362,14 +362,15 @@
         const id = view.getUint16(offset, true);
         const xq = view.getUint16(offset + 2, true);
         const yq = view.getUint16(offset + 4, true);
-        const hp = view.getUint8(offset + 6);
-        const maxHp = view.getUint8(offset + 7);
-        offset += 8;
+        const hp = view.getUint16(offset + 6, true);
+        const maxHp = view.getUint16(offset + 8, true);
+        offset += 10;
         const meta = entityRuntime.mobMeta.get(id);
 
         entityRuntime.mobs.set(id, {
           id,
           name: (meta && meta.name) || `Mob ${id}`,
+          level: Math.max(1, Math.floor(Number((meta && meta.level) || 1))),
           renderStyle: (meta && meta.renderStyle) || null,
           x: xq / POS_SCALE,
           y: yq / POS_SCALE,
@@ -400,6 +401,7 @@
         const entity = entityRuntime.mobs.get(id) || {
           id,
           name: ((entityRuntime.mobMeta.get(id) || {}).name) || `Mob ${id}`,
+          level: Math.max(1, Math.floor(Number(((entityRuntime.mobMeta.get(id) || {}).level) || 1))),
           renderStyle: ((entityRuntime.mobMeta.get(id) || {}).renderStyle) || null,
           x: 0,
           y: 0,
@@ -411,12 +413,12 @@
         entity._xq = clamp(entity._xq + dx, 0, 65535);
         entity._yq = clamp(entity._yq + dy, 0, 65535);
         if (flags & DELTA_FLAG_HP_CHANGED) {
-          entity.hp = view.getUint8(offset);
-          offset += 1;
+          entity.hp = view.getUint16(offset, true);
+          offset += 2;
         }
         if (flags & DELTA_FLAG_MAX_HP_CHANGED) {
-          entity.maxHp = view.getUint8(offset);
-          offset += 1;
+          entity.maxHp = view.getUint16(offset, true);
+          offset += 2;
         }
         entity.x = entity._xq / POS_SCALE;
         entity.y = entity._yq / POS_SCALE;
@@ -705,20 +707,26 @@
       if (view.byteLength < 4) {
         return;
       }
-      if (view.getUint8(0) !== MOB_META_PROTO_TYPE || view.getUint8(1) !== MOB_META_PROTO_VERSION) {
+      if (view.getUint8(0) !== MOB_META_PROTO_TYPE) {
+        return;
+      }
+      const version = view.getUint8(1);
+      if (version !== 1 && version !== MOB_META_PROTO_VERSION) {
         return;
       }
 
       const count = view.getUint16(2, true);
       let offset = 4;
       for (let i = 0; i < count; i += 1) {
-        if (offset + 4 > view.byteLength) {
+        const headerSize = version >= 2 ? 6 : 4;
+        if (offset + headerSize > view.byteLength) {
           break;
         }
         const id = view.getUint8(offset);
         const nameLen = view.getUint8(offset + 1);
-        const styleLen = view.getUint16(offset + 2, true);
-        offset += 4;
+        const level = version >= 2 ? view.getUint16(offset + 2, true) : 1;
+        const styleLen = view.getUint16(offset + (version >= 2 ? 4 : 2), true);
+        offset += headerSize;
         if (offset + nameLen + styleLen > view.byteLength) {
           break;
         }
@@ -739,10 +747,11 @@
           offset += styleLen;
         }
 
-        entityRuntime.mobMeta.set(id, { name, renderStyle });
+        entityRuntime.mobMeta.set(id, { name, level, renderStyle });
         const existing = entityRuntime.mobs.get(id);
         if (existing) {
           existing.name = name;
+          existing.level = level;
           existing.renderStyle = renderStyle;
           entityRuntime.mobs.set(id, existing);
         }
@@ -1158,14 +1167,14 @@
       let offset = 4;
       const events = [];
       for (let i = 0; i < count; i += 1) {
-        if (offset + 6 > view.byteLength) {
+        if (offset + 7 > view.byteLength) {
           break;
         }
         const x = dequantizePos(view.getUint16(offset, true));
         const y = dequantizePos(view.getUint16(offset + 2, true));
-        const amount = view.getUint8(offset + 4);
-        const flags = view.getUint8(offset + 5);
-        offset += 6;
+        const amount = view.getUint16(offset + 4, true);
+        const flags = view.getUint8(offset + 6);
+        offset += 7;
         const decodedFlags = decodeDamageEventFlags(flags);
         events.push({
           x,

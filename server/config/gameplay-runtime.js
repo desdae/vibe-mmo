@@ -30,7 +30,10 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
   clusterSpawning: {
     targetClusters: 16,
     clusterAreaSize: 10,
-    maxClustersPerArea: 2
+    maxClustersPerArea: 2,
+    minSpawnRadiusFromCenter: 20,
+    observedSpawnPadding: 10,
+    unobservedDespawnMs: 120000
   },
   mob: {
     wanderRadius: 10,
@@ -40,7 +43,11 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
     attackRange: 1.25,
     attackCooldownMs: 900,
     minSeparation: 0.85,
-    separationIterations: 2
+    separationIterations: 2,
+    levelDistance: 10,
+    levelHealthMultiplier: 1.25,
+    levelDamageMultiplier: 1.15,
+    levelSpeedMultiplier: 1.03
   },
   loot: {
     bagPickupRange: 2.25,
@@ -71,6 +78,9 @@ function loadGameplayRuntimeConfig(gameplayConfigPath) {
     targetMobClusters: gameplayConfig.clusterSpawning.targetClusters,
     clusterAreaSize: gameplayConfig.clusterSpawning.clusterAreaSize,
     maxClustersPerArea: gameplayConfig.clusterSpawning.maxClustersPerArea,
+    minSpawnRadiusFromCenter: gameplayConfig.clusterSpawning.minSpawnRadiusFromCenter,
+    observedSpawnPadding: gameplayConfig.clusterSpawning.observedSpawnPadding,
+    unobservedDespawnMs: gameplayConfig.clusterSpawning.unobservedDespawnMs,
     mobWanderRadius: gameplayConfig.mob.wanderRadius,
     mobProvokedLeashRadius: gameplayConfig.mob.provokedLeashRadius,
     mobProvokedChaseMs: gameplayConfig.mob.provokedChaseMs,
@@ -79,6 +89,10 @@ function loadGameplayRuntimeConfig(gameplayConfigPath) {
     mobAttackCooldownMs: gameplayConfig.mob.attackCooldownMs,
     mobMinSeparation: gameplayConfig.mob.minSeparation,
     mobSeparationIterations: gameplayConfig.mob.separationIterations,
+    mobLevelDistance: gameplayConfig.mob.levelDistance,
+    mobLevelHealthMultiplier: gameplayConfig.mob.levelHealthMultiplier,
+    mobLevelDamageMultiplier: gameplayConfig.mob.levelDamageMultiplier,
+    mobLevelSpeedMultiplier: gameplayConfig.mob.levelSpeedMultiplier,
     playerMobMinSeparation: gameplayConfig.player.mobMinSeparation,
     playerMobSeparationIterations: gameplayConfig.player.mobSeparationIterations,
     baseExpToNext: gameplayConfig.player.baseExpToNext,

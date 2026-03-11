@@ -145,17 +145,17 @@ const sharedCreateParticleSystemTools =
     : null;
 const protocol = globalThis.VibeProtocol || {
   ENTITY_PROTO_TYPE: 1,
-  ENTITY_PROTO_VERSION: 7,
+  ENTITY_PROTO_VERSION: 8,
   MOB_EFFECT_PROTO_TYPE: 2,
   MOB_EFFECT_PROTO_VERSION: 1,
   AREA_EFFECT_PROTO_TYPE: 3,
   AREA_EFFECT_PROTO_VERSION: 2,
   MOB_META_PROTO_TYPE: 4,
-  MOB_META_PROTO_VERSION: 1,
+  MOB_META_PROTO_VERSION: 2,
   PROJECTILE_META_PROTO_TYPE: 5,
   PROJECTILE_META_PROTO_VERSION: 3,
   DAMAGE_EVENT_PROTO_TYPE: 6,
-  DAMAGE_EVENT_PROTO_VERSION: 1,
+  DAMAGE_EVENT_PROTO_VERSION: 2,
   PLAYER_META_PROTO_TYPE: 7,
   PLAYER_META_PROTO_VERSION: 1,
   LOOTBAG_META_PROTO_TYPE: 8,
@@ -499,7 +499,8 @@ const debugState = {
   downEvents: [],
   upBytesWindow: 0,
   downBytesWindow: 0,
-  frameSamples: []
+  frameSamples: [],
+  totalMobCount: 0
 };
 const dpsState = {
   enabled: false,
@@ -5713,12 +5714,14 @@ function applyMobMeta(metaMobs) {
       continue;
     }
     const name = String(meta.name || `Mob ${meta.id}`).slice(0, 32);
+    const level = Math.max(1, Math.floor(Number(meta.level) || 1));
     const renderStyle = normalizeMobRenderStyle(meta.renderStyle);
-    entityRuntime.mobMeta.set(meta.id, { name, renderStyle });
+    entityRuntime.mobMeta.set(meta.id, { name, level, renderStyle });
 
     const existing = entityRuntime.mobs.get(meta.id);
     if (existing) {
       existing.name = name;
+      existing.level = level;
       existing.renderStyle = renderStyle;
       entityRuntime.mobs.set(meta.id, existing);
     }
@@ -6307,6 +6310,7 @@ function resetClientSessionState() {
   adminBotState.lastListRequestAt = 0;
   setBotListVisible(false);
   debugState.frameSamples.length = 0;
+  debugState.totalMobCount = 0;
   dpsState.samples.length = 0;
   setDpsVisible(false);
   spellbookState.signature = "";
@@ -6556,6 +6560,10 @@ const serverMessageHandlers = {
   },
   admin_action_result: (msg) => {
     setStatus(msg && msg.message ? msg.message : "Admin action completed.");
+  },
+  world_stats: (msg) => {
+    debugState.totalMobCount = Math.max(0, Math.floor(Number(msg && msg.mobCount) || 0));
+    updateDebugPanel();
   }
 };
 
@@ -11101,7 +11109,8 @@ function buildAutomationSnapshot() {
       y: Number(mob.y) || 0,
       hp: Number(mob.hp) || 0,
       maxHp: Number(mob.maxHp) || 0,
-      name: String(mob.type || mob.name || "")
+      name: String(mob.type || mob.name || ""),
+      level: Math.max(1, Math.floor(Number(mob.level) || 1))
     })),
     projectiles: gameState.projectiles.map((projectile) => ({
       id: projectile.id,

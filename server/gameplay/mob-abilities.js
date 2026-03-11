@@ -16,6 +16,8 @@ function createMobAbilityTools(options = {}) {
     typeof options.getAbilityDamageRange === "function" ? options.getAbilityDamageRange : () => [0, 0];
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
+  const scaleDamageRangeForMob =
+    typeof options.scaleDamageRangeForMob === "function" ? options.scaleDamageRangeForMob : (_mob, min, max) => [min, max];
   const applyDamageToPlayer =
     typeof options.applyDamageToPlayer === "function" ? options.applyDamageToPlayer : () => 0;
   const applyAbilityHitEffectsToPlayer =
@@ -52,8 +54,10 @@ function createMobAbilityTools(options = {}) {
     const speed = Math.max(0.1, Number(abilityDef.speed) || 1);
     const range = Math.max(0.25, getAbilityRangeForLevel(abilityDef, abilityLevel) || 6);
     const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
-    const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-    const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
+    const [rawDamageMin, rawDamageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
+    const [damageMin, damageMax] = scaleDamageRangeForMob(mob, rawDamageMin, rawDamageMax);
+    const [rawDotDamageMin, rawDotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
+    const [dotDamageMin, dotDamageMax] = scaleDamageRangeForMob(mob, rawDotDamageMin, rawDotDamageMax);
     const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
     const dotSchool = String(abilityDef.dotSchool || "generic").trim().toLowerCase() || "generic";
     const projectileCount = clamp(Math.floor(Number(abilityDef.projectileCount) || 1), 1, 12);
@@ -131,8 +135,10 @@ function createMobAbilityTools(options = {}) {
       return casted;
     }
 
-    const [damageMin, damageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
-    const rollDamage = () => randomInt(clamp(damageMin, 0, 255), clamp(Math.max(damageMin, damageMax), 0, 255));
+    const [rawDamageMin, rawDamageMax] = getAbilityDamageRange(abilityDef, abilityLevel);
+    const [damageMin, damageMax] = scaleDamageRangeForMob(mob, rawDamageMin, rawDamageMax);
+    const rollDamage = () =>
+      randomInt(clamp(Math.floor(damageMin), 0, 65535), clamp(Math.floor(Math.max(damageMin, damageMax)), damageMin, 65535));
 
     if (kind === "meleecone") {
       const range = Math.max(0.2, getAbilityRangeForLevel(abilityDef, abilityLevel) || defaultMobAttackRange);
@@ -387,8 +393,8 @@ function createMobAbilityTools(options = {}) {
 
     const dir = normalizeDirection(targetPlayer.x - mob.x, targetPlayer.y - mob.y);
     triggerMobAttackAnimation(mob, dir, now);
-    const damageMin = clamp(Math.floor(Number(basic.damageMin) || Number(mob.damageMin) || 1), 0, 255);
-    const damageMax = clamp(Math.floor(Number(basic.damageMax) || Number(mob.damageMax) || damageMin), damageMin, 255);
+    const damageMin = clamp(Math.floor(Number(basic.damageMin) || Number(mob.damageMin) || 1), 0, 65535);
+    const damageMax = clamp(Math.floor(Number(basic.damageMax) || Number(mob.damageMax) || damageMin), damageMin, 65535);
     applyDamageToPlayer(targetPlayer, randomInt(damageMin, damageMax), now, { sourceMob: mob });
     return true;
   }

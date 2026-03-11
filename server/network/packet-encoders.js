@@ -155,6 +155,7 @@ function encodeMobMetaPacket(mobsMeta) {
 
   for (const meta of mobsMeta) {
     const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
+    const level = clamp(Math.floor(Number(meta && meta.level) || 1), 1, 65535);
     const nameBytesRaw = Buffer.from(String((meta && meta.name) || "Mob"), "utf8");
     const nameBytes = nameBytesRaw.length > 255 ? nameBytesRaw.subarray(0, 255) : nameBytesRaw;
 
@@ -169,10 +170,11 @@ function encodeMobMetaPacket(mobsMeta) {
     const styleBytesRaw = Buffer.from(styleString, "utf8");
     const styleBytes = styleBytesRaw.length > 65535 ? styleBytesRaw.subarray(0, 65535) : styleBytesRaw;
 
-    const recordHeader = Buffer.alloc(4);
+    const recordHeader = Buffer.alloc(6);
     recordHeader.writeUInt8(id, 0);
     recordHeader.writeUInt8(nameBytes.length, 1);
-    recordHeader.writeUInt16LE(styleBytes.length, 2);
+    recordHeader.writeUInt16LE(level, 2);
+    recordHeader.writeUInt16LE(styleBytes.length, 4);
     parts.push(recordHeader);
     if (nameBytes.length) {
       parts.push(nameBytes);
@@ -518,19 +520,19 @@ function encodeDamageEventPacket(events) {
   header.writeUInt8(DAMAGE_EVENT_PROTO_VERSION, 1);
   header.writeUInt16LE(events.length, 2);
 
-  const recordSize = 6;
+  const recordSize = 7;
   const body = Buffer.alloc(events.length * recordSize);
   let offset = 0;
   for (const event of events) {
     const xQ = quantizePos(Number(event && event.x));
     const yQ = quantizePos(Number(event && event.y));
-    const amount = clamp(Math.floor(Number(event && event.amount) || 0), 0, 255);
+    const amount = clamp(Math.floor(Number(event && event.amount) || 0), 0, 65535);
     const flags = encodeDamageEventFlags(event && event.targetType, event && event.fromSelf);
 
     body.writeUInt16LE(xQ, offset);
     body.writeUInt16LE(yQ, offset + 2);
-    body.writeUInt8(amount, offset + 4);
-    body.writeUInt8(flags, offset + 5);
+    body.writeUInt16LE(amount, offset + 4);
+    body.writeUInt8(flags, offset + 6);
     offset += recordSize;
   }
 

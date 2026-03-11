@@ -64,6 +64,24 @@ function buildGameplayConfig(parsed, defaults) {
         defaults.clusterSpawning.maxClustersPerArea,
         1,
         20
+      ),
+      minSpawnRadiusFromCenter: parseGameplayNumber(
+        clusterSpawning.minSpawnRadiusFromCenter,
+        defaults.clusterSpawning.minSpawnRadiusFromCenter,
+        0,
+        5000
+      ),
+      observedSpawnPadding: parseGameplayNumber(
+        clusterSpawning.observedSpawnPadding,
+        defaults.clusterSpawning.observedSpawnPadding,
+        0,
+        500
+      ),
+      unobservedDespawnMs: parseGameplayInt(
+        clusterSpawning.unobservedDespawnMs,
+        defaults.clusterSpawning.unobservedDespawnMs,
+        1000,
+        86400000
       )
     },
     mob: {
@@ -74,7 +92,26 @@ function buildGameplayConfig(parsed, defaults) {
       attackRange: parseGameplayNumber(mob.attackRange, defaults.mob.attackRange, 0, 1000),
       attackCooldownMs: parseGameplayInt(mob.attackCooldownMs, defaults.mob.attackCooldownMs, 50, 600000),
       minSeparation: parseGameplayNumber(mob.minSeparation, defaults.mob.minSeparation, 0, 10),
-      separationIterations: parseGameplayInt(mob.separationIterations, defaults.mob.separationIterations, 0, 20)
+      separationIterations: parseGameplayInt(mob.separationIterations, defaults.mob.separationIterations, 0, 20),
+      levelDistance: parseGameplayNumber(mob.levelDistance, defaults.mob.levelDistance, 1, 500),
+      levelHealthMultiplier: parseGameplayNumber(
+        mob.levelHealthMultiplier,
+        defaults.mob.levelHealthMultiplier,
+        1,
+        10
+      ),
+      levelDamageMultiplier: parseGameplayNumber(
+        mob.levelDamageMultiplier,
+        defaults.mob.levelDamageMultiplier,
+        1,
+        10
+      ),
+      levelSpeedMultiplier: parseGameplayNumber(
+        mob.levelSpeedMultiplier,
+        defaults.mob.levelSpeedMultiplier,
+        1,
+        10
+      )
     },
     loot: {
       bagPickupRange: parseGameplayNumber(loot.bagPickupRange, defaults.loot.bagPickupRange, 0, 50),

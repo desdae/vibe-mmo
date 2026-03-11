@@ -58,6 +58,7 @@ const { createMobAbilityTools } = require("./server/gameplay/mob-abilities");
 const { createMobBehaviorTools } = require("./server/gameplay/mob-behavior");
 const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { createMobLifecycleTools } = require("./server/gameplay/mob-lifecycle");
+const { createMobScalingTools } = require("./server/gameplay/mob-scaling");
 const { pickClusterDef } = require("./server/gameplay/cluster-spawn");
 const { createSpatialTools } = require("./server/gameplay/spatial-tools");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
@@ -148,7 +149,14 @@ const {
   inventoryCols: INVENTORY_COLS,
   inventoryRows: INVENTORY_ROWS,
   inventorySlotCount: INVENTORY_SLOT_COUNT,
-  copperItemId: ITEM_COPPER_ID
+  copperItemId: ITEM_COPPER_ID,
+  minSpawnRadiusFromCenter: MIN_SPAWN_RADIUS_FROM_CENTER,
+  observedSpawnPadding: OBSERVED_SPAWN_PADDING,
+  unobservedDespawnMs: UNOBSERVED_DESPAWN_MS,
+  mobLevelDistance: MOB_LEVEL_DISTANCE,
+  mobLevelHealthMultiplier: MOB_LEVEL_HEALTH_MULTIPLIER,
+  mobLevelDamageMultiplier: MOB_LEVEL_DAMAGE_MULTIPLIER,
+  mobLevelSpeedMultiplier: MOB_LEVEL_SPEED_MULTIPLIER
 } = gameplayRuntime.constants;
 const DEFAULT_ABILITY_KIND = "meleeCone";
 
@@ -509,6 +517,16 @@ const lootBagTools = createLootBagTools({
 const createLootBag = lootBagTools.createLootBag;
 const tickLootBags = lootBagTools.tickLootBags;
 
+const mobScalingTools = createMobScalingTools({
+  levelDistance: MOB_LEVEL_DISTANCE,
+  healthMultiplierPerLevel: MOB_LEVEL_HEALTH_MULTIPLIER,
+  damageMultiplierPerLevel: MOB_LEVEL_DAMAGE_MULTIPLIER,
+  speedMultiplierPerLevel: MOB_LEVEL_SPEED_MULTIPLIER
+});
+const getMobLevelForDistance = mobScalingTools.getMobLevelForDistance;
+const applyScaledStatsToMob = mobScalingTools.applyScaledStatsToMob;
+const scaleDamageRangeForMob = mobScalingTools.scaleDamageRangeForMob;
+
 const mobLifecycleTools = createMobLifecycleTools({
   clamp,
   randomInt,
@@ -534,12 +552,23 @@ const mobLifecycleTools = createMobLifecycleTools({
   mapHeight: MAP_HEIGHT,
   targetMobClusters: TARGET_MOB_CLUSTERS,
   clusterAreaSize: CLUSTER_AREA_SIZE,
-  maxClustersPerArea: MAX_CLUSTERS_PER_AREA
+  maxClustersPerArea: MAX_CLUSTERS_PER_AREA,
+  visibilityRange: VISIBILITY_RANGE,
+  observedSpawnPadding: OBSERVED_SPAWN_PADDING,
+  minSpawnRadiusFromCenter: MIN_SPAWN_RADIUS_FROM_CENTER,
+  unobservedDespawnMs: UNOBSERVED_DESPAWN_MS,
+  getMobLevelForDistance,
+  applyScaledStatsToMob
 });
 const createMob = mobLifecycleTools.createMob;
 const initializeMobSpawners = mobLifecycleTools.initializeMobSpawners;
+const ensureObservedSpawnerCoverage = mobLifecycleTools.ensureObservedSpawnerCoverage;
+const refreshMobObservation = mobLifecycleTools.refreshMobObservation;
+const despawnUnobservedMobs = mobLifecycleTools.despawnUnobservedMobs;
 const killMob = mobLifecycleTools.killMob;
 const respawnMob = mobLifecycleTools.respawnMob;
+const isSpawnerObserved = mobLifecycleTools.isSpawnerObserved;
+const getAliveMobCount = mobLifecycleTools.getAliveMobCount;
 
 const mobBehaviorTools = createMobBehaviorTools({
   players,
@@ -745,7 +774,9 @@ const configOrchestrator = createConfigOrchestrator({
     mobs,
     pickClusterDef,
     clearMobCast,
-    broadcastClassAndAbilityDefs
+    broadcastClassAndAbilityDefs,
+    applyScaledStatsToMob,
+    getMobLevelForDistance
   },
   createDebouncedFileReloader
 });
@@ -781,7 +812,8 @@ const projectileTickSystem = createProjectileTickSystem({
   emitProjectilesFromEmitter,
   getNearestProjectileTarget,
   normalizeDirection,
-  steerDirectionTowards
+  steerDirectionTowards,
+  isProjectileBlockedAt: (x, y) => isPointBlockedByTownWall(TOWN_LAYOUT, x, y)
 });
 const tickProjectiles = projectileTickSystem.tickProjectiles;
 
@@ -864,6 +896,7 @@ const mobAbilityTools = createMobAbilityTools({
   queueExplosionEvent,
   clearMobCast: (...args) => clearMobCast(...args),
   getMobCombatProfile: (...args) => getMobCombatProfile(...args),
+  scaleDamageRangeForMob,
   allocateProjectileId,
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
@@ -890,7 +923,11 @@ const mobTickSystem = createMobTickSystem({
   normalizeDirection,
   clampToSpawnRadius,
   townLayout: TOWN_LAYOUT,
+  ensureObservedSpawnerCoverage,
+  refreshMobObservation,
+  despawnUnobservedMobs,
   respawnMob,
+  isSpawnerObserved,
   tickMobDotEffects,
   clearMobCast,
   completeMobAbilityCast,
@@ -999,6 +1036,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     pendingExplosionEvents,
     pendingProjectileHitEvents,
     pendingMobDeathEvents,
+    getAliveMobCount,
     sendJson,
     sendBinary
   },
@@ -1017,7 +1055,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
   port: PORT,
   onServerListening: () => {
     console.log(`Server running at http://localhost:${PORT} (${IS_PROD_MODE ? "prod" : "dev"} mode)`);
-    console.log(`Initialized ${mobSpawners.size} mob spawners and ${mobs.size} mobs.`);
+    console.log("[mobs] Dynamic observed-area spawning enabled.");
   }
 });
 runtimeBootstrap.start();

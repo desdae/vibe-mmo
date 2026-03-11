@@ -36,7 +36,7 @@ function toEntityRealId(entityId) {
   return numericId;
 }
 
-function buildMobMetaSignature(name, renderStyle) {
+function buildMobMetaSignature(name, level, renderStyle) {
   let styleJson = "";
   if (renderStyle && typeof renderStyle === "object") {
     try {
@@ -45,7 +45,7 @@ function buildMobMetaSignature(name, renderStyle) {
       styleJson = "";
     }
   }
-  return `${String(name || "Mob")}|${styleJson}`;
+  return `${String(name || "Mob")}|${Math.max(1, Math.floor(Number(level) || 1))}|${styleJson}`;
 }
 
 function getEntitySyncStore(sync, kind) {
@@ -125,8 +125,8 @@ function processVisibleEntities(sync, kind, entities) {
     const state = {
       x: quantizePos(entity.x),
       y: quantizePos(entity.y),
-      hp: clamp(entity.hp, 0, 255),
-      maxHp: clamp(entity.maxHp, 0, 255)
+      hp: clamp(entity.hp, 0, 65535),
+      maxHp: clamp(entity.maxHp, 0, 65535)
     };
 
     const previous = store.statesBySlot.get(slot);
@@ -142,12 +142,14 @@ function processVisibleEntities(sync, kind, entities) {
       } else if (kind === "mob") {
         const mobName = entity.name || "Mob";
         const mobStyle = entity.renderStyle || null;
-        const signature = buildMobMetaSignature(mobName, mobStyle);
+        const mobLevel = Math.max(1, Math.floor(Number(entity.level) || 1));
+        const signature = buildMobMetaSignature(mobName, mobLevel, mobStyle);
         const previousSignature = sync.mobMetaSignatureBySlot.get(slot);
         if (previousSignature !== signature) {
           meta.push({
             id: slot,
             name: mobName,
+            level: mobLevel,
             renderStyle: mobStyle
           });
           sync.mobMetaSignatureBySlot.set(slot, signature);
@@ -410,15 +412,15 @@ function processVisibleLootBags(sync, entities, serializeBagItemsForMeta) {
 }
 
 function encodeFullRecords(records) {
-  const buffer = Buffer.alloc(records.length * 8);
+  const buffer = Buffer.alloc(records.length * 10);
   let offset = 0;
   for (const record of records) {
     buffer.writeUInt16LE(record.id, offset);
     buffer.writeUInt16LE(record.x, offset + 2);
     buffer.writeUInt16LE(record.y, offset + 4);
-    buffer.writeUInt8(record.hp, offset + 6);
-    buffer.writeUInt8(record.maxHp, offset + 7);
-    offset += 8;
+    buffer.writeUInt16LE(record.hp, offset + 6);
+    buffer.writeUInt16LE(record.maxHp, offset + 8);
+    offset += 10;
   }
   return buffer;
 }
@@ -433,10 +435,10 @@ function encodeDeltaRecords(records) {
     bytes.push(record.flags & 0xff);
 
     if (record.flags & DELTA_FLAG_HP_CHANGED) {
-      bytes.push(record.hp & 0xff);
+      bytes.push(record.hp & 0xff, (record.hp >> 8) & 0xff);
     }
     if (record.flags & DELTA_FLAG_MAX_HP_CHANGED) {
-      bytes.push(record.maxHp & 0xff);
+      bytes.push(record.maxHp & 0xff, (record.maxHp >> 8) & 0xff);
     }
   }
 
@@ -470,8 +472,8 @@ function processSelfUpdate(sync, player, getPendingHealAmount, getPendingManaAmo
   const state = {
     x: quantizePos(player.x),
     y: quantizePos(player.y),
-    hp: clamp(player.hp, 0, 255),
-    maxHp: clamp(player.maxHp, 0, 255),
+    hp: clamp(player.hp, 0, 65535),
+    maxHp: clamp(player.maxHp, 0, 65535),
     mana: clamp(Math.round((Number(player.mana) || 0) * MANA_SCALE), 0, 65535),
     maxMana: clamp(Math.round((Number(player.maxMana) || 0) * MANA_SCALE), 0, 65535),
     pendingHeal: clamp(Math.round(getPendingHealAmount(player) * HEAL_SCALE), 0, 65535),
@@ -554,28 +556,28 @@ function encodeSelfUpdate(update) {
   }
 
   if (update.mode === SELF_MODE_FULL) {
-    const buffer = Buffer.alloc(26);
+    const buffer = Buffer.alloc(28);
     buffer.writeUInt16LE(update.x, 0);
     buffer.writeUInt16LE(update.y, 2);
-    buffer.writeUInt8(update.hp, 4);
-    buffer.writeUInt8(update.maxHp, 5);
-    buffer.writeUInt16LE(update.mana, 6);
-    buffer.writeUInt16LE(update.maxMana, 8);
-    buffer.writeUInt16LE(update.pendingHeal, 10);
-    buffer.writeUInt16LE(update.pendingMana, 12);
-    buffer.writeUInt16LE(update.copper, 14);
-    buffer.writeUInt16LE(update.level, 16);
-    buffer.writeUInt32LE(update.exp, 18);
-    buffer.writeUInt32LE(update.expToNext, 22);
+    buffer.writeUInt16LE(update.hp, 4);
+    buffer.writeUInt16LE(update.maxHp, 6);
+    buffer.writeUInt16LE(update.mana, 8);
+    buffer.writeUInt16LE(update.maxMana, 10);
+    buffer.writeUInt16LE(update.pendingHeal, 12);
+    buffer.writeUInt16LE(update.pendingMana, 14);
+    buffer.writeUInt16LE(update.copper, 16);
+    buffer.writeUInt16LE(update.level, 18);
+    buffer.writeUInt32LE(update.exp, 20);
+    buffer.writeUInt32LE(update.expToNext, 24);
     return buffer;
   }
 
   const bytes = [update.dx & 0xff, update.dy & 0xff];
   if (update.flags & DELTA_FLAG_HP_CHANGED) {
-    bytes.push(update.hp & 0xff);
+    bytes.push(update.hp & 0xff, (update.hp >> 8) & 0xff);
   }
   if (update.flags & DELTA_FLAG_MAX_HP_CHANGED) {
-    bytes.push(update.maxHp & 0xff);
+    bytes.push(update.maxHp & 0xff, (update.maxHp >> 8) & 0xff);
   }
   if (update.flags & DELTA_FLAG_MANA_CHANGED) {
     bytes.push(update.mana & 0xff, (update.mana >> 8) & 0xff);

@@ -333,8 +333,18 @@
       "mobs": ["Zombie", "Skeleton"],
       "spawnRanges": [
         {
-          "range": [10, 40],
+          "range": [20, 160],
           "chance": 0.28,
+          "curve": "linear"
+        },
+        {
+          "range": [120, 360],
+          "chance": 0.2,
+          "curve": "linear"
+        },
+        {
+          "range": [300, 500],
+          "chance": 0.12,
           "curve": "linear"
         }
       ],
@@ -345,8 +355,18 @@
       "mobs": ["Skeleton Archer", "Orc Berserker"],
       "spawnRanges": [
         {
-          "range": [10, 28],
-          "chance": 0.3,
+          "range": [25, 180],
+          "chance": 0.24,
+          "curve": "linear"
+        },
+        {
+          "range": [120, 340],
+          "chance": 0.21,
+          "curve": "linear"
+        },
+        {
+          "range": [300, 500],
+          "chance": 0.13,
           "curve": "linear"
         }
       ],
@@ -357,8 +377,13 @@
       "mobs": ["Creeper"],
       "spawnRanges": [
         {
-          "range": [30, 50],
-          "chance": 0.2,
+          "range": [40, 220],
+          "chance": 0.18,
+          "curve": "linear"
+        },
+        {
+          "range": [180, 500],
+          "chance": 0.19,
           "curve": "linear"
         }
       ],
@@ -369,8 +394,18 @@
       "mobs": ["Spider"],
       "spawnRanges": [
         {
-          "range": [25, 45],
-          "chance": 0.1,
+          "range": [30, 200],
+          "chance": 0.16,
+          "curve": "linear"
+        },
+        {
+          "range": [150, 380],
+          "chance": 0.18,
+          "curve": "linear"
+        },
+        {
+          "range": [320, 500],
+          "chance": 0.11,
           "curve": "linear"
         }
       ],

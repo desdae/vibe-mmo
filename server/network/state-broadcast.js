@@ -217,6 +217,22 @@ function sendVisibleMobDeathEvents(player, deps) {
   }
 }
 
+function sendWorldStats(player, now, deps) {
+  const { sendJson, getAliveMobCount } = deps;
+  if (typeof sendJson !== "function" || typeof getAliveMobCount !== "function") {
+    return;
+  }
+  const lastSentAt = Number(player.lastWorldStatsSentAt) || 0;
+  if (now - lastSentAt < 1000) {
+    return;
+  }
+  player.lastWorldStatsSentAt = now;
+  sendJson(player.ws, {
+    type: "world_stats",
+    mobCount: Math.max(0, Math.floor(Number(getAliveMobCount()) || 0))
+  });
+}
+
 function getCosmeticEventFlushInterval(deps) {
   const load =
     deps.pendingDamageEvents.length +
@@ -274,6 +290,7 @@ function broadcastStateToPlayers(deps, now = Date.now(), options = {}) {
       sendVisibleProjectileHitEvents(player, deps);
       sendVisibleMobDeathEvents(player, deps);
     }
+    sendWorldStats(player, now, deps);
 
     if (entityUpdate.packet) {
       sendBinary(player.ws, entityUpdate.packet);
