@@ -141,3 +141,6 @@ vite.config.ts.timestamp-*
 # Generated client production bundle artifacts
 public/app.bundle.min.js
 public/index.prod.html
+
+# Local temporary diagnostics and screenshots
+.tmp/
