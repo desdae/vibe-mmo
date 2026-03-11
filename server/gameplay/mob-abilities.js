@@ -140,7 +140,7 @@ function createMobAbilityTools(options = {}) {
         return false;
       }
       triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
-      const dealt = applyDamageToPlayer(player, rollDamage(), now);
+      const dealt = applyDamageToPlayer(player, rollDamage(), now, { sourceMob: mob });
       applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
       return true;
     }
@@ -152,7 +152,7 @@ function createMobAbilityTools(options = {}) {
       }
       triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
       queueExplosionEvent(mob.x, mob.y, radius, abilityDef.id);
-      const dealt = applyDamageToPlayer(player, rollDamage(), now);
+      const dealt = applyDamageToPlayer(player, rollDamage(), now, { sourceMob: mob });
       applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
       return true;
     }
@@ -168,7 +168,7 @@ function createMobAbilityTools(options = {}) {
       const impactX = clamp(mob.x + dir.dx * impactDistance, 0, mapWidth - 1);
       const impactY = clamp(mob.y + dir.dy * impactDistance, 0, mapHeight - 1);
       queueExplosionEvent(impactX, impactY, radius, abilityDef.id);
-      const dealt = applyDamageToPlayer(player, rollDamage(), now);
+      const dealt = applyDamageToPlayer(player, rollDamage(), now, { sourceMob: mob });
       applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
       return true;
     }
@@ -184,7 +184,7 @@ function createMobAbilityTools(options = {}) {
         return false;
       }
       triggerMobAttackAnimation(mob, dir, now, abilityDef.id);
-      const dealt = applyDamageToPlayer(player, rollDamage(), now);
+      const dealt = applyDamageToPlayer(player, rollDamage(), now, { sourceMob: mob });
       applyAbilityHitEffectsToPlayer(player, mob.id, abilityDef, abilityLevel, dealt, now);
       return true;
     }
@@ -389,7 +389,7 @@ function createMobAbilityTools(options = {}) {
     triggerMobAttackAnimation(mob, dir, now);
     const damageMin = clamp(Math.floor(Number(basic.damageMin) || Number(mob.damageMin) || 1), 0, 255);
     const damageMax = clamp(Math.floor(Number(basic.damageMax) || Number(mob.damageMax) || damageMin), damageMin, 255);
-    applyDamageToPlayer(targetPlayer, randomInt(damageMin, damageMax), now);
+    applyDamageToPlayer(targetPlayer, randomInt(damageMin, damageMax), now, { sourceMob: mob });
     return true;
   }
 

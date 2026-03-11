@@ -1612,6 +1612,7 @@ function getItemInstanceAffixes(itemData) {
     return [];
   }
   const result = [];
+  const seen = new Set();
   const pushAffixArray = (list) => {
     for (const affix of Array.isArray(list) ? list : []) {
       if (!affix || typeof affix !== "object") {
@@ -1622,6 +1623,11 @@ function getItemInstanceAffixes(itemData) {
       if (!name && !modifiers.length) {
         continue;
       }
+      const key = `${String(affix.id || name)}|${JSON.stringify(modifiers)}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
       result.push({
         name,
         modifiers
@@ -1629,9 +1635,12 @@ function getItemInstanceAffixes(itemData) {
     }
   };
 
-  pushAffixArray(itemData.affixes);
-  pushAffixArray(itemData.prefixes);
-  pushAffixArray(itemData.suffixes);
+  if (Array.isArray(itemData.affixes) && itemData.affixes.length) {
+    pushAffixArray(itemData.affixes);
+  } else {
+    pushAffixArray(itemData.prefixes);
+    pushAffixArray(itemData.suffixes);
+  }
   return result;
 }
 
@@ -7358,6 +7367,123 @@ function render() {
   }
   renderLoopTools.renderFrame();
 }
+
+function buildAutomationSnapshot() {
+  return {
+    self: gameState.self
+      ? {
+          id: myId,
+          x: Number(gameState.self.x) || 0,
+          y: Number(gameState.self.y) || 0,
+          hp: Number(gameState.self.hp) || 0,
+          maxHp: Number(gameState.self.maxHp) || 0,
+          mana: Number(gameState.self.mana) || 0,
+          maxMana: Number(gameState.self.maxMana) || 0,
+          classType: selfStatic ? selfStatic.classType : "",
+          level: entityRuntime.self ? Number(entityRuntime.self.level) || 0 : 0,
+          copper: entityRuntime.self ? Number(entityRuntime.self.copper) || 0 : 0
+        }
+      : null,
+    mobs: gameState.mobs.map((mob) => ({
+      id: mob.id,
+      x: Number(mob.x) || 0,
+      y: Number(mob.y) || 0,
+      hp: Number(mob.hp) || 0,
+      maxHp: Number(mob.maxHp) || 0,
+      name: String(mob.type || mob.name || "")
+    })),
+    lootBags: gameState.lootBags.map((bag) => ({
+      id: bag.id,
+      x: Number(bag.x) || 0,
+      y: Number(bag.y) || 0,
+      items: Array.isArray(bag.items) ? bag.items.map((entry) => ({ ...entry })) : []
+    })),
+    inventory: inventoryState.slots.map((slot) => (slot ? { ...slot } : null)),
+    equipment: { ...equipmentState.slots },
+    status: statusEl ? String(statusEl.textContent || "") : "",
+    equipmentVisible: equipmentPanel ? !equipmentPanel.classList.contains("hidden") : false
+  };
+}
+
+function installAutomationApi() {
+  if (!window || !["localhost", "127.0.0.1"].includes(String(window.location.hostname || ""))) {
+    return;
+  }
+  window.__vibemmoTest = Object.freeze({
+    getState: () => buildAutomationSnapshot(),
+    connectAndJoin,
+    send: (payload) => sendJsonMessage(payload),
+    setMove(dx, dy) {
+      sendJsonMessage({
+        type: "move",
+        dx,
+        dy
+      });
+    },
+    stopMove() {
+      sendJsonMessage({
+        type: "move",
+        dx: 0,
+        dy: 0
+      });
+    },
+    castAtWorld(abilityId, targetX, targetY) {
+      const self = getCurrentSelf();
+      if (!self) {
+        return false;
+      }
+      const dx = Number(targetX) - Number(self.x);
+      const dy = Number(targetY) - Number(self.y);
+      const dir = normalizeDirection(dx, dy);
+      if (!dir) {
+        return false;
+      }
+      sendJsonMessage({
+        type: "use_ability",
+        abilityId,
+        dx: dir.dx,
+        dy: dir.dy,
+        distance: Math.hypot(dx, dy)
+      });
+      return true;
+    },
+    pickupNearestBag() {
+      const self = getCurrentSelf();
+      if (!self || !gameState.lootBags.length) {
+        return false;
+      }
+      let best = null;
+      let bestDist = Infinity;
+      for (const bag of gameState.lootBags) {
+        const dist = Math.hypot(bag.x - self.x, bag.y - self.y);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = bag;
+        }
+      }
+      if (!best) {
+        return false;
+      }
+      sendJsonMessage({
+        type: "pickup_bag",
+        x: best.x,
+        y: best.y
+      });
+      return true;
+    },
+    equipInventoryIndex(index, slot) {
+      sendJsonMessage({
+        type: "equip_item",
+        inventoryIndex: index,
+        slot
+      });
+    },
+    toggleEquipmentPanel
+  });
+}
+
+installAutomationApi();
+
 if (inputBootstrapTools) {
   inputBootstrapTools.bind();
 }

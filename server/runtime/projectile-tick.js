@@ -45,6 +45,7 @@ function createProjectileTickSystem({
 
       const projectileTargetType =
         String(projectile.targetType || "").trim().toLowerCase() === "player" ? "player" : "mob";
+      const sourceMob = projectile.sourceMobId ? mobs.get(String(projectile.sourceMobId)) || null : null;
       let hitMob = null;
       let hitPlayer = null;
       const hitRadius = clamp(Number(projectile.hitRadius) || defaultProjectileHitRadius, 0.1, 8);
@@ -100,7 +101,7 @@ function createProjectileTickSystem({
               const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
               const scale = 1 - t * (1 - minMultiplier);
               const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
-              const dealt = applyDamageToPlayer(player, scaledDamage, now);
+              const dealt = applyDamageToPlayer(player, scaledDamage, now, { sourceMob });
               applyProjectileHitEffectsToPlayer(player, projectile, dealt, now);
             }
           } else {
@@ -121,7 +122,7 @@ function createProjectileTickSystem({
           }
         } else {
           if (projectileTargetType === "player") {
-            const dealt = applyDamageToPlayer(hitPlayer, baseDamage, now);
+            const dealt = applyDamageToPlayer(hitPlayer, baseDamage, now, { sourceMob });
             applyProjectileHitEffectsToPlayer(hitPlayer, projectile, dealt, now);
           } else {
             const dealt = applyDamageToMob(hitMob, baseDamage, projectile.ownerId);
@@ -151,7 +152,7 @@ function createProjectileTickSystem({
             const t = explosionRadius > 0 ? clamp(dist / explosionRadius, 0, 1) : 0;
             const scale = 1 - t * (1 - minMultiplier);
             const scaledDamage = Math.max(1, Math.round(baseDamage * scale));
-            const dealt = applyDamageToPlayer(player, scaledDamage, now);
+            const dealt = applyDamageToPlayer(player, scaledDamage, now, { sourceMob });
             applyProjectileHitEffectsToPlayer(player, projectile, dealt, now);
           }
         } else {

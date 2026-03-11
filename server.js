@@ -349,6 +349,8 @@ const createEmptyEquipmentSlots = equipmentTools.createEmptyEquipmentSlots;
 const rollEquipmentDropsAt = equipmentTools.rollEquipmentDropsAt;
 const getPlayerModifiedAbilityDamageRange = equipmentTools.getPlayerModifiedAbilityDamageRange;
 const getPlayerModifiedAbilityDotDamageRange = equipmentTools.getPlayerModifiedAbilityDotDamageRange;
+const getPlayerModifiedAbilityCooldownMs = equipmentTools.getPlayerModifiedAbilityCooldownMs;
+const getPlayerModifiedAbilityCastMs = equipmentTools.getPlayerModifiedAbilityCastMs;
 const equipInventoryItem = equipmentTools.equipInventoryItem;
 const unequipEquipmentItem = equipmentTools.unequipEquipmentItem;
 
@@ -463,7 +465,9 @@ const damageTools = createDamageTools({
   markMobProvokedByPlayer,
   killMob,
   clearPlayerCast: (...args) => clearPlayerCast(...args),
-  clearPlayerCombatEffects: (...args) => clearPlayerCombatEffects(...args)
+  clearPlayerCombatEffects: (...args) => clearPlayerCombatEffects(...args),
+  getPlayerById: (playerId) => players.get(String(playerId || "")) || null,
+  clamp
 });
 const applyDamageToMob = damageTools.applyDamageToMob;
 const applyDamageToPlayer = damageTools.applyDamageToPlayer;
@@ -526,17 +530,25 @@ const applyProjectileHitEffectsToPlayer = playerCombatEffectTools.applyProjectil
 const castingTools = createCastingTools({
   getAbilityCooldownMsForLevel
 });
-const getAbilityCooldownPassed = castingTools.getAbilityCooldownPassed;
 const markAbilityUsed = castingTools.markAbilityUsed;
 const playerHasMovementInput = castingTools.playerHasMovementInput;
 const clearPlayerCast = castingTools.clearPlayerCast;
 const clearMobCast = castingTools.clearMobCast;
+const getAbilityCooldownPassed = (player, abilityDef, abilityLevel, now) => {
+  if (!player || !abilityDef) {
+    return false;
+  }
+  const lastUsed = Number(player.abilityLastUsedAt.get(abilityDef.id) || 0);
+  return now - lastUsed >= getPlayerModifiedAbilityCooldownMs(player, abilityDef, abilityLevel, getAbilityCooldownMsForLevel);
+};
 const playerCommandTools = createPlayerCommandTools({
   abilityDefsProvider: () => ABILITY_CONFIG.abilityDefs,
   executeAbilityByKind,
   abilityHandlerContext,
   getPlayerAbilityLevel,
   getAbilityCooldownPassed,
+  getAbilityCastMsForEntity: (player, abilityDef, abilityLevel) =>
+    getPlayerModifiedAbilityCastMs(player, abilityDef, abilityLevel),
   normalizeDirection,
   playerHasMovementInput,
   clamp,

@@ -171,6 +171,14 @@ function createMobLifecycleTools({
     if (killer) {
       const expGained = Math.floor((Number(mob.maxHp) || 0) / 10);
       grantPlayerExp(killer, expGained);
+      const lifeOnKill = Math.max(0, Math.floor(Number(killer.lifeOnKill) || 0));
+      if (lifeOnKill > 0) {
+        killer.hp = clamp(killer.hp + lifeOnKill, 0, killer.maxHp);
+      }
+      const manaOnKill = Math.max(0, Math.floor(Number(killer.manaOnKill) || 0));
+      if (manaOnKill > 0) {
+        killer.mana = clamp(killer.mana + manaOnKill, 0, killer.maxMana);
+      }
     }
   }
 

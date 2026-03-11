@@ -7,12 +7,15 @@
     "start": "node server.js",
     "start:dev": "node server.js",
     "build:client": "node scripts/build-client-bundle.js",
-    "start:prod": "node scripts/run-prod.js"
+    "start:prod": "node scripts/run-prod.js",
+    "test:equipment:affixes": "node scripts/test-equipment-affixes.js",
+    "test:equipment:smoke": "node scripts/playwright-equipment-smoke.js"
   },
   "dependencies": {
     "ws": "^8.18.3"
   },
   "devDependencies": {
-    "esbuild": "^0.27.3"
+    "esbuild": "^0.27.3",
+    "playwright": "^1.58.2"
   }
 }

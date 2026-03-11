@@ -69,6 +69,9 @@ function createPlayerTickSystem({
     const abilityDefs = abilityDefsProvider();
 
     for (const player of players.values()) {
+      if (player.hp > 0 && player.hp < player.maxHp && player.healthRegen > 0) {
+        player.hp = clamp(player.hp + player.healthRegen * dt, 0, player.maxHp);
+      }
       if (player.hp > 0 && player.mana < player.maxMana && player.manaRegen > 0) {
         player.mana = clamp(player.mana + player.manaRegen * dt, 0, player.maxMana);
       }

@@ -4,6 +4,7 @@ function createPlayerCommandTools({
   abilityHandlerContext,
   getPlayerAbilityLevel,
   getAbilityCooldownPassed,
+  getAbilityCastMsForEntity,
   normalizeDirection,
   playerHasMovementInput,
   clamp,
@@ -109,7 +110,12 @@ function createPlayerCommandTools({
       return false;
     }
 
-    const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
+    const castMs = Math.max(
+      0,
+      typeof getAbilityCastMsForEntity === "function"
+        ? Number(getAbilityCastMsForEntity(player, abilityDef, abilityLevel)) || 0
+        : Number(abilityDef.castMs) || 0
+    );
     if (castMs > 0) {
       if (abilityDef.kind !== "teleport" && playerHasMovementInput(player)) {
         return false;

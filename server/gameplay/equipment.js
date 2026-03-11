@@ -308,6 +308,25 @@ function createEquipmentTools(options = {}) {
     return Object.values(equipmentSlots).filter(Boolean);
   }
 
+  function getEquippedBaseStatTotal(player, statKey) {
+    const target = String(statKey || "").trim();
+    if (!target) {
+      return 0;
+    }
+    let total = 0;
+    for (const entry of getEquippedEntries(player)) {
+      const baseStats =
+        entry && entry.baseStats && typeof entry.baseStats === "object"
+          ? entry.baseStats
+          : getBaseItem(entry?.itemId)?.baseStats || null;
+      if (!baseStats) {
+        continue;
+      }
+      total += Number(baseStats[target]) || 0;
+    }
+    return total;
+  }
+
   function getEquippedStatTotal(player, statPath) {
     const target = String(statPath || "").trim();
     if (!target) {
@@ -325,6 +344,34 @@ function createEquipmentTools(options = {}) {
       }
     }
     return total;
+  }
+
+  function getPlayerEquipmentDerivedStats(player) {
+    const baseArmor = Math.max(0, getEquippedBaseStatTotal(player, "armor"));
+    const armorPercent = getEquippedStatTotal(player, "armor.percent");
+    const baseBlockChance = Math.max(0, getEquippedBaseStatTotal(player, "blockChance"));
+    return {
+      maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat"),
+      maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent"),
+      maxManaFlat: getEquippedStatTotal(player, "maxMana.flat"),
+      maxManaPercent: getEquippedStatTotal(player, "maxMana.percent"),
+      healthRegenFlat: getEquippedStatTotal(player, "healthRegen.flat"),
+      healthRegenPercent: getEquippedStatTotal(player, "healthRegen.percent"),
+      manaRegenFlat: getEquippedStatTotal(player, "manaRegen.flat"),
+      manaRegenPercent: getEquippedStatTotal(player, "manaRegen.percent"),
+      moveSpeedPercent: getEquippedStatTotal(player, "moveSpeed.percent"),
+      critChancePercent: getEquippedStatTotal(player, "critChance.percent"),
+      critDamagePercent: getEquippedStatTotal(player, "critDamage.percent"),
+      lifeStealPercent: getEquippedStatTotal(player, "lifeSteal.percent"),
+      manaStealPercent: getEquippedStatTotal(player, "manaSteal.percent"),
+      lifeOnKillFlat: getEquippedStatTotal(player, "lifeOnKill.flat"),
+      manaOnKillFlat: getEquippedStatTotal(player, "manaOnKill.flat"),
+      thornsFlat: getEquippedStatTotal(player, "thorns.flat"),
+      attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent"),
+      castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent"),
+      armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))),
+      blockChance: clamp(baseBlockChance, 0, 0.75)
+    };
   }
 
   function inferAbilityTags(abilityDef) {
@@ -407,35 +454,73 @@ function createEquipmentTools(options = {}) {
     if (!player) {
       return;
     }
-    const maxHealthFlat = getEquippedStatTotal(player, "maxHealth.flat");
-    const maxHealthPercent = getEquippedStatTotal(player, "maxHealth.percent");
-    const maxManaFlat = getEquippedStatTotal(player, "maxMana.flat");
-    const maxManaPercent = getEquippedStatTotal(player, "maxMana.percent");
-    const manaRegenFlat = getEquippedStatTotal(player, "manaRegen.flat");
-    const manaRegenPercent = getEquippedStatTotal(player, "manaRegen.percent");
-    const moveSpeedPercent = getEquippedStatTotal(player, "moveSpeed.percent");
+    const derived = getPlayerEquipmentDerivedStats(player);
 
     const nextMaxHp = clamp(
-      Math.round((Math.max(1, Number(player.baseHealth) || 1) + maxHealthFlat) * (1 + maxHealthPercent / 100)),
+      Math.round(
+        (Math.max(1, Number(player.baseHealth) || 1) + derived.maxHealthFlat) * (1 + derived.maxHealthPercent / 100)
+      ),
       1,
       255
     );
     const nextMaxMana = Math.max(
       0,
-      Math.round((Math.max(0, Number(player.baseMana) || 0) + maxManaFlat) * (1 + maxManaPercent / 100))
+      Math.round((Math.max(0, Number(player.baseMana) || 0) + derived.maxManaFlat) * (1 + derived.maxManaPercent / 100))
+    );
+    const nextHealthRegen = Math.max(
+      0,
+      (Math.max(0, Number(player.baseHealthRegen) || 0) + derived.healthRegenFlat) * (1 + derived.healthRegenPercent / 100)
     );
     const nextManaRegen = Math.max(
       0,
-      (Math.max(0, Number(player.baseManaRegen) || 0) + manaRegenFlat) * (1 + manaRegenPercent / 100)
+      (Math.max(0, Number(player.baseManaRegen) || 0) + derived.manaRegenFlat) * (1 + derived.manaRegenPercent / 100)
     );
-    const nextMoveSpeed = Math.max(0.1, (Math.max(0.1, Number(player.baseMoveSpeed) || 0.1) * (1 + moveSpeedPercent / 100)));
+    const nextMoveSpeed = Math.max(
+      0.1,
+      Math.max(0.1, Number(player.baseMoveSpeed) || 0.1) * (1 + derived.moveSpeedPercent / 100)
+    );
 
     player.maxHp = nextMaxHp;
     player.hp = clamp(Number(player.hp) || 0, 0, player.maxHp);
     player.maxMana = nextMaxMana;
     player.mana = clamp(Number(player.mana) || 0, 0, player.maxMana);
+    player.healthRegen = nextHealthRegen;
     player.manaRegen = nextManaRegen;
     player.moveSpeed = nextMoveSpeed;
+    player.armor = derived.armor;
+    player.blockChance = derived.blockChance;
+    player.critChance = Math.max(0, derived.critChancePercent);
+    player.critDamage = Math.max(0, derived.critDamagePercent);
+    player.lifeSteal = Math.max(0, derived.lifeStealPercent);
+    player.manaSteal = Math.max(0, derived.manaStealPercent);
+    player.lifeOnKill = Math.max(0, derived.lifeOnKillFlat);
+    player.manaOnKill = Math.max(0, derived.manaOnKillFlat);
+    player.thorns = Math.max(0, derived.thornsFlat);
+    player.attackSpeedMultiplier = Math.max(0.1, 1 + derived.attackSpeedPercent / 100);
+    player.castSpeedMultiplier = Math.max(0.1, 1 + derived.castSpeedPercent / 100);
+  }
+
+  function getPlayerModifiedAbilityCooldownMs(player, abilityDef, abilityLevel, getBaseCooldownMs) {
+    const baseCooldownMs = Math.max(
+      0,
+      typeof getBaseCooldownMs === "function" ? Number(getBaseCooldownMs(abilityDef, abilityLevel)) || 0 : 0
+    );
+    if (!player || !abilityDef || baseCooldownMs <= 0) {
+      return baseCooldownMs;
+    }
+    const kind = String(abilityDef.kind || "").trim().toLowerCase();
+    if (kind !== "meleecone") {
+      return baseCooldownMs;
+    }
+    return Math.max(0, Math.round(baseCooldownMs / Math.max(0.1, Number(player.attackSpeedMultiplier) || 1)));
+  }
+
+  function getPlayerModifiedAbilityCastMs(player, abilityDef) {
+    const baseCastMs = Math.max(0, Math.round(Number(abilityDef && abilityDef.castMs) || 0));
+    if (!player || !abilityDef || baseCastMs <= 0) {
+      return baseCastMs;
+    }
+    return Math.max(0, Math.round(baseCastMs / Math.max(0.1, Number(player.castSpeedMultiplier) || 1)));
   }
 
   function resolveEntrySlot(entry) {
@@ -520,9 +605,12 @@ function createEquipmentTools(options = {}) {
     isEquipmentItemId,
     isEquipmentEntry,
     rollEquipmentDropsAt,
+    getEquippedBaseStatTotal,
     getEquippedStatTotal,
     getPlayerModifiedAbilityDamageRange,
     getPlayerModifiedAbilityDotDamageRange,
+    getPlayerModifiedAbilityCooldownMs,
+    getPlayerModifiedAbilityCastMs,
     recomputePlayerDerivedStats,
     equipInventoryItem,
     unequipEquipmentItem
