@@ -1,13 +1,15 @@
 (function initMobRenderStyle(rootFactory) {
   if (typeof module === "object" && module.exports) {
-    module.exports = rootFactory(require("./number-utils"));
+    module.exports = rootFactory(require("./number-utils"), require("./humanoid-style"));
     return;
   }
   const root = typeof globalThis !== "undefined" ? globalThis : window;
-  root.VibeMobRenderStyle = rootFactory(root.VibeNumberUtils || {});
-})(function buildMobRenderStyle(numberUtils) {
+  root.VibeMobRenderStyle = rootFactory(root.VibeNumberUtils || {}, root.VibeHumanoidStyle || {});
+})(function buildMobRenderStyle(numberUtils, humanoidStyle) {
   const clamp =
     typeof numberUtils.clamp === "function" ? numberUtils.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
+  const parseHumanoidRenderStyle =
+    typeof humanoidStyle.parseHumanoidRenderStyle === "function" ? humanoidStyle.parseHumanoidRenderStyle : null;
 
   function sanitizeCssColor(value) {
     const raw = String(value || "").trim();
@@ -31,7 +33,7 @@
       return null;
     }
 
-    const style = {};
+    const style = parseHumanoidRenderStyle ? parseHumanoidRenderStyle(rawStyle) || {} : {};
     const spriteType = String(rawStyle.spriteType || "").trim().toLowerCase();
     if (spriteType) {
       style.spriteType = spriteType.slice(0, 32);

@@ -823,7 +823,9 @@
       if (view.byteLength < 4) {
         return;
       }
-      if (view.getUint8(0) !== PLAYER_META_PROTO_TYPE || view.getUint8(1) !== PLAYER_META_PROTO_VERSION) {
+      const packetType = view.getUint8(0);
+      const version = view.getUint8(1);
+      if (packetType !== PLAYER_META_PROTO_TYPE || (version !== PLAYER_META_PROTO_VERSION && version !== 1)) {
         return;
       }
 
@@ -831,21 +833,35 @@
       let offset = 4;
       const players = [];
       for (let index = 0; index < count; index += 1) {
-        if (offset + 3 > view.byteLength) {
+        const headerSize = version >= 2 ? 5 : 3;
+        if (offset + headerSize > view.byteLength) {
           break;
         }
         const id = view.getUint8(offset);
         const nameLen = view.getUint8(offset + 1);
         const classLen = view.getUint8(offset + 2);
-        offset += 3;
-        if (offset + nameLen + classLen > view.byteLength) {
+        const appearanceLen = version >= 2 ? view.getUint16(offset + 3, true) : 0;
+        offset += headerSize;
+        if (offset + nameLen + classLen + appearanceLen > view.byteLength) {
           break;
         }
         const name = textDecoder.decode(new Uint8Array(arrayBuffer, offset, nameLen)).trim() || `P${id}`;
         offset += nameLen;
         const classType = textDecoder.decode(new Uint8Array(arrayBuffer, offset, classLen)).trim() || getDefaultClassId();
         offset += classLen;
-        players.push({ id, name, classType });
+        let appearance = null;
+        if (appearanceLen > 0) {
+          const appearanceJson = textDecoder.decode(new Uint8Array(arrayBuffer, offset, appearanceLen)).trim();
+          offset += appearanceLen;
+          if (appearanceJson) {
+            try {
+              appearance = JSON.parse(appearanceJson);
+            } catch (_error) {
+              appearance = null;
+            }
+          }
+        }
+        players.push({ id, name, classType, appearance });
       }
 
       if (players.length) {

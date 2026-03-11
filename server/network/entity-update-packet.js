@@ -48,6 +48,18 @@ function buildMobMetaSignature(name, level, renderStyle) {
   return `${String(name || "Mob")}|${Math.max(1, Math.floor(Number(level) || 1))}|${styleJson}`;
 }
 
+function buildPlayerMetaSignature(name, classType, appearance) {
+  let appearanceJson = "";
+  if (appearance && typeof appearance === "object") {
+    try {
+      appearanceJson = JSON.stringify(appearance);
+    } catch (_error) {
+      appearanceJson = "";
+    }
+  }
+  return `${String(name || "")}|${String(classType || "")}|${appearanceJson}`;
+}
+
 function getEntitySyncStore(sync, kind) {
   if (kind === "player") {
     return {
@@ -134,11 +146,18 @@ function processVisibleEntities(sync, kind, entities) {
       full.push({ id: slot, ...state });
       store.statesBySlot.set(slot, state);
       if (kind === "player") {
-        meta.push({
-          id: slot,
-          name: entity.name,
-          classType: entity.classType
-        });
+        const appearance = entity.appearance && typeof entity.appearance === "object" ? entity.appearance : null;
+        const signature = buildPlayerMetaSignature(entity.name, entity.classType, appearance);
+        const previousSignature = sync.playerMetaSignatureBySlot.get(slot);
+        if (previousSignature !== signature) {
+          meta.push({
+            id: slot,
+            name: entity.name,
+            classType: entity.classType,
+            appearance
+          });
+          sync.playerMetaSignatureBySlot.set(slot, signature);
+        }
       } else if (kind === "mob") {
         const mobName = entity.name || "Mob";
         const mobStyle = entity.renderStyle || null;
@@ -186,6 +205,21 @@ function processVisibleEntities(sync, kind, entities) {
       }
     }
 
+    if (kind === "player") {
+      const appearance = entity.appearance && typeof entity.appearance === "object" ? entity.appearance : null;
+      const signature = buildPlayerMetaSignature(entity.name, entity.classType, appearance);
+      const previousSignature = sync.playerMetaSignatureBySlot.get(slot);
+      if (previousSignature !== signature) {
+        meta.push({
+          id: slot,
+          name: entity.name,
+          classType: entity.classType,
+          appearance
+        });
+        sync.playerMetaSignatureBySlot.set(slot, signature);
+      }
+    }
+
     store.statesBySlot.set(slot, state);
   }
 
@@ -208,6 +242,9 @@ function processVisibleEntities(sync, kind, entities) {
     store.slotsByRealId.delete(entry.realId);
     store.realIdBySlot.delete(entry.slot);
     store.statesBySlot.delete(entry.slot);
+    if (kind === "player") {
+      sync.playerMetaSignatureBySlot.delete(entry.slot);
+    }
     store.freeSlots.push(entry.slot);
   }
 

@@ -130,6 +130,11 @@ const sharedParseMobRenderStyle =
   sharedMobRenderStyle && typeof sharedMobRenderStyle.parseMobRenderStyle === "function"
     ? sharedMobRenderStyle.parseMobRenderStyle
     : null;
+const sharedHumanoidStyle = globalThis.VibeHumanoidStyle || null;
+const sharedParseHumanoidRenderStyle =
+  sharedHumanoidStyle && typeof sharedHumanoidStyle.parseHumanoidRenderStyle === "function"
+    ? sharedHumanoidStyle.parseHumanoidRenderStyle
+    : null;
 const sharedNumberUtils = globalThis.VibeNumberUtils || null;
 const sharedClamp =
   sharedNumberUtils && typeof sharedNumberUtils.clamp === "function" ? sharedNumberUtils.clamp : null;
@@ -157,7 +162,7 @@ const protocol = globalThis.VibeProtocol || {
   DAMAGE_EVENT_PROTO_TYPE: 6,
   DAMAGE_EVENT_PROTO_VERSION: 2,
   PLAYER_META_PROTO_TYPE: 7,
-  PLAYER_META_PROTO_VERSION: 1,
+  PLAYER_META_PROTO_VERSION: 2,
   LOOTBAG_META_PROTO_TYPE: 8,
   LOOTBAG_META_PROTO_VERSION: 1,
   PLAYER_SWING_PROTO_TYPE: 9,
@@ -702,6 +707,101 @@ function normalizeMobRenderStyle(rawStyle) {
   return Object.keys(style).length > 0 ? style : null;
 }
 
+function normalizeHumanoidRenderStyle(rawStyle) {
+  if (sharedParseHumanoidRenderStyle) {
+    return sharedParseHumanoidRenderStyle(rawStyle);
+  }
+  if (!rawStyle || typeof rawStyle !== "object") {
+    return null;
+  }
+
+  const style = {};
+  const stringFields = ["rigType", "species", "archetype", "spriteType", "attackVisual"];
+  for (const field of stringFields) {
+    const value = String(rawStyle[field] || "").trim().toLowerCase();
+    if (value) {
+      style[field] = value.slice(0, 32);
+    }
+  }
+
+  const numericFields = [
+    ["sizeScale", 0.5, 3],
+    ["walkCycleSpeed", 0.1, 10],
+    ["idleCycleSpeed", 0, 10],
+    ["moveThreshold", 0, 2],
+    ["attackAnimSpeed", 0.1, 4]
+  ];
+  for (const [field, min, max] of numericFields) {
+    const n = Number(rawStyle[field]);
+    if (Number.isFinite(n)) {
+      style[field] = clamp(n, min, max);
+    }
+  }
+
+  const defaults = {};
+  const rawDefaults = rawStyle.defaults && typeof rawStyle.defaults === "object" ? rawStyle.defaults : null;
+  if (rawDefaults) {
+    for (const key of ["head", "chest", "shoulders", "gloves", "bracers", "belt", "pants", "boots", "mainHand", "offHand"]) {
+      const value = String(rawDefaults[key] || "").trim().toLowerCase();
+      if (value) {
+        defaults[key] = value.slice(0, 32);
+      }
+    }
+  }
+  if (Object.keys(defaults).length) {
+    style.defaults = defaults;
+  }
+
+  const rawPalette = rawStyle.palette && typeof rawStyle.palette === "object" ? rawStyle.palette : null;
+  if (rawPalette) {
+    const palette = {};
+    for (const [rawKey, rawValue] of Object.entries(rawPalette)) {
+      const key = String(rawKey || "").trim().slice(0, 48);
+      const color = sanitizeCssColor(rawValue);
+      if (!key || !color) {
+        continue;
+      }
+      palette[key] = color;
+    }
+    if (Object.keys(palette).length) {
+      style.palette = palette;
+    }
+  }
+
+  return Object.keys(style).length ? style : null;
+}
+
+function getClassRenderStyle(classType) {
+  const classDef = classDefsById.get(String(classType || "").trim());
+  return classDef && classDef.renderStyle && typeof classDef.renderStyle === "object" ? classDef.renderStyle : null;
+}
+
+function getPlayerVisualEquipment(player, isSelf) {
+  if (isSelf) {
+    return equipmentState.slots && typeof equipmentState.slots === "object" ? equipmentState.slots : {};
+  }
+  const meta = entityRuntime.playerMeta.get(Number(player && player.id));
+  if (meta && meta.appearance && typeof meta.appearance === "object") {
+    return meta.appearance;
+  }
+  return player && player.appearance && typeof player.appearance === "object" ? player.appearance : {};
+}
+
+const sharedClientRenderHumanoids = globalThis.VibeClientRenderHumanoids || null;
+const sharedCreateHumanoidRenderTools =
+  sharedClientRenderHumanoids && typeof sharedClientRenderHumanoids.createHumanoidRenderTools === "function"
+    ? sharedClientRenderHumanoids.createHumanoidRenderTools
+    : null;
+const humanoidRenderTools = sharedCreateHumanoidRenderTools
+  ? sharedCreateHumanoidRenderTools({
+      ctx,
+      clamp,
+      lerp,
+      hashString,
+      sanitizeCssColor
+    })
+  : null;
+
 const sharedClientRenderMobs = globalThis.VibeClientRenderMobs || null;
 const sharedCreateMobRenderTools =
   sharedClientRenderMobs && typeof sharedClientRenderMobs.createMobRenderTools === "function"
@@ -723,7 +823,11 @@ const mobRenderTools = sharedCreateMobRenderTools
       getSpiderWalkSprite,
       getOrcWalkSprite,
       getSkeletonWalkSprite,
-      getSkeletonArcherWalkSprite
+      getSkeletonArcherWalkSprite,
+      humanoidRenderTools,
+      remoteMobCasts,
+      getCastProgress,
+      getCurrentSelf
     })
   : null;
 const sharedClientRenderPlayers = globalThis.VibeClientRenderPlayers || null;
@@ -748,7 +852,13 @@ const playerRenderTools = sharedCreatePlayerRenderTools
       swordSwing,
       remotePlayerSwings,
       warriorAnimRuntime,
-      rangerAnimRuntime
+      rangerAnimRuntime,
+      humanoidRenderTools,
+      getClassRenderStyle,
+      getPlayerVisualEquipment,
+      mouseState,
+      screenToWorld,
+      getCurrentSelf
     })
   : null;
 const sharedClientRenderProjectiles = globalThis.VibeClientRenderProjectiles || null;
@@ -5699,13 +5809,15 @@ function applyPlayerMeta(metaPlayers) {
     }
     entityRuntime.playerMeta.set(meta.id, {
       name: String(meta.name || `P${meta.id}`),
-      classType: String(meta.classType || getDefaultClassId())
+      classType: String(meta.classType || getDefaultClassId()),
+      appearance: meta.appearance && typeof meta.appearance === "object" ? meta.appearance : null
     });
 
     const existing = entityRuntime.players.get(meta.id);
     if (existing) {
       existing.name = String(meta.name || existing.name || `P${meta.id}`);
       existing.classType = String(meta.classType || existing.classType || getDefaultClassId());
+      existing.appearance = meta.appearance && typeof meta.appearance === "object" ? meta.appearance : existing.appearance || null;
       entityRuntime.players.set(meta.id, existing);
     }
   }
@@ -5931,6 +6043,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
       baseMana: Math.max(0, Math.floor(Number(classDef.baseMana) || 0)),
       manaRegen: Math.max(0, Number(classDef.manaRegen) || 0),
       movementSpeed: Math.max(0.1, Number(classDef.speed ?? classDef.movementSpeed) || 0.1),
+      renderStyle: normalizeHumanoidRenderStyle(classDef.renderStyle),
       abilities: abilitiesList
     });
     classOptions.push({
@@ -10805,6 +10918,13 @@ function drawMob(mob, cameraX, cameraY, attackState = null) {
   mobRenderTools.drawMob(mob, cameraX, cameraY, attackState);
 }
 
+function isHumanoidMob(mob) {
+  if (!mobRenderTools || typeof mobRenderTools.isHumanoidMob !== "function") {
+    return false;
+  }
+  return !!mobRenderTools.isHumanoidMob(mob);
+}
+
 function createLootBagSprite(variant = 0) {
   const spriteSize = 64;
   const spriteCanvas = document.createElement("canvas");
@@ -10992,6 +11112,7 @@ const renderLoopTools = sharedCreateRenderLoopTools
       drawVendorNpc,
       drawLootBag,
       drawMob,
+      isHumanoidMob,
       getActiveMobAttackState,
       getMobAttackVisualType,
       drawSkeletonSwordSwing,

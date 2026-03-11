@@ -32,14 +32,7 @@
 
     function drawPlayer(player, cameraX, cameraY, isSelf) {
       const p = deps.worldToScreen(player.x + 0.5, player.y + 0.5, cameraX, cameraY);
-
-      if (player.classType === "warrior") {
-        drawWarriorPlayer(player, p, isSelf);
-      } else if (player.classType === "ranger") {
-        drawRangerPlayer(player, p, isSelf);
-      } else {
-        drawMagePlayer(player, p, isSelf);
-      }
+      drawClassHumanoidPlayer(player, p, isSelf);
 
       ctx.fillStyle = "#f5f7fa";
       ctx.font = "12px Segoe UI";
@@ -264,6 +257,9 @@
     }
 
     function pruneWarriorAnimRuntime() {
+      if (deps.humanoidRenderTools && typeof deps.humanoidRenderTools.pruneHumanoidMotionRuntime === "function") {
+        deps.humanoidRenderTools.pruneHumanoidMotionRuntime();
+      }
       const now = performance.now();
       for (const [key, state] of deps.warriorAnimRuntime.entries()) {
         if (now - state.lastSeenAt > 3000) {
@@ -277,6 +273,83 @@
           }
         }
       }
+    }
+
+    function getPlayerCastVisualState(player, isSelf, frameNow = performance.now()) {
+      const castState = isSelf ? deps.abilityChannel : deps.remotePlayerCasts.get(player.id);
+      const cast = deps.getCastProgress(castState, frameNow);
+      if (!cast) {
+        return null;
+      }
+      return {
+        active: true,
+        progress: cast.ratio,
+        abilityId: castState && castState.abilityId ? castState.abilityId : ""
+      };
+    }
+
+    function buildPlayerRenderStyle(player) {
+      const configured =
+        typeof deps.getClassRenderStyle === "function" ? deps.getClassRenderStyle(player.classType) : null;
+      if (configured && typeof configured === "object") {
+        return configured;
+      }
+      return {
+        rigType: "humanoid",
+        species: "human",
+        archetype: String(player.classType || "").trim().toLowerCase() || "adventurer",
+        defaults: {
+          head: player.classType === "mage" ? "wizard_hat" : player.classType === "ranger" ? "hood" : "helmet",
+          chest: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          shoulders: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          gloves: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          bracers: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          belt: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          pants: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          boots: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          mainHand: player.classType === "mage" ? "staff" : player.classType === "ranger" ? "bow" : "sword",
+          offHand: player.classType === "warrior" ? "shield" : "none"
+        }
+      };
+    }
+
+    function drawClassHumanoidPlayer(player, p, isSelf) {
+      if (!deps.humanoidRenderTools || typeof deps.humanoidRenderTools.drawHumanoid !== "function") {
+        if (player.classType === "warrior") {
+          drawWarriorPlayer(player, p, isSelf);
+        } else if (player.classType === "ranger") {
+          drawRangerPlayer(player, p, isSelf);
+        } else {
+          drawMagePlayer(player, p, isSelf);
+        }
+        return;
+      }
+      const attackState = player.classType === "warrior" ? getWarriorSwingState(player, isSelf) : null;
+      const castState = getPlayerCastVisualState(player, isSelf);
+      const equipmentSlots =
+        typeof deps.getPlayerVisualEquipment === "function" ? deps.getPlayerVisualEquipment(player, isSelf) : {};
+      let aimWorldX = NaN;
+      let aimWorldY = NaN;
+      if (isSelf && deps.mouseState && typeof deps.screenToWorld === "function") {
+        const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : player;
+        const world = deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self);
+        if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
+          aimWorldX = world.x;
+          aimWorldY = world.y;
+        }
+      }
+      deps.humanoidRenderTools.drawHumanoid({
+        entity: player,
+        entityKey: `${isSelf ? "self" : "player"}:${String(player.id ?? "0")}`,
+        p,
+        style: buildPlayerRenderStyle(player),
+        equipmentSlots,
+        attackState,
+        castState,
+        aimWorldX,
+        aimWorldY,
+        isSelf
+      });
     }
 
     function drawWarriorPlayer(player, p, isSelf) {

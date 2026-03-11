@@ -31,12 +31,27 @@
         ]
       },
       "renderStyle": {
+        "rigType": "humanoid",
         "spriteType": "zombie",
+        "species": "zombie",
+        "archetype": "mauler",
         "sizeScale": 1,
         "walkCycleSpeed": 2.1,
         "attackVisual": "bite",
         "attackAnimSpeed": 1,
         "biteRadius": 15,
+        "defaults": {
+          "head": "none",
+          "chest": "ragged",
+          "shoulders": "ragged",
+          "gloves": "ragged",
+          "bracers": "ragged",
+          "belt": "ragged",
+          "pants": "ragged",
+          "boots": "leather",
+          "mainHand": "claws",
+          "offHand": "none"
+        },
         "palette": {
           "skin": "#7fae67",
           "skinDark": "#557740",
@@ -79,7 +94,10 @@
         ]
       },
       "renderStyle": {
+        "rigType": "humanoid",
         "spriteType": "skeleton",
+        "species": "skeleton",
+        "archetype": "warrior",
         "sizeScale": 1,
         "walkCycleSpeed": 2.7,
         "attackVisual": "sword",
@@ -87,6 +105,18 @@
         "weaponOffsetX": 0,
         "weaponOffsetY": 0,
         "weaponAngleOffsetDeg": 0,
+        "defaults": {
+          "head": "rusty_helmet",
+          "chest": "ribcage",
+          "shoulders": "none",
+          "gloves": "none",
+          "bracers": "none",
+          "belt": "none",
+          "pants": "none",
+          "boots": "none",
+          "mainHand": "sword",
+          "offHand": "shield"
+        },
         "palette": {
           "bone": "#eef1f4",
           "boneDark": "#c8ced7",
@@ -94,6 +124,8 @@
           "eye": "#101116",
           "metal": "#d7dce5",
           "metalDark": "#8f98a8",
+          "helmetMetal": "#916849",
+          "helmetMetalDark": "#5e4330",
           "shield": "#e6ebf2",
           "shieldCrack": "#a4adbc"
         }
@@ -142,21 +174,37 @@
         ]
       },
       "renderStyle": {
+        "rigType": "humanoid",
         "spriteType": "skeleton_archer",
+        "species": "skeleton",
+        "archetype": "archer",
         "sizeScale": 1,
         "walkCycleSpeed": 2.6,
         "attackVisual": "bow",
         "attackAnimSpeed": 1,
         "weaponOffsetX": 0,
         "weaponOffsetY": 0,
+        "defaults": {
+          "head": "rusty_helmet",
+          "chest": "ribcage",
+          "shoulders": "none",
+          "gloves": "none",
+          "bracers": "none",
+          "belt": "none",
+          "pants": "none",
+          "boots": "none",
+          "mainHand": "bow",
+          "offHand": "none"
+        },
         "palette": {
           "bone": "#eceff3",
           "boneDark": "#c5ccd7",
           "outline": "#1a1f28",
           "eye": "#0f1015",
-          "hood": "#3b3f46",
-          "hoodDark": "#262a31",
-          "cloak": "#2b2f36",
+          "metal": "#d7dce5",
+          "metalDark": "#8f98a8",
+          "helmetMetal": "#916849",
+          "helmetMetalDark": "#5e4330",
           "bow": "#8d6d48",
           "bowDark": "#5f472f",
           "arrowShaft": "#d4d8df",
@@ -301,7 +349,10 @@
         ]
       },
       "renderStyle": {
+        "rigType": "humanoid",
         "spriteType": "orc",
+        "species": "orc",
+        "archetype": "berserker",
         "sizeScale": 1.05,
         "walkCycleSpeed": 2.8,
         "idleCycleSpeed": 1,
@@ -310,6 +361,18 @@
         "weaponOffsetX": 0,
         "weaponOffsetY": 0,
         "weaponAngleOffsetDeg": 0,
+        "defaults": {
+          "head": "none",
+          "chest": "leather",
+          "shoulders": "leather",
+          "gloves": "leather",
+          "bracers": "leather",
+          "belt": "leather",
+          "pants": "leather",
+          "boots": "leather",
+          "mainHand": "axe",
+          "offHand": "axe"
+        },
         "palette": {
           "skin": "#8bbf63",
           "skinDark": "#5f8242",

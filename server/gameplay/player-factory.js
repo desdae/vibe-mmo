@@ -3,6 +3,7 @@ function createPlayerEntitySyncState() {
     playerSlotsByRealId: new Map(),
     playerRealIdBySlot: new Map(),
     playerStatesBySlot: new Map(),
+    playerMetaSignatureBySlot: new Map(),
     playerSwingBySlot: new Map(),
     playerCastVersionBySlot: new Map(),
     playerEffectStatesBySlot: new Map(),

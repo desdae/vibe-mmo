@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { clamp, parseNumericRange } = require("../gameplay/number-utils");
+const { parseHumanoidRenderStyle } = require("../../public/shared/humanoid-style");
 
 function parseClassStartingItems(rawStartingItems, itemDefs, normalizeItemEntries) {
   const result = [];
@@ -66,6 +67,7 @@ function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSp
       manaRegen,
       speed: movementSpeed,
       movementSpeed,
+      renderStyle: parseHumanoidRenderStyle(entry.renderStyle),
       abilities,
       abilityLevels,
       startingItems
@@ -80,6 +82,7 @@ function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSp
       baseMana: def.baseMana,
       manaRegen: def.manaRegen,
       speed: def.speed,
+      renderStyle: def.renderStyle ? JSON.parse(JSON.stringify(def.renderStyle)) : null,
       abilities: def.abilities.map((ability) => ({ ...ability }))
     });
   }

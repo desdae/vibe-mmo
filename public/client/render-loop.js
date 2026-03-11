@@ -69,7 +69,9 @@
       for (const mob of interpolatedState.mobs) {
         const attackState = deps.getActiveMobAttackState(mob.id);
         const attackVisual = deps.getMobAttackVisualType(mob);
-        if (attackVisual === "sword") {
+        if (deps.isHumanoidMob && deps.isHumanoidMob(mob)) {
+          deps.drawMob(mob, cameraX, cameraY, attackState);
+        } else if (attackVisual === "sword") {
           deps.drawMob(mob, cameraX, cameraY, attackState);
           deps.drawSkeletonSwordSwing(mob, cameraX, cameraY, attackState);
         } else if (attackVisual === "bow") {

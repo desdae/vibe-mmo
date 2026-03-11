@@ -217,18 +217,33 @@ function encodePlayerMetaPacket(playersMeta) {
     const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
     const nameBytesRaw = Buffer.from(String((meta && meta.name) || `P${id}`), "utf8");
     const classBytesRaw = Buffer.from(String((meta && meta.classType) || ""), "utf8");
+    let appearanceJson = "";
+    if (meta && meta.appearance && typeof meta.appearance === "object") {
+      try {
+        appearanceJson = JSON.stringify(meta.appearance);
+      } catch (_error) {
+        appearanceJson = "";
+      }
+    }
+    const appearanceBytesRaw = Buffer.from(appearanceJson, "utf8");
     const nameBytes = nameBytesRaw.length > 255 ? nameBytesRaw.subarray(0, 255) : nameBytesRaw;
     const classBytes = classBytesRaw.length > 255 ? classBytesRaw.subarray(0, 255) : classBytesRaw;
-    const recordHeader = Buffer.alloc(3);
+    const appearanceBytes =
+      appearanceBytesRaw.length > 65535 ? appearanceBytesRaw.subarray(0, 65535) : appearanceBytesRaw;
+    const recordHeader = Buffer.alloc(5);
     recordHeader.writeUInt8(id, 0);
     recordHeader.writeUInt8(nameBytes.length, 1);
     recordHeader.writeUInt8(classBytes.length, 2);
+    recordHeader.writeUInt16LE(appearanceBytes.length, 3);
     parts.push(recordHeader);
     if (nameBytes.length) {
       parts.push(nameBytes);
     }
     if (classBytes.length) {
       parts.push(classBytes);
+    }
+    if (appearanceBytes.length) {
+      parts.push(appearanceBytes);
     }
   }
 
