@@ -2488,8 +2488,8 @@
               statusVisual: entry.statusVisual,
               frameNow,
               isPlayer: false,
-              labelOffsetY: -15,
-              hpOffsetY: -21
+              labelOffsetY: -16,
+              hpOffsetY: -12
             }
           );
         },
@@ -2520,7 +2520,7 @@
               frameNow,
               isPlayer: true,
               labelOffsetY: -18,
-              hpOffsetY: -30
+              hpOffsetY: -10
             }
           );
         },
