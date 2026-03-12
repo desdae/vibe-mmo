@@ -7,6 +7,8 @@
     const canvasElement = deps.canvasElement;
     const windowObject = deps.windowObject || globalScope;
     const tileSize = Math.max(8, Number(deps.tileSize) || 32);
+    const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+    const lerp = (a, b, t) => a + (b - a) * t;
     const hashString =
       typeof deps.hashString === "function"
         ? deps.hashString
@@ -20,6 +22,15 @@
           };
     const getLootBagSprite = typeof deps.getLootBagSprite === "function" ? deps.getLootBagSprite : null;
     const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
+    const sanitizeCssColor =
+      typeof deps.sanitizeCssColor === "function"
+        ? deps.sanitizeCssColor
+        : (value) => (/^#[0-9a-fA-F]{3,8}$/.test(String(value || "").trim()) ? String(value).trim() : "");
+    const sharedHumanoidModule = globalScope.VibeClientRenderHumanoids || null;
+    const createHumanoidRenderTools =
+      sharedHumanoidModule && typeof sharedHumanoidModule.createHumanoidRenderTools === "function"
+        ? sharedHumanoidModule.createHumanoidRenderTools
+        : null;
     if (!PIXI || !canvasElement) {
       return null;
     }
@@ -48,6 +59,7 @@
     let lootNodes = new Map();
     let vendorNode = null;
     const canvasTextureCache = new WeakMap();
+    const humanoidCanvasCache = new Map();
 
     const classColors = Object.freeze({
       warrior: 0xcbd5e1,
@@ -118,6 +130,14 @@
         return projectileColors.arrow;
       }
       return 0xf1f5f9;
+    }
+
+    function stableStringify(value) {
+      try {
+        return JSON.stringify(value) || "";
+      } catch {
+        return "";
+      }
     }
 
     function ensureApp(width, height) {
@@ -254,6 +274,24 @@
       return { container, graphics };
     }
 
+    function createLabeledSpriteNode() {
+      const container = new PIXI.Container();
+      const graphics = new PIXI.Graphics();
+      const sprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
+      sprite.anchor.set(0.5, 0.5);
+      sprite.visible = false;
+      const hpBack = new PIXI.Graphics();
+      const hpFill = new PIXI.Graphics();
+      const nameText = new PIXI.Text("", {
+        fontFamily: "Segoe UI",
+        fontSize: 12,
+        fill: 0xf5f7fa
+      });
+      nameText.anchor.set(0.5, 1);
+      container.addChild(graphics, sprite, hpBack, hpFill, nameText);
+      return { container, graphics, sprite, hpBack, hpFill, nameText };
+    }
+
     function createSpriteNode() {
       const container = new PIXI.Container();
       const graphics = new PIXI.Graphics();
@@ -276,6 +314,229 @@
       canvasTextureCache.set(canvas, texture);
       return texture;
     }
+
+    function buildPlayerHumanoidStyle(player) {
+      const configured = typeof deps.getClassRenderStyle === "function" ? deps.getClassRenderStyle(player && player.classType) : null;
+      if (configured && typeof configured === "object") {
+        return configured;
+      }
+      const classType = String(player && player.classType || "").trim().toLowerCase();
+      return {
+        rigType: "humanoid",
+        species: "human",
+        archetype: classType || "adventurer",
+        defaults: {
+          head: classType === "mage" ? "wizard_hat" : classType === "ranger" ? "hood" : "helmet",
+          chest: classType === "mage" ? "robe" : classType === "ranger" ? "leather" : "plate",
+          shoulders: classType === "mage" ? "robe" : classType === "ranger" ? "leather" : "plate",
+          gloves: classType === "mage" ? "robe" : classType === "ranger" ? "leather" : "plate",
+          bracers: classType === "mage" ? "robe" : classType === "ranger" ? "leather" : "plate",
+          belt: classType === "mage" ? "robe" : classType === "ranger" ? "leather" : "plate",
+          pants: classType === "mage" ? "robe" : classType === "ranger" ? "leather" : "plate",
+          boots: classType === "mage" ? "robe" : classType === "ranger" ? "leather" : "plate",
+          mainHand: classType === "mage" ? "staff" : classType === "ranger" ? "bow" : "sword",
+          offHand: classType === "warrior" ? "shield" : "none"
+        }
+      };
+    }
+
+    function buildHumanoidMobStyle(mob) {
+      const baseStyle =
+        typeof deps.getMobRenderStyle === "function" ? deps.getMobRenderStyle(mob) : mob && mob.renderStyle && typeof mob.renderStyle === "object" ? mob.renderStyle : null;
+      const spriteType = getMobKind(mob);
+      if (baseStyle && String(baseStyle.rigType || "").toLowerCase() === "humanoid") {
+        return baseStyle;
+      }
+      if (spriteType === "zombie") {
+        return {
+          ...(baseStyle || {}),
+          rigType: "humanoid",
+          species: "zombie",
+          defaults: {
+            head: "none",
+            chest: "ragged",
+            shoulders: "ragged",
+            gloves: "ragged",
+            bracers: "ragged",
+            belt: "ragged",
+            pants: "ragged",
+            boots: "leather",
+            mainHand: "claws",
+            offHand: "none"
+          }
+        };
+      }
+      if (spriteType === "skeleton_archer") {
+        return {
+          ...(baseStyle || {}),
+          rigType: "humanoid",
+          species: "skeleton",
+          archetype: "archer",
+          defaults: {
+            head: "rusty_helmet",
+            chest: "ribcage",
+            shoulders: "none",
+            gloves: "none",
+            bracers: "none",
+            belt: "none",
+            pants: "none",
+            boots: "none",
+            mainHand: "bow",
+            offHand: "none"
+          }
+        };
+      }
+      if (spriteType === "skeleton") {
+        return {
+          ...(baseStyle || {}),
+          rigType: "humanoid",
+          species: "skeleton",
+          archetype: "warrior",
+          defaults: {
+            head: "rusty_helmet",
+            chest: "ribcage",
+            shoulders: "none",
+            gloves: "none",
+            bracers: "none",
+            belt: "none",
+            pants: "none",
+            boots: "none",
+            mainHand: "sword",
+            offHand: "shield"
+          }
+        };
+      }
+      if (spriteType === "orc") {
+        return {
+          ...(baseStyle || {}),
+          rigType: "humanoid",
+          species: "orc",
+          archetype: "berserker",
+          defaults: {
+            head: "none",
+            chest: "leather",
+            shoulders: "leather",
+            gloves: "leather",
+            bracers: "leather",
+            belt: "leather",
+            pants: "leather",
+            boots: "leather",
+            mainHand: "axe",
+            offHand: "axe"
+          }
+        };
+      }
+      return {
+        ...(baseStyle || {}),
+        rigType: "humanoid",
+        species: "human"
+      };
+    }
+
+    function getHumanoidSpriteCanvas(cacheKey, renderOptions) {
+      const cached = humanoidCanvasCache.get(cacheKey);
+      if (cached) {
+        return cached;
+      }
+      if (!createHumanoidRenderTools) {
+        return null;
+      }
+      const spriteCanvas = document.createElement("canvas");
+      spriteCanvas.width = 96;
+      spriteCanvas.height = 96;
+      const spriteCtx = spriteCanvas.getContext("2d");
+      if (!spriteCtx) {
+        return null;
+      }
+      const tools = createHumanoidRenderTools({
+        ctx: spriteCtx,
+        clamp,
+        lerp,
+        hashString,
+        sanitizeCssColor
+      });
+      if (!tools || typeof tools.drawHumanoid !== "function") {
+        return null;
+      }
+      tools.drawHumanoid({
+        ...renderOptions,
+        p: {
+          x: spriteCanvas.width * 0.5,
+          y: spriteCanvas.height * 0.62
+        }
+      });
+      humanoidCanvasCache.set(cacheKey, spriteCanvas);
+      return spriteCanvas;
+    }
+
+    function getPlayerSpriteFrame(player, isSelf) {
+      const style = buildPlayerHumanoidStyle(player);
+      const equipmentSlots = typeof deps.getPlayerVisualEquipment === "function" ? deps.getPlayerVisualEquipment(player, isSelf) : {};
+      let aimSide = "center";
+      if (String(style?.defaults?.mainHand || "").toLowerCase() === "bow" && typeof deps.screenToWorld === "function" && deps.mouseState) {
+        const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : null;
+        const world = self ? deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self) : null;
+        if (world && Number.isFinite(world.x)) {
+          aimSide = world.x >= Number(player && player.x) ? "right" : "left";
+        }
+      }
+      const cacheKey = [
+        "player",
+        String(player && player.classType || ""),
+        stableStringify(style),
+        stableStringify(equipmentSlots),
+        aimSide,
+        isSelf ? "self" : "other"
+      ].join("|");
+      const canvas = getHumanoidSpriteCanvas(cacheKey, {
+        entity: player,
+        entityKey: `pixi-player:${cacheKey}`,
+        style,
+        equipmentSlots,
+        useDefaultGearFallback: false,
+        aimWorldX: aimSide === "center" ? NaN : Number(player && player.x) + (aimSide === "right" ? 2 : -2),
+        aimWorldY: Number(player && player.y) || 0,
+        isSelf
+      });
+      return canvas ? { canvas, rotation: 0 } : null;
+    }
+
+    function getMobSpriteFrame(entry) {
+      const mob = entry && entry.mob ? entry.mob : null;
+      if (!mob) {
+        return null;
+      }
+      const style = buildHumanoidMobStyle(mob);
+      const attackState = entry.attackState
+        ? {
+            ...entry.attackState,
+            progress: Math.round(clamp(Number(entry.attackState.progress) || 0, 0, 1) * 4) / 4
+          }
+        : null;
+      const currentSelf = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : null;
+      const aimWorldX = currentSelf && Number.isFinite(Number(currentSelf.x)) ? Number(currentSelf.x) : Number(mob.x) + 1;
+      const aimWorldY = currentSelf && Number.isFinite(Number(currentSelf.y)) ? Number(currentSelf.y) : Number(mob.y);
+      const cacheKey = [
+        "mob",
+        String(mob.name || ""),
+        stableStringify(style),
+        stableStringify(attackState),
+        currentSelf ? (aimWorldX >= Number(mob.x) ? "right" : "left") : "center"
+      ].join("|");
+      const canvas = getHumanoidSpriteCanvas(cacheKey, {
+        entity: mob,
+        entityKey: `pixi-mob:${cacheKey}`,
+        style,
+        equipmentSlots: {},
+        useDefaultGearFallback: true,
+        attackState,
+        aimWorldX,
+        aimWorldY,
+        isSelf: false
+      });
+      return canvas ? { canvas, rotation: 0 } : null;
+    }
+
 
     function drawPlayerGraphic(graphics, player, isSelf) {
       const classType = String(player && player.classType || "").toLowerCase();
@@ -432,6 +693,40 @@
     function updateLabeledNode(node, x, y, label, hp, maxHp, drawFn) {
       node.container.position.set(x, y);
       drawFn(node.graphics);
+      node.nameText.text = label;
+      node.nameText.position.set(0, -18);
+      node.hpBack.clear();
+      node.hpFill.clear();
+      const currentHp = Number(hp) || 0;
+      const totalHp = Math.max(1, Number(maxHp) || 1);
+      if (currentHp < totalHp) {
+        node.hpBack.beginFill(0x09111a, 0.84);
+        node.hpBack.drawRoundedRect(-11, -30, 22, 4, 2);
+        node.hpBack.endFill();
+        node.hpFill.beginFill(0x64d37a, 1);
+        node.hpFill.drawRoundedRect(-11, -30, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
+        node.hpFill.endFill();
+      }
+    }
+
+    function updateLabeledSpriteNode(node, x, y, label, hp, maxHp, spriteFrame, drawFallback) {
+      node.container.position.set(x, y);
+      if (spriteFrame && spriteFrame.canvas) {
+        const texture = getTextureFromCanvas(spriteFrame.canvas);
+        if (texture) {
+          node.graphics.clear();
+          node.sprite.visible = true;
+          node.sprite.texture = texture;
+          node.sprite.rotation = Number(spriteFrame.rotation) || 0;
+          node.sprite.scale.set(1, 1);
+        } else {
+          node.sprite.visible = false;
+          drawFallback(node.graphics);
+        }
+      } else {
+        node.sprite.visible = false;
+        drawFallback(node.graphics);
+      }
       node.nameText.text = label;
       node.nameText.position.set(0, -18);
       node.hpBack.clear();
@@ -679,10 +974,20 @@
         mobNodes,
         frameViewModel.mobViews,
         (entry) => entry.mob.id,
-        () => createLabeledNode(),
+        () => createLabeledSpriteNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.mob.x) + 0.5, Number(entry.mob.y) + 0.5, cameraX, cameraY, width, height);
-          updateLabeledNode(node, p.x, p.y, String(entry.mob.name || "Mob"), entry.mob.hp, entry.mob.maxHp, (graphics) => drawMobGraphic(graphics, entry.mob));
+          const spriteFrame = entry.isHumanoid ? getMobSpriteFrame(entry) : null;
+          updateLabeledSpriteNode(
+            node,
+            p.x,
+            p.y,
+            String(entry.mob.name || "Mob"),
+            entry.mob.hp,
+            entry.mob.maxHp,
+            spriteFrame,
+            (graphics) => drawMobGraphic(graphics, entry.mob)
+          );
         },
         mobLayer
       );
@@ -691,11 +996,19 @@
         playerNodes,
         [...frameViewModel.playerViews, frameViewModel.selfView],
         (entry) => entry.player.id,
-        () => createLabeledNode(),
+        () => createLabeledSpriteNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.player.x) + 0.5, Number(entry.player.y) + 0.5, cameraX, cameraY, width, height);
-          updateLabeledNode(node, p.x, p.y, String(entry.player.name || "Player"), entry.player.hp, entry.player.maxHp, (graphics) =>
-            drawPlayerGraphic(graphics, entry.player, !!entry.isSelf)
+          const spriteFrame = getPlayerSpriteFrame(entry.player, !!entry.isSelf);
+          updateLabeledSpriteNode(
+            node,
+            p.x,
+            p.y,
+            String(entry.player.name || "Player"),
+            entry.player.hp,
+            entry.player.maxHp,
+            spriteFrame,
+            (graphics) => drawPlayerGraphic(graphics, entry.player, !!entry.isSelf)
           );
         },
         playerLayer

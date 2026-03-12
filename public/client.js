@@ -12117,6 +12117,13 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       tileSize: TILE_SIZE,
       townClientState,
       hashString,
+      sanitizeCssColor,
+      mouseState,
+      screenToWorld,
+      getCurrentSelf,
+      getClassRenderStyle,
+      getPlayerVisualEquipment,
+      getMobRenderStyle,
       getLootBagSprite,
       getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
         ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
