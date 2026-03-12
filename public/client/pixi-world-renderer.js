@@ -325,10 +325,10 @@
       if (cached) {
         return cached;
       }
-      const minX = Number(townLayout.minX) || 0;
-      const minY = Number(townLayout.minY) || 0;
-      const maxX = Number(townLayout.maxX) || 0;
-      const maxY = Number(townLayout.maxY) || 0;
+      const minX = Number(townLayout.minTileX) || 0;
+      const minY = Number(townLayout.minTileY) || 0;
+      const maxX = Number(townLayout.maxTileX) || 0;
+      const maxY = Number(townLayout.maxTileY) || 0;
       const widthTiles = Math.max(1, maxX - minX + 1);
       const heightTiles = Math.max(1, maxY - minY + 1);
       const surface = createRuntimeCanvas(widthTiles * tileSize, heightTiles * tileSize);
@@ -359,10 +359,10 @@
             ctx.fillRect(px, py, tileSize, tileSize);
           }
           const isGate =
-            (tileY === Number(townLayout.minY) && tileX >= Number(townLayout.northGate && townLayout.northGate.min) && tileX <= Number(townLayout.northGate && townLayout.northGate.max)) ||
-            (tileY === Number(townLayout.maxY) && tileX >= Number(townLayout.southGate && townLayout.southGate.min) && tileX <= Number(townLayout.southGate && townLayout.southGate.max)) ||
-            (tileX === Number(townLayout.minX) && tileY >= Number(townLayout.westGate && townLayout.westGate.min) && tileY <= Number(townLayout.westGate && townLayout.westGate.max)) ||
-            (tileX === Number(townLayout.maxX) && tileY >= Number(townLayout.eastGate && townLayout.eastGate.min) && tileY <= Number(townLayout.eastGate && townLayout.eastGate.max));
+            (tileY === Number(townLayout.minTileY) && tileX >= Number(townLayout.northGate && townLayout.northGate.min) && tileX <= Number(townLayout.northGate && townLayout.northGate.max)) ||
+            (tileY === Number(townLayout.maxTileY) && tileX >= Number(townLayout.southGate && townLayout.southGate.min) && tileX <= Number(townLayout.southGate && townLayout.southGate.max)) ||
+            (tileX === Number(townLayout.minTileX) && tileY >= Number(townLayout.westGate && townLayout.westGate.min) && tileY <= Number(townLayout.westGate && townLayout.westGate.max)) ||
+            (tileX === Number(townLayout.maxTileX) && tileY >= Number(townLayout.eastGate && townLayout.eastGate.min) && tileY <= Number(townLayout.eastGate && townLayout.eastGate.max));
           if (isGate) {
             ctx.fillStyle = "rgba(232, 196, 129, 0.16)";
             ctx.fillRect(Math.round(px + 4), Math.round(py + 4), tileSize - 8, tileSize - 8);
@@ -1617,10 +1617,10 @@
         townSprite.visible = false;
         return;
       }
-      const minX = Number(townLayout.minX) || 0;
-      const minY = Number(townLayout.minY) || 0;
-      const maxX = Number(townLayout.maxX) || 0;
-      const maxY = Number(townLayout.maxY) || 0;
+      const minX = Number(townLayout.minTileX) || 0;
+      const minY = Number(townLayout.minTileY) || 0;
+      const maxX = Number(townLayout.maxTileX) || 0;
+      const maxY = Number(townLayout.maxTileY) || 0;
       townSprite.visible = true;
       townSprite.texture = townTexture;
       townSprite.position.set(
