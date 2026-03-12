@@ -68,6 +68,12 @@ const mobileUiElements = (() => {
   lootButton.className = "mobile-utility-button hidden";
   lootButton.textContent = "Loot";
 
+  const editButton = document.createElement("button");
+  editButton.id = "mobile-action-edit-button";
+  editButton.type = "button";
+  editButton.className = "mobile-utility-button";
+  editButton.textContent = "Edit";
+
   const bagButton = document.createElement("button");
   bagButton.id = "mobile-bag-button";
   bagButton.type = "button";
@@ -75,6 +81,7 @@ const mobileUiElements = (() => {
   bagButton.textContent = "Bag";
 
   utilityBar.appendChild(lootButton);
+  utilityBar.appendChild(editButton);
   utilityBar.appendChild(bagButton);
   if (actionUi) {
     actionUi.insertBefore(utilityBar, actionUi.firstChild);
@@ -115,6 +122,7 @@ const mobileUiElements = (() => {
   return {
     utilityBar,
     lootButton,
+    editButton,
     bagButton,
     panelTabs,
     inventoryTabButton,
@@ -125,6 +133,7 @@ const mobileUiElements = (() => {
 })();
 const mobileUtilityBar = mobileUiElements.utilityBar;
 const mobileLootButton = mobileUiElements.lootButton;
+const mobileActionEditButton = mobileUiElements.editButton;
 const mobileBagButton = mobileUiElements.bagButton;
 const mobilePanelTabs = mobileUiElements.panelTabs;
 const mobileInventoryTabButton = mobileUiElements.inventoryTabButton;
@@ -738,12 +747,17 @@ const mobilePanelState = {
   suppressItemTapUntil: 0,
   suppressAbilityTapUntil: 0
 };
+const mobileActionBarEditState = {
+  active: false,
+  selectedSlotId: ""
+};
 const mobileActionTouchState = {
   active: false,
   slotId: "",
   touchId: null,
   bindingKind: "",
   bindingId: "",
+  editMode: false,
   aimCapable: false,
   startClientX: 0,
   startClientY: 0,
@@ -3216,7 +3230,10 @@ function showTooltipHtml(html, event, options = {}) {
   }
   const mobileTooltipClass = String(options.mobileTooltipClass || "").trim();
   const mobileTooltipAnchor = String(options.mobileTooltipAnchor || "").trim();
-  hoverTooltipEl.innerHTML = String(html || "");
+  const tooltipHtml = String(html || "");
+  hoverTooltipEl.innerHTML = mobileTooltipClass
+    ? `<button type="button" class="tooltip-close-button" aria-label="Close tooltip">Close</button><div class="tooltip-content">${tooltipHtml}</div>`
+    : tooltipHtml;
   hoverTooltipEl.classList.remove("mobile-item-tooltip", "mobile-ability-tooltip", "hidden");
   if (mobileTooltipClass) {
     hoverTooltipEl.classList.add(mobileTooltipClass);
@@ -3286,6 +3303,58 @@ function hideHoverTooltip() {
   hoverTooltipEl.classList.remove("mobile-ability-tooltip");
   delete hoverTooltipEl.dataset.mobileTooltipAnchor;
   hoverTooltipEl.innerHTML = "";
+}
+
+function isMobileTooltipVisible() {
+  return (
+    !!hoverTooltipEl &&
+    !hoverTooltipEl.classList.contains("hidden") &&
+    (hoverTooltipEl.classList.contains("mobile-item-tooltip") || hoverTooltipEl.classList.contains("mobile-ability-tooltip"))
+  );
+}
+
+function dismissMobileTooltip(event) {
+  hideHoverTooltip();
+  clearMobileTooltipHideTimer();
+  mobilePanelState.suppressItemTapUntil = performance.now() + 220;
+  mobilePanelState.suppressAbilityTapUntil = performance.now() + 220;
+  suppressActionBarClickUntil = performance.now() + 220;
+  if (event) {
+    if (typeof event.preventDefault === "function" && event.cancelable) {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+    if (typeof event.stopImmediatePropagation === "function") {
+      event.stopImmediatePropagation();
+    }
+  }
+}
+
+function handleMobileTooltipDismissCapture(event) {
+  if (!isTouchJoystickEnabled() || !isMobileTooltipVisible()) {
+    return;
+  }
+  const target = event && event.target;
+  if (target && hoverTooltipEl && hoverTooltipEl.contains(target)) {
+    return;
+  }
+  dismissMobileTooltip(event);
+}
+
+if (hoverTooltipEl) {
+  const handleTooltipCloseButtonPress = (event) => {
+    const closeButton = event.target && typeof event.target.closest === "function"
+      ? event.target.closest(".tooltip-close-button")
+      : null;
+    if (!closeButton) {
+      return;
+    }
+    dismissMobileTooltip(event);
+  };
+  hoverTooltipEl.addEventListener("click", handleTooltipCloseButtonPress);
+  hoverTooltipEl.addEventListener("touchend", handleTooltipCloseButtonPress, { passive: false });
 }
 
 function bindItemTooltip(node, itemInput, qty = null) {
@@ -3871,6 +3940,107 @@ function bindAbilityToPreferredActionSlot(abilityId) {
   return false;
 }
 
+function isMobileEditableActionSlot(slotId) {
+  const resolvedSlotId = String(slotId || "").trim();
+  return /^[1-9]$/.test(resolvedSlotId);
+}
+
+function getActionSlotLabel(slotId) {
+  return ACTION_SLOT_LABELS[String(slotId || "")] || String(slotId || "");
+}
+
+function clearMobileActionBarSelection() {
+  mobileActionBarEditState.selectedSlotId = "";
+}
+
+function getMobileActionBarSelectedSlotId() {
+  return isMobileEditableActionSlot(mobileActionBarEditState.selectedSlotId)
+    ? mobileActionBarEditState.selectedSlotId
+    : "";
+}
+
+function isUsableItemDef(itemDef) {
+  return !!(itemDef && itemDef.effect && itemDef.effect.type);
+}
+
+function bindActionBindingToSlot(slotId, binding) {
+  const resolvedSlotId = String(slotId || "").trim();
+  if (!isMobileEditableActionSlot(resolvedSlotId) || !binding) {
+    return false;
+  }
+  actionBindings.set(resolvedSlotId, String(binding));
+  updateActionBarUI(getCurrentSelf());
+  return true;
+}
+
+function bindAbilityToActionSlot(slotId, abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId || !abilityDefsById.has(resolvedAbilityId)) {
+    return false;
+  }
+  return bindActionBindingToSlot(slotId, makeActionBinding(resolvedAbilityId));
+}
+
+function bindItemToActionSlot(slotId, itemId) {
+  const resolvedItemId = String(itemId || "").trim();
+  const itemDef = itemDefsById.get(resolvedItemId);
+  if (!resolvedItemId || !isUsableItemDef(itemDef)) {
+    return false;
+  }
+  return bindActionBindingToSlot(slotId, makeItemBinding(resolvedItemId));
+}
+
+function swapActionBarBindings(slotA, slotB) {
+  const leftSlotId = String(slotA || "").trim();
+  const rightSlotId = String(slotB || "").trim();
+  if (!isMobileEditableActionSlot(leftSlotId) || !isMobileEditableActionSlot(rightSlotId) || leftSlotId === rightSlotId) {
+    return false;
+  }
+  const leftBinding = actionBindings.get(leftSlotId) || makeActionBinding("none");
+  const rightBinding = actionBindings.get(rightSlotId) || makeActionBinding("none");
+  actionBindings.set(leftSlotId, rightBinding);
+  actionBindings.set(rightSlotId, leftBinding);
+  updateActionBarUI(getCurrentSelf());
+  return true;
+}
+
+function buildMobileSpellbookHintLines(currentLevel = 1) {
+  const lines = [`Current Level: ${Math.max(1, Math.floor(Number(currentLevel) || 1))}`];
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  if (mobileActionBarEditState.active) {
+    if (selectedSlotId) {
+      lines.push(`Tap to place on slot ${getActionSlotLabel(selectedSlotId)}.`);
+    } else {
+      lines.push("Tap an action slot first, then tap this skill.");
+    }
+    return lines;
+  }
+  lines.push("Tap to bind to the first free action slot.");
+  lines.push("Use Edit to place it on a specific slot.");
+  return lines;
+}
+
+function handleMobileSpellbookAbilityTap(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return false;
+  }
+  if (!mobileActionBarEditState.active) {
+    return bindAbilityToPreferredActionSlot(resolvedAbilityId);
+  }
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  if (!selectedSlotId) {
+    setStatus("Tap an action slot, then tap a spell or usable item.");
+    return false;
+  }
+  if (!bindAbilityToActionSlot(selectedSlotId, resolvedAbilityId)) {
+    return false;
+  }
+  const abilityName = abilityDefsById.get(resolvedAbilityId)?.name || resolvedAbilityId;
+  setStatus(`${abilityName} placed on slot ${getActionSlotLabel(selectedSlotId)}.`);
+  return true;
+}
+
 function updateSpellbookUI(self) {
   if (!spellbookGrid || !spellbookPanel) {
     return;
@@ -3910,7 +4080,7 @@ function updateSpellbookUI(self) {
     node.className = "spellbook-entry";
     node.style.backgroundImage = `url(${getActionIconUrl(abilityId)})`;
     node.title = mobileLayout
-      ? `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nTap to bind to action bar.`
+      ? `${buildAbilityTooltip(abilityId)}\n${buildMobileSpellbookHintLines(currentLevel).join("\n")}`
       : `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nDrag to action slot.`;
     node.draggable = !mobileLayout;
     node.addEventListener("click", (event) => {
@@ -3921,13 +4091,13 @@ function updateSpellbookUI(self) {
       if (performance.now() < (Number(mobilePanelState.suppressAbilityTapUntil) || 0)) {
         return;
       }
-      bindAbilityToPreferredActionSlot(abilityId);
+      handleMobileSpellbookAbilityTap(abilityId);
     });
     bindMobileAbilitySlotPreview(node, abilityId, () => {
-      bindAbilityToPreferredActionSlot(abilityId);
+      handleMobileSpellbookAbilityTap(abilityId);
     }, {
       anchor: "panel",
-      hintLines: [`Current Level: ${currentLevel}`, "Tap to bind to the first free action slot."]
+      hintLines: () => buildMobileSpellbookHintLines(currentLevel)
     });
     node.addEventListener("dragstart", (event) => {
       dragState.source = "spellbook";
@@ -5722,6 +5892,43 @@ function equipInventoryItemAtIndex(index) {
   return true;
 }
 
+function handleMobileInventorySlotTap(index) {
+  const slotData = inventoryState.slots[index];
+  if (!slotData || !slotData.itemId) {
+    return false;
+  }
+  if (mobileActionBarEditState.active) {
+    const selectedSlotId = getMobileActionBarSelectedSlotId();
+    if (!selectedSlotId) {
+      setStatus("Tap an action slot, then tap a spell or usable item.");
+      return false;
+    }
+    if (!bindItemToActionSlot(selectedSlotId, slotData.itemId)) {
+      setStatus("Only usable items like potions can be placed on the action bar.");
+      return false;
+    }
+    const itemName = slotData.name || itemDefsById.get(slotData.itemId)?.name || slotData.itemId;
+    setStatus(`${itemName} placed on slot ${getActionSlotLabel(selectedSlotId)}.`);
+    return true;
+  }
+  if (!trySellInventoryItemAtIndex(index)) {
+    return equipInventoryItemAtIndex(index);
+  }
+  return true;
+}
+
+function handleMobileEquipmentSlotTap(slotId) {
+  if (mobileActionBarEditState.active) {
+    setStatus("Edit mode only changes action bar slots.");
+    return false;
+  }
+  sendJsonMessage({
+    type: "unequip_item",
+    slot: String(slotId || "")
+  });
+  return true;
+}
+
 function updateInventoryUI() {
   if (!inventoryGrid || !inventoryPanel) {
     return;
@@ -5813,11 +6020,7 @@ function updateInventoryUI() {
       bindMobileItemSlotInteraction(
         slotEl,
         slotData,
-        () => {
-          if (!trySellInventoryItemAtIndex(i)) {
-            equipInventoryItemAtIndex(i);
-          }
-        },
+        () => handleMobileInventorySlotTap(i),
         slotData.qty
       );
       slotEl.addEventListener("dragstart", (event) => {
@@ -5949,10 +6152,7 @@ function updateEquipmentUI() {
       bindItemTooltip(slotEl, slotData);
       applyItemRarityChrome(slotEl, slotData);
       bindMobileItemSlotInteraction(slotEl, slotData, () => {
-        sendJsonMessage({
-          type: "unequip_item",
-          slot: slotId
-        });
+        handleMobileEquipmentSlotTap(slotId);
       });
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "equipment";
@@ -6456,7 +6656,13 @@ function bindMobileAbilitySlotPreview(node, abilityId, onTap, options = {}) {
   }
 
   const anchor = String(options.anchor || "panel").trim().toLowerCase() || "panel";
-  const hintLines = Array.isArray(options.hintLines) ? options.hintLines : [];
+  const resolveHintLines = () => {
+    if (typeof options.hintLines === "function") {
+      const dynamicLines = options.hintLines();
+      return Array.isArray(dynamicLines) ? dynamicLines : [];
+    }
+    return Array.isArray(options.hintLines) ? options.hintLines : [];
+  };
   let holdTimer = 0;
   let holdTriggered = false;
   let startClientX = 0;
@@ -6503,7 +6709,7 @@ function bindMobileAbilitySlotPreview(node, abilityId, onTap, options = {}) {
       holdTimer = window.setTimeout(() => {
         holdTimer = 0;
         holdTriggered = true;
-        showMobileAbilityTooltip(abilityId, anchor, startClientX, startClientY, hintLines);
+        showMobileAbilityTooltip(abilityId, anchor, startClientX, startClientY, resolveHintLines());
       }, 420);
     },
     { passive: true }
@@ -6574,6 +6780,7 @@ function resetMobileActionTouchState() {
   mobileActionTouchState.touchId = null;
   mobileActionTouchState.bindingKind = "";
   mobileActionTouchState.bindingId = "";
+  mobileActionTouchState.editMode = false;
   mobileActionTouchState.aimCapable = false;
   mobileActionTouchState.startClientX = 0;
   mobileActionTouchState.startClientY = 0;
@@ -6587,8 +6794,11 @@ function beginMobileActionSlotTouch(slotId, touchId, clientX, clientY) {
   if (!isTouchJoystickEnabled() || mobileAbilityAimState.active || mobileActionTouchState.active) {
     return false;
   }
+  if (mobileActionBarEditState.active && !isMobileEditableActionSlot(slotId)) {
+    return false;
+  }
   const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
-  if (binding.kind === "action" && binding.id === "none") {
+  if (!mobileActionBarEditState.active && binding.kind === "action" && binding.id === "none") {
     return false;
   }
   const actionDef = binding.kind === "action" ? getActionDefById(binding.id) : null;
@@ -6599,8 +6809,9 @@ function beginMobileActionSlotTouch(slotId, touchId, clientX, clientY) {
   mobileActionTouchState.touchId = touchId;
   mobileActionTouchState.bindingKind = binding.kind;
   mobileActionTouchState.bindingId = String(binding.id || "");
+  mobileActionTouchState.editMode = mobileActionBarEditState.active;
   mobileActionTouchState.aimCapable =
-    binding.kind === "action" && supportsMobileAbilityAim(binding.id, actionDef);
+    !mobileActionTouchState.editMode && binding.kind === "action" && supportsMobileAbilityAim(binding.id, actionDef);
   mobileActionTouchState.startClientX = Number(clientX) || 0;
   mobileActionTouchState.startClientY = Number(clientY) || 0;
   mobileActionTouchState.currentClientX = mobileActionTouchState.startClientX;
@@ -6612,9 +6823,19 @@ function beginMobileActionSlotTouch(slotId, touchId, clientX, clientY) {
     }
     mobileActionTouchState.holdTriggered = true;
     if (mobileActionTouchState.bindingKind === "action") {
-      const tips = mobileActionTouchState.aimCapable
-        ? ["Drag to aim, release to cast.", "Long press to inspect."]
-        : ["Tap to use.", "Long press to inspect."];
+      const tips = mobileActionTouchState.editMode
+        ? [
+            getMobileActionBarSelectedSlotId() === mobileActionTouchState.slotId
+              ? "Tap again to deselect this slot."
+              : "Tap to select this slot.",
+            getMobileActionBarSelectedSlotId()
+              ? "Tap another slot to swap, or tap a spell or potion to replace it."
+              : "After selecting a slot, tap another slot, a spell, or a potion.",
+            "Long press to inspect."
+          ]
+        : mobileActionTouchState.aimCapable
+          ? ["Drag to aim, release to cast.", "Long press to inspect."]
+          : ["Tap to use.", "Long press to inspect."];
       showMobileAbilityTooltip(mobileActionTouchState.bindingId, "action", clientX, clientY, tips);
     } else if (mobileActionTouchState.bindingKind === "item") {
       showItemTooltip(
@@ -6687,6 +6908,7 @@ function handleMobileActionSlotTouchEnd(event) {
     const slotId = mobileActionTouchState.slotId;
     const holdTriggered = mobileActionTouchState.holdTriggered;
     const moveCanceled = mobileActionTouchState.moveCanceled;
+    const editMode = mobileActionTouchState.editMode;
     const aimCapable = mobileActionTouchState.aimCapable;
     const startX = mobileActionTouchState.startClientX;
     const startY = mobileActionTouchState.startClientY;
@@ -6698,6 +6920,11 @@ function handleMobileActionSlotTouchEnd(event) {
     hideHoverTooltip();
     if (aimCapable && beginMobileAbilityAim(slotId, touch.identifier, startX, startY)) {
       commitMobileAbilityAim();
+      event.preventDefault();
+      return;
+    }
+    if (editMode) {
+      handleMobileActionBarEditSlotTap(slotId);
       event.preventDefault();
       return;
     }
@@ -6806,13 +7033,83 @@ function closeMobilePanels() {
   setMobilePanelTab(mobilePanelState.activeTab, false);
 }
 
+function handleMobileActionBarEditSlotTap(slotId) {
+  const resolvedSlotId = String(slotId || "").trim();
+  if (!isMobileEditableActionSlot(resolvedSlotId)) {
+    return false;
+  }
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  if (!selectedSlotId) {
+    mobileActionBarEditState.selectedSlotId = resolvedSlotId;
+    updateActionBarUI(getCurrentSelf());
+    setStatus(
+      `Slot ${getActionSlotLabel(resolvedSlotId)} selected. Tap another slot to swap, or tap a spell or potion to place it there.`
+    );
+    return true;
+  }
+  if (selectedSlotId === resolvedSlotId) {
+    clearMobileActionBarSelection();
+    updateActionBarUI(getCurrentSelf());
+    setStatus(`Slot ${getActionSlotLabel(resolvedSlotId)} deselected.`);
+    return true;
+  }
+  if (!swapActionBarBindings(selectedSlotId, resolvedSlotId)) {
+    return false;
+  }
+  mobileActionBarEditState.selectedSlotId = resolvedSlotId;
+  updateActionBarUI(getCurrentSelf());
+  setStatus(
+    `Swapped slots ${getActionSlotLabel(selectedSlotId)} and ${getActionSlotLabel(resolvedSlotId)}. Slot ${getActionSlotLabel(resolvedSlotId)} remains selected.`
+  );
+  return true;
+}
+
+function setMobileActionBarEditMode(active) {
+  const nextActive = !!active && isTouchJoystickEnabled();
+  if (mobileActionBarEditState.active === nextActive) {
+    if (!nextActive && mobileActionBarEditState.selectedSlotId) {
+      clearMobileActionBarSelection();
+      updateActionBarUI(getCurrentSelf());
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return nextActive;
+  }
+  mobileActionBarEditState.active = nextActive;
+  if (!nextActive) {
+    clearMobileActionBarSelection();
+  }
+  hideHoverTooltip();
+  clearMobileTooltipHideTimer();
+  clearMobileActionTouchHoldTimer();
+  resetMobileActionTouchState();
+  resetMobileAbilityAim();
+  updateActionBarUI(getCurrentSelf());
+  updateMobileUtilityBar(getCurrentSelf());
+  if (nextActive) {
+    setStatus("Edit mode active. Tap a slot, then tap another slot, a spell, or a potion.");
+  } else {
+    setStatus("Edit mode closed.");
+  }
+  return nextActive;
+}
+
+function toggleMobileActionBarEditMode() {
+  return setMobileActionBarEditMode(!mobileActionBarEditState.active);
+}
+
 function updateMobileUtilityBar(self = null) {
-  if (!mobileUtilityBar || !mobileLootButton || !mobileBagButton) {
+  if (!mobileUtilityBar || !mobileLootButton || !mobileActionEditButton || !mobileBagButton) {
     return;
   }
 
   const mobileActive = isMobilePanelMode() && !!self;
   mobileUtilityBar.classList.toggle("hidden", !mobileActive);
+  if (!mobileActive) {
+    mobileActionBarEditState.active = false;
+    clearMobileActionBarSelection();
+    mobileActionEditButton.classList.remove("active");
+    mobileActionEditButton.textContent = "Edit";
+  }
   if (!mobileActive) {
     return;
   }
@@ -6821,6 +7118,8 @@ function updateMobileUtilityBar(self = null) {
   const lootCount = reachableLoot.length;
   mobileLootButton.classList.toggle("hidden", lootCount <= 0);
   mobileLootButton.textContent = lootCount > 1 ? `Loot x${lootCount}` : "Loot";
+  mobileActionEditButton.classList.toggle("active", mobileActionBarEditState.active);
+  mobileActionEditButton.textContent = mobileActionBarEditState.active ? "Done" : "Edit";
   mobileBagButton.classList.toggle("active", mobilePanelState.open);
 }
 
@@ -6910,6 +7209,14 @@ if (mobileBagButton) {
     event.preventDefault();
     resumeSpatialAudioContext();
     toggleInventoryPanel();
+  });
+}
+
+if (mobileActionEditButton) {
+  mobileActionEditButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    resumeSpatialAudioContext();
+    toggleMobileActionBarEditMode();
   });
 }
 
@@ -7092,6 +7399,10 @@ function ensureActionBarInitialized() {
       if (performance.now() < suppressActionBarClickUntil) {
         return;
       }
+      if (isTouchJoystickEnabled() && mobileActionBarEditState.active && isMobileEditableActionSlot(slotId)) {
+        handleMobileActionBarEditSlotTap(slotId);
+        return;
+      }
       resumeSpatialAudioContext();
       executeBoundAction(slotId);
     });
@@ -7156,6 +7467,7 @@ function updateActionBarUI(self) {
   }
   if (!self) {
     actionUi.classList.add("hidden");
+    actionBar.classList.remove("mobile-edit-mode");
     updateResourceBars(null);
     updateSpellbookUI(null);
     updateMobileUtilityBar(null);
@@ -7170,6 +7482,9 @@ function updateActionBarUI(self) {
   updateMobileUtilityBar(self);
   updateMobilePanelTabs();
   const now = performance.now();
+  const mobileEditMode = isTouchJoystickEnabled() && mobileActionBarEditState.active;
+
+  actionBar.classList.toggle("mobile-edit-mode", mobileEditMode);
 
   for (const slotId of ACTION_SLOT_ORDER) {
     const slot = actionSlotEls.get(slotId);
@@ -7184,8 +7499,13 @@ function updateActionBarUI(self) {
     slot.root.classList.toggle("empty", !display.bound);
     slot.root.classList.toggle("bound", display.bound);
     slot.root.classList.toggle("aiming", mobileAbilityAimState.active && mobileAbilityAimState.slotId === slotId);
+    slot.root.classList.toggle("edit-mode", mobileEditMode && isMobileEditableActionSlot(slotId));
+    slot.root.classList.toggle(
+      "edit-selected",
+      mobileEditMode && isMobileEditableActionSlot(slotId) && mobileActionBarEditState.selectedSlotId === slotId
+    );
     slot.root.title = display.tooltip || display.name;
-    slot.root.draggable = display.bound;
+    slot.root.draggable = display.bound && !isTouchJoystickEnabled();
 
     const visual = getActionVisualState(binding, self, now);
     slot.progress.className = `slot-progress ${visual.type}`;
@@ -7363,6 +7683,8 @@ function initializeDebugAdminControls() {
     }
     hideBotContextMenu();
   });
+  window.addEventListener("touchstart", handleMobileTooltipDismissCapture, { capture: true, passive: false });
+  window.addEventListener("mousedown", handleMobileTooltipDismissCapture, true);
   updateRendererDebugControls();
   updateAdminDebugControls();
 }
