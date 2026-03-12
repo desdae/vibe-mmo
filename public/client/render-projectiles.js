@@ -559,6 +559,16 @@
       drawCachedSpriteProjectile(ballistaBoltSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, p, runtime, now);
     }
 
+    function getCachedProjectileSpriteFrame(spriteSets, variantCount, frameCount, frameMs, runtime, now, headingOffset = 0) {
+      const heading = Math.atan2(runtime.dirY, runtime.dirX) + headingOffset;
+      const variant = getVariantIndex(runtime.seed, variantCount);
+      const frame = getFrameIndex(now, frameCount, frameMs);
+      return {
+        sprite: spriteSets[variant][frame],
+        rotation: heading
+      };
+    }
+
     function drawFrostboltProjectile(p, runtime, now) {
       const dirX = runtime.dirX;
       const dirY = runtime.dirY;
@@ -822,6 +832,39 @@
       ballista_bolt: drawBallistaBoltProjectile
     });
 
+    function getProjectileSpriteFrame(projectile, frameNow) {
+      const now = Number.isFinite(frameNow) ? frameNow : performance.now();
+      const runtime = getProjectileVisualState(projectile, now);
+      const abilityId = String(projectile && projectile.abilityId || "");
+      const actionDef = deps.getActionDefById(abilityId);
+      const projectileHook = deps.getAbilityVisualHook(abilityId, actionDef, "projectileRenderer", "default");
+      if (projectileHook === "fireball") {
+        return getCachedProjectileSpriteFrame(fireballSprites, FIREBALL_VARIANTS, FIREBALL_FRAMES, FIREBALL_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "fire_spark") {
+        return getCachedProjectileSpriteFrame(fireSparkSprites, FIRE_SPARK_VARIANTS, FIRE_SPARK_FRAMES, FIRE_SPARK_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "ranger_arrow") {
+        return getCachedProjectileSpriteFrame(rangerArrowSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "poison_arrow") {
+        return getCachedProjectileSpriteFrame(poisonArrowSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "explosive_arrow") {
+        return getCachedProjectileSpriteFrame(explosiveArrowSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "shrapnel_grenade") {
+        return getCachedProjectileSpriteFrame(shrapnelGrenadeSprites, GRENADE_VARIANTS, GRENADE_FRAMES, GRENADE_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "shrapnel_shard") {
+        return getCachedProjectileSpriteFrame(shrapnelShardSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "ballista_bolt") {
+        return getCachedProjectileSpriteFrame(ballistaBoltSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      return null;
+    }
+
     function drawProjectile(projectile, cameraX, cameraY, frameNow) {
       const p = deps.worldToScreen(projectile.x + 0.5, projectile.y + 0.5, cameraX, cameraY);
       const now = Number.isFinite(frameNow) ? frameNow : performance.now();
@@ -844,7 +887,8 @@
 
     return {
       pruneProjectileVisualRuntime,
-      drawProjectile
+      drawProjectile,
+      getProjectileSpriteFrame
     };
   }
 

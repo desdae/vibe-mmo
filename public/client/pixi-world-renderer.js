@@ -7,6 +7,19 @@
     const canvasElement = deps.canvasElement;
     const windowObject = deps.windowObject || globalScope;
     const tileSize = Math.max(8, Number(deps.tileSize) || 32);
+    const hashString =
+      typeof deps.hashString === "function"
+        ? deps.hashString
+        : (value) => {
+            const text = String(value || "");
+            let hash = 0;
+            for (let i = 0; i < text.length; i += 1) {
+              hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+            }
+            return hash;
+          };
+    const getLootBagSprite = typeof deps.getLootBagSprite === "function" ? deps.getLootBagSprite : null;
+    const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
     if (!PIXI || !canvasElement) {
       return null;
     }
@@ -34,6 +47,7 @@
     let projectileNodes = new Map();
     let lootNodes = new Map();
     let vendorNode = null;
+    const canvasTextureCache = new WeakMap();
 
     const classColors = Object.freeze({
       warrior: 0xcbd5e1,
@@ -240,6 +254,29 @@
       return { container, graphics };
     }
 
+    function createSpriteNode() {
+      const container = new PIXI.Container();
+      const graphics = new PIXI.Graphics();
+      const sprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
+      sprite.anchor.set(0.5, 0.5);
+      sprite.visible = false;
+      container.addChild(graphics, sprite);
+      return { container, graphics, sprite };
+    }
+
+    function getTextureFromCanvas(canvas) {
+      if (!canvas || typeof canvas.getContext !== "function") {
+        return null;
+      }
+      const cached = canvasTextureCache.get(canvas);
+      if (cached) {
+        return cached;
+      }
+      const texture = PIXI.Texture.from(canvas);
+      canvasTextureCache.set(canvas, texture);
+      return texture;
+    }
+
     function drawPlayerGraphic(graphics, player, isSelf) {
       const classType = String(player && player.classType || "").toLowerCase();
       const bodyColor = classColors[classType] || 0xdbe7f2;
@@ -369,6 +406,27 @@
       graphics.drawCircle(3, -11, 1.1 * pulse);
       graphics.drawCircle(6, -6, 0.95 * pulse);
       graphics.endFill();
+    }
+
+    function updateSpriteNode(node, x, y, spriteFrame, drawFallback) {
+      node.container.position.set(x, y);
+      if (spriteFrame && spriteFrame.canvas) {
+        const texture = getTextureFromCanvas(spriteFrame.canvas);
+        if (texture) {
+          node.graphics.clear();
+          node.sprite.visible = true;
+          node.sprite.texture = texture;
+          node.sprite.rotation = Number(spriteFrame.rotation) || 0;
+          node.sprite.scale.set(1, 1);
+          return;
+        }
+      }
+      node.sprite.visible = false;
+      if (typeof drawFallback === "function") {
+        drawFallback(node.graphics);
+      } else {
+        node.graphics.clear();
+      }
     }
 
     function updateLabeledNode(node, x, y, label, hp, maxHp, drawFn) {
@@ -575,10 +633,24 @@
         lootNodes,
         frameViewModel.lootBagViews,
         (entry) => entry.bag.id,
-        () => createSimpleNode(),
+        () => createSpriteNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.bag.x) + 0.5, Number(entry.bag.y) + 0.5, cameraX, cameraY, width, height);
-          updateSimpleNode(node, p.x, p.y, (graphics) => drawLootGraphic(graphics, entry.bag, frameNow));
+          const bagId = String((entry.bag && entry.bag.id) || `${entry.bag.x}:${entry.bag.y}`);
+          const seed = hashString(`lootbag:${bagId}`);
+          const spriteCanvas = getLootBagSprite ? getLootBagSprite(seed) : null;
+          updateSpriteNode(
+            node,
+            p.x,
+            p.y,
+            spriteCanvas
+              ? {
+                  canvas: spriteCanvas,
+                  rotation: 0
+                }
+              : null,
+            (graphics) => drawLootGraphic(graphics, entry.bag, frameNow)
+          );
         },
         lootLayer
       );
@@ -633,10 +705,17 @@
         projectileNodes,
         frameViewModel.projectileViews,
         (entry) => entry.projectile.id,
-        () => createSimpleNode(),
+        () => createSpriteNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.projectile.x) + 0.5, Number(entry.projectile.y) + 0.5, cameraX, cameraY, width, height);
-          updateSimpleNode(node, p.x, p.y, (graphics) => drawProjectileGraphic(graphics, entry.projectile, frameNow));
+          const spriteFrame = getProjectileSpriteFrame ? getProjectileSpriteFrame(entry.projectile, frameNow) : null;
+          updateSpriteNode(
+            node,
+            p.x,
+            p.y,
+            spriteFrame,
+            (graphics) => drawProjectileGraphic(graphics, entry.projectile, frameNow)
+          );
         },
         projectileLayer
       );

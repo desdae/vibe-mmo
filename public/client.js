@@ -12115,7 +12115,12 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       windowObject: window,
       canvasElement: canvas,
       tileSize: TILE_SIZE,
-      townClientState
+      townClientState,
+      hashString,
+      getLootBagSprite,
+      getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
+        ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
+        : null
     })
   : null;
 const sharedClientRendererBootstrap = globalThis.VibeClientRendererBootstrap || null;
