@@ -1020,6 +1020,70 @@
       return result;
     }
 
+    function getBeamAreaEffectSpriteFrame(effect) {
+      const visual = getAreaEffectVisualConfig(effect);
+      const key = `beam:${visual.stroke}:${visual.glow}`;
+      let cached = areaEffectCanvasCache.get(key);
+      if (!cached) {
+        const width = 32;
+        const height = 128;
+        const canvas = createRuntimeCanvas(width, height);
+        if (!canvas) {
+          return null;
+        }
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          return null;
+        }
+        const midX = width * 0.5;
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        gradient.addColorStop(0, "rgba(255,255,255,0)");
+        gradient.addColorStop(0.12, visual.stroke);
+        gradient.addColorStop(0.5, "#ffffff");
+        gradient.addColorStop(0.88, visual.stroke);
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.save();
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = visual.glow;
+        ctx.strokeStyle = gradient;
+        ctx.lineCap = "round";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(midX, 10);
+        ctx.lineTo(midX, height - 10);
+        ctx.stroke();
+        ctx.lineWidth = 2.2;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        for (let y = 12; y < height - 12; y += 16) {
+          const jitter = ((y / 16) % 2 === 0 ? -1 : 1) * 3;
+          if (y === 12) {
+            ctx.moveTo(midX, y);
+          } else {
+            ctx.lineTo(midX + jitter, y);
+          }
+        }
+        ctx.stroke();
+        ctx.restore();
+        cached = { canvas };
+        areaEffectCanvasCache.set(key, cached);
+      }
+      const startX = Number(effect && effect.x) + 0.5;
+      const startY = Number(effect && effect.y) + 0.5;
+      const endX = Number(effect && effect.targetX) + 0.5;
+      const endY = Number(effect && effect.targetY) + 0.5;
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const lengthPx = Math.max(8, Math.hypot(dx, dy) * tileSize);
+      return {
+        canvas: cached.canvas,
+        rotation: Math.atan2(dy, dx) + Math.PI / 2,
+        scaleX: 1,
+        scaleY: lengthPx / 128,
+        alpha: 0.96
+      };
+    }
+
 
     function drawPlayerGraphic(graphics, player, isSelf) {
       const classType = String(player && player.classType || "").toLowerCase();
@@ -1184,8 +1248,11 @@
       sprite.texture = texture;
       sprite.position.set(x, y);
       sprite.rotation = Number(spriteFrame.rotation) || 0;
-      sprite.scale.set(1, 1);
-      sprite.alpha = 1;
+      sprite.scale.set(
+        Math.max(0.001, Number(spriteFrame.scaleX) || 1),
+        Math.max(0.001, Number(spriteFrame.scaleY) || 1)
+      );
+      sprite.alpha = Math.max(0, Math.min(1, Number(spriteFrame.alpha) || 1));
       return true;
     }
 
@@ -1361,6 +1428,23 @@
           0x79b9ff;
         const targetGraphics = String(effect.kind || "") === "summon" ? areaOverlayGraphics : areaUnderlayGraphics;
         const spriteFrame = getAreaEffectSpriteFrame(effect, now);
+        if (String(effect.kind || "") === "beam") {
+          const beamFrame = getBeamAreaEffectSpriteFrame(effect);
+          if (beamFrame) {
+            const endX = Number(effect.targetX) + 0.5;
+            const endY = Number(effect.targetY) + 0.5;
+            const end = worldToScreen(endX, endY, cameraX, cameraY, width, height);
+            underlaySpriteEffects.push({
+              effect,
+              center: {
+                x: (center.x + end.x) * 0.5,
+                y: (center.y + end.y) * 0.5
+              },
+              spriteFrame: beamFrame
+            });
+            continue;
+          }
+        }
         if (spriteFrame) {
           (String(effect.kind || "") === "summon" ? overlaySpriteEffects : underlaySpriteEffects).push({
             effect,
