@@ -221,6 +221,12 @@
       })
     });
 
+    function createMixedTextureSpriteLayer() {
+      // Spell and loot visuals are built from many standalone canvases; a normal container
+      // preserves per-sprite textures, while ParticleContainer can cross-wire them.
+      return new PIXI.Container();
+    }
+
     function worldToScreen(worldX, worldY, cameraX, cameraY, width, height) {
       return {
         x: (Number(worldX) - Number(cameraX)) * tileSize + width / 2,
@@ -424,55 +430,19 @@
 
       backgroundLayer = new PIXI.Container();
       areaUnderlayLayer = new PIXI.Container();
-      areaUnderlaySpriteLayer = new PIXI.ParticleContainer(512, {
-        position: true,
-        rotation: true,
-        alpha: true,
-        scale: true,
-        uvs: true
-      });
+      areaUnderlaySpriteLayer = createMixedTextureSpriteLayer();
       areaUnderlayFallbackLayer = new PIXI.Container();
-      lootSpriteLayer = new PIXI.ParticleContainer(1024, {
-        position: true,
-        rotation: true,
-        alpha: true,
-        scale: true,
-        uvs: true
-      });
+      lootSpriteLayer = createMixedTextureSpriteLayer();
       lootFallbackLayer = new PIXI.Container();
-      explosionLayer = new PIXI.ParticleContainer(1024, {
-        position: true,
-        rotation: true,
-        alpha: true,
-        scale: true,
-        uvs: true
-      });
-      particleLayer = new PIXI.ParticleContainer(4096, {
-        position: true,
-        rotation: true,
-        alpha: true,
-        scale: true,
-        uvs: true
-      });
+      explosionLayer = createMixedTextureSpriteLayer();
+      particleLayer = createMixedTextureSpriteLayer();
       mobLayer = new PIXI.Container();
       playerLayer = new PIXI.Container();
-      projectileSpriteLayer = new PIXI.ParticleContainer(4096, {
-        position: true,
-        rotation: true,
-        alpha: true,
-        scale: true,
-        uvs: true
-      });
+      projectileSpriteLayer = createMixedTextureSpriteLayer();
       projectileFallbackLayer = new PIXI.Container();
       vendorLayer = new PIXI.Container();
       areaOverlayLayer = new PIXI.Container();
-      areaOverlaySpriteLayer = new PIXI.ParticleContainer(512, {
-        position: true,
-        rotation: true,
-        alpha: true,
-        scale: true,
-        uvs: true
-      });
+      areaOverlaySpriteLayer = createMixedTextureSpriteLayer();
       floatingDamageLayer = new PIXI.Container();
       tooltipLayer = new PIXI.Container();
 
@@ -500,18 +470,18 @@
       areaOverlayLayer.addChild(areaOverlaySpriteLayer);
       root.addChild(
         backgroundLayer,
-        areaUnderlayLayer,
-        lootSpriteLayer,
-        lootFallbackLayer,
-        particleLayer,
-        vendorLayer,
-        mobLayer,
-        playerLayer,
         projectileSpriteLayer,
         projectileFallbackLayer,
         explosionLayer,
+        areaUnderlayLayer,
+        particleLayer,
+        vendorLayer,
+        lootSpriteLayer,
+        lootFallbackLayer,
+        mobLayer,
         areaOverlayLayer,
         floatingDamageLayer,
+        playerLayer,
         tooltipLayer
       );
       pixiParticleSystem = createPixiParticleSystem
