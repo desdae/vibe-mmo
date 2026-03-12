@@ -95,6 +95,65 @@ body {
   height: 100%;
   display: block;
   background: #09131d;
+  touch-action: none;
+}
+
+#mobile-joystick {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.mobile-joystick-base,
+.mobile-joystick-knob,
+.mobile-joystick-arrow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translate(-9999px, -9999px);
+  will-change: transform, opacity;
+}
+
+.mobile-joystick-base {
+  width: 136px;
+  height: 136px;
+  margin-left: -68px;
+  margin-top: -68px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.58);
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.18),
+    inset 0 0 36px rgba(255, 255, 255, 0.08),
+    0 0 18px rgba(255, 255, 255, 0.06);
+  background:
+    radial-gradient(circle at 34% 72%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03) 42%, rgba(255, 255, 255, 0.01) 72%, rgba(255, 255, 255, 0) 100%);
+}
+
+.mobile-joystick-knob {
+  width: 76px;
+  height: 76px;
+  margin-left: -38px;
+  margin-top: -38px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.65);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 0 14px rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.07) 46%, rgba(255, 255, 255, 0.02) 76%, rgba(255, 255, 255, 0) 100%);
+}
+
+.mobile-joystick-arrow {
+  width: 84px;
+  height: 48px;
+  margin-left: -18px;
+  margin-top: -22px;
+  background: linear-gradient(90deg, rgba(66, 255, 84, 0.98), rgba(36, 214, 61, 0.92));
+  clip-path: polygon(0 50%, 40% 0, 46% 28%, 100% 50%, 46% 72%, 40% 100%);
+  filter: drop-shadow(0 0 8px rgba(54, 255, 74, 0.34));
+  opacity: 0;
+  transform-origin: 18px 24px;
 }
 
 #hud {

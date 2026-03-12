@@ -7,6 +7,14 @@
       return null;
     }
 
+    function getCanvasTouchPoint(touch) {
+      const rect = deps.canvas.getBoundingClientRect();
+      return {
+        x: touch.clientX - rect.left,
+        y: touch.clientY - rect.top
+      };
+    }
+
     function onKeyDown(event) {
       deps.resumeSpatialAudioContext();
       if (event.repeat) {
@@ -77,6 +85,9 @@
           changed = true;
         }
       }
+      if (typeof deps.resetTouchJoystick === "function" && deps.resetTouchJoystick()) {
+        changed = true;
+      }
       if (changed) {
         deps.sendMove();
       }
@@ -124,6 +135,75 @@
       deps.executeBoundAction("mouse_right");
     }
 
+    function onTouchStart(event) {
+      if (typeof deps.isTouchJoystickEnabled === "function" && !deps.isTouchJoystickEnabled()) {
+        return;
+      }
+      if (typeof deps.hasActiveTouchJoystick === "function" && deps.hasActiveTouchJoystick()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      const point = getCanvasTouchPoint(touch);
+      deps.resumeSpatialAudioContext();
+      deps.cancelAutoVendorInteraction();
+      deps.cancelAutoLootPickup();
+      if (typeof deps.beginTouchJoystick === "function") {
+        deps.beginTouchJoystick(touch.identifier, point.x, point.y);
+        deps.sendMove();
+        event.preventDefault();
+      }
+    }
+
+    function onTouchMove(event) {
+      if (typeof deps.hasActiveTouchJoystick !== "function" || !deps.hasActiveTouchJoystick()) {
+        return;
+      }
+      const activeId = typeof deps.getActiveTouchJoystickId === "function" ? deps.getActiveTouchJoystickId() : null;
+      if (activeId === null || activeId === undefined) {
+        return;
+      }
+      const touches = event.changedTouches || [];
+      for (let index = 0; index < touches.length; index += 1) {
+        const touch = touches[index];
+        if (touch.identifier !== activeId) {
+          continue;
+        }
+        const point = getCanvasTouchPoint(touch);
+        if (typeof deps.updateTouchJoystick === "function") {
+          deps.updateTouchJoystick(point.x, point.y);
+          deps.sendMove();
+          event.preventDefault();
+        }
+        return;
+      }
+    }
+
+    function onTouchEnd(event) {
+      if (typeof deps.hasActiveTouchJoystick !== "function" || !deps.hasActiveTouchJoystick()) {
+        return;
+      }
+      const activeId = typeof deps.getActiveTouchJoystickId === "function" ? deps.getActiveTouchJoystickId() : null;
+      if (activeId === null || activeId === undefined) {
+        return;
+      }
+      const touches = event.changedTouches || [];
+      for (let index = 0; index < touches.length; index += 1) {
+        const touch = touches[index];
+        if (touch.identifier !== activeId) {
+          continue;
+        }
+        if (typeof deps.endTouchJoystick === "function") {
+          deps.endTouchJoystick();
+          deps.sendMove();
+          event.preventDefault();
+        }
+        return;
+      }
+    }
+
     function onJoinSubmit(event) {
       event.preventDefault();
       deps.resumeSpatialAudioContext();
@@ -163,6 +243,10 @@
       deps.canvas.addEventListener("mousedown", onMouseDown);
       deps.windowObject.addEventListener("mouseup", onMouseUp);
       deps.canvas.addEventListener("contextmenu", onContextMenu);
+      deps.canvas.addEventListener("touchstart", onTouchStart, { passive: false });
+      deps.windowObject.addEventListener("touchmove", onTouchMove, { passive: false });
+      deps.windowObject.addEventListener("touchend", onTouchEnd, { passive: false });
+      deps.windowObject.addEventListener("touchcancel", onTouchEnd, { passive: false });
       deps.joinForm.addEventListener("submit", onJoinSubmit);
 
       globalScope.setInterval(deps.updateDebugPanel, 250);

@@ -6,6 +6,10 @@
     const keys = deps.keys || {};
     const movementSync = deps.movementSync || { lastDx: 0, lastDy: 0, lastSentAt: 0 };
     const mouseState = deps.mouseState || { sx: 0, sy: 0 };
+    const touchJoystickState =
+      deps.touchJoystickState && typeof deps.touchJoystickState === "object"
+        ? deps.touchJoystickState
+        : { active: false, vectorDx: 0, vectorDy: 0 };
     const gameState = deps.gameState || {};
     const autoMoveTarget =
       deps.autoMoveTarget && typeof deps.autoMoveTarget === "object"
@@ -26,6 +30,15 @@
       const len = Math.hypot(rawDx, rawDy);
 
       if (!len) {
+        const touchDx = Number(touchJoystickState.vectorDx) || 0;
+        const touchDy = Number(touchJoystickState.vectorDy) || 0;
+        const touchLen = Math.hypot(touchDx, touchDy);
+        if (touchJoystickState.active && touchLen > 0.0001) {
+          return {
+            dx: touchDx / touchLen,
+            dy: touchDy / touchLen
+          };
+        }
         return { dx: 0, dy: 0 };
       }
 

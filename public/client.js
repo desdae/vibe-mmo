@@ -3,6 +3,10 @@ const joinForm = document.getElementById("join-form");
 const gameUI = document.getElementById("game-ui");
 const statusEl = document.getElementById("status");
 const canvas = document.getElementById("game");
+const mobileJoystick = document.getElementById("mobile-joystick");
+const mobileJoystickBase = document.getElementById("mobile-joystick-base");
+const mobileJoystickKnob = document.getElementById("mobile-joystick-knob");
+const mobileJoystickArrow = document.getElementById("mobile-joystick-arrow");
 const ctx = canvas.getContext("2d");
 const hudName = document.getElementById("hud-name");
 const hudClass = document.getElementById("hud-class");
@@ -580,6 +584,18 @@ const vendorInteractionState = {
   y: 0,
   nextAttemptAt: 0,
   panelOpen: false
+};
+const touchJoystickState = {
+  active: false,
+  touchId: null,
+  originX: 0,
+  originY: 0,
+  currentX: 0,
+  currentY: 0,
+  vectorDx: 0,
+  vectorDy: 0,
+  radiusPx: 68,
+  deadzonePx: 10
 };
 const debugGearState = {
   visible: false,
@@ -6347,6 +6363,97 @@ function sendJsonMessage(payload) {
   return true;
 }
 
+function isTouchJoystickEnabled() {
+  return !!(
+    ("ontouchstart" in window) ||
+    (navigator && Number(navigator.maxTouchPoints) > 0) ||
+    (window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
+  );
+}
+
+function updateTouchJoystickVisuals() {
+  if (!mobileJoystick || !mobileJoystickBase || !mobileJoystickKnob || !mobileJoystickArrow) {
+    return;
+  }
+  if (!touchJoystickState.active) {
+    mobileJoystick.classList.add("hidden");
+    return;
+  }
+
+  const originX = Number(touchJoystickState.originX) || 0;
+  const originY = Number(touchJoystickState.originY) || 0;
+  const currentX = Number(touchJoystickState.currentX) || originX;
+  const currentY = Number(touchJoystickState.currentY) || originY;
+  const dx = currentX - originX;
+  const dy = currentY - originY;
+  const angle = Math.atan2(dy, dx);
+  const strength = clamp(Math.hypot(dx, dy) / Math.max(1, Number(touchJoystickState.radiusPx) || 1), 0, 1);
+
+  mobileJoystick.classList.remove("hidden");
+  mobileJoystickBase.style.transform = `translate(${originX}px, ${originY}px)`;
+  mobileJoystickKnob.style.transform = `translate(${currentX}px, ${currentY}px)`;
+  mobileJoystickArrow.style.opacity = strength > 0.08 ? String(0.18 + strength * 0.82) : "0";
+  mobileJoystickArrow.style.transform = `translate(${originX}px, ${originY}px) rotate(${angle}rad) scale(${0.82 + strength * 0.42})`;
+}
+
+function beginTouchJoystick(touchId, screenX, screenY) {
+  clearAutoMoveTarget();
+  touchJoystickState.active = true;
+  touchJoystickState.touchId = touchId;
+  touchJoystickState.originX = Number(screenX) || 0;
+  touchJoystickState.originY = Number(screenY) || 0;
+  touchJoystickState.currentX = touchJoystickState.originX;
+  touchJoystickState.currentY = touchJoystickState.originY;
+  touchJoystickState.vectorDx = 0;
+  touchJoystickState.vectorDy = 0;
+  updateTouchJoystickVisuals();
+}
+
+function updateTouchJoystick(screenX, screenY) {
+  if (!touchJoystickState.active) {
+    return;
+  }
+  const rawDx = (Number(screenX) || 0) - touchJoystickState.originX;
+  const rawDy = (Number(screenY) || 0) - touchJoystickState.originY;
+  const rawLen = Math.hypot(rawDx, rawDy);
+  const radius = Math.max(1, Number(touchJoystickState.radiusPx) || 1);
+  const clampedLen = Math.min(radius, rawLen);
+  const unitDx = rawLen > 0.0001 ? rawDx / rawLen : 0;
+  const unitDy = rawLen > 0.0001 ? rawDy / rawLen : 0;
+
+  touchJoystickState.currentX = touchJoystickState.originX + unitDx * clampedLen;
+  touchJoystickState.currentY = touchJoystickState.originY + unitDy * clampedLen;
+  if (rawLen > Math.max(0, Number(touchJoystickState.deadzonePx) || 0)) {
+    touchJoystickState.vectorDx = unitDx;
+    touchJoystickState.vectorDy = unitDy;
+  } else {
+    touchJoystickState.vectorDx = 0;
+    touchJoystickState.vectorDy = 0;
+  }
+  updateTouchJoystickVisuals();
+}
+
+function resetTouchJoystick() {
+  const changed =
+    touchJoystickState.active ||
+    Math.abs(Number(touchJoystickState.vectorDx) || 0) > 0.0001 ||
+    Math.abs(Number(touchJoystickState.vectorDy) || 0) > 0.0001;
+  touchJoystickState.active = false;
+  touchJoystickState.touchId = null;
+  touchJoystickState.originX = 0;
+  touchJoystickState.originY = 0;
+  touchJoystickState.currentX = 0;
+  touchJoystickState.currentY = 0;
+  touchJoystickState.vectorDx = 0;
+  touchJoystickState.vectorDy = 0;
+  updateTouchJoystickVisuals();
+  return changed;
+}
+
+function endTouchJoystick() {
+  return resetTouchJoystick();
+}
+
 function sendViewportToServer() {
   return sendJsonMessage({
     type: "viewport",
@@ -6415,6 +6522,7 @@ function pushSnapshot(msg) {
 }
 
 function clearEntityRuntime() {
+  resetTouchJoystick();
   entityRuntime.self = null;
   entityRuntime.players.clear();
   entityRuntime.mobMeta.clear();
@@ -7917,6 +8025,7 @@ function getInterpolatedState() {
 }
 
 function resetClientSessionState() {
+  resetTouchJoystick();
   gameState.self = null;
   gameState.players = [];
   gameState.projectiles = [];
@@ -8281,6 +8390,7 @@ const playerControlTools = sharedCreatePlayerControlTools
       keys,
       movementSync,
       mouseState,
+      touchJoystickState,
       autoMoveTarget,
       gameState,
       canvas,
@@ -13030,6 +13140,13 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       stopAllSpatialLoops,
       updateMouseScreenPosition,
       tryPrimaryAutoAction,
+      isTouchJoystickEnabled,
+      beginTouchJoystick,
+      updateTouchJoystick,
+      endTouchJoystick,
+      resetTouchJoystick,
+      hasActiveTouchJoystick: () => touchJoystickState.active,
+      getActiveTouchJoystickId: () => touchJoystickState.touchId,
       setStatus,
       connectAndJoin,
       updateDebugPanel,
