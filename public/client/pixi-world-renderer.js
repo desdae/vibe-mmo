@@ -960,12 +960,32 @@
       const equipmentSlots = typeof deps.getPlayerVisualEquipment === "function" ? deps.getPlayerVisualEquipment(player, isSelf) : {};
       let aimWorldX = NaN;
       let aimWorldY = NaN;
-      if (isSelf && typeof deps.screenToWorld === "function" && deps.mouseState) {
-        const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : player;
-        const world = deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self);
-        if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
-          aimWorldX = Number(world.x);
-          aimWorldY = Number(world.y);
+      let facingDx = NaN;
+      if (isSelf) {
+        if (
+          deps.isTouchJoystickEnabled &&
+          deps.isTouchJoystickEnabled() &&
+          deps.abilityChannel &&
+          deps.abilityChannel.active &&
+          Number.isFinite(Number(deps.abilityChannel.targetX)) &&
+          Number.isFinite(Number(deps.abilityChannel.targetY))
+        ) {
+          aimWorldX = Number(deps.abilityChannel.targetX);
+          aimWorldY = Number(deps.abilityChannel.targetY);
+        } else if (deps.isTouchJoystickEnabled && deps.isTouchJoystickEnabled()) {
+          const movementDir =
+            typeof deps.getCurrentMovementVector === "function" ? deps.getCurrentMovementVector() : null;
+          const movementDx = Number(movementDir && movementDir.dx);
+          if (Number.isFinite(movementDx) && Math.abs(movementDx) > 0.05) {
+            facingDx = movementDx;
+          }
+        } else if (typeof deps.screenToWorld === "function" && deps.mouseState) {
+          const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : player;
+          const world = deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self);
+          if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
+            aimWorldX = Number(world.x);
+            aimWorldY = Number(world.y);
+          }
         }
       }
       return renderHumanoidSpriteFrame(`pixi-player:${String(player.id ?? "0")}`, {
@@ -980,6 +1000,7 @@
             : null,
         aimWorldX,
         aimWorldY,
+        facingDx,
         isSelf
       });
     }

@@ -6,7 +6,6 @@ const canvas = document.getElementById("game");
 const mobileJoystick = document.getElementById("mobile-joystick");
 const mobileJoystickBase = document.getElementById("mobile-joystick-base");
 const mobileJoystickKnob = document.getElementById("mobile-joystick-knob");
-const mobileJoystickArrow = document.getElementById("mobile-joystick-arrow");
 const ctx = canvas.getContext("2d");
 const hudName = document.getElementById("hud-name");
 const hudClass = document.getElementById("hud-class");
@@ -1097,7 +1096,9 @@ const playerRenderTools = sharedCreatePlayerRenderTools
       getPlayerVisualEquipment,
       mouseState,
       screenToWorld,
-      getCurrentSelf
+      getCurrentSelf,
+      getCurrentMovementVector,
+      isTouchJoystickEnabled
     })
   : null;
 const sharedClientRenderProjectiles = globalThis.VibeClientRenderProjectiles || null;
@@ -8103,7 +8104,7 @@ function isTouchJoystickEnabled() {
 }
 
 function updateTouchJoystickVisuals() {
-  if (!mobileJoystick || !mobileJoystickBase || !mobileJoystickKnob || !mobileJoystickArrow) {
+  if (!mobileJoystick || !mobileJoystickBase || !mobileJoystickKnob) {
     return;
   }
   if (!touchJoystickState.active) {
@@ -8115,16 +8116,10 @@ function updateTouchJoystickVisuals() {
   const originY = Number(touchJoystickState.originY) || 0;
   const currentX = Number(touchJoystickState.currentX) || originX;
   const currentY = Number(touchJoystickState.currentY) || originY;
-  const dx = currentX - originX;
-  const dy = currentY - originY;
-  const angle = Math.atan2(dy, dx);
-  const strength = clamp(Math.hypot(dx, dy) / Math.max(1, Number(touchJoystickState.radiusPx) || 1), 0, 1);
 
   mobileJoystick.classList.remove("hidden");
   mobileJoystickBase.style.transform = `translate(${originX}px, ${originY}px)`;
   mobileJoystickKnob.style.transform = `translate(${currentX}px, ${currentY}px)`;
-  mobileJoystickArrow.style.opacity = strength > 0.08 ? String(0.18 + strength * 0.82) : "0";
-  mobileJoystickArrow.style.transform = `translate(${originX}px, ${originY}px) rotate(${angle}rad) scale(${0.82 + strength * 0.42})`;
 }
 
 function beginTouchJoystick(touchId, screenX, screenY) {
@@ -15436,6 +15431,9 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       getAbilityEffectiveRangeForSelf,
       getAbilityPreviewState: getCurrentAbilityPreviewState,
       getAbilityVisualHook,
+      abilityChannel,
+      getCurrentMovementVector,
+      isTouchJoystickEnabled,
       getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
         ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
         : null

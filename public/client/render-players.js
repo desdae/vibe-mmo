@@ -397,12 +397,32 @@
         typeof deps.getPlayerVisualEquipment === "function" ? deps.getPlayerVisualEquipment(player, isSelf) : {};
       let aimWorldX = NaN;
       let aimWorldY = NaN;
-      if (isSelf && deps.mouseState && typeof deps.screenToWorld === "function") {
-        const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : player;
-        const world = deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self);
-        if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
-          aimWorldX = world.x;
-          aimWorldY = world.y;
+      let facingDx = NaN;
+      if (isSelf) {
+        if (
+          deps.isTouchJoystickEnabled &&
+          deps.isTouchJoystickEnabled() &&
+          deps.abilityChannel &&
+          deps.abilityChannel.active &&
+          Number.isFinite(Number(deps.abilityChannel.targetX)) &&
+          Number.isFinite(Number(deps.abilityChannel.targetY))
+        ) {
+          aimWorldX = Number(deps.abilityChannel.targetX);
+          aimWorldY = Number(deps.abilityChannel.targetY);
+        } else if (deps.isTouchJoystickEnabled && deps.isTouchJoystickEnabled()) {
+          const movementDir =
+            typeof deps.getCurrentMovementVector === "function" ? deps.getCurrentMovementVector() : null;
+          const movementDx = Number(movementDir && movementDir.dx);
+          if (Number.isFinite(movementDx) && Math.abs(movementDx) > 0.05) {
+            facingDx = movementDx;
+          }
+        } else if (deps.mouseState && typeof deps.screenToWorld === "function") {
+          const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : player;
+          const world = deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self);
+          if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
+            aimWorldX = world.x;
+            aimWorldY = world.y;
+          }
         }
       }
       deps.humanoidRenderTools.drawHumanoid({
@@ -416,6 +436,7 @@
         castState,
         aimWorldX,
         aimWorldY,
+        facingDx,
         isSelf
       });
     }

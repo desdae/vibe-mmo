@@ -67,7 +67,6 @@
     function applyDefaultActionBindings(classType) {
       const resolvedClass = String(classType || "").trim();
       const primary = getPrimaryClassAbilityId(resolvedClass);
-      const defaultAbilityIds = getDefaultClassAbilityIds(resolvedClass);
       const useMobileDefaults = isTouchJoystickEnabled();
 
       actionBindings.clear();
@@ -77,15 +76,7 @@
       actionBindings.set("mouse_left", makeActionBinding(primary));
       actionBindings.set("mouse_right", makeActionBinding("pickup_bag"));
       if (useMobileDefaults) {
-        let slotIndex = 1;
-        for (const abilityId of defaultAbilityIds) {
-          if (slotIndex > 9) {
-            break;
-          }
-          actionBindings.set(String(slotIndex), makeActionBinding(abilityId));
-          slotIndex += 1;
-        }
-        if (slotIndex === 1 && primary !== "none") {
+        if (primary !== "none") {
           actionBindings.set("1", makeActionBinding(primary));
         }
       } else {
