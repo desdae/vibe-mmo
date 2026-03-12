@@ -4,6 +4,7 @@ const area = require("./area");
 const beam = require("./beam");
 const chain = require("./chain");
 const summon = require("./summon");
+const selfBuff = require("./self-buff");
 const teleport = require("./teleport");
 
 const handlersByKind = new Map([
@@ -13,6 +14,7 @@ const handlersByKind = new Map([
   ["beam", beam],
   ["chain", chain],
   ["summon", summon],
+  ["selfBuff", selfBuff],
   ["teleport", teleport]
 ]);
 

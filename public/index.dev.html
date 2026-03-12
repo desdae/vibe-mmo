@@ -38,6 +38,7 @@
         <span id="hud-pos"></span>
       </div>
       <div id="action-ui">
+        <div id="buff-icons" class="hidden"></div>
         <div id="debuff-icons" class="hidden"></div>
         <div id="resource-bars">
           <div class="resource-bar hp">
@@ -89,6 +90,14 @@
       <div id="debug-panel" class="hidden">
         <h2>Debug</h2>
         <div id="debug-net"></div>
+        <div id="debug-renderer-controls" class="debug-renderer-controls">
+          <label for="debug-renderer-select">Renderer</label>
+          <select id="debug-renderer-select">
+            <option value="canvas">Canvas</option>
+            <option value="pixi">Pixi WebGL</option>
+          </select>
+          <button id="debug-renderer-apply" type="button">Apply</button>
+        </div>
         <div id="debug-admin-controls" class="debug-admin hidden">
           <label for="debug-bot-class">Bot class</label>
           <select id="debug-bot-class"></select>
@@ -126,6 +135,7 @@
       <div id="bot-context-menu" class="bot-context-menu hidden"></div>
     </div>
 
+    <script src="/vendor/pixi.min.js"></script>
     <script src="/shared/protocol.js"></script>
     <script src="/shared/protocol-codecs.js"></script>
     <script src="/shared/ability-visuals.js"></script>
@@ -142,6 +152,7 @@
     <script src="/client/network-packets.js"></script>
     <script src="/client/network-session.js"></script>
     <script src="/client/render-state.js"></script>
+    <script src="/client/world-view-models.js"></script>
     <script src="/client/audio-spatial.js"></script>
     <script src="/client/ui-panels.js"></script>
     <script src="/client/ui-presentation.js"></script>
@@ -154,6 +165,10 @@
     <script src="/client/render-mobs.js"></script>
     <script src="/client/render-players.js"></script>
     <script src="/client/render-projectiles.js"></script>
+    <script src="/client/canvas-world-renderer.js"></script>
+    <script src="/client/pixi-particle-system.js"></script>
+    <script src="/client/pixi-world-renderer.js"></script>
+    <script src="/client/renderer-bootstrap.js"></script>
     <script src="/client/render-loop.js"></script>
     <script src="/client/input-bootstrap.js"></script>
     <script src="/client.js"></script>

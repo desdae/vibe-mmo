@@ -43,7 +43,10 @@
         return true;
       }
       const runtime = abilityRuntime.get(getAbilityRuntimeKey(abilityId));
-      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
+      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) : NaN;
+      if (!Number.isFinite(lastUsedAt) || lastUsedAt <= 0) {
+        return true;
+      }
       return now - lastUsedAt >= cooldownMs;
     }
 
@@ -97,7 +100,6 @@
       if (prev.active && !next.active) {
         const completion = prev.durationMs > 0 ? clamp((now - prev.startedAt) / prev.durationMs, 0, 1) : 0;
         if (completion >= 0.94) {
-          markAbilityUsedClient(prevAbility, now);
           playAbilityAudioEvent(prevAbility, "cast", now);
         }
       }

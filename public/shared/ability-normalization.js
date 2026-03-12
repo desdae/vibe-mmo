@@ -92,6 +92,7 @@
     chain: "chain",
     summon: "summon",
     turret: "summon",
+    selfbuff: "selfBuff",
     teleport: "teleport"
   });
 

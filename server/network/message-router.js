@@ -338,6 +338,26 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "admin_spawn_benchmark_scene") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const result = deps.createBenchmarkScene ? deps.createBenchmarkScene(player.id) : { ok: false, error: "Benchmark scene unavailable." };
+    if (!result || result.ok !== true) {
+      deps.sendJson(player.ws, {
+        type: "error",
+        message: result && result.error ? String(result.error) : "Failed to create benchmark scene."
+      });
+      return { player };
+    }
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      message: `Benchmark scene ready (${result.botCount} bots, ${result.mobCount} mobs).`
+    });
+    return { player };
+  }
+
   if (msg.type === "admin_list_bots") {
     if (!player.isAdmin) {
       deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });

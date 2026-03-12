@@ -473,6 +473,35 @@
     ],
     "tags": ["warrior", "aoe"]
   },
+  "bloodWrath": {
+    "id": "bloodWrath",
+    "name": "Blood Wrath",
+    "description": "Enter a battle trance, gaining +2 health regeneration per second and 50% more melee damage for 15 seconds.",
+    "delivery": {
+      "type": "selfBuff",
+      "castTime": 0,
+      "cooldown": 60,
+      "resourceCost": { "mana": 0 }
+    },
+    "targeting": {
+      "range": 0,
+      "duration": 15,
+      "targetType": "self"
+    },
+    "effects": [
+      {
+        "type": "buff",
+        "duration": 15,
+        "label": "BW",
+        "color": "rgba(233, 86, 76, 0.96)",
+        "stats": {
+          "healthRegenFlat": 2,
+          "meleeDamagePercent": 50
+        }
+      }
+    ],
+    "tags": ["warrior", "melee", "buff"]
+  },
   "aimedShot": {
     "id": "aimedShot",
     "name": "Aimed Shot",

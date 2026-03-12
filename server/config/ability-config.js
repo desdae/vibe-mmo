@@ -200,6 +200,36 @@ function loadAbilityConfigFromDisk(configPath, options) {
     return buildEmitProjectilesConfig(resolvedEntry, abilityId);
   }
 
+  function buildBuffEffects(entry) {
+    const effects = Array.isArray(entry && entry.effects) ? entry.effects : [];
+    const result = [];
+    for (const effect of effects) {
+      if (!effect || typeof effect !== "object") {
+        continue;
+      }
+      if (String(effect.type || "").trim().toLowerCase() !== "buff") {
+        continue;
+      }
+      const durationMsRaw = Number(effect.durationMs);
+      const durationSecRaw = Number(effect.duration);
+      const durationMs =
+        Number.isFinite(durationMsRaw) && durationMsRaw > 0
+          ? Math.round(durationMsRaw)
+          : Number.isFinite(durationSecRaw) && durationSecRaw > 0
+            ? Math.round(durationSecRaw * 1000)
+            : 0;
+      result.push({
+        id: String(effect.id || "").trim(),
+        name: String(effect.name || "").trim(),
+        label: String(effect.label || "").trim(),
+        color: String(effect.color || "").trim(),
+        durationMs,
+        stats: effect.stats && typeof effect.stats === "object" ? { ...effect.stats } : {}
+      });
+    }
+    return result;
+  }
+
   for (const entry of normalizedEntries) {
     const id = String(entry?.id || "").trim();
     if (!id || !entry || typeof entry !== "object") {
@@ -311,6 +341,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
     const homingTurnRateDefault = id.toLowerCase() === "arcanemissiles" ? 6.5 : 0;
     const homingRange = Math.max(0, Number(entry.homingRange) || homingRangeDefault);
     const homingTurnRate = Math.max(0, Number(entry.homingTurnRate ?? entry.turnRate) || homingTurnRateDefault);
+    const buffEffects = buildBuffEffects(entry);
     const emitProjectiles = buildResolvedEmitProjectilesConfig(entry, id);
     const firstDamageEffect = (Array.isArray(entry.effects) ? entry.effects : []).find(
       (effect) => effect && typeof effect === "object" && String(effect.type || "").toLowerCase() === "damage"
@@ -376,6 +407,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
       explodeOnExpire: entry.explodeOnExpire !== false,
       homingRange,
       homingTurnRate,
+      buffEffects,
       emitProjectiles
     };
 

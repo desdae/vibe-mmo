@@ -26,6 +26,7 @@ function createAbilityHandlerContext(params = {}) {
     createPersistentBeamEffect,
     createPersistentSummonEffect,
     resolvePlayerMobCollisions,
+    applySelfBuffs,
     getAbilityInvulnerabilityDurationMs
   } = params;
 
@@ -56,6 +57,7 @@ function createAbilityHandlerContext(params = {}) {
     createPersistentBeamEffect,
     createPersistentSummonEffect,
     resolvePlayerMobCollisions,
+    applySelfBuffs,
     getAbilityInvulnerabilityDurationMs
   };
 }

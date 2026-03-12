@@ -7,11 +7,14 @@
     "start": "node server.js",
     "start:dev": "node server.js",
     "build:client": "node scripts/build-client-bundle.js",
+    "benchmark:renderers": "node scripts/benchmark-renderers.js",
+    "sync:pixi": "node scripts/sync-pixi-runtime.js",
     "start:prod": "node scripts/run-prod.js",
     "test:equipment:affixes": "node scripts/test-equipment-affixes.js",
     "test:equipment:smoke": "node scripts/playwright-equipment-smoke.js"
   },
   "dependencies": {
+    "pixi.js": "^7.4.3",
     "ws": "^8.18.3"
   },
   "devDependencies": {

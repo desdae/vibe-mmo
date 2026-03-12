@@ -10,6 +10,7 @@ const hudPos = document.getElementById("hud-pos");
 const classTypeSelect = document.getElementById("classType");
 const actionUi = document.getElementById("action-ui");
 const resourceBars = document.getElementById("resource-bars");
+const buffIcons = document.getElementById("buff-icons");
 const debuffIcons = document.getElementById("debuff-icons");
 const hpPredictFill = document.getElementById("hp-predict-fill");
 const hpFill = document.getElementById("hp-fill");
@@ -33,6 +34,8 @@ const equipmentPanel = document.getElementById("equipment-panel");
 const equipmentGrid = document.getElementById("equipment-grid");
 const debugPanel = document.getElementById("debug-panel");
 const debugNet = document.getElementById("debug-net");
+const debugRendererSelect = document.getElementById("debug-renderer-select");
+const debugRendererApplyButton = document.getElementById("debug-renderer-apply");
 const debugAdminControls = document.getElementById("debug-admin-controls");
 const debugBotClassSelect = document.getElementById("debug-bot-class");
 const debugCreateBotButton = document.getElementById("debug-create-bot");
@@ -445,6 +448,7 @@ const ambientParticleEmitters = new Map();
 const actionSlotEls = new Map();
 const actionBindings = new Map();
 let actionBindingsClassType = null;
+let suppressActionBarClickUntil = 0;
 const classDefsById = new Map();
 const abilityDefsById = new Map();
 const abilityIdsByHash = new Map();
@@ -583,6 +587,7 @@ const selfNegativeEffects = {
   slow: null,
   burn: null
 };
+let selfPositiveBuffs = [];
 const remotePlayerStuns = new Map();
 const remotePlayerSlows = new Map();
 const remotePlayerBurns = new Map();
@@ -1037,6 +1042,22 @@ function updateAdminDebugControls() {
   if (debugToggleGearLabButton) {
     debugToggleGearLabButton.classList.toggle("hidden", !isAdmin);
   }
+}
+
+function updateRendererDebugControls() {
+  if (!debugRendererSelect) {
+    return;
+  }
+  const mode = rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas";
+  debugRendererSelect.value = mode === "pixi" ? "pixi" : "canvas";
+}
+
+function applyRendererModeFromDebugControls() {
+  if (!debugRendererSelect || !rendererBootstrap) {
+    return;
+  }
+  rendererBootstrap.setRendererMode(debugRendererSelect.value);
+  updateRendererDebugControls();
 }
 
 function handleCreateBotPlayer() {
@@ -2704,8 +2725,17 @@ function buildAbilityTooltip(abilityId) {
   const totalDamageRange = sharedGetAbilityDamageRange
     ? sharedGetAbilityDamageRange(ability, level)
     : [Math.max(0, Number(ability.damageMin) || 0), Math.max(0, Number(ability.damageMax) || 0)];
-  const totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
-  const totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
+  let totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
+  let totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
+  let tooltipDamagePercentBonus = 0;
+  if (String(kind).toLowerCase() === "meleecone") {
+    tooltipDamagePercentBonus += getActiveSelfBuffStatTotal("meleeDamagePercent");
+  }
+  if (tooltipDamagePercentBonus !== 0 && totalDamageMax > 0) {
+    const damageScale = Math.max(0, 1 + tooltipDamagePercentBonus / 100);
+    totalDamageMin = Math.max(0, Math.floor(totalDamageMin * damageScale));
+    totalDamageMax = Math.max(totalDamageMin, Math.ceil(totalDamageMax * damageScale));
+  }
   const durationMs = Math.max(0, Number(ability.durationMs) || 0);
   const durationPerLevelMs = Math.max(0, Number(ability.durationPerLevelMs) || 0);
   const totalDurationMs = durationMs + durationPerLevelMs * Math.max(0, level - 1);
@@ -3176,6 +3206,40 @@ function getDefaultClassId() {
   return "warrior";
 }
 
+function clearSelfPositiveBuffs() {
+  selfPositiveBuffs = [];
+  if (buffIcons) {
+    buffIcons.innerHTML = "";
+    buffIcons.classList.add("hidden");
+  }
+}
+
+function applySelfPositiveBuffs(msg) {
+  const now = performance.now();
+  const nextBuffs = [];
+  for (const buff of Array.isArray(msg && msg.buffs) ? msg.buffs : []) {
+    if (!buff || typeof buff !== "object") {
+      continue;
+    }
+    const remainingMs = Math.max(0, Number(buff.remainingMs) || 0);
+    if (remainingMs <= 0) {
+      continue;
+    }
+    const durationMs = Math.max(1, Number(buff.durationMs) || remainingMs);
+    nextBuffs.push({
+      id: String(buff.id || ""),
+      name: String(buff.name || "Buff"),
+      label: String(buff.label || "").trim().slice(0, 3).toUpperCase(),
+      color: String(buff.color || "").trim(),
+      stats: buff.stats && typeof buff.stats === "object" ? { ...buff.stats } : {},
+      startedAt: now - Math.max(0, durationMs - remainingMs),
+      endsAt: now + remainingMs,
+      durationMs
+    });
+  }
+  selfPositiveBuffs = nextBuffs;
+}
+
 function clearSelfNegativeEffects() {
   selfNegativeEffects.stun = null;
   selfNegativeEffects.slow = null;
@@ -3184,6 +3248,68 @@ function clearSelfNegativeEffects() {
     debuffIcons.innerHTML = "";
     debuffIcons.classList.add("hidden");
   }
+}
+
+function updatePositiveBuffIcons(now = performance.now()) {
+  if (!buffIcons) {
+    return;
+  }
+  const entries = [];
+  for (const buff of selfPositiveBuffs) {
+    const remainingMs = Math.max(0, Number(buff.endsAt) - now);
+    if (remainingMs <= 0) {
+      continue;
+    }
+    const durationMs = Math.max(1, Number(buff.durationMs) || remainingMs);
+    entries.push({
+      id: String(buff.id || ""),
+      label: String(buff.label || "").trim().slice(0, 3).toUpperCase(),
+      color: String(buff.color || "") || "rgba(131, 221, 143, 0.94)",
+      ratio: clamp(remainingMs / durationMs, 0, 1),
+      title: `${String(buff.name || "Buff")} (${(remainingMs / 1000).toFixed(1)}s)`
+    });
+  }
+
+  selfPositiveBuffs = selfPositiveBuffs.filter((buff) => Math.max(0, Number(buff.endsAt) - now) > 0);
+  if (!entries.length) {
+    buffIcons.innerHTML = "";
+    buffIcons.classList.add("hidden");
+    return;
+  }
+
+  buffIcons.classList.remove("hidden");
+  buffIcons.innerHTML = "";
+  for (const entry of entries) {
+    const node = document.createElement("div");
+    node.className = "buff-icon";
+    node.title = entry.title;
+    const ring = document.createElement("div");
+    ring.className = "buff-ring";
+    ring.style.setProperty("--ratio", entry.ratio.toFixed(4));
+    ring.style.setProperty("--ring-color", entry.color);
+    const core = document.createElement("div");
+    core.className = "buff-core";
+    core.textContent = entry.label || "BF";
+    node.appendChild(ring);
+    node.appendChild(core);
+    buffIcons.appendChild(node);
+  }
+}
+
+function getActiveSelfBuffStatTotal(statKey) {
+  const target = String(statKey || "").trim();
+  if (!target) {
+    return 0;
+  }
+  let total = 0;
+  for (const buff of selfPositiveBuffs) {
+    const stats = buff && buff.stats && typeof buff.stats === "object" ? buff.stats : null;
+    if (!stats) {
+      continue;
+    }
+    total += Number(stats[target]) || 0;
+  }
+  return total;
 }
 
 function setSelfNegativeEffectState(key, remainingMs, durationMs, now, extra = {}) {
@@ -3341,6 +3467,7 @@ function updateResourceBars(self) {
     hpText.textContent = "";
     manaText.textContent = "";
     expText.textContent = "";
+    clearSelfPositiveBuffs();
     clearSelfNegativeEffects();
     return;
   }
@@ -3376,6 +3503,7 @@ function updateResourceBars(self) {
   const expRatio = clamp(exp / expToNext, 0, 1);
   expFill.style.transform = `scaleX(${expRatio})`;
   expText.textContent = `EXP ${Math.floor(exp)}/${Math.floor(expToNext)} (Lv ${Math.max(1, Math.floor(Number(self.level) || 1))})`;
+  updatePositiveBuffIcons(performance.now());
   updateNegativeEffectIcons(performance.now());
 }
 
@@ -4305,6 +4433,46 @@ function drawPickupBagActionIcon(iconCtx, size) {
   iconCtx.stroke();
 }
 
+function drawBloodWrathActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  const glow = iconCtx.createRadialGradient(mid, mid, 4, mid, mid, size * 0.55);
+  glow.addColorStop(0, "rgba(255, 158, 126, 0.36)");
+  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  iconCtx.fillStyle = glow;
+  iconCtx.fillRect(0, 0, size, size);
+
+  iconCtx.strokeStyle = "#1f0e12";
+  iconCtx.lineWidth = 3;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 8, mid + 10);
+  iconCtx.lineTo(mid + 5, mid - 10);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "#ffe6db";
+  iconCtx.lineWidth = 1.25;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 7.2, mid + 9.2);
+  iconCtx.lineTo(mid + 4.1, mid - 8.8);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "#d13d3d";
+  iconCtx.strokeStyle = "#2b0f14";
+  iconCtx.lineWidth = 2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid + 8, mid - 9);
+  iconCtx.bezierCurveTo(mid + 14, mid - 4.5, mid + 14.5, mid + 4, mid + 8, mid + 11.5);
+  iconCtx.bezierCurveTo(mid + 1.5, mid + 4, mid + 2, mid - 4.5, mid + 8, mid - 9);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(255, 214, 198, 0.88)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 6.4, mid - 2.8, 1.5, 0, Math.PI * 2);
+  iconCtx.fill();
+}
+
 function drawUnknownActionIcon(iconCtx, size) {
   const mid = size / 2;
   iconCtx.fillStyle = "#88a0b8";
@@ -4335,6 +4503,7 @@ const ABILITY_ICON_RENDERERS = Object.freeze({
   blink: drawBlinkActionIcon,
   fireball: drawFireballActionIcon,
   fire_hydra: drawFireHydraActionIcon,
+  blood_wrath: drawBloodWrathActionIcon,
   warstomp: drawWarstompActionIcon,
   pickup_bag: drawPickupBagActionIcon
 });
@@ -4446,6 +4615,400 @@ function drawPotionIcon(iconCtx, size, liquidColor) {
   iconCtx.stroke();
   iconCtx.fillStyle = "#dce6f3";
   iconCtx.fillRect(mid - 4.5, mid - 13, 9, 5);
+}
+
+function resolveHeadArmorIconStyle(itemInput, presentation) {
+  const text = `${String(presentation?.itemId || "")} ${String(itemInput?.name || "")}`.toLowerCase();
+  const tags = new Set(Array.isArray(itemInput?.tags) ? itemInput.tags.map((value) => String(value || "").toLowerCase()) : []);
+  if (text.includes("hood") || text.includes("cowl")) {
+    return "hood";
+  }
+  if (text.includes("cap") || text.includes("coif") || text.includes("skullcap")) {
+    return "cap";
+  }
+  if (text.includes("hat") || text.includes("oracle") || text.includes("wizard") || text.includes("sorcer") || text.includes("magus")) {
+    return "wizard_hat";
+  }
+  if (text.includes("crown") || text.includes("circlet") || text.includes("diadem") || text.includes("tiara")) {
+    return "crown";
+  }
+  if (text.includes("horn") || text.includes("antler") || text.includes("viking")) {
+    return "horned_helmet";
+  }
+  if (text.includes("mask") || text.includes("visor") || text.includes("faceguard") || text.includes("barbute") || text.includes("sallet")) {
+    return "mask_helmet";
+  }
+  if (
+    text.includes("greathelm") ||
+    text.includes("great helm") ||
+    text.includes("full helm") ||
+    text.includes("plate helm") ||
+    (
+      (text.includes("helm") || text.includes("helmet")) &&
+      (
+        text.includes("plate") ||
+        text.includes("iron") ||
+        text.includes("steel") ||
+        text.includes("knight") ||
+        text.includes("guardian") ||
+        text.includes("warden") ||
+        text.includes("recruit")
+      )
+    )
+  ) {
+    return "greathelm";
+  }
+  if (text.includes("helm") || text.includes("helmet")) {
+    return "helmet";
+  }
+  if (tags.has("light") || tags.has("medium")) {
+    return text.includes("cap") ? "cap" : "hood";
+  }
+  return "helmet";
+}
+
+function drawHeadArmorIcon(iconCtx, size, itemInput, presentation, accentPalette) {
+  const mid = size / 2;
+  const style = resolveHeadArmorIconStyle(itemInput, presentation);
+  const seed = hashString(`${String(presentation?.itemId || "")}|${String(itemInput?.name || "")}`);
+  const variant = Math.abs(seed % 5);
+  const variantMinor = Math.abs((seed >>> 3) % 7);
+  const primary = hexToRgba(accentPalette.primary, 0.9);
+  const secondary = hexToRgba(accentPalette.secondary, 0.96);
+  const bright = hexToRgba(accentPalette.secondary, 0.78);
+  const dark = "rgba(25, 20, 23, 0.94)";
+  const shadow = "rgba(12, 15, 20, 0.84)";
+  const fillAndStroke = () => {
+    iconCtx.fill();
+    iconCtx.stroke();
+  };
+  const drawGem = (x, y, radius, color = secondary) => {
+    iconCtx.fillStyle = color;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x, y - radius);
+    iconCtx.lineTo(x + radius * 0.9, y);
+    iconCtx.lineTo(x, y + radius);
+    iconCtx.lineTo(x - radius * 0.9, y);
+    iconCtx.closePath();
+    iconCtx.fill();
+  };
+  const drawPlume = (x, y, sign = 1, height = 8) => {
+    iconCtx.fillStyle = bright;
+    iconCtx.strokeStyle = dark;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x, y);
+    iconCtx.quadraticCurveTo(x + 3 * sign, y - height * 0.45, x + 1.4 * sign, y - height);
+    iconCtx.quadraticCurveTo(x + 0.4 * sign, y - height * 1.18, x - 1.1 * sign, y - height * 0.5);
+    iconCtx.closePath();
+    fillAndStroke();
+  };
+
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+  iconCtx.strokeStyle = dark;
+  iconCtx.lineWidth = 1.8;
+
+  if (style === "wizard_hat") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.ellipse(mid, mid + 5, 13 + variant * 0.6, 4.6 + (variantMinor % 3) * 0.35, -0.12, 0, Math.PI * 2);
+    fillAndStroke();
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.5, mid + 4.5);
+    iconCtx.quadraticCurveTo(mid - 1.5, mid - 8.5 - variant * 0.8, mid + (variant % 2 === 0 ? 2.5 : -1.5), mid - 15.5 - variant * 1.2);
+    iconCtx.quadraticCurveTo(mid + 6.8 + variant * 0.4, mid - 9.5 - variant * 0.5, mid + 9.8, mid + 2.8);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.5, mid + 1.2);
+    iconCtx.lineTo(mid + 7.8, mid + 1.2);
+    iconCtx.stroke();
+    if (variantMinor % 2 === 0) {
+      drawGem(mid + 4.8, mid, 2);
+    } else {
+      drawPlume(mid + 7.5, mid - 1.5, 1, 7 + variant);
+    }
+    return;
+  }
+
+  if (style === "hood") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 12, mid + 6);
+    iconCtx.quadraticCurveTo(mid - 2.2, mid - 15 - variant, mid, mid - 17 - variant);
+    iconCtx.quadraticCurveTo(mid + 3.5, mid - 15.5, mid + 12, mid + 5.5);
+    iconCtx.lineTo(mid + 9.2, mid + 13);
+    iconCtx.quadraticCurveTo(mid + 1.8, mid + 16.4, mid - 10, mid + 13.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6.4, mid + 4);
+    iconCtx.quadraticCurveTo(mid, mid - 7.8 - (variantMinor % 2), mid + 6, mid + 3.4);
+    iconCtx.lineTo(mid + 4.1, mid + 10);
+    iconCtx.quadraticCurveTo(mid, mid + 11.5, mid - 4.8, mid + 10.1);
+    iconCtx.closePath();
+    iconCtx.fill();
+    if (variantMinor % 2 === 0) {
+      drawGem(mid, mid + 12.4, 1.8, secondary);
+    }
+    return;
+  }
+
+  if (style === "cap") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11.2, mid + 7.5);
+    iconCtx.quadraticCurveTo(mid - 10.4, mid - 8.8, mid - 1.5, mid - 13.2);
+    iconCtx.quadraticCurveTo(mid + 7.5, mid - 12.6, mid + 11.6, mid - 0.5);
+    iconCtx.lineTo(mid + 9.6, mid + 9.4);
+    iconCtx.lineTo(mid + 6.4, mid + 13.4);
+    iconCtx.lineTo(mid - 6.8, mid + 13.2);
+    iconCtx.lineTo(mid - 9.8, mid + 9.6);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.6, mid - 0.6);
+    iconCtx.quadraticCurveTo(mid, mid - 5.8, mid + 7.6, mid - 0.8);
+    iconCtx.stroke();
+    if (variantMinor % 2 === 0) {
+      iconCtx.fillStyle = dark;
+      iconCtx.beginPath();
+      iconCtx.arc(mid - 5.1, mid - 2.3, 2.2, 0, Math.PI * 2);
+      iconCtx.arc(mid + 5.1, mid - 2.3, 2.2, 0, Math.PI * 2);
+      iconCtx.fill();
+      iconCtx.strokeStyle = secondary;
+      iconCtx.lineWidth = 0.9;
+      iconCtx.beginPath();
+      iconCtx.arc(mid - 5.1, mid - 2.3, 1.2, 0, Math.PI * 2);
+      iconCtx.arc(mid + 5.1, mid - 2.3, 1.2, 0, Math.PI * 2);
+      iconCtx.stroke();
+    }
+    return;
+  }
+
+  if (style === "crown") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11, mid + 7);
+    iconCtx.lineTo(mid - 8.6, mid - 1.6);
+    iconCtx.lineTo(mid - 4.2, mid + 2.2);
+    iconCtx.lineTo(mid, mid - 7.6);
+    iconCtx.lineTo(mid + 4.2, mid + 2.2);
+    iconCtx.lineTo(mid + 8.6, mid - 1.6);
+    iconCtx.lineTo(mid + 11, mid + 7);
+    iconCtx.lineTo(mid + 8.5, mid + 12.2);
+    iconCtx.lineTo(mid - 8.5, mid + 12.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 8, mid + 9.1);
+    iconCtx.lineTo(mid + 8, mid + 9.1);
+    iconCtx.stroke();
+    drawGem(mid, mid - 1.6, 2.1);
+    drawGem(mid - 5.1, mid + 0.8, 1.4, bright);
+    drawGem(mid + 5.1, mid + 0.8, 1.4, bright);
+    return;
+  }
+
+  if (style === "greathelm" || style === "mask_helmet" || style === "horned_helmet") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 12.5, mid + 5.2);
+    iconCtx.quadraticCurveTo(mid - 11, mid - 12.6, mid - 1.8, mid - 16.2);
+    iconCtx.quadraticCurveTo(mid + 2.4, mid - 17, mid + 12.4, mid + 4);
+    iconCtx.lineTo(mid + 10.2, mid + 14);
+    iconCtx.lineTo(mid - 10.4, mid + 14);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    if (style === "mask_helmet") {
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 5.2, mid + 1.2);
+      iconCtx.lineTo(mid - 1.4, mid - 5.8);
+      iconCtx.lineTo(mid + 1.4, mid - 5.8);
+      iconCtx.lineTo(mid + 5.2, mid + 1.2);
+      iconCtx.lineTo(mid + 3.3, mid + 9.8);
+      iconCtx.lineTo(mid - 3.3, mid + 9.8);
+      iconCtx.closePath();
+      iconCtx.fill();
+      iconCtx.strokeStyle = secondary;
+      iconCtx.lineWidth = 0.9;
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 4.6, mid + 5.4);
+      iconCtx.lineTo(mid + 4.6, mid + 5.4);
+      iconCtx.stroke();
+      drawGem(mid, mid - 10.5, 1.4, bright);
+    } else {
+      iconCtx.fillRect(mid - 5.1, mid + 1.8, 10.2, 1.7);
+      if (variantMinor % 2 === 0) {
+        iconCtx.fillRect(mid - 1.2, mid - 5.2, 2.4, 8.6);
+      } else {
+        iconCtx.fillRect(mid - 4.5, mid + 5.2, 9, 1.4);
+      }
+      if (style === "greathelm") {
+        iconCtx.strokeStyle = secondary;
+        iconCtx.lineWidth = 1;
+        iconCtx.beginPath();
+        iconCtx.moveTo(mid - 7, mid - 11.2);
+        iconCtx.lineTo(mid + 7, mid - 11.2);
+        iconCtx.stroke();
+        if (variantMinor % 2 === 0) {
+          drawPlume(mid, mid - 14.2, variant % 2 === 0 ? 1 : -1, 8.5);
+        }
+      }
+    }
+    if (style === "horned_helmet") {
+      iconCtx.fillStyle = bright;
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 7.8, mid - 6.8);
+      iconCtx.quadraticCurveTo(mid - 16.4, mid - 10.6, mid - 13.9, mid - 1.5);
+      iconCtx.quadraticCurveTo(mid - 10.2, mid - 4.8, mid - 7.2, mid - 1.6);
+      iconCtx.closePath();
+      fillAndStroke();
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid + 7.8, mid - 6.8);
+      iconCtx.quadraticCurveTo(mid + 16.4, mid - 10.6, mid + 13.9, mid - 1.5);
+      iconCtx.quadraticCurveTo(mid + 10.2, mid - 4.8, mid + 7.2, mid - 1.6);
+      iconCtx.closePath();
+      fillAndStroke();
+    }
+    return;
+  }
+
+  const family = variant % 5;
+  iconCtx.fillStyle = primary;
+  if (family === 0) {
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 1.5, 11.8, Math.PI, Math.PI * 2);
+    iconCtx.lineTo(mid + 10.8, mid + 4.2);
+    iconCtx.lineTo(mid + 7, mid + 10.8);
+    iconCtx.lineTo(mid - 7, mid + 10.8);
+    iconCtx.lineTo(mid - 10.8, mid + 4.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.fillRect(mid - 5, mid + 2.4, 10, 1.6);
+    iconCtx.fillRect(mid - 1, mid - 5.1, 2, 9.8);
+  } else if (family === 1) {
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 1.4, 11.2, Math.PI, Math.PI * 2);
+    iconCtx.lineTo(mid + 10.4, mid + 4.6);
+    iconCtx.lineTo(mid + 6.2, mid + 11.6);
+    iconCtx.lineTo(mid - 6.2, mid + 11.6);
+    iconCtx.lineTo(mid - 10.4, mid + 4.6);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.5, mid + 2);
+    iconCtx.lineTo(mid - 1.9, mid - 5.2);
+    iconCtx.lineTo(mid + 1.7, mid - 5.2);
+    iconCtx.lineTo(mid + 5.7, mid + 2);
+    iconCtx.lineTo(mid + 3.1, mid + 9.4);
+    iconCtx.lineTo(mid - 3.1, mid + 9.4);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.fillStyle = secondary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10.1, mid - 4.2);
+    iconCtx.lineTo(mid - 14, mid - 8.6);
+    iconCtx.lineTo(mid - 10.6, mid - 1.2);
+    iconCtx.closePath();
+    iconCtx.moveTo(mid + 10.1, mid - 4.2);
+    iconCtx.lineTo(mid + 14, mid - 8.6);
+    iconCtx.lineTo(mid + 10.6, mid - 1.2);
+    iconCtx.closePath();
+    iconCtx.fill();
+  } else if (family === 2) {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 9.8, mid + 4.6);
+    iconCtx.quadraticCurveTo(mid - 8.5, mid - 9.6, mid, mid - 16.2);
+    iconCtx.quadraticCurveTo(mid + 8.5, mid - 9.6, mid + 9.8, mid + 4.6);
+    iconCtx.lineTo(mid + 7.2, mid + 11.2);
+    iconCtx.lineTo(mid - 7.2, mid + 11.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6.2, mid - 0.8);
+    iconCtx.lineTo(mid, mid - 10.8);
+    iconCtx.lineTo(mid + 6.2, mid - 0.8);
+    iconCtx.stroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.1, mid + 2.2);
+    iconCtx.lineTo(mid, mid - 3.4);
+    iconCtx.lineTo(mid + 5.1, mid + 2.2);
+    iconCtx.lineTo(mid + 3.2, mid + 9.8);
+    iconCtx.lineTo(mid - 3.2, mid + 9.8);
+    iconCtx.closePath();
+    iconCtx.fill();
+    drawPlume(mid, mid - 13.8, variantMinor % 2 === 0 ? 1 : -1, 7.8);
+  } else if (family === 3) {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10.8, mid + 4.6);
+    iconCtx.quadraticCurveTo(mid - 8.8, mid - 10.2, mid - 2.2, mid - 15.2);
+    iconCtx.quadraticCurveTo(mid + 2.8, mid - 16.4, mid + 10.8, mid + 4);
+    iconCtx.lineTo(mid + 7.2, mid + 13);
+    iconCtx.lineTo(mid - 6.8, mid + 13);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 4.1, mid + 1.6);
+    iconCtx.lineTo(mid - 1.1, mid - 5.2);
+    iconCtx.lineTo(mid + 1.5, mid - 5.2);
+    iconCtx.lineTo(mid + 4.7, mid + 1.6);
+    iconCtx.lineTo(mid + 2.6, mid + 9.4);
+    iconCtx.lineTo(mid - 2.8, mid + 9.4);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 0.9;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.2, mid + 5.4);
+    iconCtx.lineTo(mid + 7, mid + 5.4);
+    iconCtx.stroke();
+  } else {
+    iconCtx.beginPath();
+    iconCtx.arc(mid - 0.8, mid - 2, 11.2, Math.PI * 0.98, Math.PI * 1.98);
+    iconCtx.lineTo(mid + 11.2, mid + 5.1);
+    iconCtx.lineTo(mid + 8.6, mid + 12.2);
+    iconCtx.lineTo(mid - 5.4, mid + 13.4);
+    iconCtx.lineTo(mid - 11.2, mid + 6.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.4, mid + 2.5);
+    iconCtx.quadraticCurveTo(mid - 1.5, mid - 5.8, mid + 5.1, mid - 2.2);
+    iconCtx.lineTo(mid + 5.2, mid + 4.2);
+    iconCtx.lineTo(mid - 3.2, mid + 9.6);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 0.9;
+    for (let i = 0; i < 3; i += 1) {
+      const x = mid - 4 + i * 3.4;
+      iconCtx.beginPath();
+      iconCtx.moveTo(x, mid + 12.2);
+      iconCtx.lineTo(x, mid + 16);
+      iconCtx.stroke();
+    }
+  }
+
+  if (variantMinor % 3 === 1 && family !== 1) {
+    drawGem(mid, mid - 12, 1.5, bright);
+  }
 }
 
 function drawArmorSlotIcon(iconCtx, size, slot, accentPalette) {
@@ -4747,7 +5310,9 @@ function drawItemIcon(itemInput, iconCtx, size) {
 
   if (presentation.itemDef && presentation.itemDef.isEquipment) {
     const slotFamily = getEquipmentSlotFamily(presentation.slot);
-    if (["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots"].includes(slotFamily)) {
+    if (slotFamily === "head") {
+      drawHeadArmorIcon(iconCtx, size, itemInput, presentation, accentPalette);
+    } else if (["chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots"].includes(slotFamily)) {
       drawArmorSlotIcon(iconCtx, size, slotFamily, accentPalette);
     } else if (["ring", "necklace", "trinket"].includes(slotFamily)) {
       drawJewelrySlotIcon(iconCtx, size, slotFamily, accentPalette);
@@ -5450,6 +6015,7 @@ function ensureActionBarInitialized() {
     slot.addEventListener("drop", (event) => {
       event.preventDefault();
       slot.classList.remove("drag-hover");
+      suppressActionBarClickUntil = performance.now() + 180;
       if (dragState.actionBinding) {
         const fromSlot = dragState.fromActionSlot;
         if (dragState.source === "action_slot" && fromSlot) {
@@ -5494,11 +6060,15 @@ function ensureActionBarInitialized() {
       event.dataTransfer.effectAllowed = "move";
     });
     slot.addEventListener("dragend", () => {
+      suppressActionBarClickUntil = performance.now() + 120;
       clearDragState();
     });
     slot.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (performance.now() < suppressActionBarClickUntil) {
+        return;
+      }
       resumeSpatialAudioContext();
       executeBoundAction(slotId);
     });
@@ -5703,6 +6273,12 @@ function initializeDpsPanel() {
 }
 
 function initializeDebugAdminControls() {
+  if (debugRendererApplyButton) {
+    debugRendererApplyButton.addEventListener("click", applyRendererModeFromDebugControls);
+  }
+  if (debugRendererSelect) {
+    debugRendererSelect.addEventListener("change", applyRendererModeFromDebugControls);
+  }
   if (debugCreateBotButton) {
     debugCreateBotButton.addEventListener("click", handleCreateBotPlayer);
   }
@@ -5739,6 +6315,7 @@ function initializeDebugAdminControls() {
     }
     hideBotContextMenu();
   });
+  updateRendererDebugControls();
   updateAdminDebugControls();
 }
 
@@ -5823,6 +6400,7 @@ function clearEntityRuntime() {
   entityRuntime.playerMeta.clear();
   remoteMobCasts.clear();
   stopAllSpatialLoops();
+  clearSelfPositiveBuffs();
   clearSelfNegativeEffects();
   remotePlayerStuns.clear();
   remotePlayerSlows.clear();
@@ -7548,6 +8126,14 @@ const serverMessageHandlers = {
   },
   player_casts: (msg) => applyPlayerCastStates(msg),
   mob_casts: (msg) => applyMobCastStates(msg),
+  ability_used: (msg) => {
+    const abilityId = String(msg && msg.abilityId || "").trim();
+    if (!abilityId) {
+      return;
+    }
+    markAbilityUsedClient(abilityId, performance.now());
+  },
+  self_buffs: (msg) => applySelfPositiveBuffs(msg),
   player_effects: (msg) => applyPlayerEffects(msg),
   player_effects_nearby: (msg) => applyNearbyPlayerEffects(msg),
   mob_bites: (msg) => {
@@ -7639,6 +8225,9 @@ function connectAndJoin(name, classType, isAdmin = false) {
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  if (rendererBootstrap && typeof rendererBootstrap.resize === "function") {
+    rendererBootstrap.resize(canvas.width, canvas.height);
+  }
   updateInventoryUI();
   updateEquipmentUI();
 }
@@ -8172,6 +8761,183 @@ function drawFloatingDamageNumbers(cameraX, cameraY) {
   for (const entry of active) {
     floatingDamageNumbers.push(entry);
   }
+}
+
+function getPlayerCastVisualState(player, isSelf, frameNow) {
+  const castState = isSelf ? abilityChannel : remotePlayerCasts.get(player.id);
+  const cast = getCastProgress(castState, frameNow);
+  if (!cast) {
+    if (!isSelf && castState && castState.active) {
+      remotePlayerCasts.delete(player.id);
+    }
+    return null;
+  }
+  return {
+    ratio: clamp(Number(cast.ratio) || 0, 0, 1)
+  };
+}
+
+function getPlayerStatusVisualState(player, isSelf, frameNow) {
+  const stunState = isSelf ? selfNegativeEffects.stun : remotePlayerStuns.get(player.id);
+  const slowState = isSelf ? selfNegativeEffects.slow : remotePlayerSlows.get(player.id);
+  const burnState = isSelf ? selfNegativeEffects.burn : remotePlayerBurns.get(player.id);
+  const status = {
+    phaseSeed: Number(player && player.id) || 0,
+    stunActive: false,
+    slowActive: false,
+    burnActive: false,
+    slowMultiplier: 1
+  };
+
+  if (stunState) {
+    if ((Number(stunState.endsAt) || 0) > frameNow) {
+      status.stunActive = true;
+    } else if (!isSelf) {
+      remotePlayerStuns.delete(player.id);
+    } else {
+      selfNegativeEffects.stun = null;
+    }
+  }
+
+  if (slowState) {
+    if ((Number(slowState.endsAt) || 0) > frameNow) {
+      status.slowActive = true;
+      status.slowMultiplier = isSelf
+        ? clamp((Number(slowState.multiplierQ) || 1000) / 1000, 0.1, 1)
+        : clamp(Number(slowState.multiplier) || 1, 0.1, 1);
+    } else if (!isSelf) {
+      remotePlayerSlows.delete(player.id);
+    } else {
+      selfNegativeEffects.slow = null;
+    }
+  }
+
+  if (burnState) {
+    if ((Number(burnState.endsAt) || 0) > frameNow) {
+      status.burnActive = true;
+    } else if (!isSelf) {
+      remotePlayerBurns.delete(player.id);
+    } else {
+      selfNegativeEffects.burn = null;
+    }
+  }
+
+  return status.stunActive || status.slowActive || status.burnActive ? status : null;
+}
+
+function getMobCastVisualState(mob, frameNow) {
+  const castState = remoteMobCasts.get(mob.id);
+  const cast = getCastProgress(castState, frameNow);
+  if (!cast) {
+    if (castState && castState.active) {
+      remoteMobCasts.delete(mob.id);
+    }
+    return null;
+  }
+  return {
+    ratio: clamp(Number(cast.ratio) || 0, 0, 1)
+  };
+}
+
+function getMobStatusVisualState(mob, frameNow) {
+  const status = {
+    phaseSeed: Number(mob && mob.id) || 0,
+    stunActive: false,
+    slowActive: false,
+    burnActive: false,
+    slowMultiplier: 1
+  };
+
+  const stunState = remoteMobStuns.get(mob.id);
+  if (stunState) {
+    if ((Number(stunState.endsAt) || 0) > frameNow) {
+      status.stunActive = true;
+    } else {
+      remoteMobStuns.delete(mob.id);
+    }
+  }
+
+  const slowState = remoteMobSlows.get(mob.id);
+  if (slowState) {
+    if ((Number(slowState.endsAt) || 0) > frameNow) {
+      status.slowActive = true;
+      status.slowMultiplier = clamp(Number(slowState.multiplier) || 1, 0.1, 1);
+    } else {
+      remoteMobSlows.delete(mob.id);
+    }
+  }
+
+  const burnState = remoteMobBurns.get(mob.id);
+  if (burnState) {
+    if ((Number(burnState.endsAt) || 0) > frameNow) {
+      status.burnActive = true;
+    } else {
+      remoteMobBurns.delete(mob.id);
+    }
+  }
+
+  return status.stunActive || status.slowActive || status.burnActive ? status : null;
+}
+
+function getFloatingDamageViews(frameNow) {
+  if (!floatingDamageNumbers.length) {
+    return [];
+  }
+  const active = [];
+  const views = [];
+  for (const entry of floatingDamageNumbers) {
+    const age = frameNow - entry.createdAt;
+    if (age >= entry.durationMs) {
+      continue;
+    }
+    active.push(entry);
+    const progress = clamp(age / entry.durationMs, 0, 1);
+    views.push({
+      id: Number(entry.id) || 0,
+      x: Number(entry.x) || 0,
+      y: Number(entry.y) || 0,
+      amount: Math.max(0, Math.round(Number(entry.amount) || 0)),
+      targetType: entry.targetType === "player" ? "player" : "mob",
+      progress,
+      jitterX: Number(entry.jitterX) || 0,
+      riseOffset: Number(entry.riseOffset) || 0
+    });
+  }
+  floatingDamageNumbers.length = 0;
+  for (const entry of active) {
+    floatingDamageNumbers.push(entry);
+  }
+  return views;
+}
+
+function getExplosionViews(frameNow) {
+  if (!activeExplosions.length) {
+    return [];
+  }
+  const active = [];
+  const views = [];
+  for (const entry of activeExplosions) {
+    const age = frameNow - Number(entry.createdAt || frameNow);
+    const durationMs = Math.max(1, Number(entry.durationMs) || 380);
+    if (age >= durationMs) {
+      continue;
+    }
+    active.push(entry);
+    views.push({
+      id: Number(entry.id) || 0,
+      x: Number(entry.x) || 0,
+      y: Number(entry.y) || 0,
+      radius: Math.max(0.1, Number(entry.radius) || 0.1),
+      abilityId: String(entry.abilityId || ""),
+      progress: clamp(age / durationMs, 0, 1),
+      alpha: clamp(1 - age / durationMs, 0, 1)
+    });
+  }
+  activeExplosions.length = 0;
+  for (const entry of active) {
+    activeExplosions.push(entry);
+  }
+  return views;
 }
 
 function drawExplosionEffects(cameraX, cameraY) {
@@ -10035,15 +10801,16 @@ function getSpiderWalkFrames(typeName, style = null) {
   ];
   const palette = applyMobPaletteOverrides(palettes[(seed >>> 5) % palettes.length], style);
   const frames = [];
+  const frameSize = MOB_SPRITE_SIZE + 24;
 
   for (let i = 0; i < 6; i += 1) {
     const phase = (i / 6) * Math.PI * 2;
     const pose = Math.sin(phase);
     const frame = document.createElement("canvas");
-    frame.width = MOB_SPRITE_SIZE;
-    frame.height = MOB_SPRITE_SIZE;
+    frame.width = frameSize;
+    frame.height = frameSize;
     const fctx = frame.getContext("2d");
-    fctx.translate(MOB_SPRITE_SIZE / 2, MOB_SPRITE_SIZE / 2);
+    fctx.translate(frameSize / 2, frameSize / 2);
     drawSpiderSpriteFrame(fctx, palette, pose);
     frames.push(frame);
   }
@@ -12011,35 +12778,64 @@ const sharedCreateRenderLoopTools =
   sharedClientRenderLoop && typeof sharedClientRenderLoop.createRenderLoopTools === "function"
     ? sharedClientRenderLoop.createRenderLoopTools
     : null;
-const renderLoopTools = sharedCreateRenderLoopTools
-  ? sharedCreateRenderLoopTools({
+const sharedClientWorldViewModels = globalThis.VibeClientWorldViewModels || null;
+const sharedCreateWorldViewModelTools =
+  sharedClientWorldViewModels && typeof sharedClientWorldViewModels.createWorldViewModelTools === "function"
+    ? sharedClientWorldViewModels.createWorldViewModelTools
+    : null;
+const worldViewModelTools = sharedCreateWorldViewModelTools
+  ? sharedCreateWorldViewModelTools({
+      gameState,
+      getAreaEffects: () => Array.from(activeAreaEffectsById.values()),
+      getExplosionViews,
+      getTownVendor,
+      getActionDefById,
+      getAbilityVisualHook,
+      getProjectileSpriteFrame:
+        projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
+          ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
+          : null,
+      getActiveMobAttackState,
+      getPlayerAttackState: (player, isSelf, frameNow) => {
+        void frameNow;
+        return String(player && player.classType || "").toLowerCase() === "warrior"
+          && playerRenderTools
+          && typeof playerRenderTools.getWarriorSwingState === "function"
+          ? playerRenderTools.getWarriorSwingState(player, isSelf)
+          : null;
+      },
+      getMobAttackVisualType,
+      isHumanoidMob,
+      getPlayerCastVisualState,
+      getPlayerStatusVisualState,
+      getMobCastVisualState,
+      getMobStatusVisualState,
+      getFloatingDamageViews,
+      getHoveredMob,
+      getHoveredLootBag,
+      getHoveredVendor
+    })
+  : null;
+const sharedClientCanvasWorldRenderer = globalThis.VibeClientCanvasWorldRenderer || null;
+const sharedCreateCanvasWorldRenderer =
+  sharedClientCanvasWorldRenderer && typeof sharedClientCanvasWorldRenderer.createCanvasWorldRenderer === "function"
+    ? sharedClientCanvasWorldRenderer.createCanvasWorldRenderer
+    : null;
+const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
+  ? sharedCreateCanvasWorldRenderer({
       ctx,
       canvas,
-      gameState,
-      requestAnimationFrame,
-      reportFrame,
-      updateAbilityChannel,
-      getInterpolatedState,
-      setLastRenderState: (state) => {
-        lastRenderState = state;
-      },
       updateActionBarUI,
       updateMobCastSpatialAudio,
       updateProjectileSpatialAudio,
       drawGrid,
       drawAbilityCastPreview,
-      getHoveredMob,
-      getHoveredLootBag,
-      getHoveredVendor,
       drawProjectile,
       drawExplosionEffects,
       drawAreaEffects,
       drawVendorNpc,
       drawLootBag,
       drawMob,
-      isHumanoidMob,
-      getActiveMobAttackState,
-      getMobAttackVisualType,
       drawSkeletonSwordSwing,
       drawSkeletonArcherBowShot,
       drawCreeperIgnitionAnimation,
@@ -12064,7 +12860,83 @@ const renderLoopTools = sharedCreateRenderLoopTools
       drawPlayerCastBar,
       drawMobTooltip,
       drawLootBagTooltip,
-      drawVendorTooltip,
+      drawVendorTooltip
+    })
+  : null;
+const sharedClientPixiWorldRenderer = globalThis.VibeClientPixiWorldRenderer || null;
+const sharedCreatePixiWorldRenderer =
+  sharedClientPixiWorldRenderer && typeof sharedClientPixiWorldRenderer.createPixiWorldRenderer === "function"
+    ? sharedClientPixiWorldRenderer.createPixiWorldRenderer
+    : null;
+const pixiWorldRenderer = sharedCreatePixiWorldRenderer
+  ? sharedCreatePixiWorldRenderer({
+      PIXI: globalThis.PIXI || null,
+      windowObject: window,
+      canvasElement: canvas,
+      tileSize: TILE_SIZE,
+      townClientState,
+      hashString,
+      sanitizeCssColor,
+      mouseState,
+      screenToWorld,
+      getCurrentSelf,
+      getClassRenderStyle,
+      getPlayerVisualEquipment,
+      getMobRenderStyle,
+      lootBagSparkleConfig: LOOT_BAG_SPARKLE_PARTICLE_CONFIG,
+      getLootBagSprite,
+      getTownTileSprite,
+      getVendorNpcSprite,
+      mobSpriteSize: MOB_SPRITE_SIZE,
+      getCreeperWalkSprite,
+      getSpiderWalkSprite,
+      getActionDefById,
+      getAbilityVisualHook,
+      getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
+        ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
+        : null
+    })
+  : null;
+const sharedClientRendererBootstrap = globalThis.VibeClientRendererBootstrap || null;
+const sharedCreateRendererBootstrap =
+  sharedClientRendererBootstrap && typeof sharedClientRendererBootstrap.createRendererBootstrap === "function"
+    ? sharedClientRendererBootstrap.createRendererBootstrap
+    : null;
+const rendererBootstrap = sharedCreateRendererBootstrap
+  ? sharedCreateRendererBootstrap({
+      windowObject: window,
+      canvasElement: canvas,
+      canvasWorldRenderer,
+      pixiWorldRenderer
+    })
+  : null;
+globalThis.__vibemmoGetRendererDebugStats = () =>
+  rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function" ? rendererBootstrap.getDebugStats() : null;
+const renderLoopTools = sharedCreateRenderLoopTools
+  ? sharedCreateRenderLoopTools({
+      ctx,
+      canvas,
+      gameState,
+      requestAnimationFrame,
+      reportFrame,
+      updateAbilityChannel,
+      updateResourceBars,
+      getInterpolatedState,
+      updateActionBarUI,
+      buildWorldFrameViewModel: (interpolatedState, frameNow) =>
+        worldViewModelTools ? worldViewModelTools.buildWorldFrameViewModel(interpolatedState, frameNow) : null,
+      renderWorldFrame: (frameViewModel) => {
+        if (rendererBootstrap) {
+          return rendererBootstrap.renderWorldFrame(frameViewModel);
+        }
+        if (canvasWorldRenderer) {
+          return canvasWorldRenderer.renderWorldFrame(frameViewModel);
+        }
+        return null;
+      },
+      setLastRenderState: (state) => {
+        lastRenderState = state;
+      },
       hudName,
       hudClass,
       hudPos,
@@ -12125,8 +12997,41 @@ function render() {
   renderLoopTools.renderFrame();
 }
 
+function getAutomationDebugMetricsSnapshot() {
+  const now = performance.now();
+  const upKbps = (Math.max(0, Number(debugState.upBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
+  const downKbps = (Math.max(0, Number(debugState.downBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
+  let fps = 0;
+  if (uiPanelTools && typeof uiPanelTools.getFps === "function") {
+    fps = Number(uiPanelTools.getFps(now)) || 0;
+  } else if (Array.isArray(debugState.frameSamples) && debugState.frameSamples.length > 1) {
+    const first = Number(debugState.frameSamples[0]) || now;
+    const elapsedMs = Math.max(1, now - first);
+    fps = ((debugState.frameSamples.length - 1) * 1000) / elapsedMs;
+  }
+  return {
+    upKbps,
+    downKbps,
+    fps,
+    mobCount: Math.max(0, Math.floor(Number(debugState.totalMobCount) || 0))
+  };
+}
+
+function getAutomationRendererStatsSnapshot() {
+  if (rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function") {
+    const stats = rendererBootstrap.getDebugStats();
+    return stats && typeof stats === "object" ? { ...stats } : { mode: rendererBootstrap.getRendererMode() };
+  }
+  return {
+    mode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"
+  };
+}
+
 function buildAutomationSnapshot() {
   return {
+    rendererMode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas",
+    debugMetrics: getAutomationDebugMetricsSnapshot(),
+    rendererStats: getAutomationRendererStatsSnapshot(),
     self: gameState.self
       ? {
           id: myId,
@@ -12202,6 +13107,13 @@ function installAutomationApi() {
   }
   window.__vibemmoTest = Object.freeze({
     getState: () => buildAutomationSnapshot(),
+    getRendererMode: () => (rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"),
+    setRendererMode(mode) {
+      if (!rendererBootstrap) {
+        return "canvas";
+      }
+      return rendererBootstrap.setRendererMode(mode);
+    },
     connectAndJoin,
     send: (payload) => sendJsonMessage(payload),
     setMove(dx, dy) {

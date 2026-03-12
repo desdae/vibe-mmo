@@ -132,6 +132,37 @@ function sendCastAndCombatAnimationEvents(player, nearbyPlayerObjects, nearbyMob
   }
 }
 
+function sendSelfBuffUpdates(player, now, deps) {
+  const { sendJson } = deps;
+  if (typeof sendJson !== "function" || !player || !player.entitySync) {
+    return;
+  }
+  const visibleBuffs = (Array.isArray(player.activeBuffs) ? player.activeBuffs : [])
+    .filter((buff) => Math.max(0, Number(buff && buff.endsAt) || 0) > now)
+    .map((buff) => ({
+      id: String(buff.id || ""),
+      name: String(buff.name || ""),
+      label: String(buff.label || "").slice(0, 3).toUpperCase(),
+      color: String(buff.color || "").trim(),
+      stats: buff.stats && typeof buff.stats === "object" ? { ...buff.stats } : {},
+      endsAt: Math.max(0, Math.floor(Number(buff.endsAt) || 0)),
+      durationMs: Math.max(1, Math.min(65535, Math.floor(Number(buff.durationMs) || 0))),
+      remainingMs: Math.max(1, Math.min(65535, Math.floor((Number(buff.endsAt) || 0) - now)))
+    }))
+    .sort((a, b) => a.remainingMs - b.remainingMs || a.id.localeCompare(b.id));
+  const signature = visibleBuffs
+    .map((buff) => `${buff.id}:${buff.endsAt}:${buff.durationMs}:${buff.label}:${buff.color}:${buff.name}`)
+    .join("|");
+  if ((player.entitySync.selfBuffStateSignature || "") === signature) {
+    return;
+  }
+  player.entitySync.selfBuffStateSignature = signature;
+  sendJson(player.ws, {
+    type: "self_buffs",
+    buffs: visibleBuffs.map(({ endsAt, ...buff }) => buff)
+  });
+}
+
 function sendAreaEffectEvents(player, now, deps) {
   const { buildAreaEffectEventsForRecipient, sendBinary, encodeAreaEffectEventPacket } = deps;
   const areaEffectEvents = buildAreaEffectEventsForRecipient(player, now);
@@ -281,6 +312,7 @@ function broadcastStateToPlayers(deps, now = Date.now(), options = {}) {
 
     sendEntityMeta(player, entityUpdate, deps);
     sendCastAndCombatAnimationEvents(player, nearby.nearbyPlayerObjects, nearby.nearbyMobObjects, now, deps);
+    sendSelfBuffUpdates(player, now, deps);
     sendAreaEffectEvents(player, now, deps);
     if (sendDamageBursts) {
       sendVisibleDamageEvents(player, deps);

@@ -14,7 +14,8 @@ function createPlayerCommandTools({
   addItemsToInventory,
   sendInventoryState,
   syncPlayerCopperFromInventory,
-  sendJson
+  sendJson,
+  notifyAbilityUsed
 }) {
   function tryPickupLootBag(player, targetX, targetY) {
     let pickedBag = null;
@@ -146,6 +147,9 @@ function createPlayerCommandTools({
     });
     if (used && manaCost > 0) {
       player.mana = clamp(player.mana - manaCost, 0, player.maxMana);
+    }
+    if (used && typeof notifyAbilityUsed === "function") {
+      notifyAbilityUsed(player, abilityDef, now);
     }
     return used;
   }

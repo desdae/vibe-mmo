@@ -8,14 +8,17 @@ function createPlayerTickSystem({
   basePlayerSpeed,
   tickPlayerHealEffects,
   tickPlayerManaEffects,
+  tickPlayerBuffs,
   tickPlayerDotEffects,
   clearPlayerCast,
   playerHasMovementInput,
+  clearPlayerBuffs,
   clearPlayerCombatEffects,
   abilityDefsProvider,
   getPlayerAbilityLevel,
   getAbilityCooldownPassed,
   executeAbilityByKind,
+  notifyAbilityUsed,
   abilityHandlerContext,
   normalizeDirection,
   isBlockedPoint,
@@ -72,10 +75,11 @@ function createPlayerTickSystem({
 
   function tickPlayers() {
     const dt = tickMs / 1000;
-    const now = Date.now();
-    const abilityDefs = abilityDefsProvider();
+      const now = Date.now();
+      const abilityDefs = abilityDefsProvider();
 
     for (const player of players.values()) {
+      tickPlayerBuffs(player, now);
       if (player.hp > 0 && player.hp < player.maxHp && player.healthRegen > 0) {
         player.hp = clamp(player.hp + player.healthRegen * dt, 0, player.maxHp);
       }
@@ -101,6 +105,7 @@ function createPlayerTickSystem({
         clearPlayerCast(player);
         player.activeHeals = [];
         player.activeManaRestores = [];
+        clearPlayerBuffs(player);
         clearPlayerCombatEffects(player);
         continue;
       }
@@ -195,6 +200,9 @@ function createPlayerTickSystem({
       });
       if (used && manaCost > 0) {
         player.mana = clamp(player.mana - manaCost, 0, player.maxMana);
+      }
+      if (used && typeof notifyAbilityUsed === "function") {
+        notifyAbilityUsed(player, abilityDef, now);
       }
       clearPlayerCast(player);
     }

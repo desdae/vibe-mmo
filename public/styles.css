@@ -132,7 +132,23 @@ body {
   pointer-events: none;
 }
 
+#buff-icons {
+  position: absolute;
+  left: 2px;
+  top: -34px;
+  display: flex;
+  justify-content: flex-start;
+  gap: 6px;
+  pointer-events: none;
+}
+
 .debuff-icon {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+
+.buff-icon {
   position: relative;
   width: 24px;
   height: 24px;
@@ -146,7 +162,29 @@ body {
   border: 1px solid rgba(184, 215, 239, 0.55);
 }
 
+.buff-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--ring-color, rgba(131, 221, 143, 0.94)) calc(var(--ratio, 1) * 1turn), rgba(7, 16, 24, 0.85) 0);
+  border: 1px solid rgba(196, 239, 184, 0.55);
+}
+
 .debuff-core {
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  color: #eef7ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+  background: rgba(9, 20, 30, 0.92);
+}
+
+.buff-core {
   position: absolute;
   inset: 3px;
   border-radius: 50%;
@@ -921,6 +959,11 @@ body {
   border: 1px solid rgba(83, 147, 177, 0.35);
   font-size: 13px;
   line-height: 1.3;
+  z-index: 9;
+}
+
+#debug-net {
+  white-space: pre-line;
 }
 
 #debug-panel h2 {
@@ -928,6 +971,36 @@ body {
   font-size: 13px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.debug-renderer-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.debug-renderer-controls label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9ab7ca;
+}
+
+.debug-renderer-controls select,
+.debug-renderer-controls button {
+  border: 1px solid rgba(98, 161, 193, 0.48);
+  background: rgba(9, 20, 31, 0.9);
+  color: #dcefff;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font: inherit;
+}
+
+.debug-renderer-controls button {
+  cursor: pointer;
+  background: rgba(29, 82, 111, 0.92);
 }
 
 .debug-admin {
