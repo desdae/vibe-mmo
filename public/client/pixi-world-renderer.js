@@ -60,6 +60,8 @@
     let areaOverlaySpriteLayer = null;
     let tooltipLayer = null;
     let backgroundGraphics = null;
+    let gridSprite = null;
+    let townSprite = null;
     let areaUnderlayGraphics = null;
     let areaOverlayGraphics = null;
     let tooltipGraphics = null;
@@ -77,6 +79,7 @@
     const canvasTextureCache = new WeakMap();
     const humanoidCanvasCache = new Map();
     const areaEffectCanvasCache = new Map();
+    const backgroundTextureCache = new Map();
     const spritePools = {
       loot: [],
       projectile: [],
@@ -270,6 +273,83 @@
       return canvas;
     }
 
+    function getBackgroundGridTexture() {
+      const key = `grid:${tileSize}`;
+      const cached = backgroundTextureCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const surface = createRuntimeCanvas(tileSize, tileSize);
+      if (!surface) {
+        return PIXI.Texture.WHITE;
+      }
+      const ctx = surface.getContext("2d");
+      if (!ctx) {
+        return PIXI.Texture.WHITE;
+      }
+      ctx.clearRect(0, 0, tileSize, tileSize);
+      ctx.strokeStyle = "rgba(23,54,79,0.70)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0.5, 0);
+      ctx.lineTo(0.5, tileSize);
+      ctx.moveTo(0, 0.5);
+      ctx.lineTo(tileSize, 0.5);
+      ctx.stroke();
+      const texture = PIXI.Texture.from(surface);
+      backgroundTextureCache.set(key, texture);
+      return texture;
+    }
+
+    function getTownTexture(townLayout, wallTiles) {
+      if (!townLayout) {
+        return null;
+      }
+      const key = `town:${stableStringify(townLayout)}:${stableStringify(wallTiles)}`;
+      const cached = backgroundTextureCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const minX = Number(townLayout.minX) || 0;
+      const minY = Number(townLayout.minY) || 0;
+      const maxX = Number(townLayout.maxX) || 0;
+      const maxY = Number(townLayout.maxY) || 0;
+      const widthTiles = Math.max(1, maxX - minX + 1);
+      const heightTiles = Math.max(1, maxY - minY + 1);
+      const surface = createRuntimeCanvas(widthTiles * tileSize, heightTiles * tileSize);
+      if (!surface) {
+        return null;
+      }
+      const ctx = surface.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      for (let x = 0; x < widthTiles; x += 1) {
+        for (let y = 0; y < heightTiles; y += 1) {
+          const px = x * tileSize;
+          const py = y * tileSize;
+          ctx.fillStyle = "#2d261e";
+          ctx.fillRect(px, py, tileSize, tileSize);
+          ctx.fillStyle = "rgba(59,51,40,0.35)";
+          ctx.fillRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+        }
+      }
+      for (const tile of wallTiles || []) {
+        const px = (Number(tile.x) - minX) * tileSize;
+        const py = (Number(tile.y) - minY) * tileSize;
+        if (!Number.isFinite(px) || !Number.isFinite(py)) {
+          continue;
+        }
+        ctx.fillStyle = "#7e6041";
+        ctx.fillRect(px, py, tileSize, tileSize);
+        ctx.fillStyle = "rgba(77,60,42,0.50)";
+        ctx.fillRect(px + 1, py + 1, tileSize - 2, 6);
+      }
+      const texture = PIXI.Texture.from(surface);
+      backgroundTextureCache.set(key, texture);
+      return texture;
+    }
+
     function ensureApp(width, height) {
       if (app) {
         return true;
@@ -358,6 +438,10 @@
       tooltipLayer = new PIXI.Container();
 
       backgroundGraphics = new PIXI.Graphics();
+      gridSprite = new PIXI.TilingSprite(PIXI.Texture.WHITE, Math.max(1, width | 0), Math.max(1, height | 0));
+      gridSprite.alpha = 0.78;
+      townSprite = new PIXI.Sprite(PIXI.Texture.EMPTY);
+      townSprite.visible = false;
       areaUnderlayGraphics = new PIXI.Graphics();
       areaOverlayGraphics = new PIXI.Graphics();
       tooltipGraphics = new PIXI.Graphics();
@@ -369,7 +453,7 @@
       tooltipText.anchor.set(0.5, 0);
       tooltipLayer.addChild(tooltipGraphics, tooltipText);
 
-      backgroundLayer.addChild(backgroundGraphics);
+      backgroundLayer.addChild(backgroundGraphics, gridSprite, townSprite);
       areaUnderlayLayer.addChild(areaUnderlayGraphics);
       areaUnderlayLayer.addChild(areaUnderlaySpriteLayer);
       areaUnderlayLayer.addChild(areaUnderlayFallbackLayer);
@@ -1218,47 +1302,40 @@
       backgroundGraphics.beginFill(0x0a1621, 1);
       backgroundGraphics.drawRect(0, 0, width, height);
       backgroundGraphics.endFill();
-      backgroundGraphics.lineStyle(1, 0x17364f, 0.7);
-      const tilesX = Math.ceil(width / tileSize) + 2;
-      const tilesY = Math.ceil(height / tileSize) + 2;
-      const startX = Math.floor(cameraX - tilesX / 2);
-      const startY = Math.floor(cameraY - tilesY / 2);
-      for (let x = startX; x < startX + tilesX; x += 1) {
-        const screen = worldToScreen(x, 0, cameraX, cameraY, width, height);
-        backgroundGraphics.moveTo(screen.x, 0);
-        backgroundGraphics.lineTo(screen.x, height);
-      }
-      for (let y = startY; y < startY + tilesY; y += 1) {
-        const screen = worldToScreen(0, y, cameraX, cameraY, width, height);
-        backgroundGraphics.moveTo(0, screen.y);
-        backgroundGraphics.lineTo(width, screen.y);
-      }
+      gridSprite.texture = getBackgroundGridTexture();
+      gridSprite.width = width + tileSize;
+      gridSprite.height = height + tileSize;
+      gridSprite.position.set(-tileSize, -tileSize);
+      const cameraOffsetX = ((Number(cameraX) % 1) + 1) % 1;
+      const cameraOffsetY = ((Number(cameraY) % 1) + 1) % 1;
+      gridSprite.tilePosition.set(
+        width / 2 - cameraOffsetX * tileSize,
+        height / 2 - cameraOffsetY * tileSize
+      );
 
       const townLayout = deps.townClientState && deps.townClientState.layout ? deps.townClientState.layout : null;
       const wallTiles = deps.townClientState && Array.isArray(deps.townClientState.wallTiles) ? deps.townClientState.wallTiles : [];
       if (!townLayout) {
+        townSprite.visible = false;
         return;
       }
-      for (let x = Number(townLayout.minX) || 0; x <= (Number(townLayout.maxX) || 0); x += 1) {
-        for (let y = Number(townLayout.minY) || 0; y <= (Number(townLayout.maxY) || 0); y += 1) {
-          const p = worldToScreen(x, y, cameraX, cameraY, width, height);
-          backgroundGraphics.beginFill(0x2d261e, 1);
-          backgroundGraphics.drawRect(p.x, p.y, tileSize, tileSize);
-          backgroundGraphics.endFill();
-          backgroundGraphics.beginFill(0x3b3328, 0.35);
-          backgroundGraphics.drawRect(p.x + 2, p.y + 2, tileSize - 4, tileSize - 4);
-          backgroundGraphics.endFill();
-        }
+      const townTexture = getTownTexture(townLayout, wallTiles);
+      if (!townTexture) {
+        townSprite.visible = false;
+        return;
       }
-      for (const tile of wallTiles) {
-        const p = worldToScreen(Number(tile.x) || 0, Number(tile.y) || 0, cameraX, cameraY, width, height);
-        backgroundGraphics.beginFill(0x7e6041, 1);
-        backgroundGraphics.drawRect(p.x, p.y, tileSize, tileSize);
-        backgroundGraphics.endFill();
-        backgroundGraphics.beginFill(0x4d3c2a, 0.5);
-        backgroundGraphics.drawRect(p.x + 1, p.y + 1, tileSize - 2, 6);
-        backgroundGraphics.endFill();
-      }
+      const minX = Number(townLayout.minX) || 0;
+      const minY = Number(townLayout.minY) || 0;
+      const maxX = Number(townLayout.maxX) || 0;
+      const maxY = Number(townLayout.maxY) || 0;
+      townSprite.visible = true;
+      townSprite.texture = townTexture;
+      townSprite.position.set(
+        (minX - cameraX) * tileSize + width / 2,
+        (minY - cameraY) * tileSize + height / 2
+      );
+      townSprite.width = Math.max(1, maxX - minX + 1) * tileSize;
+      townSprite.height = Math.max(1, maxY - minY + 1) * tileSize;
     }
 
     function drawAreaEffects(frameViewModel) {
@@ -1373,6 +1450,9 @@
       const cameraX = frameViewModel.cameraX;
       const cameraY = frameViewModel.cameraY;
       const frameNow = frameViewModel.frameNow;
+      const projectileCount = Array.isArray(frameViewModel.projectileViews) ? frameViewModel.projectileViews.length : 0;
+      const mobCount = Array.isArray(frameViewModel.mobViews) ? frameViewModel.mobViews.length : 0;
+      const particleDensityScale = clamp(1 - projectileCount / 220 - mobCount / 140, 0.22, 1);
 
       drawTownAndGrid(frameViewModel);
       drawAreaEffects(frameViewModel);
@@ -1430,6 +1510,7 @@
             cameraX,
             cameraY,
             now: frameNow,
+            densityScale: clamp(particleDensityScale + 0.15, 0.25, 1),
             worldToScreen: (worldX, worldY, localCameraX, localCameraY) => worldToScreen(worldX, worldY, localCameraX, localCameraY, width, height),
             config: deps.lootBagSparkleConfig || null
           });
@@ -1545,6 +1626,7 @@
             cameraX,
             cameraY,
             now: frameNow,
+            densityScale: particleDensityScale,
             worldToScreen: (worldX, worldY, localCameraX, localCameraY) => worldToScreen(worldX, worldY, localCameraX, localCameraY, width, height),
             config
           });

@@ -210,11 +210,12 @@
       emitter.particles.push(particle);
     }
 
-    function syncEmitter(emitter, now, config) {
+    function syncEmitter(emitter, now, config, densityScale) {
       const previousUpdatedAt = Number(emitter.updatedAt) || now;
       const dtSec = Math.max(0, (now - previousUpdatedAt) / 1000);
       emitter.updatedAt = now;
       emitter.lastSeenAt = now;
+      const effectiveDensityScale = clamp(Number.isFinite(Number(densityScale)) ? Number(densityScale) : 1, 0.05, 1);
 
       const alive = [];
       for (const particle of emitter.particles) {
@@ -230,15 +231,15 @@
       }
       emitter.particles = alive;
 
-      const maxParticles = Math.max(0, Math.floor(Number(config.maxParticles) || 0));
+      const maxParticles = Math.max(1, Math.floor((Number(config.maxParticles) || 0) * effectiveDensityScale));
       if (!emitter.initialized) {
         emitter.initialized = true;
-        const burstCount = Math.max(0, Math.floor(Number(config.burstCount) || 0));
+        const burstCount = Math.max(0, Math.floor((Number(config.burstCount) || 0) * effectiveDensityScale));
         for (let i = 0; i < burstCount && emitter.particles.length < maxParticles; i += 1) {
           spawnParticle(emitter, now - seededUnit(emitter.seed + i) * 220, config);
         }
       }
-      emitter.spawnCarry += dtSec * Math.max(0, Number(config.spawnRate) || 0);
+      emitter.spawnCarry += dtSec * Math.max(0, (Number(config.spawnRate) || 0) * effectiveDensityScale);
       while (emitter.spawnCarry >= 1 && emitter.particles.length < maxParticles) {
         emitter.spawnCarry -= 1;
         spawnParticle(emitter, now, config);
@@ -251,6 +252,7 @@
       const worldToScreen = typeof options.worldToScreen === "function" ? options.worldToScreen : null;
       const config = options.config && typeof options.config === "object" ? options.config : null;
       const now = Number(options.now) || 0;
+      const densityScale = Number(options.densityScale);
       if (!key || !worldToScreen || !config || !Number.isFinite(now)) {
         return;
       }
@@ -275,7 +277,7 @@
       emitter.originY = Number(options.y) || 0;
       emitter.idleTimeoutMs = Math.max(300, Number(config.idleTimeoutMs) || 1600);
 
-      syncEmitter(emitter, now, config);
+      syncEmitter(emitter, now, config, densityScale);
       for (const particle of emitter.particles) {
         if (!particle.sprite) {
           continue;
