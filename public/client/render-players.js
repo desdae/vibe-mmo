@@ -827,6 +827,8 @@
       drawPlayerSlowTint,
       drawPlayerBurnEffect,
       drawPlayerEffectAnimations,
+      getWarriorSwingState,
+      getPlayerCastVisualState,
       pruneWarriorAnimRuntime,
       drawWarriorPlayer,
       drawRangerPlayer,

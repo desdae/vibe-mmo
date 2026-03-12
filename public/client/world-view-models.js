@@ -36,6 +36,7 @@
       const playerViews = players.map((player) => ({
         player,
         isSelf: false,
+        attackState: typeof deps.getPlayerAttackState === "function" ? deps.getPlayerAttackState(player, false, frameNow) : null,
         castVisual: typeof deps.getPlayerCastVisualState === "function" ? deps.getPlayerCastVisualState(player, false, frameNow) : null,
         statusVisual: typeof deps.getPlayerStatusVisualState === "function" ? deps.getPlayerStatusVisualState(player, false, frameNow) : null
       }));
@@ -43,6 +44,7 @@
       const selfView = {
         player: self,
         isSelf: true,
+        attackState: typeof deps.getPlayerAttackState === "function" ? deps.getPlayerAttackState(self, true, frameNow) : null,
         castVisual: typeof deps.getPlayerCastVisualState === "function" ? deps.getPlayerCastVisualState(self, true, frameNow) : null,
         statusVisual: typeof deps.getPlayerStatusVisualState === "function" ? deps.getPlayerStatusVisualState(self, true, frameNow) : null
       };

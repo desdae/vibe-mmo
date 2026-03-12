@@ -12228,6 +12228,14 @@ const worldViewModelTools = sharedCreateWorldViewModelTools
       getExplosionViews,
       getTownVendor,
       getActiveMobAttackState,
+      getPlayerAttackState: (player, isSelf, frameNow) => {
+        void frameNow;
+        return String(player && player.classType || "").toLowerCase() === "warrior"
+          && playerRenderTools
+          && typeof playerRenderTools.getWarriorSwingState === "function"
+          ? playerRenderTools.getWarriorSwingState(player, isSelf)
+          : null;
+      },
       getMobAttackVisualType,
       isHumanoidMob,
       getPlayerCastVisualState,

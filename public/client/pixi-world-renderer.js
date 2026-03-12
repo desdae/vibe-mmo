@@ -84,7 +84,7 @@
     const floatingDamageTextPool = [];
     const activeFloatingDamageTexts = [];
     const canvasTextureCache = new WeakMap();
-    const humanoidCanvasCache = new Map();
+    const humanoidRuntimeByKey = new Map();
     const areaEffectCanvasCache = new Map();
     const backgroundTextureCache = new Map();
     const genericCanvasCache = new Map();
@@ -780,8 +780,9 @@
       };
     }
 
-    function getHumanoidSpriteCanvas(cacheKey, renderOptions) {
-      const cached = humanoidCanvasCache.get(cacheKey);
+    function getHumanoidRuntime(entityKey) {
+      const key = String(entityKey || "");
+      const cached = humanoidRuntimeByKey.get(key);
       if (cached) {
         return cached;
       }
@@ -805,18 +806,55 @@
       if (!tools || typeof tools.drawHumanoid !== "function") {
         return null;
       }
-      tools.drawHumanoid({
-        ...renderOptions,
-        p: {
-          x: spriteCanvas.width * 0.5,
-          y: spriteCanvas.height * 0.62
-        }
-      });
-      humanoidCanvasCache.set(cacheKey, spriteCanvas);
-      return spriteCanvas;
+      const runtime = {
+        key,
+        canvas: spriteCanvas,
+        ctx: spriteCtx,
+        tools,
+        texture: getTextureFromCanvas(spriteCanvas),
+        lastSeenAt: performance.now()
+      };
+      humanoidRuntimeByKey.set(key, runtime);
+      return runtime;
     }
 
-    function getPlayerSpriteFrame(player, isSelf) {
+    function renderHumanoidSpriteFrame(entityKey, renderOptions) {
+      const runtime = getHumanoidRuntime(entityKey);
+      if (!runtime || !runtime.tools || typeof runtime.tools.drawHumanoid !== "function") {
+        return null;
+      }
+      runtime.lastSeenAt = performance.now();
+      runtime.ctx.clearRect(0, 0, runtime.canvas.width, runtime.canvas.height);
+      runtime.tools.drawHumanoid({
+        ...renderOptions,
+        entityKey,
+        p: {
+          x: runtime.canvas.width * 0.5,
+          y: runtime.canvas.height * 0.62
+        }
+      });
+      if (runtime.texture && typeof runtime.texture.update === "function") {
+        runtime.texture.update();
+      } else if (runtime.texture && runtime.texture.baseTexture && typeof runtime.texture.baseTexture.update === "function") {
+        runtime.texture.baseTexture.update();
+      }
+      return { canvas: runtime.canvas, texture: runtime.texture, rotation: 0 };
+    }
+
+    function pruneHumanoidRuntimes(now) {
+      for (const [key, runtime] of humanoidRuntimeByKey.entries()) {
+        if (!runtime || now - Number(runtime.lastSeenAt || 0) > 5000) {
+          humanoidRuntimeByKey.delete(key);
+        }
+      }
+    }
+
+    function getPlayerSpriteFrame(entry) {
+      const player = entry && entry.player ? entry.player : null;
+      const isSelf = !!(entry && entry.isSelf);
+      if (!player) {
+        return null;
+      }
       const style = buildPlayerHumanoidStyle(player);
       const equipmentSlots = typeof deps.getPlayerVisualEquipment === "function" ? deps.getPlayerVisualEquipment(player, isSelf) : {};
       let aimSide = "center";
@@ -827,25 +865,20 @@
           aimSide = world.x >= Number(player && player.x) ? "right" : "left";
         }
       }
-      const cacheKey = [
-        "player",
-        String(player && player.classType || ""),
-        stableStringify(style),
-        stableStringify(equipmentSlots),
-        aimSide,
-        isSelf ? "self" : "other"
-      ].join("|");
-      const canvas = getHumanoidSpriteCanvas(cacheKey, {
+      return renderHumanoidSpriteFrame(`pixi-player:${String(player.id ?? "0")}`, {
         entity: player,
-        entityKey: `pixi-player:${cacheKey}`,
         style,
         equipmentSlots,
         useDefaultGearFallback: false,
+        attackState: entry.attackState || null,
+        castState:
+          entry.castVisual && Number(entry.castVisual.ratio) > 0
+            ? { active: true, progress: clamp(Number(entry.castVisual.ratio) || 0, 0, 1), abilityId: String(entry.castVisual.abilityId || "") }
+            : null,
         aimWorldX: aimSide === "center" ? NaN : Number(player && player.x) + (aimSide === "right" ? 2 : -2),
         aimWorldY: Number(player && player.y) || 0,
         isSelf
       });
-      return canvas ? { canvas, rotation: 0 } : null;
     }
 
     function getMobSpriteFrame(entry) {
@@ -863,25 +896,20 @@
       const currentSelf = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : null;
       const aimWorldX = currentSelf && Number.isFinite(Number(currentSelf.x)) ? Number(currentSelf.x) : Number(mob.x) + 1;
       const aimWorldY = currentSelf && Number.isFinite(Number(currentSelf.y)) ? Number(currentSelf.y) : Number(mob.y);
-      const cacheKey = [
-        "mob",
-        String(mob.name || ""),
-        stableStringify(style),
-        stableStringify(attackState),
-        currentSelf ? (aimWorldX >= Number(mob.x) ? "right" : "left") : "center"
-      ].join("|");
-      const canvas = getHumanoidSpriteCanvas(cacheKey, {
+      return renderHumanoidSpriteFrame(`pixi-mob:${String(mob.id ?? "0")}`, {
         entity: mob,
-        entityKey: `pixi-mob:${cacheKey}`,
         style,
         equipmentSlots: {},
         useDefaultGearFallback: true,
         attackState,
         aimWorldX,
         aimWorldY,
+        castState:
+          entry.castVisual && Number(entry.castVisual.ratio) > 0
+            ? { active: true, progress: clamp(Number(entry.castVisual.ratio) || 0, 0, 1), abilityId: String(entry.castVisual.abilityId || "") }
+            : null,
         isSelf: false
       });
-      return canvas ? { canvas, rotation: 0 } : null;
     }
 
     function getProjectileParticleConfig(projectile) {
@@ -2467,7 +2495,7 @@
         () => createLabeledSpriteNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.player.x) + 0.5, Number(entry.player.y) + 0.5, cameraX, cameraY, width, height);
-          const spriteFrame = getPlayerSpriteFrame(entry.player, !!entry.isSelf);
+          const spriteFrame = getPlayerSpriteFrame(entry);
           updateLabeledSpriteNode(
             node,
             p.x,
@@ -2553,6 +2581,7 @@
       }
 
       syncFloatingDamageTexts(frameViewModel, cameraX, cameraY, width, height);
+      pruneHumanoidRuntimes(frameNow);
 
       updateTooltip(frameViewModel);
       const particleStats =
