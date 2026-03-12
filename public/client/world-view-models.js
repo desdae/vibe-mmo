@@ -4,6 +4,8 @@
   function createWorldViewModelTools(rawDeps) {
     const deps = rawDeps && typeof rawDeps === "object" ? rawDeps : {};
     const gameState = deps.gameState;
+    const getAreaEffects = typeof deps.getAreaEffects === "function" ? deps.getAreaEffects : () => [];
+    const getTownVendor = typeof deps.getTownVendor === "function" ? deps.getTownVendor : () => null;
     if (!gameState) {
       return null;
     }
@@ -39,6 +41,8 @@
         playerViews: players.map((player) => ({ player, isSelf: false })),
         selfView: { player: self, isSelf: true },
         lootBagViews: lootBags.map((bag) => ({ bag })),
+        areaEffects: Array.isArray(getAreaEffects()) ? getAreaEffects() : [],
+        townVendor: getTownVendor(),
         hoveredMob: typeof deps.getHoveredMob === "function" ? deps.getHoveredMob(mobs, cameraX, cameraY) : null,
         hoveredBag: typeof deps.getHoveredLootBag === "function" ? deps.getHoveredLootBag(lootBags, cameraX, cameraY) : null,
         hoveredVendor: typeof deps.getHoveredVendor === "function" ? deps.getHoveredVendor(cameraX, cameraY) : null

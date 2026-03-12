@@ -7664,6 +7664,9 @@ function connectAndJoin(name, classType, isAdmin = false) {
 function resizeCanvas() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
+  if (rendererBootstrap && typeof rendererBootstrap.resize === "function") {
+    rendererBootstrap.resize(canvas.width, canvas.height);
+  }
   updateInventoryUI();
   updateEquipmentUI();
 }
@@ -12044,6 +12047,8 @@ const sharedCreateWorldViewModelTools =
 const worldViewModelTools = sharedCreateWorldViewModelTools
   ? sharedCreateWorldViewModelTools({
       gameState,
+      getAreaEffects: () => Array.from(activeAreaEffectsById.values()),
+      getTownVendor,
       getActiveMobAttackState,
       getMobAttackVisualType,
       isHumanoidMob,
@@ -12099,6 +12104,20 @@ const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
       drawVendorTooltip
     })
   : null;
+const sharedClientPixiWorldRenderer = globalThis.VibeClientPixiWorldRenderer || null;
+const sharedCreatePixiWorldRenderer =
+  sharedClientPixiWorldRenderer && typeof sharedClientPixiWorldRenderer.createPixiWorldRenderer === "function"
+    ? sharedClientPixiWorldRenderer.createPixiWorldRenderer
+    : null;
+const pixiWorldRenderer = sharedCreatePixiWorldRenderer
+  ? sharedCreatePixiWorldRenderer({
+      PIXI: globalThis.PIXI || null,
+      windowObject: window,
+      canvasElement: canvas,
+      tileSize: TILE_SIZE,
+      townClientState
+    })
+  : null;
 const sharedClientRendererBootstrap = globalThis.VibeClientRendererBootstrap || null;
 const sharedCreateRendererBootstrap =
   sharedClientRendererBootstrap && typeof sharedClientRendererBootstrap.createRendererBootstrap === "function"
@@ -12107,7 +12126,9 @@ const sharedCreateRendererBootstrap =
 const rendererBootstrap = sharedCreateRendererBootstrap
   ? sharedCreateRendererBootstrap({
       windowObject: window,
-      canvasWorldRenderer
+      canvasElement: canvas,
+      canvasWorldRenderer,
+      pixiWorldRenderer
     })
   : null;
 const renderLoopTools = sharedCreateRenderLoopTools
