@@ -782,7 +782,7 @@
       const variant = getVariantIndex(runtime.seed, variantCount);
       const frame = getFrameIndex(now, frameCount, frameMs);
       return {
-        sprite: spriteSets[variant][frame],
+        canvas: spriteSets[variant][frame],
         rotation: heading
       };
     }
