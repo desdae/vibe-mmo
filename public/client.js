@@ -83,6 +83,12 @@ const mobileUiElements = (() => {
   editButton.className = "mobile-utility-button";
   editButton.textContent = "Edit";
 
+  const vendorButton = document.createElement("button");
+  vendorButton.id = "mobile-vendor-button";
+  vendorButton.type = "button";
+  vendorButton.className = "mobile-utility-button hidden";
+  vendorButton.textContent = "Sell";
+
   const skillsButton = document.createElement("button");
   skillsButton.id = "mobile-skills-button";
   skillsButton.type = "button";
@@ -97,6 +103,7 @@ const mobileUiElements = (() => {
 
   utilityBar.appendChild(lootButton);
   utilityBar.appendChild(editButton);
+  utilityBar.appendChild(vendorButton);
   utilityBar.appendChild(skillsButton);
   utilityBar.appendChild(bagButton);
   if (actionUi) {
@@ -139,6 +146,7 @@ const mobileUiElements = (() => {
     utilityBar,
     lootButton,
     editButton,
+    vendorButton,
     skillsButton,
     bagButton,
     panelTabs,
@@ -151,6 +159,7 @@ const mobileUiElements = (() => {
 const mobileUtilityBar = mobileUiElements.utilityBar;
 const mobileLootButton = mobileUiElements.lootButton;
 const mobileActionEditButton = mobileUiElements.editButton;
+const mobileVendorButton = mobileUiElements.vendorButton;
 const mobileSkillsButton = mobileUiElements.skillsButton;
 const mobileBagButton = mobileUiElements.bagButton;
 const mobilePanelTabs = mobileUiElements.panelTabs;
@@ -6450,6 +6459,7 @@ function setVendorPanelVisible(visible) {
   if (!visible) {
     clearAutoVendorInteraction(false, false);
   }
+  updateMobileUtilityBar(getCurrentSelf());
 }
 
 function sendSellInventoryItem(inventoryIndex) {
@@ -6478,6 +6488,29 @@ function trySellInventoryItemAtIndex(index) {
     return false;
   }
   return sendSellInventoryItem(index);
+}
+
+function countSellableInventoryItems() {
+  let count = 0;
+  for (let index = 0; index < inventoryState.slots.length; index += 1) {
+    const slotData = inventoryState.slots[index];
+    if (!slotData || !slotData.itemId || !slotData.isEquipment) {
+      continue;
+    }
+    if (getItemCopperValueClient(slotData) <= 0) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function handleMobileVendorSellTap(index) {
+  if (!sendSellInventoryItem(index)) {
+    setStatus("Unable to sell that item right now.");
+    return false;
+  }
+  return true;
 }
 
 function createVendorItemEntry(slotData, index) {
@@ -6513,6 +6546,9 @@ function createVendorItemEntry(slotData, index) {
   entry.appendChild(meta);
   entry.appendChild(valueEl);
   bindItemTooltip(entry, slotData);
+  if (isTouchJoystickEnabled()) {
+    bindMobileItemSlotInteraction(entry, slotData, () => handleMobileVendorSellTap(index), slotData.qty);
+  }
   entry.addEventListener("contextmenu", (event) => {
     event.preventDefault();
     sendSellInventoryItem(index);
@@ -6526,9 +6562,13 @@ function updateVendorPanelUI() {
   }
   const vendor = getTownVendor();
   vendorTitle.textContent = vendor ? vendor.name || "Quartermaster" : "Quartermaster";
-  vendorSubtitle.textContent = canInteractWithVendor()
-    ? "Right-click gear to sell it for copper."
-    : "Right-click the vendor in town to open this panel. Move closer to sell.";
+  vendorSubtitle.textContent = isTouchJoystickEnabled()
+    ? (canInteractWithVendor()
+        ? "Tap gear to sell it for copper. Long press to inspect."
+        : "Tap Sell to approach the quartermaster, then tap gear to sell.")
+    : (canInteractWithVendor()
+        ? "Right-click gear to sell it for copper."
+        : "Right-click the vendor in town to open this panel. Move closer to sell.");
   vendorItemList.innerHTML = "";
   const sellable = [];
   for (let index = 0; index < inventoryState.slots.length; index += 1) {
@@ -6585,6 +6625,29 @@ function startAutoVendorInteraction(vendor) {
   setAutoMoveTarget(vendorInteractionState.x + 0.5, vendorInteractionState.y + 0.5, 0.8);
   sendMove();
   return true;
+}
+
+function handleMobileVendorButtonPress() {
+  const self = getCurrentSelf();
+  const vendor = getTownVendor();
+  if (!self || !vendor) {
+    return false;
+  }
+  resumeSpatialAudioContext();
+  if (vendorInteractionState.panelOpen) {
+    setVendorPanelVisible(false);
+    setStatus("Quartermaster closed.");
+    return true;
+  }
+  if (canInteractWithVendor(self)) {
+    clearAutoVendorInteraction(false, true);
+    setVendorPanelVisible(true);
+    updateVendorPanelUI();
+    setStatus("Quartermaster opened.");
+    return true;
+  }
+  setStatus("Moving to Quartermaster...");
+  return startAutoVendorInteraction(vendor);
 }
 
 function getHoveredVendor(cameraX, cameraY) {
@@ -7354,7 +7417,7 @@ function toggleMobileActionBarEditMode() {
 }
 
 function updateMobileUtilityBar(self = null) {
-  if (!mobileUtilityBar || !mobileLootButton || !mobileActionEditButton || !mobileSkillsButton || !mobileBagButton) {
+  if (!mobileUtilityBar || !mobileLootButton || !mobileActionEditButton || !mobileVendorButton || !mobileSkillsButton || !mobileBagButton) {
     return;
   }
 
@@ -7366,6 +7429,9 @@ function updateMobileUtilityBar(self = null) {
     clearMobilePendingAbilityPlacement();
     mobileActionEditButton.classList.remove("active");
     mobileActionEditButton.textContent = "Edit";
+    mobileVendorButton.classList.remove("active", "attention");
+    mobileVendorButton.classList.add("hidden");
+    mobileVendorButton.textContent = "Sell";
     mobileSkillsButton.classList.remove("active", "attention");
     mobileSkillsButton.textContent = "Skills";
     mobileBagButton.classList.remove("active");
@@ -7377,10 +7443,25 @@ function updateMobileUtilityBar(self = null) {
   const reachableLoot = getLootBagsWithinPickupRange(self);
   const lootCount = reachableLoot.length;
   const skillPoints = Math.max(0, Math.floor(Number(self && self.skillPoints) || 0));
+  const vendor = getTownVendor();
+  const hasVendor = !!vendor;
+  const sellableCount = countSellableInventoryItems();
+  const canSellNow = hasVendor && canInteractWithVendor(self);
   mobileLootButton.classList.toggle("hidden", lootCount <= 0);
   mobileLootButton.textContent = lootCount > 1 ? `Loot x${lootCount}` : "Loot";
   mobileActionEditButton.classList.toggle("active", mobileActionBarEditState.active);
   mobileActionEditButton.textContent = mobileActionBarEditState.active ? "Done" : "Edit";
+  mobileVendorButton.classList.toggle("hidden", !hasVendor);
+  mobileVendorButton.classList.toggle("active", vendorInteractionState.panelOpen);
+  mobileVendorButton.classList.toggle(
+    "attention",
+    hasVendor && sellableCount > 0 && !vendorInteractionState.panelOpen && canSellNow
+  );
+  mobileVendorButton.textContent = vendorInteractionState.panelOpen
+    ? "Close Sell"
+    : canSellNow
+      ? (sellableCount > 0 ? `Sell ${sellableCount}` : "Sell")
+      : "Quartermaster";
   mobileSkillsButton.classList.toggle("active", mobilePanelState.open && mobilePanelState.activeTab === "spellbook");
   mobileSkillsButton.classList.toggle("attention", skillPoints > 0 && !(mobilePanelState.open && mobilePanelState.activeTab === "spellbook"));
   mobileSkillsButton.textContent = skillPoints > 0 ? `Skills ${skillPoints}` : "Skills";
@@ -7481,6 +7562,13 @@ if (mobileActionEditButton) {
     event.preventDefault();
     resumeSpatialAudioContext();
     toggleMobileActionBarEditMode();
+  });
+}
+
+if (mobileVendorButton) {
+  mobileVendorButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    handleMobileVendorButtonPress();
   });
 }
 
@@ -14393,7 +14481,9 @@ function drawVendorNpc(cameraX, cameraY, frameNow) {
 
 function drawVendorTooltip(vendor, p) {
   const title = String(vendor && vendor.name ? vendor.name : "Quartermaster");
-  const subtitle = canInteractWithVendor() ? "Right-click to sell gear" : "Right-click to approach";
+  const subtitle = isTouchJoystickEnabled()
+    ? (canInteractWithVendor() ? "Tap Sell to open vendor" : "Tap Quartermaster to approach")
+    : (canInteractWithVendor() ? "Right-click to sell gear" : "Right-click to approach");
   ctx.font = "12px sans-serif";
   const width = Math.max(ctx.measureText(title).width, ctx.measureText(subtitle).width) + 18;
   const x = Math.round(p.x - width / 2);
