@@ -4,11 +4,32 @@ const {
   MOB_EFFECT_FLAG_STUN,
   MOB_EFFECT_FLAG_SLOW,
   MOB_EFFECT_FLAG_REMOVE,
-  MOB_EFFECT_FLAG_BURN
+  MOB_EFFECT_FLAG_BURN,
+  MOB_EFFECT_FLAG_BLOOD_WRATH
 } = PROTOCOL;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function getBloodWrathBuffEndsAt(player, now = Date.now()) {
+  if (!player || !Array.isArray(player.activeBuffs)) {
+    return 0;
+  }
+  let endsAt = 0;
+  for (const buff of player.activeBuffs) {
+    if (!buff || typeof buff !== "object") {
+      continue;
+    }
+    if (String(buff.sourceAbilityId || "").trim().toLowerCase() !== "bloodwrath") {
+      continue;
+    }
+    const buffEndsAt = Math.max(0, Math.floor(Number(buff.endsAt) || 0));
+    if (buffEndsAt > now) {
+      endsAt = Math.max(endsAt, buffEndsAt);
+    }
+  }
+  return endsAt;
 }
 
 function toEntityRealId(entityId) {
@@ -351,9 +372,11 @@ function buildSelfPlayerEffectUpdate(player, now = Date.now()) {
   const stunnedUntil = Math.max(0, Math.floor(Number(player.stunnedUntil) || 0));
   const slowUntil = Math.max(0, Math.floor(Number(player.slowUntil) || 0));
   const burningUntil = Math.max(0, Math.floor(Number(player.burningUntil) || 0));
+  const bloodWrathUntil = getBloodWrathBuffEndsAt(player, now);
   const hasStun = stunnedUntil > now;
   const hasSlow = slowUntil > now;
   const hasBurn = burningUntil > now;
+  const hasBloodWrath = bloodWrathUntil > now;
 
   const nextState = {
     stunnedUntil: hasStun ? stunnedUntil : 0,
@@ -364,7 +387,8 @@ function buildSelfPlayerEffectUpdate(player, now = Date.now()) {
       ? clamp(Math.round(clamp(Number(player.slowMultiplier) || 1, 0.1, 1) * 1000), 1, 1000)
       : 1000,
     burningUntil: hasBurn ? burningUntil : 0,
-    burnDurationMs: hasBurn ? clamp(Math.floor(Number(player.burnDurationMs) || burningUntil - now), 1, 65535) : 0
+    burnDurationMs: hasBurn ? clamp(Math.floor(Number(player.burnDurationMs) || burningUntil - now), 1, 65535) : 0,
+    bloodWrathUntil: hasBloodWrath ? bloodWrathUntil : 0
   };
 
   const previous = sync.selfEffectState;
@@ -376,7 +400,8 @@ function buildSelfPlayerEffectUpdate(player, now = Date.now()) {
     previous.slowDurationMs !== nextState.slowDurationMs ||
     previous.slowMultiplierQ !== nextState.slowMultiplierQ ||
     previous.burningUntil !== nextState.burningUntil ||
-    previous.burnDurationMs !== nextState.burnDurationMs;
+    previous.burnDurationMs !== nextState.burnDurationMs ||
+    previous.bloodWrathUntil !== nextState.bloodWrathUntil;
 
   if (!changed) {
     return null;
@@ -389,7 +414,8 @@ function buildSelfPlayerEffectUpdate(player, now = Date.now()) {
     slowDurationMs: nextState.slowDurationMs,
     slowMultiplierQ: nextState.slowMultiplierQ,
     burningMs: hasBurn ? clamp(burningUntil - now, 1, 65535) : 0,
-    burnDurationMs: nextState.burnDurationMs
+    burnDurationMs: nextState.burnDurationMs,
+    bloodWrathMs: hasBloodWrath ? clamp(bloodWrathUntil - now, 1, 65535) : 0
   };
 }
 
@@ -412,9 +438,11 @@ function buildPlayerEffectEventsForRecipient(recipient, nearbyPlayerObjects, now
     const stunnedUntil = Math.max(0, Math.floor(Number(other.stunnedUntil) || 0));
     const slowUntil = Math.max(0, Math.floor(Number(other.slowUntil) || 0));
     const burningUntil = Math.max(0, Math.floor(Number(other.burningUntil) || 0));
+    const bloodWrathUntil = getBloodWrathBuffEndsAt(other, now);
     const hasStun = stunnedUntil > now;
     const hasSlow = slowUntil > now;
     const hasBurn = burningUntil > now;
+    const hasBloodWrath = bloodWrathUntil > now;
     const slowMultiplierQ = hasSlow
       ? clamp(Math.round(clamp(Number(other.slowMultiplier) || 1, 0.1, 1) * 1000), 1, 1000)
       : 1000;
@@ -422,7 +450,8 @@ function buildPlayerEffectEventsForRecipient(recipient, nearbyPlayerObjects, now
       stunnedUntil: hasStun ? stunnedUntil : 0,
       slowUntil: hasSlow ? slowUntil : 0,
       burningUntil: hasBurn ? burningUntil : 0,
-      slowMultiplierQ
+      slowMultiplierQ,
+      bloodWrathUntil: hasBloodWrath ? bloodWrathUntil : 0
     };
     const previous = sync.playerEffectStatesBySlot.get(slot);
     const changed =
@@ -430,7 +459,8 @@ function buildPlayerEffectEventsForRecipient(recipient, nearbyPlayerObjects, now
       previous.stunnedUntil !== nextState.stunnedUntil ||
       previous.slowUntil !== nextState.slowUntil ||
       previous.burningUntil !== nextState.burningUntil ||
-      previous.slowMultiplierQ !== nextState.slowMultiplierQ;
+      previous.slowMultiplierQ !== nextState.slowMultiplierQ ||
+      previous.bloodWrathUntil !== nextState.bloodWrathUntil;
     if (!changed) {
       continue;
     }
@@ -440,7 +470,8 @@ function buildPlayerEffectEventsForRecipient(recipient, nearbyPlayerObjects, now
       stunnedMs: hasStun ? clamp(stunnedUntil - now, 1, 65535) : 0,
       slowedMs: hasSlow ? clamp(slowUntil - now, 1, 65535) : 0,
       burningMs: hasBurn ? clamp(burningUntil - now, 1, 65535) : 0,
-      slowMultiplierQ
+      slowMultiplierQ,
+      bloodWrathMs: hasBloodWrath ? clamp(bloodWrathUntil - now, 1, 65535) : 0
     });
   }
 
@@ -451,7 +482,8 @@ function buildPlayerEffectEventsForRecipient(recipient, nearbyPlayerObjects, now
         stunnedMs: 0,
         slowedMs: 0,
         burningMs: 0,
-        slowMultiplierQ: 1000
+        slowMultiplierQ: 1000,
+        bloodWrathMs: 0
       });
       sync.playerEffectStatesBySlot.delete(slot);
     }

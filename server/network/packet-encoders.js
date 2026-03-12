@@ -34,6 +34,7 @@ const {
   MOB_EFFECT_FLAG_SLOW,
   MOB_EFFECT_FLAG_REMOVE,
   MOB_EFFECT_FLAG_BURN,
+  MOB_EFFECT_FLAG_BLOOD_WRATH,
   CAST_EVENT_KIND_PLAYER,
   CAST_EVENT_KIND_MOB,
   CAST_EVENT_KIND_SELF,
@@ -368,6 +369,9 @@ function getEffectPayloadFlags(effect) {
   if ((Number(effect && effect.burningMs) || 0) > 0) {
     flags |= MOB_EFFECT_FLAG_BURN;
   }
+  if ((Number(effect && effect.bloodWrathMs) || 0) > 0) {
+    flags |= MOB_EFFECT_FLAG_BLOOD_WRATH;
+  }
   return flags;
 }
 
@@ -381,6 +385,9 @@ function getEffectPayloadSize(flags) {
   }
   if (flags & MOB_EFFECT_FLAG_BURN) {
     size += 4;
+  }
+  if (flags & MOB_EFFECT_FLAG_BLOOD_WRATH) {
+    size += 2;
   }
   return size;
 }
@@ -408,6 +415,11 @@ function writeEffectPayload(buffer, offset, flags, effect) {
     buffer.writeUInt16LE(burningMs, offset);
     buffer.writeUInt16LE(burnDurationMs, offset + 2);
     offset += 4;
+  }
+  if (flags & MOB_EFFECT_FLAG_BLOOD_WRATH) {
+    const bloodWrathMs = clamp(Math.floor(Number(effect.bloodWrathMs) || 0), 1, 65535);
+    buffer.writeUInt16LE(bloodWrathMs, offset);
+    offset += 2;
   }
   return offset;
 }

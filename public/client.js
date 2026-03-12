@@ -180,7 +180,7 @@ const protocol = globalThis.VibeProtocol || {
   CAST_EVENT_PROTO_TYPE: 10,
   CAST_EVENT_PROTO_VERSION: 1,
   PLAYER_EFFECT_PROTO_TYPE: 11,
-  PLAYER_EFFECT_PROTO_VERSION: 1,
+  PLAYER_EFFECT_PROTO_VERSION: 2,
   MOB_BITE_PROTO_TYPE: 12,
   MOB_BITE_PROTO_VERSION: 1,
   EXPLOSION_EVENT_PROTO_TYPE: 13,
@@ -199,6 +199,7 @@ const protocol = globalThis.VibeProtocol || {
   MOB_EFFECT_FLAG_SLOW: 1 << 1,
   MOB_EFFECT_FLAG_REMOVE: 1 << 2,
   MOB_EFFECT_FLAG_BURN: 1 << 3,
+  MOB_EFFECT_FLAG_BLOOD_WRATH: 1 << 4,
   AREA_EFFECT_OP_UPSERT: 1,
   AREA_EFFECT_OP_REMOVE: 2,
   AREA_EFFECT_KIND_AREA: 0,
@@ -261,6 +262,7 @@ const {
   MOB_EFFECT_FLAG_SLOW,
   MOB_EFFECT_FLAG_REMOVE,
   MOB_EFFECT_FLAG_BURN,
+  MOB_EFFECT_FLAG_BLOOD_WRATH,
   AREA_EFFECT_OP_UPSERT,
   AREA_EFFECT_OP_REMOVE,
   AREA_EFFECT_KIND_AREA,
@@ -587,10 +589,14 @@ const selfNegativeEffects = {
   slow: null,
   burn: null
 };
+const selfPositiveEffects = {
+  bloodWrath: null
+};
 let selfPositiveBuffs = [];
 const remotePlayerStuns = new Map();
 const remotePlayerSlows = new Map();
 const remotePlayerBurns = new Map();
+const remotePlayerBloodWraths = new Map();
 const entityRuntime = {
   self: null,
   players: new Map(),
@@ -901,9 +907,11 @@ const playerRenderTools = sharedCreatePlayerRenderTools
       remotePlayerCasts,
       getCastProgress,
       selfNegativeEffects,
+      selfPositiveEffects,
       remotePlayerStuns,
       remotePlayerSlows,
       remotePlayerBurns,
+      remotePlayerBloodWraths,
       swordSwing,
       remotePlayerSwings,
       warriorAnimRuntime,
@@ -3334,6 +3342,8 @@ function applyPlayerEffects(msg) {
     multiplierQ: Math.max(1, Math.floor(Number(msg && msg.slowMultiplierQ) || 1000))
   });
   setSelfNegativeEffectState("burn", msg && msg.burningMs, msg && msg.burnDurationMs, now);
+  const bloodWrathMs = Math.max(0, Number(msg && msg.bloodWrathMs) || 0);
+  selfPositiveEffects.bloodWrath = bloodWrathMs > 0 ? { endsAt: now + bloodWrathMs } : null;
 }
 
 function applyNearbyPlayerEffects(msg) {
@@ -3349,6 +3359,7 @@ function applyNearbyPlayerEffects(msg) {
     const stunnedMs = Math.max(0, Number(effect.stunnedMs) || 0);
     const slowedMs = Math.max(0, Number(effect.slowedMs) || 0);
     const burningMs = Math.max(0, Number(effect.burningMs) || 0);
+    const bloodWrathMs = Math.max(0, Number(effect.bloodWrathMs) || 0);
     const slowMultiplierQ = Math.max(1, Math.floor(Number(effect.slowMultiplierQ) || 1000));
 
     if (stunnedMs > 0) {
@@ -3368,6 +3379,11 @@ function applyNearbyPlayerEffects(msg) {
       remotePlayerBurns.set(id, { endsAt: now + burningMs });
     } else {
       remotePlayerBurns.delete(id);
+    }
+    if (bloodWrathMs > 0) {
+      remotePlayerBloodWraths.set(id, { endsAt: now + bloodWrathMs });
+    } else {
+      remotePlayerBloodWraths.delete(id);
     }
   }
 }
@@ -6402,9 +6418,11 @@ function clearEntityRuntime() {
   stopAllSpatialLoops();
   clearSelfPositiveBuffs();
   clearSelfNegativeEffects();
+  selfPositiveEffects.bloodWrath = null;
   remotePlayerStuns.clear();
   remotePlayerSlows.clear();
   remotePlayerBurns.clear();
+  remotePlayerBloodWraths.clear();
 }
 
 function syncEntityArraysToGameState() {
@@ -7752,6 +7770,7 @@ const networkPacketParsers = sharedCreateNetworkPacketParsers
       MOB_EFFECT_FLAG_SLOW,
       MOB_EFFECT_FLAG_REMOVE,
       MOB_EFFECT_FLAG_BURN,
+      MOB_EFFECT_FLAG_BLOOD_WRATH,
       AREA_EFFECT_OP_UPSERT,
       AREA_EFFECT_OP_REMOVE,
       AREA_EFFECT_KIND_BEAM,
@@ -7783,6 +7802,7 @@ const networkPacketParsers = sharedCreateNetworkPacketParsers
       remotePlayerStuns,
       remotePlayerSlows,
       remotePlayerBurns,
+      remotePlayerBloodWraths,
       remoteMobCasts,
       remoteMobStuns,
       remoteMobSlows,
@@ -7898,6 +7918,9 @@ function resetClientSessionState() {
   setInventoryVisible(false);
   setEquipmentVisible(false);
   setSpellbookVisible(false);
+  clearSelfPositiveBuffs();
+  clearSelfNegativeEffects();
+  selfPositiveEffects.bloodWrath = null;
   updateInventoryUI();
   updateEquipmentUI();
   remotePlayerSwings.clear();
@@ -7905,6 +7928,7 @@ function resetClientSessionState() {
   remotePlayerStuns.clear();
   remotePlayerSlows.clear();
   remotePlayerBurns.clear();
+  remotePlayerBloodWraths.clear();
   remoteMobCasts.clear();
   remoteMobBites.clear();
   remoteMobStuns.clear();
@@ -8781,11 +8805,13 @@ function getPlayerStatusVisualState(player, isSelf, frameNow) {
   const stunState = isSelf ? selfNegativeEffects.stun : remotePlayerStuns.get(player.id);
   const slowState = isSelf ? selfNegativeEffects.slow : remotePlayerSlows.get(player.id);
   const burnState = isSelf ? selfNegativeEffects.burn : remotePlayerBurns.get(player.id);
+  const bloodWrathState = isSelf ? selfPositiveEffects.bloodWrath : remotePlayerBloodWraths.get(player.id);
   const status = {
     phaseSeed: Number(player && player.id) || 0,
     stunActive: false,
     slowActive: false,
     burnActive: false,
+    bloodWrathActive: false,
     slowMultiplier: 1
   };
 
@@ -8822,7 +8848,17 @@ function getPlayerStatusVisualState(player, isSelf, frameNow) {
     }
   }
 
-  return status.stunActive || status.slowActive || status.burnActive ? status : null;
+  if (bloodWrathState) {
+    if ((Number(bloodWrathState.endsAt) || 0) > frameNow) {
+      status.bloodWrathActive = true;
+    } else if (!isSelf) {
+      remotePlayerBloodWraths.delete(player.id);
+    } else {
+      selfPositiveEffects.bloodWrath = null;
+    }
+  }
+
+  return status.stunActive || status.slowActive || status.burnActive || status.bloodWrathActive ? status : null;
 }
 
 function getMobCastVisualState(mob, frameNow) {

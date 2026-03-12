@@ -75,6 +75,7 @@
       MOB_EFFECT_FLAG_SLOW,
       MOB_EFFECT_FLAG_REMOVE,
       MOB_EFFECT_FLAG_BURN,
+      MOB_EFFECT_FLAG_BLOOD_WRATH,
       POS_SCALE,
       MANA_SCALE,
       HEAL_SCALE,
@@ -1024,6 +1025,10 @@
           target.burningMs = view.getUint16(offset, true);
           target.burnDurationMs = view.getUint16(offset + 2, true);
           offset += 4;
+        }
+        if (flags & MOB_EFFECT_FLAG_BLOOD_WRATH) {
+          target.bloodWrathMs = view.getUint16(offset, true);
+          offset += 2;
         }
       }
 

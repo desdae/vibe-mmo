@@ -7,15 +7,35 @@ function createPlayerResourceTools(options = {}) {
   const clamp = typeof options.clamp === "function" ? options.clamp : defaultClamp;
 
   function getPendingHealAmount(player) {
-    if (!player || !Array.isArray(player.activeHeals) || !player.activeHeals.length) {
+    if (!player) {
       return 0;
     }
     let total = 0;
-    for (const effect of player.activeHeals) {
-      if (!effect) {
-        continue;
+    if (Array.isArray(player.activeHeals) && player.activeHeals.length) {
+      for (const effect of player.activeHeals) {
+        if (!effect) {
+          continue;
+        }
+        total += Math.max(0, Number(effect.remainingTotal) || 0);
       }
-      total += Math.max(0, Number(effect.remainingTotal) || 0);
+    }
+    if (Array.isArray(player.activeBuffs) && player.activeBuffs.length) {
+      const now = Date.now();
+      for (const buff of player.activeBuffs) {
+        if (!buff || typeof buff !== "object") {
+          continue;
+        }
+        const endsAt = Math.max(0, Number(buff.endsAt) || 0);
+        if (endsAt <= now) {
+          continue;
+        }
+        const stats = buff.stats && typeof buff.stats === "object" ? buff.stats : null;
+        const healthRegenPerSec = Math.max(0, Number(stats && stats.healthRegenFlat) || 0);
+        if (healthRegenPerSec <= 0) {
+          continue;
+        }
+        total += healthRegenPerSec * ((endsAt - now) / 1000);
+      }
     }
     return Math.max(0, total);
   }

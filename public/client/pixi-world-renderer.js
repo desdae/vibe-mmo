@@ -2607,6 +2607,30 @@
         return;
       }
       const pulse = 0.6 + Math.sin(frameNow * 0.016 + (Number(statusVisual.phaseSeed) || 0)) * 0.4;
+      if (statusVisual.bloodWrathActive) {
+        const wrathPulse = 0.58 + Math.sin(frameNow * 0.012 + (Number(statusVisual.phaseSeed) || 0) * 0.17) * 0.42;
+        const auraRadius = (isPlayer ? 13.5 : 15.5) + wrathPulse * (isPlayer ? 1.8 : 2.1);
+        const swirlRadius = (isPlayer ? 8.5 : 10.5) + wrathPulse * (isPlayer ? 1.4 : 1.7);
+        graphics.beginFill(0xe85c4c, (0.22 + wrathPulse * 0.14) * 0.42);
+        graphics.drawCircle(x, y + 1, auraRadius);
+        graphics.endFill();
+        graphics.lineStyle(isPlayer ? 1.5 : 1.7, 0xff8a76, 0.55);
+        for (let i = 0; i < 3; i += 1) {
+          const start = frameNow * 0.006 + i * ((Math.PI * 2) / 3) + (Number(statusVisual.phaseSeed) || 0) * 0.09;
+          for (let step = 0; step <= 16; step += 1) {
+            const t = step / 16;
+            const angle = start + t * 1.85;
+            const radius = 4.5 + t * swirlRadius;
+            const px = x + Math.cos(angle) * radius;
+            const py = y + 2 + Math.sin(angle) * (radius * 0.48) - t * (isPlayer ? 5.5 : 6.2);
+            if (step === 0) {
+              graphics.moveTo(px, py);
+            } else {
+              graphics.lineTo(px, py);
+            }
+          }
+        }
+      }
       if (statusVisual.slowActive) {
         const strength = clamp(1 - (Number(statusVisual.slowMultiplier) || 1), 0, 1);
         const alpha = clamp(0.16 + strength * 0.28, 0.12, 0.42) * (0.75 + pulse * 0.25);
