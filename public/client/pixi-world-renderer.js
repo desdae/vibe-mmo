@@ -920,12 +920,14 @@
       }
       const style = buildPlayerHumanoidStyle(player);
       const equipmentSlots = typeof deps.getPlayerVisualEquipment === "function" ? deps.getPlayerVisualEquipment(player, isSelf) : {};
-      let aimSide = "center";
-      if (String(style?.defaults?.mainHand || "").toLowerCase() === "bow" && typeof deps.screenToWorld === "function" && deps.mouseState) {
-        const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : null;
-        const world = self ? deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self) : null;
-        if (world && Number.isFinite(world.x)) {
-          aimSide = world.x >= Number(player && player.x) ? "right" : "left";
+      let aimWorldX = NaN;
+      let aimWorldY = NaN;
+      if (isSelf && typeof deps.screenToWorld === "function" && deps.mouseState) {
+        const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : player;
+        const world = deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self);
+        if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
+          aimWorldX = Number(world.x);
+          aimWorldY = Number(world.y);
         }
       }
       return renderHumanoidSpriteFrame(`pixi-player:${String(player.id ?? "0")}`, {
@@ -938,8 +940,8 @@
           entry.castVisual && Number(entry.castVisual.ratio) > 0
             ? { active: true, progress: clamp(Number(entry.castVisual.ratio) || 0, 0, 1), abilityId: String(entry.castVisual.abilityId || "") }
             : null,
-        aimWorldX: aimSide === "center" ? NaN : Number(player && player.x) + (aimSide === "right" ? 2 : -2),
-        aimWorldY: Number(player && player.y) || 0,
+        aimWorldX,
+        aimWorldY,
         isSelf
       });
     }
@@ -957,8 +959,8 @@
           }
         : null;
       const currentSelf = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : null;
-      const aimWorldX = currentSelf && Number.isFinite(Number(currentSelf.x)) ? Number(currentSelf.x) : Number(mob.x) + 1;
-      const aimWorldY = currentSelf && Number.isFinite(Number(currentSelf.y)) ? Number(currentSelf.y) : Number(mob.y);
+      const aimWorldX = currentSelf && Number.isFinite(Number(currentSelf.x)) ? Number(currentSelf.x) + 0.5 : NaN;
+      const aimWorldY = currentSelf && Number.isFinite(Number(currentSelf.y)) ? Number(currentSelf.y) + 0.5 : NaN;
       return renderHumanoidSpriteFrame(`pixi-mob:${String(mob.id ?? "0")}`, {
         entity: mob,
         style,
