@@ -31,6 +31,11 @@
       sharedHumanoidModule && typeof sharedHumanoidModule.createHumanoidRenderTools === "function"
         ? sharedHumanoidModule.createHumanoidRenderTools
         : null;
+    const sharedPixiParticleModule = globalScope.VibeClientPixiParticleSystem || null;
+    const createPixiParticleSystem =
+      sharedPixiParticleModule && typeof sharedPixiParticleModule.createPixiParticleSystem === "function"
+        ? sharedPixiParticleModule.createPixiParticleSystem
+        : null;
     if (!PIXI || !canvasElement) {
       return null;
     }
@@ -42,6 +47,7 @@
     let backgroundLayer = null;
     let areaUnderlayLayer = null;
     let lootLayer = null;
+    let particleLayer = null;
     let mobLayer = null;
     let playerLayer = null;
     let projectileLayer = null;
@@ -58,6 +64,7 @@
     let projectileNodes = new Map();
     let lootNodes = new Map();
     let vendorNode = null;
+    let pixiParticleSystem = null;
     const canvasTextureCache = new WeakMap();
     const humanoidCanvasCache = new Map();
 
@@ -74,6 +81,103 @@
       poison: 0x83d860,
       arrow: 0xd6ddea,
       grenade: 0xc7924b
+    });
+    const projectileParticleConfigs = Object.freeze({
+      fire: Object.freeze({
+        maxParticles: 14,
+        spawnRate: 16,
+        burstCount: 2,
+        idleTimeoutMs: 260,
+        spawnBox: Object.freeze({ minX: -0.05, maxX: 0.05, minY: -0.05, maxY: 0.05 }),
+        velocity: Object.freeze({ minX: -0.014, maxX: 0.014, minY: -0.035, maxY: -0.01 }),
+        acceleration: Object.freeze({ minX: 0, maxX: 0, minY: 0.015, maxY: 0.04 }),
+        lifeMs: Object.freeze([220, 420]),
+        sizePx: Object.freeze([1.8, 3.4]),
+        alpha: Object.freeze([0.42, 0.9]),
+        twinkle: Object.freeze([0.7, 1.2]),
+        rotation: Object.freeze([0, Math.PI * 2]),
+        spin: Object.freeze([-1.4, 1.4]),
+        phase: Object.freeze([0, Math.PI * 2]),
+        shapes: Object.freeze(["sparkle", "dot", "dot"]),
+        colors: Object.freeze(["#fff3c2", "#ffb66b", "#ff7b4d"]),
+        glowColors: Object.freeze(["rgba(255, 192, 125, 0.45)", "rgba(255, 120, 76, 0.38)"])
+      }),
+      frost: Object.freeze({
+        maxParticles: 10,
+        spawnRate: 12,
+        burstCount: 2,
+        idleTimeoutMs: 260,
+        spawnBox: Object.freeze({ minX: -0.04, maxX: 0.04, minY: -0.04, maxY: 0.04 }),
+        velocity: Object.freeze({ minX: -0.012, maxX: 0.012, minY: -0.025, maxY: -0.008 }),
+        acceleration: Object.freeze({ minX: 0, maxX: 0, minY: 0.01, maxY: 0.03 }),
+        lifeMs: Object.freeze([240, 420]),
+        sizePx: Object.freeze([1.6, 2.8]),
+        alpha: Object.freeze([0.35, 0.82]),
+        twinkle: Object.freeze([0.5, 0.9]),
+        rotation: Object.freeze([0, Math.PI * 2]),
+        spin: Object.freeze([-0.9, 0.9]),
+        phase: Object.freeze([0, Math.PI * 2]),
+        shapes: Object.freeze(["dot", "dot", "sparkle"]),
+        colors: Object.freeze(["#eefcff", "#b7ecff", "#87d6ff"]),
+        glowColors: Object.freeze(["rgba(173, 232, 255, 0.36)"])
+      }),
+      arcane: Object.freeze({
+        maxParticles: 12,
+        spawnRate: 14,
+        burstCount: 2,
+        idleTimeoutMs: 260,
+        spawnBox: Object.freeze({ minX: -0.04, maxX: 0.04, minY: -0.04, maxY: 0.04 }),
+        velocity: Object.freeze({ minX: -0.014, maxX: 0.014, minY: -0.03, maxY: -0.008 }),
+        acceleration: Object.freeze({ minX: 0, maxX: 0, minY: 0.012, maxY: 0.03 }),
+        lifeMs: Object.freeze([220, 400]),
+        sizePx: Object.freeze([1.6, 3.0]),
+        alpha: Object.freeze([0.38, 0.86]),
+        twinkle: Object.freeze([0.65, 1.1]),
+        rotation: Object.freeze([0, Math.PI * 2]),
+        spin: Object.freeze([-1.1, 1.1]),
+        phase: Object.freeze([0, Math.PI * 2]),
+        shapes: Object.freeze(["sparkle", "dot", "dot"]),
+        colors: Object.freeze(["#f3e8ff", "#d2b2ff", "#9e76ff"]),
+        glowColors: Object.freeze(["rgba(188, 143, 255, 0.34)"])
+      }),
+      lightning: Object.freeze({
+        maxParticles: 12,
+        spawnRate: 18,
+        burstCount: 3,
+        idleTimeoutMs: 220,
+        spawnBox: Object.freeze({ minX: -0.05, maxX: 0.05, minY: -0.05, maxY: 0.05 }),
+        velocity: Object.freeze({ minX: -0.02, maxX: 0.02, minY: -0.03, maxY: -0.008 }),
+        acceleration: Object.freeze({ minX: 0, maxX: 0, minY: 0.01, maxY: 0.025 }),
+        lifeMs: Object.freeze([160, 280]),
+        sizePx: Object.freeze([1.4, 2.8]),
+        alpha: Object.freeze([0.42, 0.96]),
+        twinkle: Object.freeze([0.8, 1.35]),
+        rotation: Object.freeze([0, Math.PI * 2]),
+        spin: Object.freeze([-1.5, 1.5]),
+        phase: Object.freeze([0, Math.PI * 2]),
+        shapes: Object.freeze(["sparkle", "sparkle", "dot"]),
+        colors: Object.freeze(["#fff9c4", "#ffe76d", "#ffd54a"]),
+        glowColors: Object.freeze(["rgba(255, 234, 122, 0.36)"])
+      }),
+      poison: Object.freeze({
+        maxParticles: 10,
+        spawnRate: 12,
+        burstCount: 2,
+        idleTimeoutMs: 260,
+        spawnBox: Object.freeze({ minX: -0.04, maxX: 0.04, minY: -0.04, maxY: 0.04 }),
+        velocity: Object.freeze({ minX: -0.01, maxX: 0.01, minY: -0.024, maxY: -0.008 }),
+        acceleration: Object.freeze({ minX: 0, maxX: 0, minY: 0.012, maxY: 0.03 }),
+        lifeMs: Object.freeze([240, 440]),
+        sizePx: Object.freeze([1.6, 2.9]),
+        alpha: Object.freeze([0.34, 0.82]),
+        twinkle: Object.freeze([0.45, 0.8]),
+        rotation: Object.freeze([0, Math.PI * 2]),
+        spin: Object.freeze([-1.1, 1.1]),
+        phase: Object.freeze([0, Math.PI * 2]),
+        shapes: Object.freeze(["dot", "dot", "sparkle"]),
+        colors: Object.freeze(["#d5ffc4", "#8fe36c", "#68b84e"]),
+        glowColors: Object.freeze(["rgba(137, 217, 109, 0.3)"])
+      })
     });
 
     function worldToScreen(worldX, worldY, cameraX, cameraY, width, height) {
@@ -184,6 +288,7 @@
       backgroundLayer = new PIXI.Container();
       areaUnderlayLayer = new PIXI.Container();
       lootLayer = new PIXI.Container();
+      particleLayer = new PIXI.Container();
       mobLayer = new PIXI.Container();
       playerLayer = new PIXI.Container();
       projectileLayer = new PIXI.Container();
@@ -206,7 +311,14 @@
       backgroundLayer.addChild(backgroundGraphics);
       areaUnderlayLayer.addChild(areaUnderlayGraphics);
       areaOverlayLayer.addChild(areaOverlayGraphics);
-      root.addChild(backgroundLayer, areaUnderlayLayer, lootLayer, vendorLayer, mobLayer, playerLayer, projectileLayer, areaOverlayLayer, tooltipLayer);
+      root.addChild(backgroundLayer, areaUnderlayLayer, lootLayer, particleLayer, vendorLayer, mobLayer, playerLayer, projectileLayer, areaOverlayLayer, tooltipLayer);
+      pixiParticleSystem = createPixiParticleSystem
+        ? createPixiParticleSystem({
+            PIXI,
+            parentContainer: particleLayer,
+            hashString
+          })
+        : null;
       if (app.ticker && typeof app.ticker.stop === "function") {
         app.ticker.stop();
       }
@@ -535,6 +647,26 @@
         isSelf: false
       });
       return canvas ? { canvas, rotation: 0 } : null;
+    }
+
+    function getProjectileParticleConfig(projectile) {
+      const text = `${String(projectile && projectile.abilityId || "")} ${String(projectile && projectile.name || "")}`.toLowerCase();
+      if (text.includes("fire")) {
+        return projectileParticleConfigs.fire;
+      }
+      if (text.includes("frost") || text.includes("ice")) {
+        return projectileParticleConfigs.frost;
+      }
+      if (text.includes("arcane")) {
+        return projectileParticleConfigs.arcane;
+      }
+      if (text.includes("lightning")) {
+        return projectileParticleConfigs.lightning;
+      }
+      if (text.includes("poison")) {
+        return projectileParticleConfigs.poison;
+      }
+      return null;
     }
 
 
@@ -923,6 +1055,9 @@
 
       drawTownAndGrid(frameViewModel);
       drawAreaEffects(frameViewModel);
+      if (pixiParticleSystem && typeof pixiParticleSystem.pruneEmitters === "function") {
+        pixiParticleSystem.pruneEmitters(frameNow);
+      }
 
       syncNodeMap(
         lootNodes,
@@ -949,6 +1084,21 @@
         },
         lootLayer
       );
+      if (pixiParticleSystem && typeof pixiParticleSystem.renderWorldEmitter === "function") {
+        for (const entry of frameViewModel.lootBagViews) {
+          const bagId = String((entry.bag && entry.bag.id) || `${entry.bag.x}:${entry.bag.y}`);
+          pixiParticleSystem.renderWorldEmitter({
+            key: `pixi:lootbag:sparkles:${bagId}`,
+            x: Number(entry.bag.x) + 0.5,
+            y: Number(entry.bag.y) + 0.5,
+            cameraX,
+            cameraY,
+            now: frameNow,
+            worldToScreen: (worldX, worldY, localCameraX, localCameraY) => worldToScreen(worldX, worldY, localCameraX, localCameraY, width, height),
+            config: deps.lootBagSparkleConfig || null
+          });
+        }
+      }
 
       const vendor = frameViewModel.townVendor;
       if (vendor) {
@@ -1032,6 +1182,24 @@
         },
         projectileLayer
       );
+      if (pixiParticleSystem && typeof pixiParticleSystem.renderWorldEmitter === "function") {
+        for (const entry of frameViewModel.projectileViews) {
+          const config = getProjectileParticleConfig(entry.projectile);
+          if (!config) {
+            continue;
+          }
+          pixiParticleSystem.renderWorldEmitter({
+            key: `pixi:projectile:${entry.projectile.id}`,
+            x: Number(entry.projectile.x) + 0.5,
+            y: Number(entry.projectile.y) + 0.5,
+            cameraX,
+            cameraY,
+            now: frameNow,
+            worldToScreen: (worldX, worldY, localCameraX, localCameraY) => worldToScreen(worldX, worldY, localCameraX, localCameraY, width, height),
+            config
+          });
+        }
+      }
 
       updateTooltip(frameViewModel);
       app.renderer.render(stage);
