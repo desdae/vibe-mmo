@@ -735,7 +735,23 @@ const mobilePanelState = {
   lootHoldTimer: 0,
   lootHoldTriggered: false,
   suppressLootClickUntil: 0,
-  suppressItemTapUntil: 0
+  suppressItemTapUntil: 0,
+  suppressAbilityTapUntil: 0
+};
+const mobileActionTouchState = {
+  active: false,
+  slotId: "",
+  touchId: null,
+  bindingKind: "",
+  bindingId: "",
+  aimCapable: false,
+  startClientX: 0,
+  startClientY: 0,
+  currentClientX: 0,
+  currentClientY: 0,
+  holdTimerId: 0,
+  holdTriggered: false,
+  moveCanceled: false
 };
 const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
   maxParticles: 10,
@@ -3156,17 +3172,75 @@ function buildItemTooltipHtml(itemInput, qty = null) {
   return blocks.join("");
 }
 
+function buildAbilityTooltipHtml(abilityId, extraLines = []) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  const action = getActionDefById(resolvedAbilityId);
+  const titleText = action.name || resolvedAbilityId || "Ability";
+  const rawLines = String(buildAbilityTooltip(resolvedAbilityId) || "")
+    .split("\n")
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
+  const title = rawLines.length ? rawLines.shift() : titleText;
+  const description = rawLines.length && action.description && rawLines[0] === String(action.description || "").trim() ? rawLines.shift() : "";
+  const iconUrl = resolvedAbilityId && action.id !== "none" ? getActionIconUrl(resolvedAbilityId) : "";
+  const blocks = [
+    `<div class="tooltip-title-row">` +
+      (iconUrl ? `<span class="tooltip-inline-icon" style="background-image:url('${escapeHtml(iconUrl)}')"></span>` : "") +
+      `<span class="tooltip-title">${escapeHtml(title || titleText)}</span>` +
+    `</div>`
+  ];
+
+  if (description) {
+    blocks.push(`<div class="tooltip-line">${escapeHtml(description)}</div>`);
+  }
+  for (const line of rawLines) {
+    blocks.push(`<div class="tooltip-line">${escapeHtml(line)}</div>`);
+  }
+
+  const hints = (Array.isArray(extraLines) ? extraLines : [])
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
+  if (hints.length) {
+    blocks.push(`<div class="tooltip-section-label">Tip</div>`);
+    for (const line of hints) {
+      blocks.push(`<div class="tooltip-line">${escapeHtml(line)}</div>`);
+    }
+  }
+
+  return blocks.join("");
+}
+
+function showTooltipHtml(html, event, options = {}) {
+  if (!hoverTooltipEl) {
+    return;
+  }
+  const mobileTooltipClass = String(options.mobileTooltipClass || "").trim();
+  const mobileTooltipAnchor = String(options.mobileTooltipAnchor || "").trim();
+  hoverTooltipEl.innerHTML = String(html || "");
+  hoverTooltipEl.classList.remove("mobile-item-tooltip", "mobile-ability-tooltip", "hidden");
+  if (mobileTooltipClass) {
+    hoverTooltipEl.classList.add(mobileTooltipClass);
+  }
+  if (mobileTooltipAnchor) {
+    hoverTooltipEl.dataset.mobileTooltipAnchor = mobileTooltipAnchor;
+  } else {
+    delete hoverTooltipEl.dataset.mobileTooltipAnchor;
+  }
+  positionHoverTooltip(Number(event && event.clientX) || 0, Number(event && event.clientY) || 0);
+}
+
 function positionHoverTooltip(clientX, clientY) {
   if (!hoverTooltipEl || hoverTooltipEl.classList.contains("hidden")) {
     return;
   }
-  if (hoverTooltipEl.classList.contains("mobile-item-tooltip")) {
-    const activePanel = getMobilePanelElement(mobilePanelState.activeTab);
-    const panelRect = activePanel ? activePanel.getBoundingClientRect() : null;
+  if (hoverTooltipEl.classList.contains("mobile-item-tooltip") || hoverTooltipEl.classList.contains("mobile-ability-tooltip")) {
+    const anchorKey = String(hoverTooltipEl.dataset.mobileTooltipAnchor || "panel").trim().toLowerCase();
+    const anchorEl = anchorKey === "action" ? actionUi : getMobilePanelElement(mobilePanelState.activeTab);
+    const anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : null;
     const tooltipWidth = hoverTooltipEl.offsetWidth || 0;
     const tooltipHeight = hoverTooltipEl.offsetHeight || 0;
     const left = Math.round(Math.max(10, (window.innerWidth - tooltipWidth) * 0.5));
-    const preferredTop = panelRect ? panelRect.top - tooltipHeight - 12 : 12;
+    const preferredTop = anchorRect ? anchorRect.top - tooltipHeight - 12 : 12;
     const top = Math.round(Math.max(10, preferredTop));
     hoverTooltipEl.style.left = `${left}px`;
     hoverTooltipEl.style.top = `${top}px`;
@@ -3190,13 +3264,17 @@ function positionHoverTooltip(clientX, clientY) {
 }
 
 function showItemTooltip(itemInput, event, qty = null) {
-  if (!hoverTooltipEl) {
-    return;
-  }
-  hoverTooltipEl.innerHTML = buildItemTooltipHtml(itemInput, qty);
-  hoverTooltipEl.classList.toggle("mobile-item-tooltip", isMobilePanelMode());
-  hoverTooltipEl.classList.remove("hidden");
-  positionHoverTooltip(event.clientX, event.clientY);
+  showTooltipHtml(buildItemTooltipHtml(itemInput, qty), event, {
+    mobileTooltipClass: isMobilePanelMode() ? "mobile-item-tooltip" : "",
+    mobileTooltipAnchor: event && typeof event.mobileTooltipAnchor === "string" ? event.mobileTooltipAnchor : isMobilePanelMode() ? "panel" : ""
+  });
+}
+
+function showAbilityTooltip(abilityId, event, extraLines = [], mobileAnchor = "") {
+  showTooltipHtml(buildAbilityTooltipHtml(abilityId, extraLines), event, {
+    mobileTooltipClass: mobileAnchor ? "mobile-ability-tooltip" : "",
+    mobileTooltipAnchor: mobileAnchor
+  });
 }
 
 function hideHoverTooltip() {
@@ -3205,6 +3283,8 @@ function hideHoverTooltip() {
   }
   hoverTooltipEl.classList.add("hidden");
   hoverTooltipEl.classList.remove("mobile-item-tooltip");
+  hoverTooltipEl.classList.remove("mobile-ability-tooltip");
+  delete hoverTooltipEl.dataset.mobileTooltipAnchor;
   hoverTooltipEl.innerHTML = "";
 }
 
@@ -3838,7 +3918,16 @@ function updateSpellbookUI(self) {
         return;
       }
       event.preventDefault();
+      if (performance.now() < (Number(mobilePanelState.suppressAbilityTapUntil) || 0)) {
+        return;
+      }
       bindAbilityToPreferredActionSlot(abilityId);
+    });
+    bindMobileAbilitySlotPreview(node, abilityId, () => {
+      bindAbilityToPreferredActionSlot(abilityId);
+    }, {
+      anchor: "panel",
+      hintLines: [`Current Level: ${currentLevel}`, "Tap to bind to the first free action slot."]
     });
     node.addEventListener("dragstart", (event) => {
       dragState.source = "spellbook";
@@ -6236,12 +6325,27 @@ function showMobileItemTooltip(itemInput, clientX, clientY, qty = null) {
     itemInput,
     {
       clientX: Number(clientX) || 0,
-      clientY: Number(clientY) || 0
+      clientY: Number(clientY) || 0,
+      mobileTooltipAnchor: "panel"
     },
     qty
   );
   clearMobileTooltipHideTimer();
   mobilePanelState.suppressItemTapUntil = performance.now() + 900;
+}
+
+function showMobileAbilityTooltip(abilityId, anchor, clientX, clientY, extraLines = []) {
+  showAbilityTooltip(
+    abilityId,
+    {
+      clientX: Number(clientX) || 0,
+      clientY: Number(clientY) || 0
+    },
+    extraLines,
+    anchor
+  );
+  clearMobileTooltipHideTimer();
+  mobilePanelState.suppressAbilityTapUntil = performance.now() + 900;
 }
 
 function bindMobileItemSlotInteraction(node, itemInput, onTap, qty = null) {
@@ -6344,6 +6448,264 @@ function bindMobileItemSlotInteraction(node, itemInput, onTap, qty = null) {
     },
     { passive: false }
   );
+}
+
+function bindMobileAbilitySlotPreview(node, abilityId, onTap, options = {}) {
+  if (!node || !abilityId) {
+    return;
+  }
+
+  const anchor = String(options.anchor || "panel").trim().toLowerCase() || "panel";
+  const hintLines = Array.isArray(options.hintLines) ? options.hintLines : [];
+  let holdTimer = 0;
+  let holdTriggered = false;
+  let startClientX = 0;
+  let startClientY = 0;
+  let tapCanceled = false;
+
+  function clearHoldTimer() {
+    if (!holdTimer) {
+      return;
+    }
+    window.clearTimeout(holdTimer);
+    holdTimer = 0;
+  }
+
+  node.addEventListener("click", (event) => {
+    if (!isTouchJoystickEnabled()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (performance.now() < (Number(mobilePanelState.suppressAbilityTapUntil) || 0)) {
+      return;
+    }
+    if (typeof onTap === "function") {
+      onTap();
+    }
+  });
+  node.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      hideHoverTooltip();
+      holdTriggered = false;
+      tapCanceled = false;
+      startClientX = Number(touch.clientX) || 0;
+      startClientY = Number(touch.clientY) || 0;
+      clearHoldTimer();
+      holdTimer = window.setTimeout(() => {
+        holdTimer = 0;
+        holdTriggered = true;
+        showMobileAbilityTooltip(abilityId, anchor, startClientX, startClientY, hintLines);
+      }, 420);
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      if (Math.hypot((Number(touch.clientX) || 0) - startClientX, (Number(touch.clientY) || 0) - startClientY) > 14) {
+        tapCanceled = true;
+        clearHoldTimer();
+      }
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchcancel",
+    () => {
+      clearHoldTimer();
+      holdTriggered = false;
+      tapCanceled = false;
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchend",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      clearHoldTimer();
+      event.preventDefault();
+      event.stopPropagation();
+      if (holdTriggered || tapCanceled) {
+        mobilePanelState.suppressAbilityTapUntil = performance.now() + 900;
+        holdTriggered = false;
+        tapCanceled = false;
+        return;
+      }
+      hideHoverTooltip();
+      mobilePanelState.suppressAbilityTapUntil = performance.now() + 360;
+      if (typeof onTap === "function") {
+        onTap();
+      }
+    },
+    { passive: false }
+  );
+}
+
+function clearMobileActionTouchHoldTimer() {
+  if (!mobileActionTouchState.holdTimerId) {
+    return;
+  }
+  window.clearTimeout(mobileActionTouchState.holdTimerId);
+  mobileActionTouchState.holdTimerId = 0;
+}
+
+function resetMobileActionTouchState() {
+  clearMobileActionTouchHoldTimer();
+  mobileActionTouchState.active = false;
+  mobileActionTouchState.slotId = "";
+  mobileActionTouchState.touchId = null;
+  mobileActionTouchState.bindingKind = "";
+  mobileActionTouchState.bindingId = "";
+  mobileActionTouchState.aimCapable = false;
+  mobileActionTouchState.startClientX = 0;
+  mobileActionTouchState.startClientY = 0;
+  mobileActionTouchState.currentClientX = 0;
+  mobileActionTouchState.currentClientY = 0;
+  mobileActionTouchState.holdTriggered = false;
+  mobileActionTouchState.moveCanceled = false;
+}
+
+function beginMobileActionSlotTouch(slotId, touchId, clientX, clientY) {
+  if (!isTouchJoystickEnabled() || mobileAbilityAimState.active || mobileActionTouchState.active) {
+    return false;
+  }
+  const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+  if (binding.kind === "action" && binding.id === "none") {
+    return false;
+  }
+  const actionDef = binding.kind === "action" ? getActionDefById(binding.id) : null;
+  resetMobileActionTouchState();
+  hideHoverTooltip();
+  mobileActionTouchState.active = true;
+  mobileActionTouchState.slotId = String(slotId || "");
+  mobileActionTouchState.touchId = touchId;
+  mobileActionTouchState.bindingKind = binding.kind;
+  mobileActionTouchState.bindingId = String(binding.id || "");
+  mobileActionTouchState.aimCapable =
+    binding.kind === "action" && supportsMobileAbilityAim(binding.id, actionDef);
+  mobileActionTouchState.startClientX = Number(clientX) || 0;
+  mobileActionTouchState.startClientY = Number(clientY) || 0;
+  mobileActionTouchState.currentClientX = mobileActionTouchState.startClientX;
+  mobileActionTouchState.currentClientY = mobileActionTouchState.startClientY;
+  mobileActionTouchState.holdTimerId = window.setTimeout(() => {
+    mobileActionTouchState.holdTimerId = 0;
+    if (!mobileActionTouchState.active || mobileActionTouchState.touchId !== touchId) {
+      return;
+    }
+    mobileActionTouchState.holdTriggered = true;
+    if (mobileActionTouchState.bindingKind === "action") {
+      const tips = mobileActionTouchState.aimCapable
+        ? ["Drag to aim, release to cast.", "Long press to inspect."]
+        : ["Tap to use.", "Long press to inspect."];
+      showMobileAbilityTooltip(mobileActionTouchState.bindingId, "action", clientX, clientY, tips);
+    } else if (mobileActionTouchState.bindingKind === "item") {
+      showItemTooltip(
+        mobileActionTouchState.bindingId,
+        {
+          clientX: Number(clientX) || 0,
+          clientY: Number(clientY) || 0,
+          mobileTooltipAnchor: "action"
+        }
+      );
+      mobilePanelState.suppressItemTapUntil = performance.now() + 900;
+    }
+  }, 430);
+  return true;
+}
+
+function handleMobileActionSlotTouchMove(event) {
+  if (!mobileActionTouchState.active || mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileActionTouchState.touchId) {
+      continue;
+    }
+    mobileActionTouchState.currentClientX = Number(touch.clientX) || 0;
+    mobileActionTouchState.currentClientY = Number(touch.clientY) || 0;
+    const movedFarEnough =
+      Math.hypot(
+        mobileActionTouchState.currentClientX - mobileActionTouchState.startClientX,
+        mobileActionTouchState.currentClientY - mobileActionTouchState.startClientY
+      ) > 14;
+    if (!movedFarEnough) {
+      return;
+    }
+    clearMobileActionTouchHoldTimer();
+    if (mobileActionTouchState.aimCapable && !mobileActionTouchState.holdTriggered) {
+      const slotId = mobileActionTouchState.slotId;
+      const touchId = mobileActionTouchState.touchId;
+      const startX = mobileActionTouchState.startClientX;
+      const startY = mobileActionTouchState.startClientY;
+      const currentX = mobileActionTouchState.currentClientX;
+      const currentY = mobileActionTouchState.currentClientY;
+      resetMobileActionTouchState();
+      if (beginMobileAbilityAim(slotId, touchId, startX, startY)) {
+        updateMobileAbilityAim(currentX, currentY);
+        event.preventDefault();
+        return;
+      }
+    }
+    mobileActionTouchState.moveCanceled = true;
+    event.preventDefault();
+    return;
+  }
+}
+
+function handleMobileActionSlotTouchEnd(event) {
+  if (!mobileActionTouchState.active || mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileActionTouchState.touchId) {
+      continue;
+    }
+    clearMobileActionTouchHoldTimer();
+    suppressActionBarClickUntil = performance.now() + 420;
+    const slotId = mobileActionTouchState.slotId;
+    const holdTriggered = mobileActionTouchState.holdTriggered;
+    const moveCanceled = mobileActionTouchState.moveCanceled;
+    const aimCapable = mobileActionTouchState.aimCapable;
+    const startX = mobileActionTouchState.startClientX;
+    const startY = mobileActionTouchState.startClientY;
+    resetMobileActionTouchState();
+    if (holdTriggered || moveCanceled || event.type === "touchcancel") {
+      event.preventDefault();
+      return;
+    }
+    hideHoverTooltip();
+    if (aimCapable && beginMobileAbilityAim(slotId, touch.identifier, startX, startY)) {
+      commitMobileAbilityAim();
+      event.preventDefault();
+      return;
+    }
+    resumeSpatialAudioContext();
+    executeBoundAction(slotId);
+    event.preventDefault();
+    return;
+  }
 }
 
 function setDesktopInventoryVisible(visible) {
@@ -6744,7 +7106,7 @@ function ensureActionBarInitialized() {
           return;
         }
         resumeSpatialAudioContext();
-        if (!beginMobileAbilityAim(slotId, touch.identifier, touch.clientX, touch.clientY)) {
+        if (!beginMobileActionSlotTouch(slotId, touch.identifier, touch.clientX, touch.clientY)) {
           return;
         }
         event.preventDefault();
@@ -7425,6 +7787,9 @@ function ensureActionBarTouchListenersBound() {
     return;
   }
   actionBarTouchListenersBound = true;
+  window.addEventListener("touchmove", handleMobileActionSlotTouchMove, { passive: false });
+  window.addEventListener("touchend", handleMobileActionSlotTouchEnd, { passive: false });
+  window.addEventListener("touchcancel", handleMobileActionSlotTouchEnd, { passive: false });
   window.addEventListener("touchmove", handleMobileAbilityAimTouchMove, { passive: false });
   window.addEventListener("touchend", handleMobileAbilityAimTouchEnd, { passive: false });
   window.addEventListener("touchcancel", handleMobileAbilityAimTouchEnd, { passive: false });
