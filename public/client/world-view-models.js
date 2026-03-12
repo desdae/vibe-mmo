@@ -27,8 +27,24 @@
         mob,
         attackState: typeof deps.getActiveMobAttackState === "function" ? deps.getActiveMobAttackState(mob.id) : null,
         attackVisual: typeof deps.getMobAttackVisualType === "function" ? deps.getMobAttackVisualType(mob) : "none",
-        isHumanoid: typeof deps.isHumanoidMob === "function" ? deps.isHumanoidMob(mob) : false
+        isHumanoid: typeof deps.isHumanoidMob === "function" ? deps.isHumanoidMob(mob) : false,
+        castVisual: typeof deps.getMobCastVisualState === "function" ? deps.getMobCastVisualState(mob, frameNow) : null,
+        statusVisual: typeof deps.getMobStatusVisualState === "function" ? deps.getMobStatusVisualState(mob, frameNow) : null
       }));
+
+      const playerViews = players.map((player) => ({
+        player,
+        isSelf: false,
+        castVisual: typeof deps.getPlayerCastVisualState === "function" ? deps.getPlayerCastVisualState(player, false, frameNow) : null,
+        statusVisual: typeof deps.getPlayerStatusVisualState === "function" ? deps.getPlayerStatusVisualState(player, false, frameNow) : null
+      }));
+
+      const selfView = {
+        player: self,
+        isSelf: true,
+        castVisual: typeof deps.getPlayerCastVisualState === "function" ? deps.getPlayerCastVisualState(self, true, frameNow) : null,
+        statusVisual: typeof deps.getPlayerStatusVisualState === "function" ? deps.getPlayerStatusVisualState(self, true, frameNow) : null
+      };
 
       return {
         frameNow,
@@ -38,10 +54,11 @@
         latestSelf: gameState.self || self,
         projectileViews: projectiles.map((projectile) => ({ projectile })),
         mobViews,
-        playerViews: players.map((player) => ({ player, isSelf: false })),
-        selfView: { player: self, isSelf: true },
+        playerViews,
+        selfView,
         lootBagViews: lootBags.map((bag) => ({ bag })),
         areaEffects: Array.isArray(getAreaEffects()) ? getAreaEffects() : [],
+        floatingDamageViews: typeof deps.getFloatingDamageViews === "function" ? deps.getFloatingDamageViews(frameNow) : [],
         townVendor: getTownVendor(),
         hoveredMob: typeof deps.getHoveredMob === "function" ? deps.getHoveredMob(mobs, cameraX, cameraY) : null,
         hoveredBag: typeof deps.getHoveredLootBag === "function" ? deps.getHoveredLootBag(lootBags, cameraX, cameraY) : null,

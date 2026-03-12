@@ -60,6 +60,7 @@
     let vendorLayer = null;
     let areaOverlayLayer = null;
     let areaOverlaySpriteLayer = null;
+    let floatingDamageLayer = null;
     let tooltipLayer = null;
     let backgroundGraphics = null;
     let gridSprite = null;
@@ -78,6 +79,8 @@
     let projectileFallbackNodes = new Map();
     let vendorNode = null;
     let pixiParticleSystem = null;
+    const floatingDamageTextPool = [];
+    const activeFloatingDamageTexts = [];
     const canvasTextureCache = new WeakMap();
     const humanoidCanvasCache = new Map();
     const areaEffectCanvasCache = new Map();
@@ -459,6 +462,7 @@
         scale: true,
         uvs: true
       });
+      floatingDamageLayer = new PIXI.Container();
       tooltipLayer = new PIXI.Container();
 
       backgroundGraphics = new PIXI.Graphics();
@@ -495,6 +499,7 @@
         projectileSpriteLayer,
         projectileFallbackLayer,
         areaOverlayLayer,
+        floatingDamageLayer,
         tooltipLayer
       );
       pixiParticleSystem = createPixiParticleSystem
@@ -579,14 +584,17 @@
       sprite.visible = false;
       const hpBack = new PIXI.Graphics();
       const hpFill = new PIXI.Graphics();
+      const castBack = new PIXI.Graphics();
+      const castFill = new PIXI.Graphics();
+      const effectGraphics = new PIXI.Graphics();
       const nameText = new PIXI.Text("", {
         fontFamily: "Segoe UI",
         fontSize: 12,
         fill: 0xf5f7fa
       });
       nameText.anchor.set(0.5, 1);
-      container.addChild(graphics, sprite, hpBack, hpFill, nameText);
-      return { container, graphics, sprite, hpBack, hpFill, nameText };
+      container.addChild(graphics, sprite, effectGraphics, hpBack, hpFill, castBack, castFill, nameText);
+      return { container, graphics, sprite, hpBack, hpFill, castBack, castFill, effectGraphics, nameText };
     }
 
     function createSpriteNode() {
@@ -1501,7 +1509,68 @@
       }
     }
 
-    function updateLabeledSpriteNode(node, x, y, label, hp, maxHp, spriteFrame, drawFallback) {
+    function drawStatusEffectGraphics(graphics, x, y, statusVisual, frameNow, isPlayer) {
+      graphics.clear();
+      if (!statusVisual) {
+        return;
+      }
+      const pulse = 0.6 + Math.sin(frameNow * 0.016 + (Number(statusVisual.phaseSeed) || 0)) * 0.4;
+      if (statusVisual.slowActive) {
+        const strength = clamp(1 - (Number(statusVisual.slowMultiplier) || 1), 0, 1);
+        const alpha = clamp(0.16 + strength * 0.28, 0.12, 0.42) * (0.75 + pulse * 0.25);
+        const radius = (isPlayer ? 14 : 16.5) + strength * (isPlayer ? 3 : 3.5);
+        graphics.beginFill(0x72c2ff, alpha * 0.42);
+        graphics.drawCircle(x, y, radius);
+        graphics.endFill();
+        graphics.lineStyle(1.2, 0x9addff, clamp(0.2 + strength * 0.25, 0.18, 0.45));
+        for (let i = 0; i < 3; i += 1) {
+          const a0 = frameNow * 0.005 + i * ((Math.PI * 2) / 3);
+          graphics.arc(x, y, 8 + i * 3.4, a0, a0 + Math.PI * 0.65);
+        }
+      }
+      if (statusVisual.burnActive) {
+        const burnPulse = 0.58 + Math.sin(frameNow * 0.019 + (Number(statusVisual.phaseSeed) || 0)) * 0.42;
+        const alpha = 0.26 + burnPulse * 0.2;
+        const radius = (isPlayer ? 12 : 14) + burnPulse * (isPlayer ? 2.2 : 2.5);
+        graphics.beginFill(0xff9945, alpha * 0.38);
+        graphics.drawCircle(x, y + 1, radius);
+        graphics.endFill();
+        graphics.lineStyle(1.1, 0xffbe62, 0.55);
+        for (let i = 0; i < 5; i += 1) {
+          const a = frameNow * 0.006 + i * ((Math.PI * 2) / 5) + (Number(statusVisual.phaseSeed) || 0) * 0.3;
+          const up = 9 + (i % 2) * 3;
+          const fx = x + Math.cos(a) * (5 + i * 0.7);
+          const fy = y - 2 - Math.sin(a * 1.3) * 2.4;
+          graphics.moveTo(fx, fy + 4);
+          graphics.quadraticCurveTo(fx + 1.6, fy - up * 0.3, fx, fy - up);
+          graphics.quadraticCurveTo(fx - 1.4, fy - up * 0.35, fx, fy + 4);
+        }
+      }
+      if (statusVisual.stunActive) {
+        const centerY = y - (isPlayer ? 18 : 22);
+        const t = frameNow * 0.0065;
+        graphics.lineStyle(isPlayer ? 1.4 : 1.6, 0xf3fcff, 0.92);
+        for (let i = 0; i < 3; i += 1) {
+          const a = t + i * ((Math.PI * 2) / 3);
+          const baseX = x + Math.cos(a) * (isPlayer ? 7 : 8);
+          const baseY = centerY + Math.sin(a) * (isPlayer ? 3.2 : 3.5);
+          for (let s = 0; s <= 20; s += 1) {
+            const u = s / 20;
+            const ang = a + u * Math.PI * 2.2;
+            const r = (isPlayer ? 2.2 : 2.6) * (1 - u);
+            const px = baseX + Math.cos(ang) * r;
+            const py = baseY + Math.sin(ang) * r;
+            if (s === 0) {
+              graphics.moveTo(px, py);
+            } else {
+              graphics.lineTo(px, py);
+            }
+          }
+        }
+      }
+    }
+
+    function updateLabeledSpriteNode(node, x, y, label, hp, maxHp, spriteFrame, drawFallback, overlayOptions = null) {
       node.container.position.set(x, y);
       if (spriteFrame && spriteFrame.canvas) {
         const texture = getTextureFromCanvas(spriteFrame.canvas);
@@ -1523,15 +1592,94 @@
       node.nameText.position.set(0, -18);
       node.hpBack.clear();
       node.hpFill.clear();
+      node.castBack.clear();
+      node.castFill.clear();
+      drawStatusEffectGraphics(node.effectGraphics, 0, 0, overlayOptions && overlayOptions.statusVisual, Number(overlayOptions && overlayOptions.frameNow) || 0, !!(overlayOptions && overlayOptions.isPlayer));
       const currentHp = Number(hp) || 0;
       const totalHp = Math.max(1, Number(maxHp) || 1);
-      if (currentHp < totalHp) {
+      if (overlayOptions && overlayOptions.showHpBar && currentHp < totalHp) {
         node.hpBack.beginFill(0x09111a, 0.84);
         node.hpBack.drawRoundedRect(-11, -30, 22, 4, 2);
         node.hpBack.endFill();
         node.hpFill.beginFill(0x64d37a, 1);
         node.hpFill.drawRoundedRect(-11, -30, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
         node.hpFill.endFill();
+      }
+      const castVisual = overlayOptions && overlayOptions.castVisual;
+      if (castVisual && Number(castVisual.ratio) > 0) {
+        const width = overlayOptions && overlayOptions.isPlayer ? 34 : 30;
+        const height = overlayOptions && overlayOptions.isPlayer ? 5 : 4;
+        const x0 = -width / 2;
+        const y0 = overlayOptions && overlayOptions.isPlayer ? 20 : 17;
+        const fillWidth = Math.round(width * clamp(Number(castVisual.ratio) || 0, 0, 1));
+        node.castBack.beginFill(0x040a12, 0.9);
+        node.castBack.drawRect(x0, y0, width, height);
+        node.castBack.endFill();
+        node.castBack.lineStyle(1, 0xb5e4ff, overlayOptions && overlayOptions.isPlayer ? 0.7 : 0.76);
+        node.castBack.drawRect(x0 - 0.5, y0 - 0.5, width + 1, height + 1);
+        node.castFill.beginFill(overlayOptions && overlayOptions.isPlayer ? 0x3fadff : 0x75ccff, 0.95);
+        node.castFill.drawRect(x0, y0, fillWidth, height);
+        node.castFill.endFill();
+      }
+    }
+
+    function getFloatingDamageTextNode(pool, parentContainer) {
+      const node = Array.isArray(pool) && pool.length ? pool.pop() : new PIXI.Text("", {
+        fontFamily: "Segoe UI",
+        fontSize: 15,
+        fontWeight: "700",
+        fill: 0xffd36b,
+        stroke: 0x0e121b,
+        strokeThickness: 3
+      });
+      node.anchor.set(0.5, 0.5);
+      node.visible = true;
+      if (node.parent !== parentContainer) {
+        if (node.parent) {
+          node.parent.removeChild(node);
+        }
+        parentContainer.addChild(node);
+      }
+      return node;
+    }
+
+    function releaseFloatingDamageTextNode(pool, node) {
+      if (!node) {
+        return;
+      }
+      if (node.parent) {
+        node.parent.removeChild(node);
+      }
+      node.visible = false;
+      pool.push(node);
+    }
+
+    function syncFloatingDamageTexts(frameViewModel, cameraX, cameraY, width, height) {
+      while (activeFloatingDamageTexts.length) {
+        releaseFloatingDamageTextNode(floatingDamageTextPool, activeFloatingDamageTexts.pop());
+      }
+      const entries = Array.isArray(frameViewModel.floatingDamageViews) ? frameViewModel.floatingDamageViews : [];
+      for (const entry of entries) {
+        const progress = clamp(Number(entry.progress) || 0, 0, 1);
+        const rise = 0.9 * progress + (Number(entry.riseOffset) || 0);
+        const wobble = Math.sin(((Number(entry.id) || 0) % 7) + progress * Math.PI * 2) * 0.08;
+        const screen = worldToScreen(
+          Number(entry.x) + 0.5 + (Number(entry.jitterX) || 0) + wobble,
+          Number(entry.y) + 0.35 - rise,
+          cameraX,
+          cameraY,
+          width,
+          height
+        );
+        const node = getFloatingDamageTextNode(floatingDamageTextPool, floatingDamageLayer);
+        node.position.set(screen.x, screen.y);
+        node.text = `-${Math.max(0, Math.round(Number(entry.amount) || 0))}`;
+        node.alpha = 1 - progress;
+        const fillColor = entry.targetType === "player" ? 0xff7a7a : 0xffd36b;
+        if (node.style) {
+          node.style.fill = fillColor;
+        }
+        activeFloatingDamageTexts.push(node);
       }
     }
 
@@ -1857,7 +2005,14 @@
             entry.mob.hp,
             entry.mob.maxHp,
             spriteFrame || getGenericMobSpriteFrame(entry.mob),
-            (graphics) => drawMobGraphic(graphics, entry.mob)
+            (graphics) => drawMobGraphic(graphics, entry.mob),
+            {
+              showHpBar: true,
+              castVisual: entry.castVisual,
+              statusVisual: entry.statusVisual,
+              frameNow,
+              isPlayer: false
+            }
           );
         },
         mobLayer
@@ -1879,7 +2034,14 @@
             entry.player.hp,
             entry.player.maxHp,
             spriteFrame || getGenericPlayerSpriteFrame(entry.player, !!entry.isSelf),
-            (graphics) => drawPlayerGraphic(graphics, entry.player, !!entry.isSelf)
+            (graphics) => drawPlayerGraphic(graphics, entry.player, !!entry.isSelf),
+            {
+              showHpBar: true,
+              castVisual: entry.castVisual,
+              statusVisual: entry.statusVisual,
+              frameNow,
+              isPlayer: true
+            }
           );
         },
         playerLayer
@@ -1929,6 +2091,8 @@
         }
       }
 
+      syncFloatingDamageTexts(frameViewModel, cameraX, cameraY, width, height);
+
       updateTooltip(frameViewModel);
       const particleStats =
         pixiParticleSystem && typeof pixiParticleSystem.getDebugStats === "function"
@@ -1948,12 +2112,14 @@
           lootNodes.size +
           areaUnderlayNodes.size +
           areaOverlayNodes.size +
+          activeFloatingDamageTexts.length +
           (vendorNode ? 1 : 0),
         pooledSprites:
           spritePools.loot.length +
           spritePools.projectile.length +
           spritePools.areaUnderlay.length +
           spritePools.areaOverlay.length +
+          floatingDamageTextPool.length +
           Number(particleStats.pooledSpriteCount || 0),
         particleEmitters: Number(particleStats.emitterCount || 0),
         particleSprites: Number(particleStats.particleCount || 0),

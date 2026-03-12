@@ -8202,6 +8202,153 @@ function drawFloatingDamageNumbers(cameraX, cameraY) {
   }
 }
 
+function getPlayerCastVisualState(player, isSelf, frameNow) {
+  const castState = isSelf ? abilityChannel : remotePlayerCasts.get(player.id);
+  const cast = getCastProgress(castState, frameNow);
+  if (!cast) {
+    if (!isSelf && castState && castState.active) {
+      remotePlayerCasts.delete(player.id);
+    }
+    return null;
+  }
+  return {
+    ratio: clamp(Number(cast.ratio) || 0, 0, 1)
+  };
+}
+
+function getPlayerStatusVisualState(player, isSelf, frameNow) {
+  const stunState = isSelf ? selfNegativeEffects.stun : remotePlayerStuns.get(player.id);
+  const slowState = isSelf ? selfNegativeEffects.slow : remotePlayerSlows.get(player.id);
+  const burnState = isSelf ? selfNegativeEffects.burn : remotePlayerBurns.get(player.id);
+  const status = {
+    phaseSeed: Number(player && player.id) || 0,
+    stunActive: false,
+    slowActive: false,
+    burnActive: false,
+    slowMultiplier: 1
+  };
+
+  if (stunState) {
+    if ((Number(stunState.endsAt) || 0) > frameNow) {
+      status.stunActive = true;
+    } else if (!isSelf) {
+      remotePlayerStuns.delete(player.id);
+    } else {
+      selfNegativeEffects.stun = null;
+    }
+  }
+
+  if (slowState) {
+    if ((Number(slowState.endsAt) || 0) > frameNow) {
+      status.slowActive = true;
+      status.slowMultiplier = isSelf
+        ? clamp((Number(slowState.multiplierQ) || 1000) / 1000, 0.1, 1)
+        : clamp(Number(slowState.multiplier) || 1, 0.1, 1);
+    } else if (!isSelf) {
+      remotePlayerSlows.delete(player.id);
+    } else {
+      selfNegativeEffects.slow = null;
+    }
+  }
+
+  if (burnState) {
+    if ((Number(burnState.endsAt) || 0) > frameNow) {
+      status.burnActive = true;
+    } else if (!isSelf) {
+      remotePlayerBurns.delete(player.id);
+    } else {
+      selfNegativeEffects.burn = null;
+    }
+  }
+
+  return status.stunActive || status.slowActive || status.burnActive ? status : null;
+}
+
+function getMobCastVisualState(mob, frameNow) {
+  const castState = remoteMobCasts.get(mob.id);
+  const cast = getCastProgress(castState, frameNow);
+  if (!cast) {
+    if (castState && castState.active) {
+      remoteMobCasts.delete(mob.id);
+    }
+    return null;
+  }
+  return {
+    ratio: clamp(Number(cast.ratio) || 0, 0, 1)
+  };
+}
+
+function getMobStatusVisualState(mob, frameNow) {
+  const status = {
+    phaseSeed: Number(mob && mob.id) || 0,
+    stunActive: false,
+    slowActive: false,
+    burnActive: false,
+    slowMultiplier: 1
+  };
+
+  const stunState = remoteMobStuns.get(mob.id);
+  if (stunState) {
+    if ((Number(stunState.endsAt) || 0) > frameNow) {
+      status.stunActive = true;
+    } else {
+      remoteMobStuns.delete(mob.id);
+    }
+  }
+
+  const slowState = remoteMobSlows.get(mob.id);
+  if (slowState) {
+    if ((Number(slowState.endsAt) || 0) > frameNow) {
+      status.slowActive = true;
+      status.slowMultiplier = clamp(Number(slowState.multiplier) || 1, 0.1, 1);
+    } else {
+      remoteMobSlows.delete(mob.id);
+    }
+  }
+
+  const burnState = remoteMobBurns.get(mob.id);
+  if (burnState) {
+    if ((Number(burnState.endsAt) || 0) > frameNow) {
+      status.burnActive = true;
+    } else {
+      remoteMobBurns.delete(mob.id);
+    }
+  }
+
+  return status.stunActive || status.slowActive || status.burnActive ? status : null;
+}
+
+function getFloatingDamageViews(frameNow) {
+  if (!floatingDamageNumbers.length) {
+    return [];
+  }
+  const active = [];
+  const views = [];
+  for (const entry of floatingDamageNumbers) {
+    const age = frameNow - entry.createdAt;
+    if (age >= entry.durationMs) {
+      continue;
+    }
+    active.push(entry);
+    const progress = clamp(age / entry.durationMs, 0, 1);
+    views.push({
+      id: Number(entry.id) || 0,
+      x: Number(entry.x) || 0,
+      y: Number(entry.y) || 0,
+      amount: Math.max(0, Math.round(Number(entry.amount) || 0)),
+      targetType: entry.targetType === "player" ? "player" : "mob",
+      progress,
+      jitterX: Number(entry.jitterX) || 0,
+      riseOffset: Number(entry.riseOffset) || 0
+    });
+  }
+  floatingDamageNumbers.length = 0;
+  for (const entry of active) {
+    floatingDamageNumbers.push(entry);
+  }
+  return views;
+}
+
 function drawExplosionEffects(cameraX, cameraY) {
   if (!activeExplosions.length) {
     return;
@@ -12052,6 +12199,11 @@ const worldViewModelTools = sharedCreateWorldViewModelTools
       getActiveMobAttackState,
       getMobAttackVisualType,
       isHumanoidMob,
+      getPlayerCastVisualState,
+      getPlayerStatusVisualState,
+      getMobCastVisualState,
+      getMobStatusVisualState,
+      getFloatingDamageViews,
       getHoveredMob,
       getHoveredLootBag,
       getHoveredVendor
