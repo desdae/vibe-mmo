@@ -6565,7 +6565,7 @@ function updateVendorPanelUI() {
   vendorSubtitle.textContent = isTouchJoystickEnabled()
     ? (canInteractWithVendor()
         ? "Tap gear to sell it for copper. Long press to inspect."
-        : "Tap Sell to approach the quartermaster, then tap gear to sell.")
+        : "Move closer to the quartermaster to sell gear.")
     : (canInteractWithVendor()
         ? "Right-click gear to sell it for copper."
         : "Right-click the vendor in town to open this panel. Move closer to sell.");
@@ -6646,8 +6646,8 @@ function handleMobileVendorButtonPress() {
     setStatus("Quartermaster opened.");
     return true;
   }
-  setStatus("Moving to Quartermaster...");
-  return startAutoVendorInteraction(vendor);
+  setStatus("Move closer to the quartermaster.");
+  return false;
 }
 
 function getHoveredVendor(cameraX, cameraY) {
@@ -7447,21 +7447,20 @@ function updateMobileUtilityBar(self = null) {
   const hasVendor = !!vendor;
   const sellableCount = countSellableInventoryItems();
   const canSellNow = hasVendor && canInteractWithVendor(self);
+  const showVendorButton = vendorInteractionState.panelOpen || canSellNow;
   mobileLootButton.classList.toggle("hidden", lootCount <= 0);
   mobileLootButton.textContent = lootCount > 1 ? `Loot x${lootCount}` : "Loot";
   mobileActionEditButton.classList.toggle("active", mobileActionBarEditState.active);
   mobileActionEditButton.textContent = mobileActionBarEditState.active ? "Done" : "Edit";
-  mobileVendorButton.classList.toggle("hidden", !hasVendor);
+  mobileVendorButton.classList.toggle("hidden", !showVendorButton);
   mobileVendorButton.classList.toggle("active", vendorInteractionState.panelOpen);
   mobileVendorButton.classList.toggle(
     "attention",
-    hasVendor && sellableCount > 0 && !vendorInteractionState.panelOpen && canSellNow
+    showVendorButton && sellableCount > 0 && !vendorInteractionState.panelOpen
   );
   mobileVendorButton.textContent = vendorInteractionState.panelOpen
     ? "Close Sell"
-    : canSellNow
-      ? (sellableCount > 0 ? `Sell ${sellableCount}` : "Sell")
-      : "Quartermaster";
+    : (sellableCount > 0 ? `Sell ${sellableCount}` : "Sell");
   mobileSkillsButton.classList.toggle("active", mobilePanelState.open && mobilePanelState.activeTab === "spellbook");
   mobileSkillsButton.classList.toggle("attention", skillPoints > 0 && !(mobilePanelState.open && mobilePanelState.activeTab === "spellbook"));
   mobileSkillsButton.textContent = skillPoints > 0 ? `Skills ${skillPoints}` : "Skills";
@@ -14482,7 +14481,7 @@ function drawVendorNpc(cameraX, cameraY, frameNow) {
 function drawVendorTooltip(vendor, p) {
   const title = String(vendor && vendor.name ? vendor.name : "Quartermaster");
   const subtitle = isTouchJoystickEnabled()
-    ? (canInteractWithVendor() ? "Tap Sell to open vendor" : "Tap Quartermaster to approach")
+    ? (canInteractWithVendor() ? "Tap Sell to open vendor" : "Move closer to interact")
     : (canInteractWithVendor() ? "Right-click to sell gear" : "Right-click to approach");
   ctx.font = "12px sans-serif";
   const width = Math.max(ctx.measureText(title).width, ctx.measureText(subtitle).width) + 18;
