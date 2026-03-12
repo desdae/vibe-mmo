@@ -1,15 +1,33 @@
+function normalizeAngle(angle) {
+  const tau = Math.PI * 2;
+  let normalized = Number(angle) || 0;
+  while (normalized <= -Math.PI) {
+    normalized += tau;
+  }
+  while (normalized > Math.PI) {
+    normalized -= tau;
+  }
+  return normalized;
+}
+
+function getShortestAngleDelta(fromAngle, toAngle) {
+  return normalizeAngle((Number(toAngle) || 0) - (Number(fromAngle) || 0));
+}
+
+function getCircularMidpointAngle(angleA, angleB) {
+  return normalizeAngle((Number(angleA) || 0) + getShortestAngleDelta(angleA, angleB) * 0.5);
+}
+
 function executeMeleeConeAbility({ player, abilityDef, abilityLevel, targetDx, targetDy, now, ctx }) {
-  const attackDir =
+  const requestedDir =
     ctx.normalizeDirection(targetDx, targetDy) ||
     ctx.normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
-  if (!attackDir) {
+  if (!requestedDir) {
     return false;
   }
-
-  let closestMob = null;
-  let closestDistance = Infinity;
   const range = Math.max(0.2, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 1.5);
   const coneCos = ctx.clamp(Number(abilityDef.coneCos) || 0, -1, 1);
+  const candidateMobs = [];
 
   for (const mob of ctx.mobs.values()) {
     if (!mob.alive) {
@@ -27,32 +45,111 @@ function executeMeleeConeAbility({ player, abilityDef, abilityLevel, targetDx, t
     if (!dirToMob) {
       continue;
     }
-    const dot = attackDir.dx * dirToMob.dx + attackDir.dy * dirToMob.dy;
-    if (dot < coneCos) {
+
+    candidateMobs.push({
+      mob,
+      distance: mobDist,
+      dir: dirToMob,
+      angle: Math.atan2(dirToMob.dy, dirToMob.dx)
+    });
+  }
+
+  if (!candidateMobs.length) {
+    ctx.markAbilityUsed(player, abilityDef, now);
+    player.lastDirection = requestedDir;
+    player.lastSwingDirection = requestedDir;
+    player.swingCounter = (player.swingCounter + 1) & 0xff;
+    return true;
+  }
+
+  const candidateAngles = [];
+  if (requestedDir) {
+    candidateAngles.push(Math.atan2(requestedDir.dy, requestedDir.dx));
+  }
+  for (const candidate of candidateMobs) {
+    candidateAngles.push(candidate.angle);
+  }
+  for (let i = 0; i < candidateMobs.length; i += 1) {
+    for (let j = i + 1; j < candidateMobs.length; j += 1) {
+      candidateAngles.push(getCircularMidpointAngle(candidateMobs[i].angle, candidateMobs[j].angle));
+    }
+  }
+
+  let bestAttackDir = requestedDir || candidateMobs[0].dir;
+  let bestHits = [];
+  let bestCount = -1;
+  let bestNearestDistance = Infinity;
+  let bestAlignment = -Infinity;
+  let bestTotalDot = -Infinity;
+
+  for (const angle of candidateAngles) {
+    const candidateDir = {
+      dx: Math.cos(angle),
+      dy: Math.sin(angle)
+    };
+    const hits = [];
+    let nearestDistance = Infinity;
+    let totalDot = 0;
+
+    for (const candidate of candidateMobs) {
+      const dot = candidateDir.dx * candidate.dir.dx + candidateDir.dy * candidate.dir.dy;
+      if (dot < coneCos) {
+        continue;
+      }
+      hits.push(candidate);
+      totalDot += dot;
+      if (candidate.distance < nearestDistance) {
+        nearestDistance = candidate.distance;
+      }
+    }
+
+    if (!hits.length) {
       continue;
     }
 
-    if (mobDist < closestDistance) {
-      closestDistance = mobDist;
-      closestMob = mob;
+    const hitCount = hits.length;
+    const alignment = requestedDir
+      ? candidateDir.dx * requestedDir.dx + candidateDir.dy * requestedDir.dy
+      : 0;
+    const isBetter =
+      hitCount > bestCount ||
+      (hitCount === bestCount && nearestDistance < bestNearestDistance - 1e-6) ||
+      (hitCount === bestCount &&
+        Math.abs(nearestDistance - bestNearestDistance) <= 1e-6 &&
+        alignment > bestAlignment + 1e-6) ||
+      (hitCount === bestCount &&
+        Math.abs(nearestDistance - bestNearestDistance) <= 1e-6 &&
+        Math.abs(alignment - bestAlignment) <= 1e-6 &&
+        totalDot > bestTotalDot + 1e-6);
+    if (!isBetter) {
+      continue;
     }
+
+    bestAttackDir = candidateDir;
+    bestHits = hits;
+    bestCount = hitCount;
+    bestNearestDistance = nearestDistance;
+    bestAlignment = alignment;
+    bestTotalDot = totalDot;
+  }
+
+  if (!bestHits.length || !bestAttackDir) {
+    return false;
   }
 
   ctx.markAbilityUsed(player, abilityDef, now);
-  player.lastDirection = attackDir;
-  player.lastSwingDirection = attackDir;
+  player.lastDirection = bestAttackDir;
+  player.lastSwingDirection = bestAttackDir;
   player.swingCounter = (player.swingCounter + 1) & 0xff;
-
-  if (!closestMob) {
-    return false;
-  }
 
   const [damageMin, damageMax] =
     typeof ctx.getAbilityDamageRangeForEntity === "function"
       ? ctx.getAbilityDamageRangeForEntity(player, abilityDef, abilityLevel)
       : ctx.getAbilityDamageRange(abilityDef, abilityLevel);
-  const dealt = ctx.applyDamageToMob(closestMob, ctx.randomInt(damageMin, damageMax), player.id);
-  ctx.applyAbilityHitEffectsToMob(closestMob, player.id, abilityDef, abilityLevel, dealt, now);
+  for (const hit of bestHits) {
+    const dealt = ctx.applyDamageToMob(hit.mob, ctx.randomInt(damageMin, damageMax), player.id);
+    ctx.applyAbilityHitEffectsToMob(hit.mob, player.id, abilityDef, abilityLevel, dealt, now);
+  }
   return true;
 }
 

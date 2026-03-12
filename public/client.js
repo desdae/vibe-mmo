@@ -2348,6 +2348,7 @@ const abilityRuntimeTools = sharedCreateAbilityRuntimeTools
       sendCastTargetUpdate,
       getAbilityEffectiveCooldownMsForSelf,
       getAbilityEffectiveRangeForSelf,
+      resolveAbilityUseTarget,
       mouseState,
       screenToWorld,
       playAbilityAudioEvent,
@@ -6569,13 +6570,16 @@ function supportsMobileAbilityAim(actionId, actionDef) {
   if (!resolvedActionId || resolvedActionId === "none") {
     return false;
   }
+  if (kind === "meleecone") {
+    return false;
+  }
   if (kind === "selfbuff") {
     return false;
   }
   if (kind === "area" && range <= 0.001) {
     return false;
   }
-  return range > 0.001 || kind === "meleecone";
+  return range > 0.001;
 }
 
 function getMobileAimFallbackDistance(actionId, actionDef, range) {
@@ -8815,12 +8819,160 @@ function clearAutoMoveTarget() {
   playerControlTools.clearAutoMoveTarget();
 }
 
+function normalizeAimAngle(angle) {
+  const tau = Math.PI * 2;
+  let normalized = Number(angle) || 0;
+  while (normalized <= -Math.PI) {
+    normalized += tau;
+  }
+  while (normalized > Math.PI) {
+    normalized -= tau;
+  }
+  return normalized;
+}
+
+function getShortestAimAngleDelta(fromAngle, toAngle) {
+  return normalizeAimAngle((Number(toAngle) || 0) - (Number(fromAngle) || 0));
+}
+
+function getAimAngleMidpoint(angleA, angleB) {
+  return normalizeAimAngle((Number(angleA) || 0) + getShortestAimAngleDelta(angleA, angleB) * 0.5);
+}
+
+function resolveAbilityUseTarget(abilityId, worldX, worldY) {
+  const self = (lastRenderState && lastRenderState.self) || gameState.self;
+  const targetX = Number(worldX);
+  const targetY = Number(worldY);
+  if (!self) {
+    return Number.isFinite(targetX) && Number.isFinite(targetY) ? { x: targetX, y: targetY } : null;
+  }
+
+  const abilityDef = getActionDefById(abilityId);
+  if (String(abilityDef && abilityDef.kind || "").trim().toLowerCase() !== "meleecone") {
+    return Number.isFinite(targetX) && Number.isFinite(targetY)
+      ? { x: targetX, y: targetY }
+      : { x: Number(self.x) || 0, y: Number(self.y) || 0 };
+  }
+
+  const requestedDir =
+    normalizeDirection(targetX - Number(self.x), targetY - Number(self.y)) ||
+    normalizeDirection(self && self.lastDirection && self.lastDirection.dx, self && self.lastDirection && self.lastDirection.dy);
+  const range = Math.max(
+    0.2,
+    Number(getAbilityEffectiveRangeForSelf(abilityId, self)) || Number(abilityDef && abilityDef.range) || 1.5
+  );
+  if (!requestedDir) {
+    return { x: Number(self.x) || 0, y: Number(self.y) || 0 };
+  }
+
+  const candidateMobs = [];
+  for (const mob of Array.isArray(gameState.mobs) ? gameState.mobs : []) {
+    if (!mob || Number(mob.hp) <= 0) {
+      continue;
+    }
+    const dx = Number(mob.x) - Number(self.x);
+    const dy = Number(mob.y) - Number(self.y);
+    const distance = Math.hypot(dx, dy);
+    if (!Number.isFinite(distance) || distance <= 0.0001 || distance > range) {
+      continue;
+    }
+    const dir = normalizeDirection(dx, dy);
+    if (!dir) {
+      continue;
+    }
+    candidateMobs.push({
+      distance,
+      dir,
+      angle: Math.atan2(dir.dy, dir.dx)
+    });
+  }
+
+  if (!candidateMobs.length) {
+    return {
+      x: Number(self.x) + requestedDir.dx * range,
+      y: Number(self.y) + requestedDir.dy * range
+    };
+  }
+
+  const requestedAngle = Math.atan2(requestedDir.dy, requestedDir.dx);
+  const candidateAngles = [requestedAngle];
+  for (const candidate of candidateMobs) {
+    candidateAngles.push(candidate.angle);
+  }
+  for (let i = 0; i < candidateMobs.length; i += 1) {
+    for (let j = i + 1; j < candidateMobs.length; j += 1) {
+      candidateAngles.push(getAimAngleMidpoint(candidateMobs[i].angle, candidateMobs[j].angle));
+    }
+  }
+
+  const coneAngleDeg = Math.max(1, Number(abilityDef && abilityDef.coneAngleDeg) || 120);
+  const coneCos = Math.cos((coneAngleDeg * Math.PI) / 360);
+  let bestDir = requestedDir;
+  let bestHitCount = -1;
+  let bestNearestDistance = Infinity;
+  let bestAlignment = -Infinity;
+  let bestTotalDot = -Infinity;
+
+  for (const angle of candidateAngles) {
+    const dir = {
+      dx: Math.cos(angle),
+      dy: Math.sin(angle)
+    };
+    let hitCount = 0;
+    let nearestDistance = Infinity;
+    let totalDot = 0;
+
+    for (const candidate of candidateMobs) {
+      const dot = dir.dx * candidate.dir.dx + dir.dy * candidate.dir.dy;
+      if (dot < coneCos) {
+        continue;
+      }
+      hitCount += 1;
+      totalDot += dot;
+      if (candidate.distance < nearestDistance) {
+        nearestDistance = candidate.distance;
+      }
+    }
+
+    if (hitCount <= 0) {
+      continue;
+    }
+
+    const alignment = dir.dx * requestedDir.dx + dir.dy * requestedDir.dy;
+    const isBetter =
+      hitCount > bestHitCount ||
+      (hitCount === bestHitCount && nearestDistance < bestNearestDistance - 1e-6) ||
+      (hitCount === bestHitCount &&
+        Math.abs(nearestDistance - bestNearestDistance) <= 1e-6 &&
+        alignment > bestAlignment + 1e-6) ||
+      (hitCount === bestHitCount &&
+        Math.abs(nearestDistance - bestNearestDistance) <= 1e-6 &&
+        Math.abs(alignment - bestAlignment) <= 1e-6 &&
+        totalDot > bestTotalDot + 1e-6);
+    if (!isBetter) {
+      continue;
+    }
+
+    bestDir = dir;
+    bestHitCount = hitCount;
+    bestNearestDistance = nearestDistance;
+    bestAlignment = alignment;
+    bestTotalDot = totalDot;
+  }
+
+  return {
+    x: Number(self.x) + bestDir.dx * range,
+    y: Number(self.y) + bestDir.dy * range
+  };
+}
+
 function triggerSwordSwing(worldX, worldY) {
   const self = (lastRenderState && lastRenderState.self) || gameState.self;
   if (!self) {
     return;
   }
-  swordSwing.angle = Math.atan2(worldY - self.y, worldX - self.x);
+  const target = resolveAbilityUseTarget("slash", worldX, worldY);
+  swordSwing.angle = Math.atan2(Number(target && target.y) - self.y, Number(target && target.x) - self.x);
   swordSwing.activeUntil = performance.now() + swordSwing.durationMs;
 }
 

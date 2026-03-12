@@ -32,6 +32,13 @@
     const triggerSwordSwing = typeof deps.triggerSwordSwing === "function" ? deps.triggerSwordSwing : () => {};
     const stopAllAbilityChannelAudio =
       typeof deps.stopAllAbilityChannelAudio === "function" ? deps.stopAllAbilityChannelAudio : () => {};
+    const resolveAbilityUseTarget =
+      typeof deps.resolveAbilityUseTarget === "function"
+        ? deps.resolveAbilityUseTarget
+        : (_abilityId, worldX, worldY) => ({
+            x: Number(worldX) || 0,
+            y: Number(worldY) || 0
+          });
 
     function getAbilityRuntimeKey(abilityId) {
       return String(abilityId || "").trim().toLowerCase();
@@ -181,13 +188,20 @@
         return false;
       }
 
-      if (!sendAbilityUse(resolvedAbilityId, worldX, worldY)) {
+      const resolvedTarget = resolveAbilityUseTarget(resolvedAbilityId, worldX, worldY, options);
+      const targetX = Number(resolvedTarget && resolvedTarget.x);
+      const targetY = Number(resolvedTarget && resolvedTarget.y);
+      if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+        return false;
+      }
+
+      if (!sendAbilityUse(resolvedAbilityId, targetX, targetY)) {
         return false;
       }
       const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
       if (castMs > 0) {
-        const dx = worldX - self.x;
-        const dy = worldY - self.y;
+        const dx = targetX - self.x;
+        const dy = targetY - self.y;
         const len = Math.hypot(dx, dy);
         abilityChannel.active = true;
         abilityChannel.abilityId = resolvedAbilityId;
@@ -212,7 +226,7 @@
         playAbilityAudioEvent(resolvedAbilityId, "cast", now);
       }
       if (resolvedAbilityId === "slash") {
-        triggerSwordSwing(worldX, worldY);
+        triggerSwordSwing(targetX, targetY);
       }
       return true;
     }
