@@ -189,6 +189,40 @@ body {
   z-index: 5;
 }
 
+#mobile-utility-bar {
+  display: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.mobile-utility-button {
+  min-width: 78px;
+  border: 1px solid rgba(107, 159, 189, 0.42);
+  background: rgba(6, 19, 31, 0.92);
+  color: #eef7ff;
+  border-radius: 12px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.28);
+}
+
+.mobile-utility-button.active {
+  border-color: rgba(255, 219, 131, 0.54);
+  background: rgba(33, 28, 14, 0.96);
+  color: #f7e2a6;
+}
+
+#mobile-utility-bar.hidden,
+#mobile-panel-tabs.hidden,
+.mobile-utility-button.hidden {
+  display: none !important;
+}
+
 #debuff-icons {
   position: absolute;
   right: 2px;
@@ -655,9 +689,70 @@ body {
 }
 
 @media (pointer: coarse) {
+  #mobile-utility-bar {
+    display: flex;
+  }
+
   #action-bar .action-slot[data-slot="mouse_left"],
   #action-bar .action-slot[data-slot="mouse_right"] {
     display: none;
+  }
+
+  #inventory-panel,
+  #equipment-panel,
+  #spellbook-panel {
+    left: 8px;
+    right: 8px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 194px);
+    transform: none;
+    width: auto !important;
+    max-width: none;
+    max-height: min(56vh, calc(100vh - env(safe-area-inset-top, 0px) - 268px));
+    overflow: auto;
+    z-index: 8;
+  }
+
+  #mobile-panel-tabs {
+    display: flex;
+    position: sticky;
+    top: -12px;
+    align-items: center;
+    gap: 8px;
+    margin: -12px -12px 10px;
+    padding: 10px 12px 9px;
+    background: linear-gradient(180deg, rgba(9, 18, 27, 0.98), rgba(7, 15, 23, 0.9));
+    border-bottom: 1px solid rgba(112, 158, 186, 0.22);
+    z-index: 3;
+  }
+
+  #inventory-grid {
+    justify-content: center;
+  }
+
+  #spellbook-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .spellbook-entry {
+    width: 48px;
+    height: 48px;
+    background-size: 30px 30px;
+    cursor: default;
+  }
+
+  .spellbook-controls {
+    gap: 6px;
+  }
+
+  .spellbook-level {
+    font-size: 11px;
+  }
+
+  .spellbook-plus {
+    width: 22px;
+    height: 22px;
+    font-size: 14px;
   }
 }
 
@@ -688,6 +783,31 @@ body {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 6px;
+}
+
+#mobile-panel-tabs {
+  display: none;
+}
+
+.mobile-panel-tab,
+.mobile-panel-close {
+  border: 1px solid rgba(107, 159, 189, 0.34);
+  background: rgba(8, 20, 31, 0.94);
+  color: #eaf5ff;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mobile-panel-tab.active {
+  border-color: rgba(255, 215, 122, 0.58);
+  background: rgba(41, 31, 15, 0.96);
+  color: #f4deab;
+}
+
+.mobile-panel-close {
+  margin-left: auto;
 }
 
 .inventory-header {

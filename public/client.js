@@ -58,6 +58,79 @@ const botContextMenu = document.getElementById("bot-context-menu");
 const dpsPanel = document.getElementById("dps-panel");
 const dpsTabs = document.getElementById("dps-tabs");
 const dpsValue = document.getElementById("dps-value");
+const mobileUiElements = (() => {
+  const utilityBar = document.createElement("div");
+  utilityBar.id = "mobile-utility-bar";
+
+  const lootButton = document.createElement("button");
+  lootButton.id = "mobile-loot-button";
+  lootButton.type = "button";
+  lootButton.className = "mobile-utility-button hidden";
+  lootButton.textContent = "Loot";
+
+  const bagButton = document.createElement("button");
+  bagButton.id = "mobile-bag-button";
+  bagButton.type = "button";
+  bagButton.className = "mobile-utility-button";
+  bagButton.textContent = "Bag";
+
+  utilityBar.appendChild(lootButton);
+  utilityBar.appendChild(bagButton);
+  if (actionUi) {
+    actionUi.insertBefore(utilityBar, actionUi.firstChild);
+  }
+
+  const panelTabs = document.createElement("div");
+  panelTabs.id = "mobile-panel-tabs";
+  panelTabs.className = "hidden";
+
+  const inventoryTabButton = document.createElement("button");
+  inventoryTabButton.type = "button";
+  inventoryTabButton.className = "mobile-panel-tab";
+  inventoryTabButton.dataset.tab = "inventory";
+  inventoryTabButton.textContent = "Inventory";
+
+  const equipmentTabButton = document.createElement("button");
+  equipmentTabButton.type = "button";
+  equipmentTabButton.className = "mobile-panel-tab";
+  equipmentTabButton.dataset.tab = "equipment";
+  equipmentTabButton.textContent = "Character";
+
+  const spellbookTabButton = document.createElement("button");
+  spellbookTabButton.type = "button";
+  spellbookTabButton.className = "mobile-panel-tab";
+  spellbookTabButton.dataset.tab = "spellbook";
+  spellbookTabButton.textContent = "Skills";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "mobile-panel-close";
+  closeButton.textContent = "Close";
+
+  panelTabs.appendChild(inventoryTabButton);
+  panelTabs.appendChild(equipmentTabButton);
+  panelTabs.appendChild(spellbookTabButton);
+  panelTabs.appendChild(closeButton);
+
+  return {
+    utilityBar,
+    lootButton,
+    bagButton,
+    panelTabs,
+    inventoryTabButton,
+    equipmentTabButton,
+    spellbookTabButton,
+    closeButton
+  };
+})();
+const mobileUtilityBar = mobileUiElements.utilityBar;
+const mobileLootButton = mobileUiElements.lootButton;
+const mobileBagButton = mobileUiElements.bagButton;
+const mobilePanelTabs = mobileUiElements.panelTabs;
+const mobileInventoryTabButton = mobileUiElements.inventoryTabButton;
+const mobileEquipmentTabButton = mobileUiElements.equipmentTabButton;
+const mobileSpellbookTabButton = mobileUiElements.spellbookTabButton;
+const mobilePanelCloseButton = mobileUiElements.closeButton;
 
 const TILE_SIZE = 32;
 const INTERPOLATION_DELAY_MS = 100;
@@ -654,6 +727,14 @@ const lootPickupState = {
   x: 0,
   y: 0,
   nextAttemptAt: 0
+};
+const mobilePanelState = {
+  open: false,
+  activeTab: "inventory",
+  tooltipHideTimer: 0,
+  lootHoldTimer: 0,
+  lootHoldTriggered: false,
+  suppressLootClickUntil: 0
 };
 const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
   maxParticles: 10,
@@ -3672,6 +3753,29 @@ function buildSpellbookSignature(self) {
   return parts.join("|");
 }
 
+function bindAbilityToPreferredActionSlot(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return false;
+  }
+  const desiredBinding = makeActionBinding(resolvedAbilityId);
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    if ((actionBindings.get(String(slotId)) || makeActionBinding("none")) === desiredBinding) {
+      return true;
+    }
+  }
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    const binding = parseActionBinding(actionBindings.get(String(slotId)) || makeActionBinding("none"));
+    if (binding.kind === "action" && binding.id === "none") {
+      actionBindings.set(String(slotId), desiredBinding);
+      updateActionBarUI(getCurrentSelf());
+      return true;
+    }
+  }
+  setStatus("No free action slot.");
+  return false;
+}
+
 function updateSpellbookUI(self) {
   if (!spellbookGrid || !spellbookPanel) {
     return;
@@ -3693,6 +3797,7 @@ function updateSpellbookUI(self) {
   const classDef = classDefsById.get(String(self.classType || ""));
   const abilities = Array.isArray(classDef?.abilities) ? classDef.abilities : [];
   const skillPoints = Math.max(0, Math.floor(Number(self.skillPoints) || 0));
+  const mobileLayout = isTouchJoystickEnabled();
 
   for (const entry of abilities) {
     const abilityId = String(entry?.id || "").trim();
@@ -3709,8 +3814,17 @@ function updateSpellbookUI(self) {
     const node = document.createElement("div");
     node.className = "spellbook-entry";
     node.style.backgroundImage = `url(${getActionIconUrl(abilityId)})`;
-    node.title = `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nDrag to action slot.`;
-    node.draggable = true;
+    node.title = mobileLayout
+      ? `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nTap to bind to action bar.`
+      : `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nDrag to action slot.`;
+    node.draggable = !mobileLayout;
+    node.addEventListener("click", (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      event.preventDefault();
+      bindAbilityToPreferredActionSlot(abilityId);
+    });
     node.addEventListener("dragstart", (event) => {
       dragState.source = "spellbook";
       dragState.actionBinding = makeActionBinding(abilityId);
@@ -5510,15 +5624,19 @@ function updateInventoryUI() {
   }
   hideHoverTooltip();
 
+  const mobileLayout = isTouchJoystickEnabled();
+  const slotSizePx = mobileLayout ? 56 : INVENTORY_SLOT_SIZE_PX;
+  const slotGapPx = mobileLayout ? 8 : INVENTORY_SLOT_GAP_PX;
   ensureInventorySlotsLength();
   const gridWidth =
-    inventoryState.cols * INVENTORY_SLOT_SIZE_PX + Math.max(0, inventoryState.cols - 1) * INVENTORY_SLOT_GAP_PX;
+    inventoryState.cols * slotSizePx + Math.max(0, inventoryState.cols - 1) * slotGapPx;
   const requiredPanelWidth = gridWidth + INVENTORY_PANEL_PADDING_PX * 2 + INVENTORY_PANEL_BORDER_PX * 2;
   const maxPanelWidth = Math.max(180, window.innerWidth - 24);
   const panelWidth = Math.min(requiredPanelWidth, maxPanelWidth);
-  inventoryPanel.style.width = `${panelWidth}px`;
-  inventoryPanel.style.overflowX = requiredPanelWidth > panelWidth ? "auto" : "visible";
-  inventoryGrid.style.gridTemplateColumns = `repeat(${inventoryState.cols}, ${INVENTORY_SLOT_SIZE_PX}px)`;
+  inventoryPanel.style.width = mobileLayout ? "" : `${panelWidth}px`;
+  inventoryPanel.style.overflowX = mobileLayout ? "hidden" : requiredPanelWidth > panelWidth ? "auto" : "visible";
+  inventoryGrid.style.gridTemplateColumns = `repeat(${inventoryState.cols}, ${slotSizePx}px)`;
+  inventoryGrid.style.gap = `${slotGapPx}px`;
   inventoryGrid.innerHTML = "";
 
   for (let i = 0; i < inventoryState.slots.length; i += 1) {
@@ -5526,6 +5644,8 @@ function updateInventoryUI() {
     const slotEl = document.createElement("div");
     slotEl.className = "inventory-slot";
     slotEl.dataset.index = String(i);
+    slotEl.style.width = `${slotSizePx}px`;
+    slotEl.style.height = `${slotSizePx}px`;
     slotEl.addEventListener("dragover", (event) => {
       if (dragState.inventoryFrom === null && !dragState.equipmentSlot) {
         return;
@@ -5565,7 +5685,7 @@ function updateInventoryUI() {
 
     if (slotData && slotData.itemId) {
       slotEl.classList.add("has-item");
-      slotEl.draggable = true;
+      slotEl.draggable = !mobileLayout;
       bindItemTooltip(slotEl, slotData);
       applyItemRarityChrome(slotEl, slotData);
       slotEl.addEventListener("contextmenu", (event) => {
@@ -5574,6 +5694,16 @@ function updateInventoryUI() {
           equipInventoryItemAtIndex(i);
         }
       });
+      bindMobileItemSlotInteraction(
+        slotEl,
+        slotData,
+        () => {
+          if (!trySellInventoryItemAtIndex(i)) {
+            equipInventoryItemAtIndex(i);
+          }
+        },
+        slotData.qty
+      );
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "inventory";
         dragState.inventoryFrom = i;
@@ -5607,6 +5737,7 @@ function updateEquipmentUI() {
     return;
   }
   hideHoverTooltip();
+  const mobileLayout = isTouchJoystickEnabled();
   const slotIds = Array.isArray(equipmentConfigState.itemSlots) ? equipmentConfigState.itemSlots : [];
   equipmentGrid.innerHTML = "";
   const shellEl = document.createElement("div");
@@ -5698,9 +5829,15 @@ function updateEquipmentUI() {
     const slotData = equipmentState.slots[slotId] || null;
     if (slotData && slotData.itemId) {
       slotEl.classList.add("has-item");
-      slotEl.draggable = true;
+      slotEl.draggable = !mobileLayout;
       bindItemTooltip(slotEl, slotData);
       applyItemRarityChrome(slotEl, slotData);
+      bindMobileItemSlotInteraction(slotEl, slotData, () => {
+        sendJsonMessage({
+          type: "unequip_item",
+          slot: slotId
+        });
+      });
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "equipment";
         dragState.inventoryFrom = null;
@@ -5993,21 +6130,209 @@ const uiPanelTools = sharedCreateUiPanelTools
     })
   : null;
 
-function setInventoryVisible(visible) {
+function isMobilePanelMode() {
+  return isTouchJoystickEnabled();
+}
+
+function getMobilePanelElement(tabId) {
+  const resolvedTab = String(tabId || "").trim().toLowerCase();
+  if (resolvedTab === "equipment" || resolvedTab === "character") {
+    return equipmentPanel;
+  }
+  if (resolvedTab === "spellbook" || resolvedTab === "skills") {
+    return spellbookPanel;
+  }
+  return inventoryPanel;
+}
+
+function getLootBagsWithinPickupRange(self = null) {
+  const actor = self || getCurrentSelf();
+  if (!actor) {
+    return [];
+  }
+  const bags = (lastRenderState && Array.isArray(lastRenderState.lootBags) ? lastRenderState.lootBags : null) || gameState.lootBags;
+  const reachable = [];
+  for (const bag of Array.isArray(bags) ? bags : []) {
+    if (!bag) {
+      continue;
+    }
+    const distance = Math.hypot(Number(bag.x) + 0.5 - Number(actor.x), Number(bag.y) + 0.5 - Number(actor.y));
+    if (!Number.isFinite(distance) || distance > lootClientConfig.bagPickupRange) {
+      continue;
+    }
+    reachable.push({
+      bag,
+      distance
+    });
+  }
+  reachable.sort((left, right) => left.distance - right.distance);
+  return reachable;
+}
+
+function pickupNearestLootBagInRange() {
+  const reachable = getLootBagsWithinPickupRange();
+  if (!reachable.length) {
+    return false;
+  }
+  clearAutoLootPickup(false);
+  const nearest = reachable[0].bag;
+  return sendPickupBag(Number(nearest.x) || 0, Number(nearest.y) || 0);
+}
+
+function pickupAllLootBagsInRange() {
+  const reachable = getLootBagsWithinPickupRange();
+  if (!reachable.length) {
+    return false;
+  }
+  clearAutoLootPickup(false);
+  let pickedAny = false;
+  for (const entry of reachable) {
+    const bag = entry && entry.bag;
+    if (!bag) {
+      continue;
+    }
+    pickedAny = sendPickupBag(Number(bag.x) || 0, Number(bag.y) || 0) || pickedAny;
+  }
+  return pickedAny;
+}
+
+function clearMobileTooltipHideTimer() {
+  if (!mobilePanelState.tooltipHideTimer) {
+    return;
+  }
+  window.clearTimeout(mobilePanelState.tooltipHideTimer);
+  mobilePanelState.tooltipHideTimer = 0;
+}
+
+function showMobileItemTooltip(itemInput, clientX, clientY, qty = null) {
+  showItemTooltip(
+    itemInput,
+    {
+      clientX: Number(clientX) || 0,
+      clientY: Number(clientY) || 0
+    },
+    qty
+  );
+  clearMobileTooltipHideTimer();
+  mobilePanelState.tooltipHideTimer = window.setTimeout(() => {
+    mobilePanelState.tooltipHideTimer = 0;
+    hideHoverTooltip();
+  }, 2600);
+}
+
+function bindMobileItemSlotInteraction(node, itemInput, onTap, qty = null) {
+  if (!node || !itemInput) {
+    return;
+  }
+
+  let holdTimer = 0;
+  let holdTriggered = false;
+  let startClientX = 0;
+  let startClientY = 0;
+  let tapCanceled = false;
+
+  function clearHoldTimer() {
+    if (!holdTimer) {
+      return;
+    }
+    window.clearTimeout(holdTimer);
+    holdTimer = 0;
+  }
+
+  node.addEventListener("click", (event) => {
+    if (!isTouchJoystickEnabled()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  node.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      holdTriggered = false;
+      tapCanceled = false;
+      startClientX = Number(touch.clientX) || 0;
+      startClientY = Number(touch.clientY) || 0;
+      clearHoldTimer();
+      holdTimer = window.setTimeout(() => {
+        holdTimer = 0;
+        holdTriggered = true;
+        showMobileItemTooltip(itemInput, startClientX, startClientY, qty);
+      }, 420);
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      if (Math.hypot((Number(touch.clientX) || 0) - startClientX, (Number(touch.clientY) || 0) - startClientY) > 14) {
+        tapCanceled = true;
+        clearHoldTimer();
+      }
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchcancel",
+    () => {
+      clearHoldTimer();
+      holdTriggered = false;
+      tapCanceled = false;
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchend",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      clearHoldTimer();
+      event.preventDefault();
+      event.stopPropagation();
+      if (holdTriggered || tapCanceled) {
+        holdTriggered = false;
+        tapCanceled = false;
+        return;
+      }
+      hideHoverTooltip();
+      if (typeof onTap === "function") {
+        onTap();
+      }
+    },
+    { passive: false }
+  );
+}
+
+function setDesktopInventoryVisible(visible) {
   if (!uiPanelTools) {
     return;
   }
   uiPanelTools.setInventoryVisible(visible);
 }
 
-function toggleInventoryPanel() {
+function setDesktopSpellbookVisible(visible) {
   if (!uiPanelTools) {
     return;
   }
-  uiPanelTools.toggleInventoryPanel();
+  uiPanelTools.setSpellbookVisible(visible);
 }
 
-function setEquipmentVisible(visible) {
+function setDesktopEquipmentVisible(visible) {
   if (!equipmentPanel) {
     return;
   }
@@ -6017,7 +6342,146 @@ function setEquipmentVisible(visible) {
   }
 }
 
+function updateMobilePanelTabs() {
+  if (!gameUI) {
+    return;
+  }
+  if (!isMobilePanelMode() || !mobilePanelState.open) {
+    mobilePanelTabs.classList.add("hidden");
+    gameUI.classList.remove("mobile-panels-open");
+    return;
+  }
+
+  const activePanel = getMobilePanelElement(mobilePanelState.activeTab);
+  if (!activePanel) {
+    mobilePanelTabs.classList.add("hidden");
+    gameUI.classList.remove("mobile-panels-open");
+    return;
+  }
+
+  if (mobilePanelTabs.parentElement !== activePanel) {
+    activePanel.prepend(mobilePanelTabs);
+  }
+  mobilePanelTabs.classList.remove("hidden");
+  mobileInventoryTabButton.classList.toggle("active", mobilePanelState.activeTab === "inventory");
+  mobileEquipmentTabButton.classList.toggle("active", mobilePanelState.activeTab === "equipment");
+  mobileSpellbookTabButton.classList.toggle("active", mobilePanelState.activeTab === "spellbook");
+  gameUI.classList.add("mobile-panels-open");
+}
+
+function setMobilePanelTab(tabId, visible = true) {
+  if (!isMobilePanelMode()) {
+    return false;
+  }
+  const nextTab = String(tabId || "inventory").trim().toLowerCase();
+  const normalizedTab = nextTab === "equipment" || nextTab === "spellbook" ? nextTab : "inventory";
+
+  if (!visible) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === normalizedTab) {
+      mobilePanelState.open = false;
+    }
+    inventoryPanel.classList.add("hidden");
+    equipmentPanel.classList.add("hidden");
+    spellbookPanel.classList.add("hidden");
+    hideHoverTooltip();
+    clearMobileTooltipHideTimer();
+    updateMobilePanelTabs();
+    updateMobileUtilityBar(getCurrentSelf());
+    return true;
+  }
+
+  mobilePanelState.open = true;
+  mobilePanelState.activeTab = normalizedTab;
+  inventoryPanel.classList.toggle("hidden", normalizedTab !== "inventory");
+  equipmentPanel.classList.toggle("hidden", normalizedTab !== "equipment");
+  spellbookPanel.classList.toggle("hidden", normalizedTab !== "spellbook");
+
+  if (normalizedTab === "inventory") {
+    updateInventoryUI();
+  } else if (normalizedTab === "equipment") {
+    updateEquipmentUI();
+  } else {
+    updateSpellbookUI(getCurrentSelf());
+  }
+
+  updateMobilePanelTabs();
+  updateMobileUtilityBar(getCurrentSelf());
+  return true;
+}
+
+function closeMobilePanels() {
+  if (!isMobilePanelMode()) {
+    return;
+  }
+  setMobilePanelTab(mobilePanelState.activeTab, false);
+}
+
+function updateMobileUtilityBar(self = null) {
+  if (!mobileUtilityBar || !mobileLootButton || !mobileBagButton) {
+    return;
+  }
+
+  const mobileActive = isMobilePanelMode() && !!self;
+  mobileUtilityBar.classList.toggle("hidden", !mobileActive);
+  if (!mobileActive) {
+    return;
+  }
+
+  const reachableLoot = getLootBagsWithinPickupRange(self);
+  const lootCount = reachableLoot.length;
+  mobileLootButton.classList.toggle("hidden", lootCount <= 0);
+  mobileLootButton.textContent = lootCount > 1 ? `Loot x${lootCount}` : "Loot";
+  mobileBagButton.classList.toggle("active", mobilePanelState.open);
+}
+
+function setInventoryVisible(visible) {
+  if (isMobilePanelMode()) {
+    setMobilePanelTab("inventory", visible);
+    return;
+  }
+  if (!uiPanelTools) {
+    return;
+  }
+  setDesktopInventoryVisible(visible);
+}
+
+function toggleInventoryPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "inventory") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("inventory", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
+  if (!uiPanelTools) {
+    return;
+  }
+  setDesktopInventoryVisible(inventoryPanel.classList.contains("hidden"));
+}
+
+function setEquipmentVisible(visible) {
+  if (isMobilePanelMode()) {
+    setMobilePanelTab("equipment", visible);
+    return;
+  }
+  if (!equipmentPanel) {
+    return;
+  }
+  setDesktopEquipmentVisible(visible);
+}
+
 function toggleEquipmentPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "equipment") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("equipment", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
   if (!equipmentPanel) {
     return;
   }
@@ -6025,17 +6489,114 @@ function toggleEquipmentPanel() {
 }
 
 function setSpellbookVisible(visible) {
+  if (isMobilePanelMode()) {
+    setMobilePanelTab("spellbook", visible);
+    return;
+  }
   if (!uiPanelTools) {
     return;
   }
-  uiPanelTools.setSpellbookVisible(visible);
+  setDesktopSpellbookVisible(visible);
 }
 
 function toggleSpellbookPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "spellbook") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("spellbook", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
   if (!uiPanelTools) {
     return;
   }
-  uiPanelTools.toggleSpellbookPanel();
+  setDesktopSpellbookVisible(spellbookPanel.classList.contains("hidden"));
+}
+
+if (mobileBagButton) {
+  mobileBagButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    resumeSpatialAudioContext();
+    toggleInventoryPanel();
+  });
+}
+
+if (mobileLootButton) {
+  mobileLootButton.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!isMobilePanelMode()) {
+        return;
+      }
+      resumeSpatialAudioContext();
+      mobilePanelState.lootHoldTriggered = false;
+      if (mobilePanelState.lootHoldTimer) {
+        window.clearTimeout(mobilePanelState.lootHoldTimer);
+      }
+      mobilePanelState.lootHoldTimer = window.setTimeout(() => {
+        mobilePanelState.lootHoldTimer = 0;
+        mobilePanelState.lootHoldTriggered = pickupAllLootBagsInRange();
+        mobilePanelState.suppressLootClickUntil = performance.now() + 420;
+      }, 420);
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+  mobileLootButton.addEventListener(
+    "touchend",
+    (event) => {
+      if (!isMobilePanelMode()) {
+        return;
+      }
+      if (mobilePanelState.lootHoldTimer) {
+        window.clearTimeout(mobilePanelState.lootHoldTimer);
+        mobilePanelState.lootHoldTimer = 0;
+      }
+      if (!mobilePanelState.lootHoldTriggered) {
+        pickupNearestLootBagInRange();
+        mobilePanelState.suppressLootClickUntil = performance.now() + 420;
+      }
+      mobilePanelState.lootHoldTriggered = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    { passive: false }
+  );
+  mobileLootButton.addEventListener(
+    "touchcancel",
+    () => {
+      if (mobilePanelState.lootHoldTimer) {
+        window.clearTimeout(mobilePanelState.lootHoldTimer);
+        mobilePanelState.lootHoldTimer = 0;
+      }
+      mobilePanelState.lootHoldTriggered = false;
+    },
+    { passive: true }
+  );
+  mobileLootButton.addEventListener("click", (event) => {
+    if (performance.now() < (Number(mobilePanelState.suppressLootClickUntil) || 0)) {
+      event.preventDefault();
+      return;
+    }
+    resumeSpatialAudioContext();
+    event.preventDefault();
+    pickupNearestLootBagInRange();
+  });
+}
+
+if (mobileInventoryTabButton) {
+  mobileInventoryTabButton.addEventListener("click", () => setMobilePanelTab("inventory", true));
+}
+if (mobileEquipmentTabButton) {
+  mobileEquipmentTabButton.addEventListener("click", () => setMobilePanelTab("equipment", true));
+}
+if (mobileSpellbookTabButton) {
+  mobileSpellbookTabButton.addEventListener("click", () => setMobilePanelTab("spellbook", true));
+}
+if (mobilePanelCloseButton) {
+  mobilePanelCloseButton.addEventListener("click", () => closeMobilePanels());
 }
 
 function ensureActionBarInitialized() {
@@ -6207,6 +6768,8 @@ function updateActionBarUI(self) {
     actionUi.classList.add("hidden");
     updateResourceBars(null);
     updateSpellbookUI(null);
+    updateMobileUtilityBar(null);
+    updateMobilePanelTabs();
     return;
   }
 
@@ -6214,6 +6777,8 @@ function updateActionBarUI(self) {
   ensureActionBindingsForClass(self.classType);
   updateSpellbookUI(self);
   updateResourceBars(self);
+  updateMobileUtilityBar(self);
+  updateMobilePanelTabs();
   const now = performance.now();
 
   for (const slotId of ACTION_SLOT_ORDER) {
