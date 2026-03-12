@@ -1533,6 +1533,7 @@ const uiActionTools = sharedCreateUiActionTools
       abilityChannel,
       mouseState,
       getPrimaryClassAbilityId,
+      getDefaultClassAbilityIds,
       getCurrentSelf,
       screenToWorld,
       sendUseItem,
@@ -1541,7 +1542,8 @@ const uiActionTools = sharedCreateUiActionTools
       getActionDefById,
       getAbilityEffectiveCooldownMsForSelf,
       getCastProgress,
-      resetAbilityChanneling
+      resetAbilityChanneling,
+      isTouchJoystickEnabled
     })
   : null;
 
@@ -3241,6 +3243,23 @@ function getPrimaryClassAbilityId(classType) {
   const first = classDef.abilities[0];
   const abilityId = first && String(first.id || "").trim();
   return abilityId && abilityDefsById.has(abilityId) ? abilityId : "none";
+}
+
+function getDefaultClassAbilityIds(classType) {
+  const classDef = classDefsById.get(String(classType || ""));
+  if (!classDef || !Array.isArray(classDef.abilities)) {
+    return [];
+  }
+  const abilityIds = [];
+  for (const entry of classDef.abilities) {
+    const abilityId = String(entry && entry.id || "").trim();
+    const startingLevel = Math.max(1, Math.floor(Number(entry && entry.level) || 1));
+    if (!abilityId || !abilityDefsById.has(abilityId) || startingLevel !== 1) {
+      continue;
+    }
+    abilityIds.push(abilityId);
+  }
+  return abilityIds;
 }
 
 function getDefaultClassId() {
@@ -6498,6 +6517,34 @@ function getMobileAbilityAimRadiusPx() {
   return clamp(viewportMin * 0.23, 104, 164);
 }
 
+function getMobileAbilityAimCanvasPoint(clientX, clientY) {
+  if (!canvas) {
+    return null;
+  }
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: clamp((Number(clientX) || 0) - rect.left, 0, canvas.width),
+    y: clamp((Number(clientY) || 0) - rect.top, 0, canvas.height)
+  };
+}
+
+function getMobileAbilityAimFingerWorldTarget(self, clientX, clientY) {
+  const canvasPoint = getMobileAbilityAimCanvasPoint(clientX, clientY);
+  if (!self || !canvasPoint) {
+    return null;
+  }
+  const worldPoint = screenToWorld(canvasPoint.x, canvasPoint.y, self);
+  const direction = normalizeDirection(Number(worldPoint.x) - Number(self.x), Number(worldPoint.y) - Number(self.y));
+  return direction
+    ? {
+        canvasPoint,
+        worldPoint,
+        direction,
+        distance: Math.hypot(Number(worldPoint.x) - Number(self.x), Number(worldPoint.y) - Number(self.y))
+      }
+    : null;
+}
+
 function getMobileAbilityAimFallbackDirection(self) {
   const touchMoveDir = normalizeDirection(touchJoystickState.vectorDx, touchJoystickState.vectorDy);
   if (touchMoveDir) {
@@ -6609,24 +6656,29 @@ function updateMobileAbilityAimTarget() {
   const actionId = String(mobileAbilityAimState.abilityId || "");
   const actionDef = getActionDefById(actionId);
   const range = Math.max(0, getAbilityEffectiveRangeForSelf(actionId, self));
-  const rawDx = Number(mobileAbilityAimState.currentClientX) - Number(mobileAbilityAimState.startClientX);
-  const rawDy = Number(mobileAbilityAimState.currentClientY) - Number(mobileAbilityAimState.startClientY);
-  const rawLen = Math.hypot(rawDx, rawDy);
+  const dragDx = Number(mobileAbilityAimState.currentClientX) - Number(mobileAbilityAimState.startClientX);
+  const dragDy = Number(mobileAbilityAimState.currentClientY) - Number(mobileAbilityAimState.startClientY);
+  const dragLen = Math.hypot(dragDx, dragDy);
   const radiusPx = Math.max(1, Number(mobileAbilityAimState.radiusPx) || 1);
   const deadzonePx = Math.max(0, Number(mobileAbilityAimState.deadzonePx) || 0);
-  const dragDirection = rawLen > deadzonePx ? normalizeDirection(rawDx, rawDy) : null;
-  const direction = dragDirection || getMobileAbilityAimFallbackDirection(self);
+  const fingerTarget = dragLen > deadzonePx
+    ? getMobileAbilityAimFingerWorldTarget(
+        self,
+        mobileAbilityAimState.currentClientX,
+        mobileAbilityAimState.currentClientY
+      )
+    : null;
+  const direction = (fingerTarget && fingerTarget.direction) || getMobileAbilityAimFallbackDirection(self);
   if (!direction) {
     return false;
   }
-  const dragStrength = rawLen > deadzonePx ? clamp((rawLen - deadzonePx) / Math.max(1, radiusPx - deadzonePx), 0, 1) : 0;
   const variableDistance = usesVariableMobileAimDistance(actionId, actionDef);
   const fallbackDistance = getMobileAimFallbackDistance(actionId, actionDef, range);
   const distance =
     range <= 0
       ? 0
       : variableDistance
-        ? (dragStrength > 0 ? range * Math.max(0.12, dragStrength) : fallbackDistance)
+        ? (fingerTarget ? clamp(fingerTarget.distance, 0, range) : fallbackDistance)
         : range;
   const snapTarget = findMobileAimSnapTarget(self, actionId, actionDef, direction, range);
 

@@ -654,6 +654,13 @@ body {
   }
 }
 
+@media (pointer: coarse) {
+  #action-bar .action-slot[data-slot="mouse_left"],
+  #action-bar .action-slot[data-slot="mouse_right"] {
+    display: none;
+  }
+}
+
 .vendor-item-meta {
   min-width: 0;
 }

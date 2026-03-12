@@ -18,6 +18,8 @@
 
     const getPrimaryClassAbilityId =
       typeof deps.getPrimaryClassAbilityId === "function" ? deps.getPrimaryClassAbilityId : () => "none";
+    const getDefaultClassAbilityIds =
+      typeof deps.getDefaultClassAbilityIds === "function" ? deps.getDefaultClassAbilityIds : () => [];
     const getCurrentSelf = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf : () => null;
     const screenToWorld = typeof deps.screenToWorld === "function" ? deps.screenToWorld : () => null;
     const sendUseItem = typeof deps.sendUseItem === "function" ? deps.sendUseItem : () => {};
@@ -31,6 +33,8 @@
     const getCastProgress = typeof deps.getCastProgress === "function" ? deps.getCastProgress : () => null;
     const resetAbilityChanneling =
       typeof deps.resetAbilityChanneling === "function" ? deps.resetAbilityChanneling : () => {};
+    const isTouchJoystickEnabled =
+      typeof deps.isTouchJoystickEnabled === "function" ? deps.isTouchJoystickEnabled : () => false;
 
     function makeActionBinding(actionId) {
       return `action:${String(actionId || "none")}`;
@@ -63,6 +67,8 @@
     function applyDefaultActionBindings(classType) {
       const resolvedClass = String(classType || "").trim();
       const primary = getPrimaryClassAbilityId(resolvedClass);
+      const defaultAbilityIds = getDefaultClassAbilityIds(resolvedClass);
+      const useMobileDefaults = isTouchJoystickEnabled();
 
       actionBindings.clear();
       for (let i = 1; i <= 9; i += 1) {
@@ -70,7 +76,21 @@
       }
       actionBindings.set("mouse_left", makeActionBinding(primary));
       actionBindings.set("mouse_right", makeActionBinding("pickup_bag"));
-      actionBindings.set("1", makeActionBinding(primary));
+      if (useMobileDefaults) {
+        let slotIndex = 1;
+        for (const abilityId of defaultAbilityIds) {
+          if (slotIndex > 9) {
+            break;
+          }
+          actionBindings.set(String(slotIndex), makeActionBinding(abilityId));
+          slotIndex += 1;
+        }
+        if (slotIndex === 1 && primary !== "none") {
+          actionBindings.set("1", makeActionBinding(primary));
+        }
+      } else {
+        actionBindings.set("1", makeActionBinding(primary));
+      }
       return resolvedClass;
     }
 
