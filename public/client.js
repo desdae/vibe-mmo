@@ -712,6 +712,8 @@ const mobileAbilityAimState = {
   touchId: null,
   slotId: "",
   abilityId: "",
+  aimOriginClientX: 0,
+  aimOriginClientY: 0,
   currentClientX: 0,
   currentClientY: 0,
   startClientX: 0,
@@ -7180,7 +7182,7 @@ function beginMobileActionSlotTouch(slotId, touchId, clientX, clientY) {
             "Long press to inspect."
           ]
         : mobileActionTouchState.aimCapable
-          ? ["Drag to aim, release to cast.", "Long press to inspect."]
+          ? ["Drag from the button to aim, release to cast.", "Tap to quick-cast.", "Long press to inspect."]
           : ["Tap to use.", "Long press to inspect."];
       showMobileAbilityTooltip(mobileActionTouchState.bindingId, "action", clientX, clientY, tips);
     } else if (mobileActionTouchState.bindingKind === "item") {
@@ -8196,21 +8198,20 @@ function getMobileAbilityAimCanvasPoint(clientX, clientY) {
   };
 }
 
-function getMobileAbilityAimFingerWorldTarget(self, clientX, clientY) {
-  const canvasPoint = getMobileAbilityAimCanvasPoint(clientX, clientY);
-  if (!self || !canvasPoint) {
-    return null;
+function getActionSlotClientCenter(slotId, fallbackClientX = 0, fallbackClientY = 0) {
+  const slot = actionSlotEls.get(String(slotId || ""));
+  const root = slot && slot.root ? slot.root : null;
+  if (!root || typeof root.getBoundingClientRect !== "function") {
+    return {
+      x: Number(fallbackClientX) || 0,
+      y: Number(fallbackClientY) || 0
+    };
   }
-  const worldPoint = screenToWorld(canvasPoint.x, canvasPoint.y, self);
-  const direction = normalizeDirection(Number(worldPoint.x) - Number(self.x), Number(worldPoint.y) - Number(self.y));
-  return direction
-    ? {
-        canvasPoint,
-        worldPoint,
-        direction,
-        distance: Math.hypot(Number(worldPoint.x) - Number(self.x), Number(worldPoint.y) - Number(self.y))
-      }
-    : null;
+  const rect = root.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width * 0.5,
+    y: rect.top + rect.height * 0.5
+  };
 }
 
 function getMobileAbilityAimFallbackDirection(self) {
@@ -8258,6 +8259,32 @@ function getMobileAimFallbackDistance(actionId, actionDef, range) {
     return clamp(resolvedRange * 0.68, Math.min(1.25, resolvedRange), resolvedRange);
   }
   return resolvedRange;
+}
+
+function getMobileAbilityAimDirectionFromDrag(self, dragDx, dragDy, deadzonePx) {
+  const len = Math.hypot(Number(dragDx) || 0, Number(dragDy) || 0);
+  if (len > Math.max(0, Number(deadzonePx) || 0)) {
+    return normalizeDirection(dragDx, dragDy);
+  }
+  return getMobileAbilityAimFallbackDirection(self);
+}
+
+function getMobileAbilityAimDistanceFromDrag(actionId, actionDef, range, dragLen, radiusPx, deadzonePx) {
+  const resolvedRange = Math.max(0, Number(range) || 0);
+  if (resolvedRange <= 0) {
+    return 0;
+  }
+  const fallbackDistance = getMobileAimFallbackDistance(actionId, actionDef, resolvedRange);
+  if (!usesVariableMobileAimDistance(actionId, actionDef)) {
+    return resolvedRange;
+  }
+  const maxRadius = Math.max(1, Number(radiusPx) || 1);
+  const deadzone = Math.max(0, Number(deadzonePx) || 0);
+  if (dragLen <= deadzone) {
+    return fallbackDistance;
+  }
+  const strength = clamp((dragLen - deadzone) / Math.max(1, maxRadius - deadzone), 0, 1);
+  return lerp(Math.min(fallbackDistance, resolvedRange), resolvedRange, strength);
 }
 
 function findMobileAimSnapTarget(self, actionId, actionDef, direction, range) {
@@ -8327,30 +8354,16 @@ function updateMobileAbilityAimTarget() {
   const actionId = String(mobileAbilityAimState.abilityId || "");
   const actionDef = getActionDefById(actionId);
   const range = Math.max(0, getAbilityEffectiveRangeForSelf(actionId, self));
-  const dragDx = Number(mobileAbilityAimState.currentClientX) - Number(mobileAbilityAimState.startClientX);
-  const dragDy = Number(mobileAbilityAimState.currentClientY) - Number(mobileAbilityAimState.startClientY);
+  const dragDx = Number(mobileAbilityAimState.currentClientX) - Number(mobileAbilityAimState.aimOriginClientX);
+  const dragDy = Number(mobileAbilityAimState.currentClientY) - Number(mobileAbilityAimState.aimOriginClientY);
   const dragLen = Math.hypot(dragDx, dragDy);
-  const radiusPx = Math.max(1, Number(mobileAbilityAimState.radiusPx) || 1);
   const deadzonePx = Math.max(0, Number(mobileAbilityAimState.deadzonePx) || 0);
-  const fingerTarget = dragLen > deadzonePx
-    ? getMobileAbilityAimFingerWorldTarget(
-        self,
-        mobileAbilityAimState.currentClientX,
-        mobileAbilityAimState.currentClientY
-      )
-    : null;
-  const direction = (fingerTarget && fingerTarget.direction) || getMobileAbilityAimFallbackDirection(self);
+  const radiusPx = Math.max(1, Number(mobileAbilityAimState.radiusPx) || 1);
+  const direction = getMobileAbilityAimDirectionFromDrag(self, dragDx, dragDy, deadzonePx);
   if (!direction) {
     return false;
   }
-  const variableDistance = usesVariableMobileAimDistance(actionId, actionDef);
-  const fallbackDistance = getMobileAimFallbackDistance(actionId, actionDef, range);
-  const distance =
-    range <= 0
-      ? 0
-      : variableDistance
-        ? (fingerTarget ? clamp(fingerTarget.distance, 0, range) : fallbackDistance)
-        : range;
+  const distance = getMobileAbilityAimDistanceFromDrag(actionId, actionDef, range, dragLen, radiusPx, deadzonePx);
   const snapTarget = findMobileAimSnapTarget(self, actionId, actionDef, direction, range);
 
   mobileAbilityAimState.snappedTargetId = snapTarget ? snapTarget.id : null;
@@ -8372,6 +8385,8 @@ function resetMobileAbilityAim() {
   mobileAbilityAimState.touchId = null;
   mobileAbilityAimState.slotId = "";
   mobileAbilityAimState.abilityId = "";
+  mobileAbilityAimState.aimOriginClientX = 0;
+  mobileAbilityAimState.aimOriginClientY = 0;
   mobileAbilityAimState.currentClientX = 0;
   mobileAbilityAimState.currentClientY = 0;
   mobileAbilityAimState.startClientX = 0;
@@ -8414,10 +8429,13 @@ function beginMobileAbilityAim(slotId, touchId, clientX, clientY) {
   }
 
   const radiusPx = getMobileAbilityAimRadiusPx();
+  const aimOrigin = getActionSlotClientCenter(slotId, clientX, clientY);
   mobileAbilityAimState.active = true;
   mobileAbilityAimState.touchId = touchId;
   mobileAbilityAimState.slotId = String(slotId || "");
   mobileAbilityAimState.abilityId = actionId;
+  mobileAbilityAimState.aimOriginClientX = Number(aimOrigin.x) || 0;
+  mobileAbilityAimState.aimOriginClientY = Number(aimOrigin.y) || 0;
   mobileAbilityAimState.startClientX = Number(clientX) || 0;
   mobileAbilityAimState.startClientY = Number(clientY) || 0;
   mobileAbilityAimState.currentClientX = mobileAbilityAimState.startClientX;
