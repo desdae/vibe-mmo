@@ -10,6 +10,7 @@ const hudPos = document.getElementById("hud-pos");
 const classTypeSelect = document.getElementById("classType");
 const actionUi = document.getElementById("action-ui");
 const resourceBars = document.getElementById("resource-bars");
+const buffIcons = document.getElementById("buff-icons");
 const debuffIcons = document.getElementById("debuff-icons");
 const hpPredictFill = document.getElementById("hp-predict-fill");
 const hpFill = document.getElementById("hp-fill");
@@ -447,6 +448,7 @@ const ambientParticleEmitters = new Map();
 const actionSlotEls = new Map();
 const actionBindings = new Map();
 let actionBindingsClassType = null;
+let suppressActionBarClickUntil = 0;
 const classDefsById = new Map();
 const abilityDefsById = new Map();
 const abilityIdsByHash = new Map();
@@ -585,6 +587,7 @@ const selfNegativeEffects = {
   slow: null,
   burn: null
 };
+let selfPositiveBuffs = [];
 const remotePlayerStuns = new Map();
 const remotePlayerSlows = new Map();
 const remotePlayerBurns = new Map();
@@ -2722,8 +2725,17 @@ function buildAbilityTooltip(abilityId) {
   const totalDamageRange = sharedGetAbilityDamageRange
     ? sharedGetAbilityDamageRange(ability, level)
     : [Math.max(0, Number(ability.damageMin) || 0), Math.max(0, Number(ability.damageMax) || 0)];
-  const totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
-  const totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
+  let totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
+  let totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
+  let tooltipDamagePercentBonus = 0;
+  if (String(kind).toLowerCase() === "meleecone") {
+    tooltipDamagePercentBonus += getActiveSelfBuffStatTotal("meleeDamagePercent");
+  }
+  if (tooltipDamagePercentBonus !== 0 && totalDamageMax > 0) {
+    const damageScale = Math.max(0, 1 + tooltipDamagePercentBonus / 100);
+    totalDamageMin = Math.max(0, Math.floor(totalDamageMin * damageScale));
+    totalDamageMax = Math.max(totalDamageMin, Math.ceil(totalDamageMax * damageScale));
+  }
   const durationMs = Math.max(0, Number(ability.durationMs) || 0);
   const durationPerLevelMs = Math.max(0, Number(ability.durationPerLevelMs) || 0);
   const totalDurationMs = durationMs + durationPerLevelMs * Math.max(0, level - 1);
@@ -3194,6 +3206,40 @@ function getDefaultClassId() {
   return "warrior";
 }
 
+function clearSelfPositiveBuffs() {
+  selfPositiveBuffs = [];
+  if (buffIcons) {
+    buffIcons.innerHTML = "";
+    buffIcons.classList.add("hidden");
+  }
+}
+
+function applySelfPositiveBuffs(msg) {
+  const now = performance.now();
+  const nextBuffs = [];
+  for (const buff of Array.isArray(msg && msg.buffs) ? msg.buffs : []) {
+    if (!buff || typeof buff !== "object") {
+      continue;
+    }
+    const remainingMs = Math.max(0, Number(buff.remainingMs) || 0);
+    if (remainingMs <= 0) {
+      continue;
+    }
+    const durationMs = Math.max(1, Number(buff.durationMs) || remainingMs);
+    nextBuffs.push({
+      id: String(buff.id || ""),
+      name: String(buff.name || "Buff"),
+      label: String(buff.label || "").trim().slice(0, 3).toUpperCase(),
+      color: String(buff.color || "").trim(),
+      stats: buff.stats && typeof buff.stats === "object" ? { ...buff.stats } : {},
+      startedAt: now - Math.max(0, durationMs - remainingMs),
+      endsAt: now + remainingMs,
+      durationMs
+    });
+  }
+  selfPositiveBuffs = nextBuffs;
+}
+
 function clearSelfNegativeEffects() {
   selfNegativeEffects.stun = null;
   selfNegativeEffects.slow = null;
@@ -3202,6 +3248,68 @@ function clearSelfNegativeEffects() {
     debuffIcons.innerHTML = "";
     debuffIcons.classList.add("hidden");
   }
+}
+
+function updatePositiveBuffIcons(now = performance.now()) {
+  if (!buffIcons) {
+    return;
+  }
+  const entries = [];
+  for (const buff of selfPositiveBuffs) {
+    const remainingMs = Math.max(0, Number(buff.endsAt) - now);
+    if (remainingMs <= 0) {
+      continue;
+    }
+    const durationMs = Math.max(1, Number(buff.durationMs) || remainingMs);
+    entries.push({
+      id: String(buff.id || ""),
+      label: String(buff.label || "").trim().slice(0, 3).toUpperCase(),
+      color: String(buff.color || "") || "rgba(131, 221, 143, 0.94)",
+      ratio: clamp(remainingMs / durationMs, 0, 1),
+      title: `${String(buff.name || "Buff")} (${(remainingMs / 1000).toFixed(1)}s)`
+    });
+  }
+
+  selfPositiveBuffs = selfPositiveBuffs.filter((buff) => Math.max(0, Number(buff.endsAt) - now) > 0);
+  if (!entries.length) {
+    buffIcons.innerHTML = "";
+    buffIcons.classList.add("hidden");
+    return;
+  }
+
+  buffIcons.classList.remove("hidden");
+  buffIcons.innerHTML = "";
+  for (const entry of entries) {
+    const node = document.createElement("div");
+    node.className = "buff-icon";
+    node.title = entry.title;
+    const ring = document.createElement("div");
+    ring.className = "buff-ring";
+    ring.style.setProperty("--ratio", entry.ratio.toFixed(4));
+    ring.style.setProperty("--ring-color", entry.color);
+    const core = document.createElement("div");
+    core.className = "buff-core";
+    core.textContent = entry.label || "BF";
+    node.appendChild(ring);
+    node.appendChild(core);
+    buffIcons.appendChild(node);
+  }
+}
+
+function getActiveSelfBuffStatTotal(statKey) {
+  const target = String(statKey || "").trim();
+  if (!target) {
+    return 0;
+  }
+  let total = 0;
+  for (const buff of selfPositiveBuffs) {
+    const stats = buff && buff.stats && typeof buff.stats === "object" ? buff.stats : null;
+    if (!stats) {
+      continue;
+    }
+    total += Number(stats[target]) || 0;
+  }
+  return total;
 }
 
 function setSelfNegativeEffectState(key, remainingMs, durationMs, now, extra = {}) {
@@ -3359,6 +3467,7 @@ function updateResourceBars(self) {
     hpText.textContent = "";
     manaText.textContent = "";
     expText.textContent = "";
+    clearSelfPositiveBuffs();
     clearSelfNegativeEffects();
     return;
   }
@@ -3394,6 +3503,7 @@ function updateResourceBars(self) {
   const expRatio = clamp(exp / expToNext, 0, 1);
   expFill.style.transform = `scaleX(${expRatio})`;
   expText.textContent = `EXP ${Math.floor(exp)}/${Math.floor(expToNext)} (Lv ${Math.max(1, Math.floor(Number(self.level) || 1))})`;
+  updatePositiveBuffIcons(performance.now());
   updateNegativeEffectIcons(performance.now());
 }
 
@@ -4323,6 +4433,46 @@ function drawPickupBagActionIcon(iconCtx, size) {
   iconCtx.stroke();
 }
 
+function drawBloodWrathActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  const glow = iconCtx.createRadialGradient(mid, mid, 4, mid, mid, size * 0.55);
+  glow.addColorStop(0, "rgba(255, 158, 126, 0.36)");
+  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  iconCtx.fillStyle = glow;
+  iconCtx.fillRect(0, 0, size, size);
+
+  iconCtx.strokeStyle = "#1f0e12";
+  iconCtx.lineWidth = 3;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 8, mid + 10);
+  iconCtx.lineTo(mid + 5, mid - 10);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "#ffe6db";
+  iconCtx.lineWidth = 1.25;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 7.2, mid + 9.2);
+  iconCtx.lineTo(mid + 4.1, mid - 8.8);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "#d13d3d";
+  iconCtx.strokeStyle = "#2b0f14";
+  iconCtx.lineWidth = 2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid + 8, mid - 9);
+  iconCtx.bezierCurveTo(mid + 14, mid - 4.5, mid + 14.5, mid + 4, mid + 8, mid + 11.5);
+  iconCtx.bezierCurveTo(mid + 1.5, mid + 4, mid + 2, mid - 4.5, mid + 8, mid - 9);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(255, 214, 198, 0.88)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 6.4, mid - 2.8, 1.5, 0, Math.PI * 2);
+  iconCtx.fill();
+}
+
 function drawUnknownActionIcon(iconCtx, size) {
   const mid = size / 2;
   iconCtx.fillStyle = "#88a0b8";
@@ -4353,6 +4503,7 @@ const ABILITY_ICON_RENDERERS = Object.freeze({
   blink: drawBlinkActionIcon,
   fireball: drawFireballActionIcon,
   fire_hydra: drawFireHydraActionIcon,
+  blood_wrath: drawBloodWrathActionIcon,
   warstomp: drawWarstompActionIcon,
   pickup_bag: drawPickupBagActionIcon
 });
@@ -5864,6 +6015,7 @@ function ensureActionBarInitialized() {
     slot.addEventListener("drop", (event) => {
       event.preventDefault();
       slot.classList.remove("drag-hover");
+      suppressActionBarClickUntil = performance.now() + 180;
       if (dragState.actionBinding) {
         const fromSlot = dragState.fromActionSlot;
         if (dragState.source === "action_slot" && fromSlot) {
@@ -5908,11 +6060,15 @@ function ensureActionBarInitialized() {
       event.dataTransfer.effectAllowed = "move";
     });
     slot.addEventListener("dragend", () => {
+      suppressActionBarClickUntil = performance.now() + 120;
       clearDragState();
     });
     slot.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (performance.now() < suppressActionBarClickUntil) {
+        return;
+      }
       resumeSpatialAudioContext();
       executeBoundAction(slotId);
     });
@@ -6244,6 +6400,7 @@ function clearEntityRuntime() {
   entityRuntime.playerMeta.clear();
   remoteMobCasts.clear();
   stopAllSpatialLoops();
+  clearSelfPositiveBuffs();
   clearSelfNegativeEffects();
   remotePlayerStuns.clear();
   remotePlayerSlows.clear();
@@ -7969,6 +8126,14 @@ const serverMessageHandlers = {
   },
   player_casts: (msg) => applyPlayerCastStates(msg),
   mob_casts: (msg) => applyMobCastStates(msg),
+  ability_used: (msg) => {
+    const abilityId = String(msg && msg.abilityId || "").trim();
+    if (!abilityId) {
+      return;
+    }
+    markAbilityUsedClient(abilityId, performance.now());
+  },
+  self_buffs: (msg) => applySelfPositiveBuffs(msg),
   player_effects: (msg) => applyPlayerEffects(msg),
   player_effects_nearby: (msg) => applyNearbyPlayerEffects(msg),
   mob_bites: (msg) => {

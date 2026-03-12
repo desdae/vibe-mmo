@@ -486,12 +486,16 @@ function createEquipmentTools(options = {}) {
   function getPlayerModifiedAbilityDamageRange(player, abilityDef, abilityLevel) {
     const baseRange = getAbilityDamageRange(abilityDef, abilityLevel);
     const school = inferAbilitySchool(abilityDef);
+    const tags = inferAbilityTags(abilityDef);
     let percentBonus = getEquippedStatTotal(player, "damage.global.percent");
     if (school) {
       percentBonus += getEquippedStatTotal(player, `damageSchool.${school}.percent`);
     }
-    for (const tag of inferAbilityTags(abilityDef)) {
+    for (const tag of tags) {
       percentBonus += getEquippedStatTotal(player, `spellTag.${tag}.damagePercent`);
+    }
+    if (tags.includes("melee")) {
+      percentBonus += Math.max(0, Number(player && player.meleeDamageBonusPercent) || 0);
     }
     const flatMin = school ? getEquippedStatTotal(player, `damage.${school}.flatMin`) : 0;
     const flatMax = school ? getEquippedStatTotal(player, `damage.${school}.flatMax`) : 0;
@@ -537,7 +541,11 @@ function createEquipmentTools(options = {}) {
     );
     const nextHealthRegen = Math.max(
       0,
-      (Math.max(0, Number(player.baseHealthRegen) || 0) + derived.healthRegenFlat) * (1 + derived.healthRegenPercent / 100)
+      (
+        Math.max(0, Number(player.baseHealthRegen) || 0) +
+        derived.healthRegenFlat +
+        Math.max(0, Number(player.buffHealthRegenFlat) || 0)
+      ) * (1 + derived.healthRegenPercent / 100)
     );
     const nextManaRegen = Math.max(
       0,

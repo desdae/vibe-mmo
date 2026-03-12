@@ -258,6 +258,9 @@ function createBotTickSystem(options = {}) {
     if (normalizedKind === "summon") {
       return 70;
     }
+    if (normalizedKind === "selfBuff") {
+      return 62;
+    }
     if (normalizedKind === "chain") {
       return 64;
     }
@@ -329,6 +332,15 @@ function createBotTickSystem(options = {}) {
 
     if (kind === "teleport") {
       return -Infinity;
+    }
+    if (kind === "selfBuff") {
+      const alreadyActive = (Array.isArray(player.activeBuffs) ? player.activeBuffs : []).some(
+        (buff) => String(buff && buff.sourceAbilityId || "") === String(ability.id || "")
+      );
+      if (alreadyActive) {
+        return -Infinity;
+      }
+      return targetDistance <= 2.8 ? getAbilityKindPriority(kind) + 4 : -Infinity;
     }
     if (kind === "summon") {
       if (effectiveRange <= 0 || targetDistance > effectiveRange || hasActiveOwnedSummon(player, ability.id, now)) {

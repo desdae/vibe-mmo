@@ -106,7 +106,10 @@
         return { type: "cooldown", ratio: 0 };
       }
       const runtime = abilityRuntime.get(String(actionId || "").toLowerCase());
-      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
+      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) : NaN;
+      if (!Number.isFinite(lastUsedAt) || lastUsedAt <= 0) {
+        return { type: "cooldown", ratio: 0 };
+      }
       const remaining = cooldownMs - (now - lastUsedAt);
       if (remaining > 0) {
         return {

@@ -75,6 +75,7 @@ const { createProjectileSpawnTools } = require("./server/gameplay/projectile-spa
 const { createPlayerCommandTools } = require("./server/gameplay/player-commands");
 const { createPlayerFactory } = require("./server/gameplay/player-factory");
 const { createEquipmentTools } = require("./server/gameplay/equipment");
+const { createPlayerBuffTools } = require("./server/gameplay/player-buffs");
 const { createVendorTools } = require("./server/gameplay/vendor");
 const { createCoreServices } = require("./server/runtime/core-services");
 const { createBotTickSystem } = require("./server/runtime/bot-tick");
@@ -506,6 +507,7 @@ const abilityHandlerContext = createAbilityHandlerContext({
   createPersistentBeamEffect: (...args) => createPersistentBeamEffect(...args),
   createPersistentSummonEffect: (...args) => createPersistentSummonEffect(...args),
   resolvePlayerMobCollisions: (...args) => resolvePlayerMobCollisions(...args),
+  applySelfBuffs: (...args) => applyAbilityBuffsToPlayer(...args),
   getAbilityInvulnerabilityDurationMs
 });
 
@@ -648,6 +650,13 @@ const playerAbilityTools = createPlayerAbilityTools({
 const getPlayerClassDef = playerAbilityTools.getPlayerClassDef;
 const getPlayerAbilityLevel = playerAbilityTools.getPlayerAbilityLevel;
 const levelUpPlayerAbility = playerAbilityTools.levelUpPlayerAbility;
+const playerBuffTools = createPlayerBuffTools({
+  clamp,
+  recomputePlayerDerivedStats: equipmentTools.recomputePlayerDerivedStats
+});
+const applyAbilityBuffsToPlayer = playerBuffTools.applyAbilityBuffsToPlayer;
+const tickPlayerBuffs = playerBuffTools.tickPlayerBuffs;
+const clearPlayerBuffs = playerBuffTools.clearPlayerBuffs;
 
 const playerCombatEffectTools = createPlayerCombatEffectTools({
   clamp,
@@ -659,6 +668,16 @@ const clearPlayerCombatEffects = playerCombatEffectTools.clearPlayerCombatEffect
 const tickPlayerDotEffects = playerCombatEffectTools.tickPlayerDotEffects;
 const applyAbilityHitEffectsToPlayer = playerCombatEffectTools.applyAbilityHitEffectsToPlayer;
 const applyProjectileHitEffectsToPlayer = playerCombatEffectTools.applyProjectileHitEffectsToPlayer;
+const notifyAbilityUsed = (player, abilityDef, now = Date.now()) => {
+  if (!player || !player.ws || typeof sendJson !== "function" || !abilityDef) {
+    return;
+  }
+  sendJson(player.ws, {
+    type: "ability_used",
+    abilityId: String(abilityDef.id || ""),
+    usedAt: Math.max(0, Math.floor(Number(now) || Date.now()))
+  });
+};
 const castingTools = createCastingTools({
   getAbilityCooldownMsForLevel
 });
@@ -690,7 +709,8 @@ const playerCommandTools = createPlayerCommandTools({
   addItemsToInventory,
   sendInventoryState,
   syncPlayerCopperFromInventory,
-  sendJson
+  sendJson,
+  notifyAbilityUsed
 });
 const tryPickupLootBag = playerCommandTools.tryPickupLootBag;
 const usePlayerAbility = playerCommandTools.usePlayerAbility;
@@ -847,14 +867,17 @@ const playerTickSystem = createPlayerTickSystem({
   basePlayerSpeed: BASE_PLAYER_SPEED,
   tickPlayerHealEffects,
   tickPlayerManaEffects,
+  tickPlayerBuffs,
   tickPlayerDotEffects,
   clearPlayerCast,
   playerHasMovementInput,
+  clearPlayerBuffs,
   clearPlayerCombatEffects,
   abilityDefsProvider: () => ABILITY_CONFIG.abilityDefs,
   getPlayerAbilityLevel,
   getAbilityCooldownPassed,
   executeAbilityByKind,
+  notifyAbilityUsed,
   abilityHandlerContext,
   normalizeDirection,
   isBlockedPoint: (x, y) => isPointBlockedByTownWall(TOWN_LAYOUT, x, y),

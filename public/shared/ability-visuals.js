@@ -37,6 +37,9 @@
         areaEffectRenderer: "fire_hydra",
         castPreviewRenderer: "fire_hydra"
       },
+      selfbuff: {
+        iconRenderer: "blood_wrath"
+      },
       teleport: {
         iconRenderer: "blink"
       }
@@ -150,6 +153,9 @@
       },
       blink: {
         iconRenderer: "blink"
+      },
+      bloodwrath: {
+        iconRenderer: "blood_wrath"
       },
       warstomp: {
         iconRenderer: "warstomp"

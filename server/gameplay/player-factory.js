@@ -33,6 +33,7 @@ function createPlayerEntitySyncState() {
     nextLootBagSlot: 1,
     selfState: null,
     selfEffectState: null,
+    selfBuffStateSignature: "",
     areaEffectStatesById: new Map()
   };
 }
@@ -144,6 +145,7 @@ function createPlayerFactory(options = {}) {
       baseMana: classDef.baseMana,
       healthRegen: 0,
       baseHealthRegen: 0,
+      buffHealthRegenFlat: 0,
       manaRegen: classDef.manaRegen,
       baseManaRegen: classDef.manaRegen,
       moveSpeed: classDef.movementSpeed,
@@ -159,8 +161,10 @@ function createPlayerFactory(options = {}) {
       thorns: 0,
       attackSpeedMultiplier: 1,
       castSpeedMultiplier: 1,
+      meleeDamageBonusPercent: 0,
       activeHeals: [],
       activeManaRestores: [],
+      activeBuffs: [],
       activeDots: new Map(),
       copper: 0,
       level: 1,
