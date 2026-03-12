@@ -1966,21 +1966,23 @@
       return true;
     }
 
-    function updateLabeledNode(node, x, y, label, hp, maxHp, drawFn) {
+    function updateLabeledNode(node, x, y, label, hp, maxHp, drawFn, overlayOptions = null) {
       node.container.position.set(x, y);
       drawFn(node.graphics);
       node.nameText.text = label;
-      node.nameText.position.set(0, -18);
+      node.nameText.visible = !!label;
+      node.nameText.position.set(0, Number(overlayOptions && overlayOptions.labelOffsetY) || -18);
       node.hpBack.clear();
       node.hpFill.clear();
       const currentHp = Number(hp) || 0;
       const totalHp = Math.max(1, Number(maxHp) || 1);
       if (currentHp < totalHp) {
+        const hpOffsetY = Number(overlayOptions && overlayOptions.hpOffsetY) || -30;
         node.hpBack.beginFill(0x09111a, 0.84);
-        node.hpBack.drawRoundedRect(-11, -30, 22, 4, 2);
+        node.hpBack.drawRoundedRect(-11, hpOffsetY, 22, 4, 2);
         node.hpBack.endFill();
         node.hpFill.beginFill(0x64d37a, 1);
-        node.hpFill.drawRoundedRect(-11, -30, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
+        node.hpFill.drawRoundedRect(-11, hpOffsetY, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
         node.hpFill.endFill();
       }
     }
@@ -2065,7 +2067,8 @@
         drawFallback(node.graphics);
       }
       node.nameText.text = label;
-      node.nameText.position.set(0, -18);
+      node.nameText.visible = !!label;
+      node.nameText.position.set(0, Number(overlayOptions && overlayOptions.labelOffsetY) || -18);
       node.hpBack.clear();
       node.hpFill.clear();
       node.castBack.clear();
@@ -2074,11 +2077,12 @@
       const currentHp = Number(hp) || 0;
       const totalHp = Math.max(1, Number(maxHp) || 1);
       if (overlayOptions && overlayOptions.showHpBar && currentHp < totalHp) {
+        const hpOffsetY = Number(overlayOptions && overlayOptions.hpOffsetY) || -30;
         node.hpBack.beginFill(0x09111a, 0.84);
-        node.hpBack.drawRoundedRect(-11, -30, 22, 4, 2);
+        node.hpBack.drawRoundedRect(-11, hpOffsetY, 22, 4, 2);
         node.hpBack.endFill();
         node.hpFill.beginFill(0x64d37a, 1);
-        node.hpFill.drawRoundedRect(-11, -30, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
+        node.hpFill.drawRoundedRect(-11, hpOffsetY, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
         node.hpFill.endFill();
       }
       const castVisual = overlayOptions && overlayOptions.castVisual;
@@ -2467,11 +2471,13 @@
         (node, entry) => {
           const p = worldToScreen(Number(entry.mob.x) + 0.5, Number(entry.mob.y) + 0.5, cameraX, cameraY, width, height);
           const spriteFrame = entry.isHumanoid ? getMobSpriteFrame(entry) : null;
+          const hoveredMobId = frameViewModel.hoveredMob && frameViewModel.hoveredMob.mob ? frameViewModel.hoveredMob.mob.id : null;
+          const isHovered = hoveredMobId != null && String(hoveredMobId) === String(entry.mob.id);
           updateLabeledSpriteNode(
             node,
             p.x,
             p.y,
-            String(entry.mob.name || "Mob"),
+            isHovered ? String(entry.mob.name || "Mob") : "",
             entry.mob.hp,
             entry.mob.maxHp,
             spriteFrame || getGenericMobSpriteFrame(entry.mob),
@@ -2481,7 +2487,9 @@
               castVisual: entry.castVisual,
               statusVisual: entry.statusVisual,
               frameNow,
-              isPlayer: false
+              isPlayer: false,
+              labelOffsetY: -15,
+              hpOffsetY: -21
             }
           );
         },
@@ -2510,7 +2518,9 @@
               castVisual: entry.castVisual,
               statusVisual: entry.statusVisual,
               frameNow,
-              isPlayer: true
+              isPlayer: true,
+              labelOffsetY: -18,
+              hpOffsetY: -30
             }
           );
         },
