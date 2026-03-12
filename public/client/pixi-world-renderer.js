@@ -47,6 +47,9 @@
     const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
     const getTownTileSprite = typeof deps.getTownTileSprite === "function" ? deps.getTownTileSprite : null;
     const getVendorNpcSprite = typeof deps.getVendorNpcSprite === "function" ? deps.getVendorNpcSprite : null;
+    const getCreeperWalkSprite = typeof deps.getCreeperWalkSprite === "function" ? deps.getCreeperWalkSprite : null;
+    const getSpiderWalkSprite = typeof deps.getSpiderWalkSprite === "function" ? deps.getSpiderWalkSprite : null;
+    const mobSpriteSize = Math.max(20, Number(deps.mobSpriteSize) || 36);
     const sanitizeCssColor =
       typeof deps.sanitizeCssColor === "function"
         ? deps.sanitizeCssColor
@@ -2227,6 +2230,28 @@
 
     function getGenericMobSpriteFrame(mob) {
       const kind = getMobKind(mob);
+      if (kind === "creeper" && getCreeperWalkSprite) {
+        const sprite = getCreeperWalkSprite(mob);
+        if (sprite && sprite.width > 0 && sprite.height > 0) {
+          return {
+            canvas: sprite,
+            rotation: 0,
+            scaleX: mobSpriteSize / sprite.width,
+            scaleY: mobSpriteSize / sprite.height
+          };
+        }
+      }
+      if (kind === "spider" && getSpiderWalkSprite) {
+        const sprite = getSpiderWalkSprite(mob);
+        if (sprite && sprite.width > 0 && sprite.height > 0) {
+          return {
+            canvas: sprite,
+            rotation: 0,
+            scaleX: mobSpriteSize / sprite.width,
+            scaleY: mobSpriteSize / sprite.height
+          };
+        }
+      }
       const key = `mob:${kind}`;
       const cached = genericCanvasCache.get(key);
       if (cached) {
@@ -2646,7 +2671,10 @@
           node.sprite.visible = true;
           node.sprite.texture = texture;
           node.sprite.rotation = Number(spriteFrame.rotation) || 0;
-          node.sprite.scale.set(1, 1);
+          node.sprite.scale.set(
+            Math.max(0.001, Number(spriteFrame.scaleX) || 1),
+            Math.max(0.001, Number(spriteFrame.scaleY) || 1)
+          );
         } else {
           node.sprite.visible = false;
           drawFallback(node.graphics);

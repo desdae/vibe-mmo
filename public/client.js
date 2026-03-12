@@ -4466,6 +4466,400 @@ function drawPotionIcon(iconCtx, size, liquidColor) {
   iconCtx.fillRect(mid - 4.5, mid - 13, 9, 5);
 }
 
+function resolveHeadArmorIconStyle(itemInput, presentation) {
+  const text = `${String(presentation?.itemId || "")} ${String(itemInput?.name || "")}`.toLowerCase();
+  const tags = new Set(Array.isArray(itemInput?.tags) ? itemInput.tags.map((value) => String(value || "").toLowerCase()) : []);
+  if (text.includes("hood") || text.includes("cowl")) {
+    return "hood";
+  }
+  if (text.includes("cap") || text.includes("coif") || text.includes("skullcap")) {
+    return "cap";
+  }
+  if (text.includes("hat") || text.includes("oracle") || text.includes("wizard") || text.includes("sorcer") || text.includes("magus")) {
+    return "wizard_hat";
+  }
+  if (text.includes("crown") || text.includes("circlet") || text.includes("diadem") || text.includes("tiara")) {
+    return "crown";
+  }
+  if (text.includes("horn") || text.includes("antler") || text.includes("viking")) {
+    return "horned_helmet";
+  }
+  if (text.includes("mask") || text.includes("visor") || text.includes("faceguard") || text.includes("barbute") || text.includes("sallet")) {
+    return "mask_helmet";
+  }
+  if (
+    text.includes("greathelm") ||
+    text.includes("great helm") ||
+    text.includes("full helm") ||
+    text.includes("plate helm") ||
+    (
+      (text.includes("helm") || text.includes("helmet")) &&
+      (
+        text.includes("plate") ||
+        text.includes("iron") ||
+        text.includes("steel") ||
+        text.includes("knight") ||
+        text.includes("guardian") ||
+        text.includes("warden") ||
+        text.includes("recruit")
+      )
+    )
+  ) {
+    return "greathelm";
+  }
+  if (text.includes("helm") || text.includes("helmet")) {
+    return "helmet";
+  }
+  if (tags.has("light") || tags.has("medium")) {
+    return text.includes("cap") ? "cap" : "hood";
+  }
+  return "helmet";
+}
+
+function drawHeadArmorIcon(iconCtx, size, itemInput, presentation, accentPalette) {
+  const mid = size / 2;
+  const style = resolveHeadArmorIconStyle(itemInput, presentation);
+  const seed = hashString(`${String(presentation?.itemId || "")}|${String(itemInput?.name || "")}`);
+  const variant = Math.abs(seed % 5);
+  const variantMinor = Math.abs((seed >>> 3) % 7);
+  const primary = hexToRgba(accentPalette.primary, 0.9);
+  const secondary = hexToRgba(accentPalette.secondary, 0.96);
+  const bright = hexToRgba(accentPalette.secondary, 0.78);
+  const dark = "rgba(25, 20, 23, 0.94)";
+  const shadow = "rgba(12, 15, 20, 0.84)";
+  const fillAndStroke = () => {
+    iconCtx.fill();
+    iconCtx.stroke();
+  };
+  const drawGem = (x, y, radius, color = secondary) => {
+    iconCtx.fillStyle = color;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x, y - radius);
+    iconCtx.lineTo(x + radius * 0.9, y);
+    iconCtx.lineTo(x, y + radius);
+    iconCtx.lineTo(x - radius * 0.9, y);
+    iconCtx.closePath();
+    iconCtx.fill();
+  };
+  const drawPlume = (x, y, sign = 1, height = 8) => {
+    iconCtx.fillStyle = bright;
+    iconCtx.strokeStyle = dark;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x, y);
+    iconCtx.quadraticCurveTo(x + 3 * sign, y - height * 0.45, x + 1.4 * sign, y - height);
+    iconCtx.quadraticCurveTo(x + 0.4 * sign, y - height * 1.18, x - 1.1 * sign, y - height * 0.5);
+    iconCtx.closePath();
+    fillAndStroke();
+  };
+
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+  iconCtx.strokeStyle = dark;
+  iconCtx.lineWidth = 1.8;
+
+  if (style === "wizard_hat") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.ellipse(mid, mid + 5, 13 + variant * 0.6, 4.6 + (variantMinor % 3) * 0.35, -0.12, 0, Math.PI * 2);
+    fillAndStroke();
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.5, mid + 4.5);
+    iconCtx.quadraticCurveTo(mid - 1.5, mid - 8.5 - variant * 0.8, mid + (variant % 2 === 0 ? 2.5 : -1.5), mid - 15.5 - variant * 1.2);
+    iconCtx.quadraticCurveTo(mid + 6.8 + variant * 0.4, mid - 9.5 - variant * 0.5, mid + 9.8, mid + 2.8);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.5, mid + 1.2);
+    iconCtx.lineTo(mid + 7.8, mid + 1.2);
+    iconCtx.stroke();
+    if (variantMinor % 2 === 0) {
+      drawGem(mid + 4.8, mid, 2);
+    } else {
+      drawPlume(mid + 7.5, mid - 1.5, 1, 7 + variant);
+    }
+    return;
+  }
+
+  if (style === "hood") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 12, mid + 6);
+    iconCtx.quadraticCurveTo(mid - 2.2, mid - 15 - variant, mid, mid - 17 - variant);
+    iconCtx.quadraticCurveTo(mid + 3.5, mid - 15.5, mid + 12, mid + 5.5);
+    iconCtx.lineTo(mid + 9.2, mid + 13);
+    iconCtx.quadraticCurveTo(mid + 1.8, mid + 16.4, mid - 10, mid + 13.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6.4, mid + 4);
+    iconCtx.quadraticCurveTo(mid, mid - 7.8 - (variantMinor % 2), mid + 6, mid + 3.4);
+    iconCtx.lineTo(mid + 4.1, mid + 10);
+    iconCtx.quadraticCurveTo(mid, mid + 11.5, mid - 4.8, mid + 10.1);
+    iconCtx.closePath();
+    iconCtx.fill();
+    if (variantMinor % 2 === 0) {
+      drawGem(mid, mid + 12.4, 1.8, secondary);
+    }
+    return;
+  }
+
+  if (style === "cap") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11.2, mid + 7.5);
+    iconCtx.quadraticCurveTo(mid - 10.4, mid - 8.8, mid - 1.5, mid - 13.2);
+    iconCtx.quadraticCurveTo(mid + 7.5, mid - 12.6, mid + 11.6, mid - 0.5);
+    iconCtx.lineTo(mid + 9.6, mid + 9.4);
+    iconCtx.lineTo(mid + 6.4, mid + 13.4);
+    iconCtx.lineTo(mid - 6.8, mid + 13.2);
+    iconCtx.lineTo(mid - 9.8, mid + 9.6);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.6, mid - 0.6);
+    iconCtx.quadraticCurveTo(mid, mid - 5.8, mid + 7.6, mid - 0.8);
+    iconCtx.stroke();
+    if (variantMinor % 2 === 0) {
+      iconCtx.fillStyle = dark;
+      iconCtx.beginPath();
+      iconCtx.arc(mid - 5.1, mid - 2.3, 2.2, 0, Math.PI * 2);
+      iconCtx.arc(mid + 5.1, mid - 2.3, 2.2, 0, Math.PI * 2);
+      iconCtx.fill();
+      iconCtx.strokeStyle = secondary;
+      iconCtx.lineWidth = 0.9;
+      iconCtx.beginPath();
+      iconCtx.arc(mid - 5.1, mid - 2.3, 1.2, 0, Math.PI * 2);
+      iconCtx.arc(mid + 5.1, mid - 2.3, 1.2, 0, Math.PI * 2);
+      iconCtx.stroke();
+    }
+    return;
+  }
+
+  if (style === "crown") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11, mid + 7);
+    iconCtx.lineTo(mid - 8.6, mid - 1.6);
+    iconCtx.lineTo(mid - 4.2, mid + 2.2);
+    iconCtx.lineTo(mid, mid - 7.6);
+    iconCtx.lineTo(mid + 4.2, mid + 2.2);
+    iconCtx.lineTo(mid + 8.6, mid - 1.6);
+    iconCtx.lineTo(mid + 11, mid + 7);
+    iconCtx.lineTo(mid + 8.5, mid + 12.2);
+    iconCtx.lineTo(mid - 8.5, mid + 12.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 8, mid + 9.1);
+    iconCtx.lineTo(mid + 8, mid + 9.1);
+    iconCtx.stroke();
+    drawGem(mid, mid - 1.6, 2.1);
+    drawGem(mid - 5.1, mid + 0.8, 1.4, bright);
+    drawGem(mid + 5.1, mid + 0.8, 1.4, bright);
+    return;
+  }
+
+  if (style === "greathelm" || style === "mask_helmet" || style === "horned_helmet") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 12.5, mid + 5.2);
+    iconCtx.quadraticCurveTo(mid - 11, mid - 12.6, mid - 1.8, mid - 16.2);
+    iconCtx.quadraticCurveTo(mid + 2.4, mid - 17, mid + 12.4, mid + 4);
+    iconCtx.lineTo(mid + 10.2, mid + 14);
+    iconCtx.lineTo(mid - 10.4, mid + 14);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    if (style === "mask_helmet") {
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 5.2, mid + 1.2);
+      iconCtx.lineTo(mid - 1.4, mid - 5.8);
+      iconCtx.lineTo(mid + 1.4, mid - 5.8);
+      iconCtx.lineTo(mid + 5.2, mid + 1.2);
+      iconCtx.lineTo(mid + 3.3, mid + 9.8);
+      iconCtx.lineTo(mid - 3.3, mid + 9.8);
+      iconCtx.closePath();
+      iconCtx.fill();
+      iconCtx.strokeStyle = secondary;
+      iconCtx.lineWidth = 0.9;
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 4.6, mid + 5.4);
+      iconCtx.lineTo(mid + 4.6, mid + 5.4);
+      iconCtx.stroke();
+      drawGem(mid, mid - 10.5, 1.4, bright);
+    } else {
+      iconCtx.fillRect(mid - 5.1, mid + 1.8, 10.2, 1.7);
+      if (variantMinor % 2 === 0) {
+        iconCtx.fillRect(mid - 1.2, mid - 5.2, 2.4, 8.6);
+      } else {
+        iconCtx.fillRect(mid - 4.5, mid + 5.2, 9, 1.4);
+      }
+      if (style === "greathelm") {
+        iconCtx.strokeStyle = secondary;
+        iconCtx.lineWidth = 1;
+        iconCtx.beginPath();
+        iconCtx.moveTo(mid - 7, mid - 11.2);
+        iconCtx.lineTo(mid + 7, mid - 11.2);
+        iconCtx.stroke();
+        if (variantMinor % 2 === 0) {
+          drawPlume(mid, mid - 14.2, variant % 2 === 0 ? 1 : -1, 8.5);
+        }
+      }
+    }
+    if (style === "horned_helmet") {
+      iconCtx.fillStyle = bright;
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 7.8, mid - 6.8);
+      iconCtx.quadraticCurveTo(mid - 16.4, mid - 10.6, mid - 13.9, mid - 1.5);
+      iconCtx.quadraticCurveTo(mid - 10.2, mid - 4.8, mid - 7.2, mid - 1.6);
+      iconCtx.closePath();
+      fillAndStroke();
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid + 7.8, mid - 6.8);
+      iconCtx.quadraticCurveTo(mid + 16.4, mid - 10.6, mid + 13.9, mid - 1.5);
+      iconCtx.quadraticCurveTo(mid + 10.2, mid - 4.8, mid + 7.2, mid - 1.6);
+      iconCtx.closePath();
+      fillAndStroke();
+    }
+    return;
+  }
+
+  const family = variant % 5;
+  iconCtx.fillStyle = primary;
+  if (family === 0) {
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 1.5, 11.8, Math.PI, Math.PI * 2);
+    iconCtx.lineTo(mid + 10.8, mid + 4.2);
+    iconCtx.lineTo(mid + 7, mid + 10.8);
+    iconCtx.lineTo(mid - 7, mid + 10.8);
+    iconCtx.lineTo(mid - 10.8, mid + 4.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.fillRect(mid - 5, mid + 2.4, 10, 1.6);
+    iconCtx.fillRect(mid - 1, mid - 5.1, 2, 9.8);
+  } else if (family === 1) {
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 1.4, 11.2, Math.PI, Math.PI * 2);
+    iconCtx.lineTo(mid + 10.4, mid + 4.6);
+    iconCtx.lineTo(mid + 6.2, mid + 11.6);
+    iconCtx.lineTo(mid - 6.2, mid + 11.6);
+    iconCtx.lineTo(mid - 10.4, mid + 4.6);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.5, mid + 2);
+    iconCtx.lineTo(mid - 1.9, mid - 5.2);
+    iconCtx.lineTo(mid + 1.7, mid - 5.2);
+    iconCtx.lineTo(mid + 5.7, mid + 2);
+    iconCtx.lineTo(mid + 3.1, mid + 9.4);
+    iconCtx.lineTo(mid - 3.1, mid + 9.4);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.fillStyle = secondary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10.1, mid - 4.2);
+    iconCtx.lineTo(mid - 14, mid - 8.6);
+    iconCtx.lineTo(mid - 10.6, mid - 1.2);
+    iconCtx.closePath();
+    iconCtx.moveTo(mid + 10.1, mid - 4.2);
+    iconCtx.lineTo(mid + 14, mid - 8.6);
+    iconCtx.lineTo(mid + 10.6, mid - 1.2);
+    iconCtx.closePath();
+    iconCtx.fill();
+  } else if (family === 2) {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 9.8, mid + 4.6);
+    iconCtx.quadraticCurveTo(mid - 8.5, mid - 9.6, mid, mid - 16.2);
+    iconCtx.quadraticCurveTo(mid + 8.5, mid - 9.6, mid + 9.8, mid + 4.6);
+    iconCtx.lineTo(mid + 7.2, mid + 11.2);
+    iconCtx.lineTo(mid - 7.2, mid + 11.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6.2, mid - 0.8);
+    iconCtx.lineTo(mid, mid - 10.8);
+    iconCtx.lineTo(mid + 6.2, mid - 0.8);
+    iconCtx.stroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.1, mid + 2.2);
+    iconCtx.lineTo(mid, mid - 3.4);
+    iconCtx.lineTo(mid + 5.1, mid + 2.2);
+    iconCtx.lineTo(mid + 3.2, mid + 9.8);
+    iconCtx.lineTo(mid - 3.2, mid + 9.8);
+    iconCtx.closePath();
+    iconCtx.fill();
+    drawPlume(mid, mid - 13.8, variantMinor % 2 === 0 ? 1 : -1, 7.8);
+  } else if (family === 3) {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10.8, mid + 4.6);
+    iconCtx.quadraticCurveTo(mid - 8.8, mid - 10.2, mid - 2.2, mid - 15.2);
+    iconCtx.quadraticCurveTo(mid + 2.8, mid - 16.4, mid + 10.8, mid + 4);
+    iconCtx.lineTo(mid + 7.2, mid + 13);
+    iconCtx.lineTo(mid - 6.8, mid + 13);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 4.1, mid + 1.6);
+    iconCtx.lineTo(mid - 1.1, mid - 5.2);
+    iconCtx.lineTo(mid + 1.5, mid - 5.2);
+    iconCtx.lineTo(mid + 4.7, mid + 1.6);
+    iconCtx.lineTo(mid + 2.6, mid + 9.4);
+    iconCtx.lineTo(mid - 2.8, mid + 9.4);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 0.9;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.2, mid + 5.4);
+    iconCtx.lineTo(mid + 7, mid + 5.4);
+    iconCtx.stroke();
+  } else {
+    iconCtx.beginPath();
+    iconCtx.arc(mid - 0.8, mid - 2, 11.2, Math.PI * 0.98, Math.PI * 1.98);
+    iconCtx.lineTo(mid + 11.2, mid + 5.1);
+    iconCtx.lineTo(mid + 8.6, mid + 12.2);
+    iconCtx.lineTo(mid - 5.4, mid + 13.4);
+    iconCtx.lineTo(mid - 11.2, mid + 6.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.4, mid + 2.5);
+    iconCtx.quadraticCurveTo(mid - 1.5, mid - 5.8, mid + 5.1, mid - 2.2);
+    iconCtx.lineTo(mid + 5.2, mid + 4.2);
+    iconCtx.lineTo(mid - 3.2, mid + 9.6);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 0.9;
+    for (let i = 0; i < 3; i += 1) {
+      const x = mid - 4 + i * 3.4;
+      iconCtx.beginPath();
+      iconCtx.moveTo(x, mid + 12.2);
+      iconCtx.lineTo(x, mid + 16);
+      iconCtx.stroke();
+    }
+  }
+
+  if (variantMinor % 3 === 1 && family !== 1) {
+    drawGem(mid, mid - 12, 1.5, bright);
+  }
+}
+
 function drawArmorSlotIcon(iconCtx, size, slot, accentPalette) {
   const mid = size / 2;
   iconCtx.strokeStyle = hexToRgba(accentPalette.secondary, 0.95);
@@ -4765,7 +5159,9 @@ function drawItemIcon(itemInput, iconCtx, size) {
 
   if (presentation.itemDef && presentation.itemDef.isEquipment) {
     const slotFamily = getEquipmentSlotFamily(presentation.slot);
-    if (["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots"].includes(slotFamily)) {
+    if (slotFamily === "head") {
+      drawHeadArmorIcon(iconCtx, size, itemInput, presentation, accentPalette);
+    } else if (["chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots"].includes(slotFamily)) {
       drawArmorSlotIcon(iconCtx, size, slotFamily, accentPalette);
     } else if (["ring", "necklace", "trinket"].includes(slotFamily)) {
       drawJewelrySlotIcon(iconCtx, size, slotFamily, accentPalette);
@@ -10240,15 +10636,16 @@ function getSpiderWalkFrames(typeName, style = null) {
   ];
   const palette = applyMobPaletteOverrides(palettes[(seed >>> 5) % palettes.length], style);
   const frames = [];
+  const frameSize = MOB_SPRITE_SIZE + 24;
 
   for (let i = 0; i < 6; i += 1) {
     const phase = (i / 6) * Math.PI * 2;
     const pose = Math.sin(phase);
     const frame = document.createElement("canvas");
-    frame.width = MOB_SPRITE_SIZE;
-    frame.height = MOB_SPRITE_SIZE;
+    frame.width = frameSize;
+    frame.height = frameSize;
     const fctx = frame.getContext("2d");
-    fctx.translate(MOB_SPRITE_SIZE / 2, MOB_SPRITE_SIZE / 2);
+    fctx.translate(frameSize / 2, frameSize / 2);
     drawSpiderSpriteFrame(fctx, palette, pose);
     frames.push(frame);
   }
@@ -12325,6 +12722,9 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       getLootBagSprite,
       getTownTileSprite,
       getVendorNpcSprite,
+      mobSpriteSize: MOB_SPRITE_SIZE,
+      getCreeperWalkSprite,
+      getSpiderWalkSprite,
       getActionDefById,
       getAbilityVisualHook,
       getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"

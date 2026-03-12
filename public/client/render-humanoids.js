@@ -474,13 +474,72 @@
 
     function resolveHeadStyle(entry, fallback, style) {
       const nameText = getNameText(entry);
+      const tags = getTagSet(entry);
       if (nameText.includes("hood")) {
         return "hood";
       }
-      if (nameText.includes("hat") || nameText.includes("cap") || nameText.includes("oracle")) {
+      if (
+        nameText.includes("cap") ||
+        nameText.includes("coif") ||
+        nameText.includes("skullcap") ||
+        nameText.includes("helmcap")
+      ) {
+        return "cap";
+      }
+      if (
+        nameText.includes("hat") ||
+        nameText.includes("oracle") ||
+        nameText.includes("wizard") ||
+        nameText.includes("sorcer") ||
+        nameText.includes("magus")
+      ) {
         return "wizard_hat";
       }
-      if (nameText.includes("helm") || nameText.includes("helmet") || nameText.includes("crown")) {
+      if (
+        nameText.includes("crown") ||
+        nameText.includes("circlet") ||
+        nameText.includes("diadem") ||
+        nameText.includes("tiara")
+      ) {
+        return "crown";
+      }
+      if (
+        nameText.includes("horn") ||
+        nameText.includes("antler") ||
+        nameText.includes("viking")
+      ) {
+        return "horned_helmet";
+      }
+      if (
+        nameText.includes("mask") ||
+        nameText.includes("visor") ||
+        nameText.includes("faceguard") ||
+        nameText.includes("barbute") ||
+        nameText.includes("sallet")
+      ) {
+        return "mask_helmet";
+      }
+      if (
+        nameText.includes("greathelm") ||
+        nameText.includes("great helm") ||
+        nameText.includes("full helm") ||
+        nameText.includes("plate helm") ||
+        (
+          (nameText.includes("helm") || nameText.includes("helmet")) &&
+          (
+            nameText.includes("plate") ||
+            nameText.includes("iron") ||
+            nameText.includes("steel") ||
+            nameText.includes("knight") ||
+            nameText.includes("guardian") ||
+            nameText.includes("warden") ||
+            nameText.includes("recruit")
+          )
+        )
+      ) {
+        return "greathelm";
+      }
+      if (nameText.includes("helm") || nameText.includes("helmet")) {
         return "helmet";
       }
       const fallbackType = toLowerWord(fallback);
@@ -491,8 +550,8 @@
       if (archetype === "mage") {
         return "wizard_hat";
       }
-      if (archetype === "ranger" || nameText.includes("hood")) {
-        return "hood";
+      if (archetype === "ranger" || tags.has("light") || tags.has("medium")) {
+        return nameText.includes("cap") ? "cap" : "hood";
       }
       return "helmet";
     }
@@ -861,100 +920,428 @@
         return;
       }
       const variant = Number(profile?.variant || 0);
+      const variantMinor = Number(profile?.variantMinor || 0);
       const clothPrimary = tintHex(palette.cloth, profile?.accentColor || palette.accent, 0.18 + (profile?.rarityRank || 0) * 0.04);
       const clothSecondary = tintHex(palette.clothDark, profile?.trimColor || palette.outline, 0.18);
       const metalPrimary = tintHex(styleName === "rusty_helmet" ? palette.helmetMetal || "#8f674d" : palette.metal, profile?.accentColor || palette.accent, 0.1 + (profile?.rarityRank || 0) * 0.04);
       const metalDark = tintHex(styleName === "rusty_helmet" ? palette.helmetMetalDark || "#5f4131" : palette.metalDark, profile?.trimColor || palette.outline, 0.18);
+      const metalTrim = tintHex(profile?.trimColor || palette.accent || "#f3e3b2", "#ffffff", 0.14);
+      const leatherPrimary = tintHex(palette.leather, profile?.accentColor || palette.accent, 0.16);
+      const leatherDark = tintHex(palette.leatherDark, profile?.trimColor || palette.outline, 0.18);
+      const regalPrimary = tintHex("#d8b15a", profile?.accentColor || palette.accent, 0.26);
+      const regalDark = tintHex("#7f5825", profile?.trimColor || palette.outline, 0.24);
+      const faceShadow = mixColors("#0f141d", profile?.trimColor || "#0f141d", 0.12, 0.96);
+      const fillAndStroke = () => {
+        ctx.fill();
+        ctx.stroke();
+      };
+      const drawGem = (x, y, radius, color = profile?.accentColor || palette.accent) => {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(x, y - radius);
+        ctx.lineTo(x + radius * 0.9, y);
+        ctx.lineTo(x, y + radius);
+        ctx.lineTo(x - radius * 0.9, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.38)";
+        ctx.beginPath();
+        ctx.arc(x + radius * 0.16, y - radius * 0.28, radius * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      const drawPlume = (x, y, sign = 1, height = 6.4) => {
+        ctx.fillStyle = tintHex(profile?.accentColor || palette.accent, "#ffffff", 0.14);
+        ctx.strokeStyle = palette.outline;
+        ctx.lineWidth = 1 * scale;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(x + 2.2 * sign * scale, y - height * 0.42 * scale, x + 1.1 * sign * scale, y - height * scale);
+        ctx.quadraticCurveTo(x + 0.4 * sign * scale, y - height * 1.12 * scale, x - 0.9 * sign * scale, y - height * 0.48 * scale);
+        ctx.closePath();
+        fillAndStroke();
+      };
+
       drawItemAura(cx, headY - 2 * scale, profile, scale, 0.64);
+
       if (styleName === "wizard_hat") {
+        const brimWidth = (10.6 + variant * 1.05) * scale;
+        const brimDepth = (3.6 + (variantMinor % 3) * 0.5) * scale;
+        const coneHeight = (15.8 + variant * 1.35) * scale;
+        const tilt = (variant % 2 === 0 ? 1 : -1) * (1.8 + (variantMinor % 3) * 0.45) * scale;
         ctx.fillStyle = clothPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.8 * scale;
         ctx.beginPath();
-        ctx.ellipse(cx + 0.8 * scale, headY - 2.7 * scale, (11.4 + variant * 0.95) * scale, (4.2 + (variant % 3) * 0.45) * scale, -0.14, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        ctx.ellipse(cx + 0.4 * scale, headY - 2.8 * scale, brimWidth, brimDepth, -0.12, 0, Math.PI * 2);
+        fillAndStroke();
         ctx.beginPath();
-        ctx.moveTo(cx - (6.4 + variant * 0.35) * scale, headY - 2.7 * scale);
-        ctx.lineTo(cx + 1.8 * scale, headY - (17 + variant * 1.25) * scale);
-        ctx.lineTo(cx + (9.4 + variant * 0.55) * scale, headY - (4 + (variant % 2) * 0.6) * scale);
+        ctx.moveTo(cx - (6.8 + variant * 0.35) * scale, headY - 3 * scale);
+        ctx.quadraticCurveTo(cx - 1.2 * scale, headY - coneHeight * 0.6, cx + tilt * 0.35, headY - coneHeight);
+        ctx.quadraticCurveTo(cx + (4.5 + variant * 0.3) * scale + tilt, headY - coneHeight * 0.58, cx + (9.1 + variant * 0.55) * scale, headY - (4.2 + (variantMinor % 2) * 0.6) * scale);
         ctx.closePath();
+        fillAndStroke();
+        ctx.fillStyle = clothSecondary;
+        ctx.beginPath();
+        ctx.ellipse(cx + 0.7 * scale, headY - 4.8 * scale, (6.8 + variant * 0.55) * scale, 1.7 * scale, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.stroke();
+        if (variantMinor % 2 === 0) {
+          drawGem(cx + 2.6 * scale, headY - 5.2 * scale, 1.3 * scale);
+        } else {
+          drawPlume(cx + 5.4 * scale, headY - 7 * scale, 1, 5.8 + variant);
+        }
         ctx.fillStyle = "#f5f8ff";
         ctx.beginPath();
-        ctx.arc(cx + 5 * scale, headY - 11 * scale, 1.1 * scale, 0, Math.PI * 2);
-        ctx.arc(cx + 1 * scale, headY - 8 * scale, 0.9 * scale, 0, Math.PI * 2);
+        ctx.arc(cx + 4.8 * scale + tilt * 0.08, headY - 11.4 * scale, 1.05 * scale, 0, Math.PI * 2);
+        ctx.arc(cx + 0.9 * scale, headY - 8.4 * scale, 0.88 * scale, 0, Math.PI * 2);
         ctx.fill();
         return;
       }
+
       if (styleName === "hood") {
+        const hoodWidth = (9 + variant * 0.55) * scale;
+        const hoodHeight = (13.8 + variant * 0.8) * scale;
         ctx.fillStyle = clothSecondary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.8 * scale;
         ctx.beginPath();
-        ctx.moveTo(cx - (8.8 + variant * 0.55) * scale, headY - 1.5 * scale);
-        ctx.quadraticCurveTo(cx, headY - (13.2 + variant * 0.9) * scale, cx + (8.8 + variant * 0.55) * scale, headY - 1.5 * scale);
-        ctx.lineTo(cx + (6.8 + variant * 0.35) * scale, headY + (6.4 + (variant % 2) * 0.7) * scale);
-        ctx.quadraticCurveTo(cx, headY + (9 + (variant % 3) * 0.8) * scale, cx - (6.8 + variant * 0.35) * scale, headY + (6.4 + (variant % 2) * 0.7) * scale);
+        ctx.moveTo(cx - hoodWidth, headY - 1.8 * scale);
+        ctx.quadraticCurveTo(cx - 1.6 * scale, headY - hoodHeight, cx, headY - (hoodHeight + 1.4 * scale));
+        ctx.quadraticCurveTo(cx + 2.6 * scale, headY - hoodHeight * 0.82, cx + hoodWidth, headY - 1.8 * scale);
+        ctx.lineTo(cx + (7 + variant * 0.4) * scale, headY + (6.7 + (variantMinor % 2) * 0.8) * scale);
+        ctx.quadraticCurveTo(cx + 1.2 * scale, headY + (9.7 + (variantMinor % 3) * 0.7) * scale, cx - (7.5 + variant * 0.38) * scale, headY + (6.9 + (variantMinor % 2) * 0.8) * scale);
+        ctx.closePath();
+        fillAndStroke();
+        ctx.fillStyle = faceShadow;
+        ctx.beginPath();
+        ctx.moveTo(cx - (4.8 + variant * 0.25) * scale, headY - 0.4 * scale);
+        ctx.quadraticCurveTo(cx, headY - (7.8 + (variantMinor % 3) * 0.6) * scale, cx + (4.3 + variant * 0.25) * scale, headY - 0.7 * scale);
+        ctx.lineTo(cx + 3.1 * scale, headY + 4.6 * scale);
+        ctx.quadraticCurveTo(cx, headY + (6.3 + (variantMinor % 2) * 0.45) * scale, cx - 3.5 * scale, headY + 4.8 * scale);
         ctx.closePath();
         ctx.fill();
+        ctx.strokeStyle = mixColors(clothPrimary, metalTrim, 0.3, 1);
+        ctx.lineWidth = 1 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - hoodWidth * 0.72, headY - 0.9 * scale);
+        ctx.quadraticCurveTo(cx, headY - (11.6 + variant * 0.45) * scale, cx + hoodWidth * 0.72, headY - 1 * scale);
         ctx.stroke();
+        if (variantMinor % 2 === 0) {
+          drawGem(cx, headY + 6.1 * scale, 1.05 * scale, metalTrim);
+        }
         return;
       }
+
+      if (styleName === "cap") {
+        ctx.fillStyle = leatherPrimary;
+        ctx.strokeStyle = palette.outline;
+        ctx.lineWidth = 1.7 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - (8.2 + variant * 0.35) * scale, headY + 2.8 * scale);
+        ctx.quadraticCurveTo(cx - (8.6 + variantMinor * 0.08) * scale, headY - 7.4 * scale, cx - 2.2 * scale, headY - (10.4 + (variantMinor % 2) * 0.5) * scale);
+        ctx.quadraticCurveTo(cx + (4.6 + variant * 0.22) * scale, headY - (10.6 + (variantMinor % 3) * 0.45) * scale, cx + (8.4 + variant * 0.4) * scale, headY - 1.4 * scale);
+        ctx.lineTo(cx + (7 + variant * 0.25) * scale, headY + (5.2 + (variantMinor % 2) * 0.55) * scale);
+        ctx.lineTo(cx + (4.3 + variant * 0.2) * scale, headY + (8.1 + (variantMinor % 2) * 0.45) * scale);
+        ctx.lineTo(cx - (4.8 + variant * 0.2) * scale, headY + (8.1 + (variantMinor % 2) * 0.45) * scale);
+        ctx.lineTo(cx - (7.1 + variant * 0.24) * scale, headY + (5 + (variantMinor % 2) * 0.55) * scale);
+        ctx.closePath();
+        fillAndStroke();
+        ctx.strokeStyle = leatherDark;
+        ctx.lineWidth = 1.1 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - 6.2 * scale, headY - 1.6 * scale);
+        ctx.quadraticCurveTo(cx, headY - (5.5 + (variantMinor % 3) * 0.5) * scale, cx + 6.4 * scale, headY - 1.8 * scale);
+        ctx.stroke();
+        if (variantMinor % 2 === 0) {
+          ctx.fillStyle = metalDark;
+          ctx.beginPath();
+          ctx.arc(cx - 4.2 * scale, headY - 3.1 * scale, 1.8 * scale, 0, Math.PI * 2);
+          ctx.arc(cx + 4.2 * scale, headY - 3.1 * scale, 1.8 * scale, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = metalTrim;
+          ctx.lineWidth = 0.9 * scale;
+          ctx.beginPath();
+          ctx.arc(cx - 4.2 * scale, headY - 3.1 * scale, 1 * scale, 0, Math.PI * 2);
+          ctx.arc(cx + 4.2 * scale, headY - 3.1 * scale, 1 * scale, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        return;
+      }
+
+      if (styleName === "crown") {
+        ctx.fillStyle = regalPrimary;
+        ctx.strokeStyle = palette.outline;
+        ctx.lineWidth = 1.6 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - 8.4 * scale, headY + 1.6 * scale);
+        ctx.lineTo(cx - 7.1 * scale, headY - 4.1 * scale);
+        ctx.lineTo(cx - 3.2 * scale, headY - 1.2 * scale);
+        ctx.lineTo(cx, headY - 6.7 * scale);
+        ctx.lineTo(cx + 3.2 * scale, headY - 1.2 * scale);
+        ctx.lineTo(cx + 7.1 * scale, headY - 4.1 * scale);
+        ctx.lineTo(cx + 8.4 * scale, headY + 1.6 * scale);
+        ctx.lineTo(cx + 6.4 * scale, headY + 5.2 * scale);
+        ctx.lineTo(cx - 6.4 * scale, headY + 5.2 * scale);
+        ctx.closePath();
+        fillAndStroke();
+        ctx.strokeStyle = regalDark;
+        ctx.lineWidth = 1 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - 6.2 * scale, headY + 2.8 * scale);
+        ctx.lineTo(cx + 6.2 * scale, headY + 2.8 * scale);
+        ctx.stroke();
+        drawGem(cx, headY - 1.3 * scale, 1.25 * scale, profile?.accentColor || "#e45757");
+        drawGem(cx - 4.4 * scale, headY - 0.2 * scale, 0.95 * scale, metalTrim);
+        drawGem(cx + 4.4 * scale, headY - 0.2 * scale, 0.95 * scale, metalTrim);
+        return;
+      }
+
+      if (styleName === "greathelm" || styleName === "mask_helmet" || styleName === "horned_helmet") {
+        ctx.fillStyle = metalPrimary;
+        ctx.strokeStyle = palette.outline;
+        ctx.lineWidth = 2 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - (headRadius + 2.8 * scale), headY + 2.4 * scale);
+        ctx.quadraticCurveTo(cx - (headRadius + 1.2 * scale), headY - (headRadius + 3.8 * scale), cx - 1.8 * scale, headY - (headRadius + 4.6 * scale));
+        ctx.quadraticCurveTo(cx + (1.8 + (variantMinor % 2) * 0.4) * scale, headY - (headRadius + 5.2 * scale), cx + (headRadius + 2.7 * scale), headY + (1.8 + (variantMinor % 2) * 0.35) * scale);
+        ctx.lineTo(cx + (headRadius + 1.6 * scale), headY + (8.8 + (variantMinor % 2) * 0.5) * scale);
+        ctx.lineTo(cx - (headRadius + 1.9 * scale), headY + (8.8 + (variantMinor % 2) * 0.5) * scale);
+        ctx.closePath();
+        fillAndStroke();
+        ctx.strokeStyle = metalDark;
+        ctx.lineWidth = 1.2 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - 6.4 * scale, headY - 1.2 * scale);
+        ctx.lineTo(cx + 6.4 * scale, headY - 1.2 * scale);
+        ctx.moveTo(cx, headY - (headRadius + 3.6 * scale));
+        ctx.lineTo(cx, headY + 7.4 * scale);
+        ctx.stroke();
+        ctx.fillStyle = faceShadow;
+        if (styleName === "mask_helmet") {
+          ctx.beginPath();
+          ctx.moveTo(cx - 4.2 * scale, headY - 0.8 * scale);
+          ctx.lineTo(cx - 1.4 * scale, headY - 4.4 * scale);
+          ctx.lineTo(cx + 1.4 * scale, headY - 4.4 * scale);
+          ctx.lineTo(cx + 4.2 * scale, headY - 0.8 * scale);
+          ctx.lineTo(cx + 2.6 * scale, headY + 5.8 * scale);
+          ctx.lineTo(cx - 2.6 * scale, headY + 5.8 * scale);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = metalTrim;
+          ctx.lineWidth = 0.95 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 4.1 * scale, headY + 2.4 * scale);
+          ctx.lineTo(cx + 4.1 * scale, headY + 2.4 * scale);
+          ctx.stroke();
+        } else {
+          ctx.fillRect(cx - 4.8 * scale, headY - 0.1 * scale, 9.6 * scale, 1.5 * scale);
+          if (variantMinor % 2 === 0) {
+            ctx.fillRect(cx - 1.1 * scale, headY - 3.9 * scale, 2.2 * scale, 6.7 * scale);
+          } else {
+            ctx.fillRect(cx - 4.2 * scale, headY + 2.1 * scale, 8.4 * scale, 1.2 * scale);
+          }
+        }
+        if (styleName === "horned_helmet") {
+          ctx.fillStyle = tintHex("#d9cfb1", profile?.trimColor || "#d9cfb1", 0.12);
+          ctx.strokeStyle = palette.outline;
+          ctx.lineWidth = 1.1 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 6 * scale, headY - 4.8 * scale);
+          ctx.quadraticCurveTo(cx - 12.5 * scale, headY - 8.8 * scale, cx - 11.4 * scale, headY - 1.4 * scale);
+          ctx.quadraticCurveTo(cx - 8.4 * scale, headY - 3.1 * scale, cx - 5.7 * scale, headY - 0.6 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.beginPath();
+          ctx.moveTo(cx + 6 * scale, headY - 4.8 * scale);
+          ctx.quadraticCurveTo(cx + 12.5 * scale, headY - 8.8 * scale, cx + 11.4 * scale, headY - 1.4 * scale);
+          ctx.quadraticCurveTo(cx + 8.4 * scale, headY - 3.1 * scale, cx + 5.7 * scale, headY - 0.6 * scale);
+          ctx.closePath();
+          fillAndStroke();
+        } else if (styleName === "greathelm" && variantMinor % 2 === 0) {
+          drawPlume(cx, headY - (headRadius + 4.8 * scale), variant % 2 === 0 ? 1 : -1, 7 + variant * 0.5);
+        }
+        if (styleName === "greathelm") {
+          ctx.strokeStyle = metalTrim;
+          ctx.lineWidth = 1 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 6.2 * scale, headY - (headRadius + 1.1 * scale));
+          ctx.lineTo(cx + 6.2 * scale, headY - (headRadius + 1.1 * scale));
+          ctx.stroke();
+        } else if (styleName === "mask_helmet") {
+          drawGem(cx, headY - (headRadius + 0.8 * scale), 0.9 * scale, metalTrim);
+        }
+        return;
+      }
+
       if (styleName === "rusty_helmet") {
         ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 2 * scale;
         ctx.beginPath();
-        ctx.arc(cx, headY, headRadius + (1 + (variant % 2) * 0.45) * scale, Math.PI, Math.PI * 2);
-        ctx.lineTo(cx + headRadius + (1 + (variant % 3) * 0.35) * scale, headY + 1.9 * scale);
-        ctx.lineTo(cx - headRadius - (1 + ((variant + 1) % 3) * 0.35) * scale, headY + 1.9 * scale);
+        ctx.arc(cx, headY - 0.4 * scale, headRadius + (1.2 + (variant % 2) * 0.55) * scale, Math.PI, Math.PI * 2);
+        ctx.lineTo(cx + headRadius + (1.6 + (variantMinor % 2) * 0.35) * scale, headY + 2.2 * scale);
+        ctx.lineTo(cx + (6.8 + variant * 0.25) * scale, headY + (6.4 + (variantMinor % 2) * 0.5) * scale);
+        ctx.lineTo(cx - (7 + variant * 0.2) * scale, headY + (6.2 + (variantMinor % 2) * 0.55) * scale);
+        ctx.lineTo(cx - headRadius - (1.8 + ((variant + 1) % 3) * 0.28) * scale, headY + 2.2 * scale);
+        ctx.closePath();
+        fillAndStroke();
+        ctx.fillStyle = faceShadow;
+        ctx.beginPath();
+        ctx.moveTo(cx - 5.1 * scale, headY - 0.5 * scale);
+        ctx.lineTo(cx - 1.3 * scale, headY - 4.2 * scale);
+        ctx.lineTo(cx + 3.8 * scale, headY - 2.6 * scale);
+        ctx.lineTo(cx + 4.8 * scale, headY + 4.6 * scale);
+        ctx.lineTo(cx - 3.2 * scale, headY + 5 * scale);
         ctx.closePath();
         ctx.fill();
-        ctx.stroke();
         ctx.strokeStyle = metalDark;
-        ctx.lineWidth = 1.5 * scale;
+        ctx.lineWidth = 1.35 * scale;
         ctx.beginPath();
-        ctx.moveTo(cx - (headRadius - 1.8) * scale, headY - 0.1 * scale);
-        ctx.lineTo(cx + (headRadius - 1.8) * scale, headY - 0.1 * scale);
-        ctx.moveTo(cx, headY - headRadius * scale);
-        ctx.lineTo(cx, headY + headRadius * (0.3 + (variant % 2) * 0.12) * scale);
+        ctx.moveTo(cx - 6.2 * scale, headY - 0.3 * scale);
+        ctx.lineTo(cx + 5.2 * scale, headY - 1.5 * scale);
         ctx.stroke();
         ctx.fillStyle = "rgba(168, 108, 74, 0.28)";
         ctx.beginPath();
         ctx.arc(cx - 3.2 * scale, headY - 2.2 * scale, 1.15 * scale, 0, Math.PI * 2);
         ctx.arc(cx + 2.8 * scale, headY + 0.7 * scale, 0.95 * scale, 0, Math.PI * 2);
+        ctx.arc(cx + 0.9 * scale, headY + 3.8 * scale, 0.78 * scale, 0, Math.PI * 2);
         ctx.fill();
         return;
       }
+
       if (styleName === "helmet") {
+        const family = variant % 5;
         ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 2 * scale;
-        ctx.beginPath();
-        ctx.arc(cx, headY, headRadius + (1 + (variant % 2) * 0.45) * scale, Math.PI, Math.PI * 2);
-        ctx.lineTo(cx + headRadius + (1 + (variant % 3) * 0.3) * scale, headY + 1.8 * scale);
-        ctx.lineTo(cx - headRadius - (1 + ((variant + 2) % 3) * 0.3) * scale, headY + 1.8 * scale);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.strokeStyle = metalDark;
-        ctx.lineWidth = 1.6 * scale;
-        ctx.beginPath();
-        ctx.moveTo(cx - (headRadius - 2) * scale, headY - 0.2 * scale);
-        ctx.lineTo(cx + (headRadius - 2) * scale, headY - 0.2 * scale);
-        ctx.moveTo(cx, headY - headRadius * scale);
-        ctx.lineTo(cx, headY + headRadius * 0.5 * scale);
-        ctx.stroke();
-        if (variant % 2 === 1) {
-          ctx.fillStyle = metalDark;
+        if (family === 0) {
           ctx.beginPath();
-          ctx.moveTo(cx - 2.1 * scale, headY - headRadius * 1.02 * scale);
-          ctx.lineTo(cx, headY - headRadius * 1.55 * scale);
-          ctx.lineTo(cx + 2.1 * scale, headY - headRadius * 1.02 * scale);
+          ctx.arc(cx, headY - 0.2 * scale, headRadius + 1.3 * scale, Math.PI, Math.PI * 2);
+          ctx.lineTo(cx + (9.6 + (variantMinor % 2) * 0.5) * scale, headY + 2.1 * scale);
+          ctx.lineTo(cx + 6 * scale, headY + 6.4 * scale);
+          ctx.lineTo(cx - 6 * scale, headY + 6.4 * scale);
+          ctx.lineTo(cx - (9.6 + (variantMinor % 2) * 0.5) * scale, headY + 2.1 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.fillStyle = faceShadow;
+          ctx.fillRect(cx - 4.2 * scale, headY + 0.4 * scale, 8.4 * scale, 1.4 * scale);
+          ctx.fillRect(cx - 0.9 * scale, headY - 4.1 * scale, 1.8 * scale, 7.3 * scale);
+          ctx.strokeStyle = metalDark;
+          ctx.lineWidth = 1.2 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 6.2 * scale, headY - 0.3 * scale);
+          ctx.lineTo(cx + 6.2 * scale, headY - 0.3 * scale);
+          ctx.stroke();
+        } else if (family === 1) {
+          ctx.beginPath();
+          ctx.arc(cx, headY - 0.5 * scale, headRadius + 1 * scale, Math.PI, Math.PI * 2);
+          ctx.lineTo(cx + 8.6 * scale, headY + 2.2 * scale);
+          ctx.lineTo(cx + 4.8 * scale, headY + 7.1 * scale);
+          ctx.lineTo(cx - 4.8 * scale, headY + 7.1 * scale);
+          ctx.lineTo(cx - 8.6 * scale, headY + 2.2 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.fillStyle = faceShadow;
+          ctx.beginPath();
+          ctx.moveTo(cx - 4.8 * scale, headY + 0.1 * scale);
+          ctx.lineTo(cx - 1.6 * scale, headY - 4.8 * scale);
+          ctx.lineTo(cx + 1.5 * scale, headY - 4.8 * scale);
+          ctx.lineTo(cx + 4.9 * scale, headY + 0.1 * scale);
+          ctx.lineTo(cx + 2.6 * scale, headY + 5.5 * scale);
+          ctx.lineTo(cx - 2.6 * scale, headY + 5.5 * scale);
           ctx.closePath();
           ctx.fill();
+          ctx.fillStyle = metalTrim;
+          ctx.beginPath();
+          ctx.moveTo(cx - 8.4 * scale, headY - 4.8 * scale);
+          ctx.lineTo(cx - 11.8 * scale, headY - 8.2 * scale);
+          ctx.lineTo(cx - 8.6 * scale, headY - 1.8 * scale);
+          ctx.closePath();
+          ctx.moveTo(cx + 8.4 * scale, headY - 4.8 * scale);
+          ctx.lineTo(cx + 11.8 * scale, headY - 8.2 * scale);
+          ctx.lineTo(cx + 8.6 * scale, headY - 1.8 * scale);
+          ctx.closePath();
+          ctx.fill();
+        } else if (family === 2) {
+          ctx.beginPath();
+          ctx.moveTo(cx - 8.4 * scale, headY + 2.4 * scale);
+          ctx.quadraticCurveTo(cx - 7.6 * scale, headY - 8.2 * scale, cx, headY - (headRadius + 4.5 * scale));
+          ctx.quadraticCurveTo(cx + 7.6 * scale, headY - 8.1 * scale, cx + 8.4 * scale, headY + 2.4 * scale);
+          ctx.lineTo(cx + 6.4 * scale, headY + 7 * scale);
+          ctx.lineTo(cx - 6.4 * scale, headY + 7 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.strokeStyle = metalDark;
+          ctx.lineWidth = 1.15 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 5.8 * scale, headY - 0.8 * scale);
+          ctx.lineTo(cx, headY - (headRadius + 3.2 * scale));
+          ctx.lineTo(cx + 5.8 * scale, headY - 0.8 * scale);
+          ctx.stroke();
+          ctx.fillStyle = faceShadow;
+          ctx.beginPath();
+          ctx.moveTo(cx - 4.6 * scale, headY + 0.2 * scale);
+          ctx.lineTo(cx, headY - 3.6 * scale);
+          ctx.lineTo(cx + 4.6 * scale, headY + 0.2 * scale);
+          ctx.lineTo(cx + 2.9 * scale, headY + 5.9 * scale);
+          ctx.lineTo(cx - 2.9 * scale, headY + 5.9 * scale);
+          ctx.closePath();
+          ctx.fill();
+          drawPlume(cx, headY - (headRadius + 4.2 * scale), variantMinor % 2 === 0 ? 1 : -1, 6.6 + variantMinor * 0.18);
+        } else if (family === 3) {
+          ctx.beginPath();
+          ctx.moveTo(cx - 9 * scale, headY + 2.6 * scale);
+          ctx.quadraticCurveTo(cx - 8.5 * scale, headY - 8 * scale, cx - 2.2 * scale, headY - (headRadius + 4.1 * scale));
+          ctx.quadraticCurveTo(cx + 2.6 * scale, headY - (headRadius + 4.8 * scale), cx + 9.1 * scale, headY + 2.2 * scale);
+          ctx.lineTo(cx + 6 * scale, headY + 8 * scale);
+          ctx.lineTo(cx - 5.7 * scale, headY + 8 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.fillStyle = faceShadow;
+          ctx.beginPath();
+          ctx.moveTo(cx - 3.5 * scale, headY - 0.4 * scale);
+          ctx.lineTo(cx - 0.9 * scale, headY - 4.6 * scale);
+          ctx.lineTo(cx + 1.3 * scale, headY - 4.6 * scale);
+          ctx.lineTo(cx + 3.9 * scale, headY - 0.4 * scale);
+          ctx.lineTo(cx + 2.2 * scale, headY + 5.8 * scale);
+          ctx.lineTo(cx - 2.3 * scale, headY + 5.8 * scale);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = metalTrim;
+          ctx.lineWidth = 0.95 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 6.2 * scale, headY + 1.6 * scale);
+          ctx.lineTo(cx + 6 * scale, headY + 1.6 * scale);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(cx - 0.7 * scale, headY - 0.6 * scale, headRadius + 0.95 * scale, Math.PI * 0.98, Math.PI * 1.98);
+          ctx.lineTo(cx + 9.8 * scale, headY + 2.8 * scale);
+          ctx.lineTo(cx + 7.8 * scale, headY + 7.8 * scale);
+          ctx.lineTo(cx - 4.8 * scale, headY + 8.4 * scale);
+          ctx.lineTo(cx - 9.4 * scale, headY + 3.6 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.fillStyle = faceShadow;
+          ctx.beginPath();
+          ctx.moveTo(cx - 5 * scale, headY + 0.2 * scale);
+          ctx.quadraticCurveTo(cx - 1.6 * scale, headY - 5.2 * scale, cx + 4.2 * scale, headY - 2.8 * scale);
+          ctx.lineTo(cx + 4.6 * scale, headY + 2.8 * scale);
+          ctx.lineTo(cx - 3.1 * scale, headY + 5.6 * scale);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = metalDark;
+          ctx.lineWidth = 1.05 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 4.1 * scale, headY + 7.8 * scale);
+          ctx.lineTo(cx - 4.1 * scale, headY + 11.1 * scale);
+          ctx.moveTo(cx - 1.2 * scale, headY + 7.9 * scale);
+          ctx.lineTo(cx - 1.2 * scale, headY + 11.1 * scale);
+          ctx.moveTo(cx + 1.7 * scale, headY + 7.6 * scale);
+          ctx.lineTo(cx + 1.7 * scale, headY + 10.9 * scale);
+          ctx.stroke();
+        }
+        if (variantMinor % 3 === 1 && family !== 1) {
+          drawGem(cx, headY - (headRadius + 1.1 * scale), 0.95 * scale, metalTrim);
         }
       }
     }
