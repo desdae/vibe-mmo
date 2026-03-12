@@ -26,6 +26,15 @@ const expFill = document.getElementById("exp-fill");
 const expText = document.getElementById("exp-text");
 const spellbookPanel = document.getElementById("spellbook-panel");
 const spellbookGrid = document.getElementById("spellbook-grid");
+const spellbookSummary = (() => {
+  if (!spellbookPanel || !spellbookGrid) {
+    return null;
+  }
+  const summary = document.createElement("div");
+  summary.id = "spellbook-summary";
+  spellbookPanel.insertBefore(summary, spellbookGrid);
+  return summary;
+})();
 const actionBar = document.getElementById("action-bar");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
@@ -749,7 +758,8 @@ const mobilePanelState = {
 };
 const mobileActionBarEditState = {
   active: false,
-  selectedSlotId: ""
+  selectedSlotId: "",
+  pendingAbilityId: ""
 };
 const mobileActionTouchState = {
   active: false,
@@ -3914,7 +3924,53 @@ function buildSpellbookSignature(self) {
     const fallbackLevel = Math.max(1, Math.floor(Number(entry.level) || 1));
     parts.push(`${abilityId}:${getSelfAbilityLevel(self, abilityId, fallbackLevel)}`);
   }
+  if (isTouchJoystickEnabled()) {
+    parts.push(
+      `bar:${Array.from({ length: 9 }, (_value, index) => actionBindings.get(String(index + 1)) || makeActionBinding("none")).join(",")}`
+    );
+    parts.push(`edit:${mobileActionBarEditState.active ? 1 : 0}:${mobileActionBarEditState.selectedSlotId || ""}`);
+    parts.push(`pending:${mobileActionBarEditState.pendingAbilityId || ""}`);
+  }
   return parts.join("|");
+}
+
+function clearMobilePendingAbilityPlacement() {
+  mobileActionBarEditState.pendingAbilityId = "";
+}
+
+function getMobilePendingAbilityPlacementId() {
+  const abilityId = String(mobileActionBarEditState.pendingAbilityId || "").trim();
+  return abilityDefsById.has(abilityId) ? abilityId : "";
+}
+
+function getBoundActionSlotsForAbility(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return [];
+  }
+  const slots = [];
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    const binding = parseActionBinding(actionBindings.get(String(slotId)) || makeActionBinding("none"));
+    if (binding.kind === "action" && binding.id === resolvedAbilityId) {
+      slots.push(String(slotId));
+    }
+  }
+  return slots;
+}
+
+function getFirstFreeMobileActionSlotId() {
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    const binding = parseActionBinding(actionBindings.get(String(slotId)) || makeActionBinding("none"));
+    if (binding.kind === "action" && binding.id === "none") {
+      return String(slotId);
+    }
+  }
+  return "";
+}
+
+function formatActionSlotList(slotIds) {
+  const labels = slotIds.map((slotId) => getActionSlotLabel(slotId)).filter(Boolean);
+  return labels.join(", ");
 }
 
 function bindAbilityToPreferredActionSlot(abilityId) {
@@ -3975,10 +4031,23 @@ function bindActionBindingToSlot(slotId, binding) {
 
 function bindAbilityToActionSlot(slotId, abilityId) {
   const resolvedAbilityId = String(abilityId || "").trim();
-  if (!resolvedAbilityId || !abilityDefsById.has(resolvedAbilityId)) {
+  const resolvedSlotId = String(slotId || "").trim();
+  if (!resolvedAbilityId || !abilityDefsById.has(resolvedAbilityId) || !isMobileEditableActionSlot(resolvedSlotId)) {
     return false;
   }
-  return bindActionBindingToSlot(slotId, makeActionBinding(resolvedAbilityId));
+  const desiredBinding = makeActionBinding(resolvedAbilityId);
+  const existingSlots = getBoundActionSlotsForAbility(resolvedAbilityId);
+  if (existingSlots.includes(resolvedSlotId)) {
+    return true;
+  }
+  const targetBinding = actionBindings.get(resolvedSlotId) || makeActionBinding("none");
+  const sourceSlotId = existingSlots[0] || "";
+  if (sourceSlotId) {
+    actionBindings.set(sourceSlotId, targetBinding);
+  }
+  actionBindings.set(resolvedSlotId, desiredBinding);
+  updateActionBarUI(getCurrentSelf());
+  return true;
 }
 
 function bindItemToActionSlot(slotId, itemId) {
@@ -4004,47 +4073,193 @@ function swapActionBarBindings(slotA, slotB) {
   return true;
 }
 
-function buildMobileSpellbookHintLines(currentLevel = 1) {
+function buildMobileSpellbookHintLines(currentLevel = 1, abilityId = "") {
   const lines = [`Current Level: ${Math.max(1, Math.floor(Number(currentLevel) || 1))}`];
   const selectedSlotId = getMobileActionBarSelectedSlotId();
-  if (mobileActionBarEditState.active) {
-    if (selectedSlotId) {
-      lines.push(`Tap to place on slot ${getActionSlotLabel(selectedSlotId)}.`);
-    } else {
-      lines.push("Tap an action slot first, then tap this skill.");
-    }
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  if (pendingAbilityId) {
+    lines.push(`Tap a slot on the action bar to place ${getAbilityDisplayName(pendingAbilityId)}.`);
+    lines.push("Tap Done to cancel placement.");
     return lines;
   }
-  lines.push("Tap to bind to the first free action slot.");
-  lines.push("Use Edit to place it on a specific slot.");
+  if (mobileActionBarEditState.active && selectedSlotId) {
+    lines.push(`Selected Slot: ${getActionSlotLabel(selectedSlotId)}`);
+    lines.push("Use Add to place this spell on the selected slot.");
+    return lines;
+  }
+  const boundSlots = getBoundActionSlotsForAbility(abilityId);
+  if (boundSlots.length) {
+    lines.push(`On Action Bar: ${formatActionSlotList(boundSlots)}`);
+  } else {
+    lines.push("Use Add to place this spell on the action bar.");
+  }
+  lines.push("Tap the icon to inspect. Use +1 to spend a skill point.");
   return lines;
 }
 
-function handleMobileSpellbookAbilityTap(abilityId) {
+function getMobileSpellbookAddButtonState(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  const boundSlots = getBoundActionSlotsForAbility(resolvedAbilityId);
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  if (pendingAbilityId === resolvedAbilityId) {
+    return { label: "Pick Slot", detail: "Tap a slot on the bar", active: true };
+  }
+  if (mobileActionBarEditState.active && selectedSlotId) {
+    return { label: `Place ${getActionSlotLabel(selectedSlotId)}`, detail: "Uses the selected slot", active: true };
+  }
+  if (boundSlots.length) {
+    return {
+      label: "On Bar",
+      detail: `Slot ${formatActionSlotList(boundSlots)}`,
+      active: false
+    };
+  }
+  const freeSlotId = getFirstFreeMobileActionSlotId();
+  if (freeSlotId) {
+    return {
+      label: `Add ${getActionSlotLabel(freeSlotId)}`,
+      detail: "First free slot",
+      active: true
+    };
+  }
+  return {
+    label: "Pick Slot",
+    detail: "Opens Edit mode",
+    active: true
+  };
+}
+
+function handleMobileSpellbookBindAction(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId || !abilityDefsById.has(resolvedAbilityId)) {
+    return false;
+  }
+  const abilityName = abilityDefsById.get(resolvedAbilityId)?.name || resolvedAbilityId;
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+
+  if (mobileActionBarEditState.active && selectedSlotId) {
+    clearMobilePendingAbilityPlacement();
+    if (!bindAbilityToActionSlot(selectedSlotId, resolvedAbilityId)) {
+      return false;
+    }
+    setStatus(`${abilityName} placed on slot ${getActionSlotLabel(selectedSlotId)}.`);
+    return true;
+  }
+
+  if (pendingAbilityId === resolvedAbilityId) {
+    setStatus(`Tap an action slot to place ${abilityName}.`);
+    return true;
+  }
+
+  const boundSlots = getBoundActionSlotsForAbility(resolvedAbilityId);
+  if (boundSlots.length) {
+    setStatus(`${abilityName} is already on slot ${formatActionSlotList(boundSlots)}. Use Edit to move it.`);
+    return true;
+  }
+
+  const freeSlotId = getFirstFreeMobileActionSlotId();
+  if (freeSlotId) {
+    bindAbilityToActionSlot(freeSlotId, resolvedAbilityId);
+    setStatus(`${abilityName} added to slot ${getActionSlotLabel(freeSlotId)}.`);
+    return true;
+  }
+
+  setMobileActionBarEditMode(true);
+  clearMobileActionBarSelection();
+  mobileActionBarEditState.pendingAbilityId = resolvedAbilityId;
+  updateActionBarUI(getCurrentSelf());
+  setStatus(`Tap an action slot to place ${abilityName}.`);
+  return true;
+}
+
+function handleMobileSpellbookAbilityTap(abilityId, currentLevel = 1) {
   const resolvedAbilityId = String(abilityId || "").trim();
   if (!resolvedAbilityId) {
     return false;
   }
-  if (!mobileActionBarEditState.active) {
-    return bindAbilityToPreferredActionSlot(resolvedAbilityId);
-  }
-  const selectedSlotId = getMobileActionBarSelectedSlotId();
-  if (!selectedSlotId) {
-    setStatus("Tap an action slot, then tap a spell or usable item.");
-    return false;
-  }
-  if (!bindAbilityToActionSlot(selectedSlotId, resolvedAbilityId)) {
-    return false;
-  }
-  const abilityName = abilityDefsById.get(resolvedAbilityId)?.name || resolvedAbilityId;
-  setStatus(`${abilityName} placed on slot ${getActionSlotLabel(selectedSlotId)}.`);
+  showMobileAbilityTooltip(resolvedAbilityId, "panel", 0, 0, buildMobileSpellbookHintLines(currentLevel, resolvedAbilityId));
   return true;
+}
+
+function handleMobileSpellbookAbilityLevelUp(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  const skillPoints = Math.max(0, Math.floor(Number(self && self.skillPoints) || 0));
+  if (skillPoints <= 0) {
+    setStatus("No skill points available.");
+    return false;
+  }
+  sendJsonMessage({
+    type: "level_up_ability",
+    abilityId: resolvedAbilityId
+  });
+  const abilityName = abilityDefsById.get(resolvedAbilityId)?.name || resolvedAbilityId;
+  setStatus(`Spent 1 skill point on ${abilityName}.`);
+  return true;
+}
+
+function updateSpellbookSummary(self) {
+  if (!spellbookSummary) {
+    return;
+  }
+  if (!self || !isTouchJoystickEnabled()) {
+    spellbookSummary.classList.add("hidden");
+    spellbookSummary.innerHTML = "";
+    return;
+  }
+  const skillPoints = Math.max(0, Math.floor(Number(self.skillPoints) || 0));
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  let subtitle = "Tap a spell icon for details. Use Add to place it on the bar.";
+  if (pendingAbilityId) {
+    subtitle = `Tap a slot on the action bar to place ${getAbilityDisplayName(pendingAbilityId)}.`;
+  } else if (mobileActionBarEditState.active && selectedSlotId) {
+    subtitle = `Slot ${getActionSlotLabel(selectedSlotId)} selected. Tap Add on a spell to place it there.`;
+  } else if (mobileActionBarEditState.active) {
+    subtitle = "Edit mode is on. Tap a slot to select it, or tap Add on a spell to choose a slot.";
+  }
+  spellbookSummary.classList.remove("hidden");
+  spellbookSummary.innerHTML =
+    `<div class="spellbook-summary-main">` +
+      `<div class="spellbook-summary-points">${skillPoints} Skill Point${skillPoints === 1 ? "" : "s"}</div>` +
+      `<div class="spellbook-summary-subtitle">${escapeHtml(subtitle)}</div>` +
+    `</div>` +
+    `<div class="spellbook-summary-actions">` +
+      `<button type="button" class="spellbook-summary-button${mobileActionBarEditState.active ? " active" : ""}" data-action="toggle-edit">` +
+        `${mobileActionBarEditState.active ? "Done" : "Edit Bar"}` +
+      `</button>` +
+      (pendingAbilityId
+        ? `<button type="button" class="spellbook-summary-button" data-action="cancel-pending">Cancel</button>`
+        : "") +
+    `</div>`;
+  const toggleButton = spellbookSummary.querySelector('[data-action="toggle-edit"]');
+  if (toggleButton) {
+    toggleButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleMobileActionBarEditMode();
+    });
+  }
+  const cancelButton = spellbookSummary.querySelector('[data-action="cancel-pending"]');
+  if (cancelButton) {
+    cancelButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      clearMobilePendingAbilityPlacement();
+      updateActionBarUI(getCurrentSelf());
+      setStatus("Spell placement canceled.");
+    });
+  }
 }
 
 function updateSpellbookUI(self) {
   if (!spellbookGrid || !spellbookPanel) {
     return;
   }
+  updateSpellbookSummary(self);
   if (!self) {
     spellbookGrid.innerHTML = "";
     spellbookState.signature = "";
@@ -4072,32 +4287,27 @@ function updateSpellbookUI(self) {
     const fallbackLevel = Math.max(1, Math.floor(Number(entry?.level) || 1));
     const currentLevel = getSelfAbilityLevel(self, abilityId, fallbackLevel);
     const canLevelUp = skillPoints > 0;
+    const addButtonState = getMobileSpellbookAddButtonState(abilityId);
+    const boundSlots = getBoundActionSlotsForAbility(abilityId);
 
     const cell = document.createElement("div");
     cell.className = "spellbook-cell";
+    if (mobileLayout && boundSlots.length) {
+      cell.classList.add("bound-on-bar");
+    }
 
     const node = document.createElement("div");
     node.className = "spellbook-entry";
     node.style.backgroundImage = `url(${getActionIconUrl(abilityId)})`;
     node.title = mobileLayout
-      ? `${buildAbilityTooltip(abilityId)}\n${buildMobileSpellbookHintLines(currentLevel).join("\n")}`
+      ? `${buildAbilityTooltip(abilityId)}\n${buildMobileSpellbookHintLines(currentLevel, abilityId).join("\n")}`
       : `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nDrag to action slot.`;
     node.draggable = !mobileLayout;
-    node.addEventListener("click", (event) => {
-      if (!isTouchJoystickEnabled()) {
-        return;
-      }
-      event.preventDefault();
-      if (performance.now() < (Number(mobilePanelState.suppressAbilityTapUntil) || 0)) {
-        return;
-      }
-      handleMobileSpellbookAbilityTap(abilityId);
-    });
     bindMobileAbilitySlotPreview(node, abilityId, () => {
-      handleMobileSpellbookAbilityTap(abilityId);
+      handleMobileSpellbookAbilityTap(abilityId, currentLevel);
     }, {
       anchor: "panel",
-      hintLines: () => buildMobileSpellbookHintLines(currentLevel)
+      hintLines: () => buildMobileSpellbookHintLines(currentLevel, abilityId)
     });
     node.addEventListener("dragstart", (event) => {
       dragState.source = "spellbook";
@@ -4114,30 +4324,57 @@ function updateSpellbookUI(self) {
     cell.appendChild(node);
 
     const controls = document.createElement("div");
-    controls.className = "spellbook-controls";
+    controls.className = `spellbook-controls${mobileLayout ? " mobile-layout" : ""}`;
+    const metaRow = document.createElement("div");
+    metaRow.className = "spellbook-meta";
+
     const levelLabel = document.createElement("div");
     levelLabel.className = "spellbook-level";
     levelLabel.textContent = `Lv ${currentLevel}`;
-    controls.appendChild(levelLabel);
+    metaRow.appendChild(levelLabel);
+
+    if (mobileLayout) {
+      const bindStatus = document.createElement("div");
+      bindStatus.className = "spellbook-bind-status";
+      bindStatus.textContent = boundSlots.length ? `Bar ${formatActionSlotList(boundSlots)}` : "Not on bar";
+      metaRow.appendChild(bindStatus);
+    }
+
+    controls.appendChild(metaRow);
+
+    const actionRow = document.createElement("div");
+    actionRow.className = "spellbook-actions";
+
+    if (mobileLayout) {
+      const addButton = document.createElement("button");
+      addButton.type = "button";
+      addButton.className = `spellbook-action-button${addButtonState.active ? "" : " inactive"}`;
+      addButton.textContent = addButtonState.label;
+      addButton.title = addButtonState.detail || addButtonState.label;
+      addButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handleMobileSpellbookBindAction(abilityId);
+      });
+      actionRow.appendChild(addButton);
+    }
 
     const plusButton = document.createElement("button");
     plusButton.type = "button";
     plusButton.className = "spellbook-plus";
-    plusButton.textContent = "+";
+    plusButton.textContent = mobileLayout ? "+1" : "+";
     plusButton.disabled = !canLevelUp;
     plusButton.title = canLevelUp
       ? `Spend 1 skill point to level ${abilityId}.`
       : "No skill points available.";
-    plusButton.addEventListener("click", () => {
-      if (!canLevelUp) {
-        return;
-      }
-      sendJsonMessage({
-        type: "level_up_ability",
-        abilityId
-      });
+    plusButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      handleMobileSpellbookAbilityLevelUp(abilityId);
     });
-    controls.appendChild(plusButton);
+    actionRow.appendChild(plusButton);
+
+    controls.appendChild(actionRow);
 
     cell.appendChild(controls);
     spellbookGrid.appendChild(cell);
@@ -7038,6 +7275,15 @@ function handleMobileActionBarEditSlotTap(slotId) {
   if (!isMobileEditableActionSlot(resolvedSlotId)) {
     return false;
   }
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  if (pendingAbilityId) {
+    const abilityName = abilityDefsById.get(pendingAbilityId)?.name || pendingAbilityId;
+    clearMobilePendingAbilityPlacement();
+    mobileActionBarEditState.selectedSlotId = resolvedSlotId;
+    bindAbilityToActionSlot(resolvedSlotId, pendingAbilityId);
+    setStatus(`${abilityName} placed on slot ${getActionSlotLabel(resolvedSlotId)}.`);
+    return true;
+  }
   const selectedSlotId = getMobileActionBarSelectedSlotId();
   if (!selectedSlotId) {
     mobileActionBarEditState.selectedSlotId = resolvedSlotId;
@@ -7077,6 +7323,7 @@ function setMobileActionBarEditMode(active) {
   mobileActionBarEditState.active = nextActive;
   if (!nextActive) {
     clearMobileActionBarSelection();
+    clearMobilePendingAbilityPlacement();
   }
   hideHoverTooltip();
   clearMobileTooltipHideTimer();
@@ -7107,6 +7354,7 @@ function updateMobileUtilityBar(self = null) {
   if (!mobileActive) {
     mobileActionBarEditState.active = false;
     clearMobileActionBarSelection();
+    clearMobilePendingAbilityPlacement();
     mobileActionEditButton.classList.remove("active");
     mobileActionEditButton.textContent = "Edit";
   }
