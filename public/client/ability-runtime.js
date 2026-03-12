@@ -199,6 +199,7 @@
         return false;
       }
       const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
+      const previousSelfCast = captureCastStateSnapshot(abilityChannel);
       if (castMs > 0) {
         const dx = targetX - self.x;
         const dy = targetY - self.y;
@@ -220,6 +221,7 @@
           abilityChannel.targetX = self.x;
           abilityChannel.targetY = self.y;
         }
+        syncLocalCastAudio(previousSelfCast, abilityChannel);
       }
       if (castMs <= 0) {
         markAbilityUsedClient(resolvedAbilityId, now);

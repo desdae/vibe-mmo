@@ -1744,6 +1744,8 @@ function getAbilityAudioState(abilityId, eventType, createIfMissing = true) {
       gainNode: null,
       status: "idle",
       playing: false,
+      wantChannelPlayback: false,
+      pendingChannelStart: false,
       lastPlayedAt: 0,
       missingAt: 0,
       loadPromise: null
@@ -2002,6 +2004,10 @@ function getAbilityAudioUrlCandidates(abilityId, eventType) {
     return filterAvailableSoundUrls(candidates);
   }
   candidates = [getAbilityAudioUrl(id, eventName)];
+  if (eventName === "channel") {
+    // Cast-time abilities can reuse cast audio when a dedicated channel loop is absent.
+    candidates.push(getAbilityAudioUrl(id, "cast"));
+  }
   if (eventName === "hit") {
     // Some instant abilities only provide cast audio; allow hit->cast fallback.
     candidates.push(getAbilityAudioUrl(id, "cast"));
@@ -2248,28 +2254,37 @@ function ensureAbilityAudioClip(abilityId, eventType) {
 
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const candidates = getAbilityAudioUrlCandidates(normalizedAbilityId, eventType);
-  const audioUrl = candidates.length ? candidates[0] : "";
-  if (!isSoundUrlAvailable(audioUrl)) {
+  if (!candidates.length) {
     state.status = "missing";
+    state.url = "";
     state.playing = false;
+    state.missingAt = performance.now();
     return state;
   }
-  state.url = audioUrl;
+  state.url = "";
   state.status = "loading";
   state.playing = false;
-  state.loadPromise = loadSpatialAudioBuffer(audioUrl)
-    .then((buffer) => {
+  state.loadPromise = (async () => {
+    for (const audioUrl of candidates) {
+      if (!isSoundUrlAvailable(audioUrl)) {
+        continue;
+      }
+      const buffer = await loadSpatialAudioBuffer(audioUrl);
       if (buffer) {
+        state.url = audioUrl;
         state.status = "ready";
         state.missingAt = 0;
         return buffer;
       }
-      state.status = "missing";
-      state.playing = false;
-      state.missingAt = performance.now();
-      return null;
-    })
+    }
+    state.url = "";
+    state.status = "missing";
+    state.playing = false;
+    state.missingAt = performance.now();
+    return null;
+  })()
     .catch(() => {
+      state.url = "";
       state.status = "missing";
       state.playing = false;
       state.missingAt = performance.now();
@@ -2372,7 +2387,13 @@ function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const state = ensureAbilityAudioClip(normalizedAbilityId, eventType);
   if (!state || state.status === "missing" || !state.url) {
+    if (eventType === "channel" && state) {
+      state.wantChannelPlayback = true;
+    }
     return;
+  }
+  if (eventType === "channel") {
+    state.wantChannelPlayback = true;
   }
 
   const minIntervalMs = getAbilityAudioMinIntervalMs(eventType);
@@ -2389,6 +2410,17 @@ function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
   const record = getSpatialAudioBufferRecord(state.url, false);
   const buffer = record && record.buffer;
   if (!buffer) {
+    if (eventType === "channel" && state.loadPromise && !state.pendingChannelStart) {
+      state.pendingChannelStart = true;
+      state.loadPromise.finally(() => {
+        state.pendingChannelStart = false;
+        const refreshed = getAbilityAudioState(normalizedAbilityId, "channel", false);
+        if (!refreshed || !refreshed.wantChannelPlayback || refreshed.playing || refreshed.status !== "ready") {
+          return;
+        }
+        playAbilityAudioEvent(normalizedAbilityId, "channel", performance.now());
+      });
+    }
     return;
   }
   const baseGain = getAbilityAudioBaseGain(eventType);
@@ -2441,7 +2473,11 @@ function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
 function stopAbilityChannelAudio(abilityId) {
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const state = getAbilityAudioState(normalizedAbilityId, "channel", false);
-  if (!state || !state.source) {
+  if (!state) {
+    return;
+  }
+  state.wantChannelPlayback = false;
+  if (!state.source) {
     return;
   }
   try {
