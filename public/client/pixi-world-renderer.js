@@ -951,9 +951,322 @@
       };
     }
 
+    function drawDetailedBlizzardTexture(ctx, size, radius, phaseBucket) {
+      const cx = size * 0.5;
+      const cy = size * 0.5;
+      const phase = phaseBucket / 6;
+      const zoneGlow = ctx.createRadialGradient(cx, cy, radius * 0.15, cx, cy, radius * 1.08);
+      zoneGlow.addColorStop(0, "rgba(196,230,255,0.26)");
+      zoneGlow.addColorStop(0.62, "rgba(103,165,218,0.16)");
+      zoneGlow.addColorStop(1, "rgba(61,104,168,0)");
+      ctx.fillStyle = zoneGlow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.05, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.lineCap = "round";
+      for (let i = 0; i < 38; i += 1) {
+        const a = phase * Math.PI * 2 + i * 1.73;
+        const px = cx + Math.cos(a * 0.7 + i) * radius * 0.72;
+        const py = cy + Math.sin(a * 1.2 + i * 0.4) * radius * 0.72;
+        const len = 5 + (i % 4) * 2.2;
+        ctx.strokeStyle = `rgba(225,245,255,${(0.18 + (i % 3) * 0.07).toFixed(3)})`;
+        ctx.lineWidth = 0.9 + (i % 3) * 0.25;
+        ctx.beginPath();
+        ctx.moveTo(px - len * 0.45, py - len * 0.75);
+        ctx.lineTo(px + len * 0.15, py + len * 0.18);
+        ctx.stroke();
+        if (i % 7 === 0) {
+          ctx.strokeStyle = "rgba(239,250,255,0.34)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(px - 2, py);
+          ctx.lineTo(px + 2, py);
+          ctx.moveTo(px, py - 2);
+          ctx.lineTo(px, py + 2);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      ctx.strokeStyle = "rgba(167,224,255,0.45)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function drawDetailedRainTexture(ctx, size, radius, phaseBucket) {
+      const cx = size * 0.5;
+      const cy = size * 0.5;
+      const phase = phaseBucket / 6;
+      const zoneGlow = ctx.createRadialGradient(cx, cy, radius * 0.15, cx, cy, radius * 1.05);
+      zoneGlow.addColorStop(0, "rgba(197,178,108,0.16)");
+      zoneGlow.addColorStop(0.7, "rgba(120,88,42,0.12)");
+      zoneGlow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = zoneGlow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 1.04, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.clip();
+      for (let i = 0; i < 26; i += 1) {
+        const a = i * 0.81 + phase * 2.2;
+        const px = cx + Math.cos(a * 1.27) * radius * 0.78;
+        const py = cy + Math.sin(a * 0.93 + i * 0.35) * radius * 0.78;
+        const len = 10 + (i % 5) * 1.6;
+        ctx.strokeStyle = `rgba(236,226,212,${(0.22 + (i % 4) * 0.05).toFixed(3)})`;
+        ctx.lineWidth = 1 + (i % 3) * 0.15;
+        ctx.beginPath();
+        ctx.moveTo(px + 2.5, py - len * 0.55);
+        ctx.lineTo(px - 1.2, py + len * 0.38);
+        ctx.stroke();
+      }
+      ctx.restore();
+      ctx.strokeStyle = "rgba(235,211,162,0.48)";
+      ctx.lineWidth = 1.45;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function getCaltropIconCanvas() {
+      const key = "caltrop-icon";
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached.canvas;
+      }
+      const canvas = createRuntimeCanvas(22, 22);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      ctx.translate(11, 11);
+      ctx.strokeStyle = "rgba(224, 231, 239, 0.96)";
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-5, -4);
+      ctx.lineTo(5, 4);
+      ctx.moveTo(-5, 4);
+      ctx.lineTo(5, -4);
+      ctx.moveTo(0, -6);
+      ctx.lineTo(0, 6);
+      ctx.stroke();
+      genericCanvasCache.set(key, { canvas, rotation: 0 });
+      return canvas;
+    }
+
+    function drawDetailedCaltropsTexture(ctx, size, radius) {
+      const cx = size * 0.5;
+      const cy = size * 0.5;
+      const icon = getCaltropIconCanvas();
+      const zoneGlow = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius);
+      zoneGlow.addColorStop(0, "rgba(214,224,236,0.10)");
+      zoneGlow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = zoneGlow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      for (let i = 0; i < 16; i += 1) {
+        const a = i * 0.92;
+        const r = radius * (0.22 + ((i * 37) % 100) / 100 * 0.62);
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a * 1.12) * r;
+        const scale = 0.5 + (i % 4) * 0.1;
+        ctx.save();
+        ctx.translate(px, py);
+        ctx.rotate(a * 0.8);
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(icon, -icon.width * scale * 0.5, -icon.height * scale * 0.5, icon.width * scale, icon.height * scale);
+        ctx.restore();
+      }
+      ctx.strokeStyle = "rgba(220,229,242,0.42)";
+      ctx.lineWidth = 1.35;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    function drawDetailedSummonTexture(ctx, size, radius, effect, phaseBucket) {
+      const cx = size * 0.5;
+      const cy = size * 0.5;
+      const count = Math.max(1, Math.round(Number(effect && effect.summonCount) || 1));
+      const formationRadius = Math.max(0, Number(effect && effect.formationRadius) || 0.9);
+      const phase = phaseBucket / 6;
+      const abilityId = String(effect && effect.abilityId || "").toLowerCase();
+      const positions =
+        globalScope.VibeSummonLayout && typeof globalScope.VibeSummonLayout.computeSummonFormationPositions === "function"
+          ? globalScope.VibeSummonLayout.computeSummonFormationPositions(0, 0, count, formationRadius)
+          : [{ x: 0, y: 0, index: 0 }];
+      const isHydra = abilityId.includes("hydra");
+      const glow = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius);
+      glow.addColorStop(0, isHydra ? "rgba(255,170,92,0.14)" : "rgba(255,210,146,0.12)");
+      glow.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      for (const point of positions) {
+        const px = cx + point.x * tileSize;
+        const py = cy + point.y * tileSize;
+        if (isHydra) {
+          ctx.fillStyle = "rgba(59,13,8,0.74)";
+          ctx.beginPath();
+          ctx.ellipse(px, py + 7, 10, 5.2, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,192,104,0.52)";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(px, py + 4, 8.5, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = "rgba(255,96,41,0.82)";
+          ctx.lineWidth = 5;
+          ctx.beginPath();
+          ctx.moveTo(px - 1, py + 5);
+          ctx.quadraticCurveTo(px - 6 + Math.sin(phase * Math.PI * 2 + point.index) * 2, py - 3, px + 1, py - 10);
+          ctx.stroke();
+          ctx.fillStyle = "rgba(221,63,30,0.98)";
+          ctx.beginPath();
+          ctx.ellipse(px + 1, py - 15, 5.5, 4.8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(255,214,115,0.98)";
+          ctx.beginPath();
+          ctx.arc(px + 2, py - 16, 1.8, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillStyle = "rgba(60,40,24,0.78)";
+          ctx.beginPath();
+          ctx.ellipse(px, py + 7.5, 10.5, 4.8, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(207,169,114,0.92)";
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(px - 8, py + 5);
+          ctx.lineTo(px - 2, py - 7);
+          ctx.lineTo(px + 8, py + 5);
+          ctx.stroke();
+          ctx.strokeStyle = "rgba(228,214,191,0.96)";
+          ctx.lineWidth = 1.35;
+          ctx.beginPath();
+          ctx.moveTo(px - 10, py - 3);
+          ctx.lineTo(px + 10, py - 3);
+          ctx.moveTo(px + 10, py - 3);
+          ctx.lineTo(px + 15, py + Math.sin(phase * Math.PI * 2 + point.index) * 2);
+          ctx.stroke();
+        }
+      }
+    }
+
+    function getTracerAreaEffectSpriteFrame(effect, paletteKey) {
+      const palettes = {
+        ricochet: {
+          outer: [245, 181, 96],
+          core: [244, 231, 210],
+          hot: [255, 249, 236],
+          streak: [255, 214, 140]
+        },
+        piercing: {
+          outer: [255, 185, 92],
+          core: [244, 230, 203],
+          hot: [255, 250, 239],
+          streak: [255, 214, 136]
+        }
+      };
+      const palette = palettes[paletteKey] || palettes.ricochet;
+      const key = `tracer:${paletteKey}`;
+      let cached = areaEffectCanvasCache.get(key);
+      if (!cached) {
+        const canvas = createRuntimeCanvas(160, 48);
+        if (!canvas) {
+          return null;
+        }
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          return null;
+        }
+        const midY = canvas.height * 0.5;
+        const gradient = ctx.createLinearGradient(0, midY, canvas.width, midY);
+        gradient.addColorStop(0, "rgba(255,255,255,0)");
+        gradient.addColorStop(0.12, `rgba(${palette.core[0]}, ${palette.core[1]}, ${palette.core[2]}, 0.78)`);
+        gradient.addColorStop(0.5, `rgba(${palette.hot[0]}, ${palette.hot[1]}, ${palette.hot[2]}, 0.96)`);
+        gradient.addColorStop(0.88, `rgba(${palette.core[0]}, ${palette.core[1]}, ${palette.core[2]}, 0.78)`);
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.save();
+        ctx.lineCap = "round";
+        ctx.shadowBlur = 16;
+        ctx.shadowColor = `rgba(${palette.outer[0]}, ${palette.outer[1]}, ${palette.outer[2]}, 0.42)`;
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(10, midY);
+        ctx.lineTo(canvas.width - 16, midY);
+        ctx.stroke();
+        ctx.lineWidth = 2.6;
+        ctx.strokeStyle = `rgba(${palette.hot[0]}, ${palette.hot[1]}, ${palette.hot[2]}, 0.96)`;
+        ctx.beginPath();
+        ctx.moveTo(14, midY);
+        ctx.lineTo(canvas.width - 22, midY);
+        ctx.stroke();
+        for (let i = 0; i < 8; i += 1) {
+          const x = 18 + i * 16;
+          ctx.strokeStyle = `rgba(${palette.streak[0]}, ${palette.streak[1]}, ${palette.streak[2]}, 0.34)`;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(x - 4, midY - 3);
+          ctx.lineTo(x + 8, midY + 2);
+          ctx.stroke();
+        }
+        ctx.fillStyle = `rgba(${palette.hot[0]}, ${palette.hot[1]}, ${palette.hot[2]}, 0.96)`;
+        ctx.beginPath();
+        ctx.moveTo(canvas.width - 8, midY);
+        ctx.lineTo(canvas.width - 20, midY - 6);
+        ctx.lineTo(canvas.width - 15, midY);
+        ctx.lineTo(canvas.width - 20, midY + 6);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+        cached = { canvas };
+        areaEffectCanvasCache.set(key, cached);
+      }
+      const startX = Number(effect && (Number.isFinite(Number(effect.startX)) ? effect.startX : effect.x)) + 0.5;
+      const startY = Number(effect && (Number.isFinite(Number(effect.startY)) ? effect.startY : effect.y)) + 0.5;
+      const dirX = Number(effect && effect.dx) || 1;
+      const dirY = Number(effect && effect.dy) || 0;
+      const lengthTiles = Math.max(0.25, Number(effect && (effect.length || effect.radius)) || 1);
+      const endX = startX + dirX * lengthTiles;
+      const endY = startY + dirY * lengthTiles;
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const lengthPx = Math.max(10, Math.hypot(dx, dy) * tileSize);
+      return {
+        canvas: cached.canvas,
+        rotation: Math.atan2(dy, dx),
+        scaleX: lengthPx / 160,
+        scaleY: 1,
+        alpha: 0.96
+      };
+    }
+
     function getAreaEffectSpriteFrame(effect, frameNow) {
+      const abilityId = String(effect && effect.abilityId || "").toLowerCase();
       if (String(effect && effect.kind || "") === "beam") {
         return null;
+      }
+      if (abilityId.includes("ricochet")) {
+        return getTracerAreaEffectSpriteFrame(effect, "ricochet");
+      }
+      if (abilityId.includes("piercing")) {
+        return getTracerAreaEffectSpriteFrame(effect, "piercing");
       }
       const radiusPx = Math.max(6, (Number(effect && effect.radius) || 1) * tileSize);
       const roundedRadius = Math.max(6, Math.round(radiusPx));
@@ -991,61 +1304,75 @@
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(phase * Math.PI * 2 * 0.08);
-      ctx.fillStyle = visual.fill;
-      ctx.strokeStyle = visual.stroke;
-      ctx.lineWidth = 2;
-      ctx.shadowBlur = 14;
-      ctx.shadowColor = visual.glow;
-      ctx.beginPath();
-      ctx.arc(0, 0, roundedRadius * pulse, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.lineWidth = 1.2;
-      ctx.globalAlpha = 0.78;
-      if (visual.kind === "frost" || visual.kind === "arcane" || visual.kind === "lightning") {
-        for (let i = 0; i < 6; i += 1) {
-          const a = phase * Math.PI * 2 + i * ((Math.PI * 2) / 6);
-          const r = roundedRadius * (0.54 + (i % 2) * 0.08);
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(a) * (r - 5), Math.sin(a) * (r - 5));
-          ctx.lineTo(Math.cos(a) * (r + 5), Math.sin(a) * (r + 5));
-          ctx.stroke();
-        }
-      } else if (visual.kind === "poison" || visual.kind === "rain") {
-        for (let i = 0; i < 18; i += 1) {
-          const a = i * ((Math.PI * 2) / 18) + phase * 0.6;
-          const r = roundedRadius * 0.88;
-          ctx.beginPath();
-          ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 1.5, 0, Math.PI * 2);
-          ctx.fillStyle = visual.stroke;
-          ctx.fill();
-        }
+      if (abilityId.includes("blizzard")) {
+        ctx.restore();
+        drawDetailedBlizzardTexture(ctx, size, roundedRadius, phaseBucket);
+      } else if (abilityId.includes("rain")) {
+        ctx.restore();
+        drawDetailedRainTexture(ctx, size, roundedRadius, phaseBucket);
+      } else if (abilityId.includes("caltrop")) {
+        ctx.restore();
+        drawDetailedCaltropsTexture(ctx, size, roundedRadius);
+      } else if (String(effect && effect.kind || "") === "summon" && (abilityId.includes("hydra") || abilityId.includes("ballista"))) {
+        ctx.restore();
+        drawDetailedSummonTexture(ctx, size, roundedRadius, effect, phaseBucket);
       } else {
-        ctx.setLineDash([7, 5]);
+        ctx.fillStyle = visual.fill;
+        ctx.strokeStyle = visual.stroke;
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 14;
+        ctx.shadowColor = visual.glow;
         ctx.beginPath();
-        ctx.arc(0, 0, roundedRadius * 0.74, 0, Math.PI * 2);
+        ctx.arc(0, 0, roundedRadius * pulse, 0, Math.PI * 2);
+        ctx.fill();
         ctx.stroke();
-        ctx.setLineDash([]);
-      }
 
-      if (String(effect && effect.kind || "") === "summon" && globalScope.VibeSummonLayout && typeof globalScope.VibeSummonLayout.computeSummonFormationPositions === "function") {
-        const positions = globalScope.VibeSummonLayout.computeSummonFormationPositions(
-          0,
-          0,
-          summonCount,
-          formationRadius
-        );
-        ctx.fillStyle = visual.stroke;
-        for (const point of positions) {
-          const px = point.x * tileSize;
-          const py = point.y * tileSize;
+        ctx.lineWidth = 1.2;
+        ctx.globalAlpha = 0.78;
+        if (visual.kind === "frost" || visual.kind === "arcane" || visual.kind === "lightning") {
+          for (let i = 0; i < 6; i += 1) {
+            const a = phase * Math.PI * 2 + i * ((Math.PI * 2) / 6);
+            const r = roundedRadius * (0.54 + (i % 2) * 0.08);
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a) * (r - 5), Math.sin(a) * (r - 5));
+            ctx.lineTo(Math.cos(a) * (r + 5), Math.sin(a) * (r + 5));
+            ctx.stroke();
+          }
+        } else if (visual.kind === "poison" || visual.kind === "rain") {
+          for (let i = 0; i < 18; i += 1) {
+            const a = i * ((Math.PI * 2) / 18) + phase * 0.6;
+            const r = roundedRadius * 0.88;
+            ctx.beginPath();
+            ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = visual.stroke;
+            ctx.fill();
+          }
+        } else {
+          ctx.setLineDash([7, 5]);
           ctx.beginPath();
-          ctx.arc(px, py, 5 + Math.sin(phase * Math.PI * 2 + point.index) * 0.4, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.arc(0, 0, roundedRadius * 0.74, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
         }
+
+        if (String(effect && effect.kind || "") === "summon" && globalScope.VibeSummonLayout && typeof globalScope.VibeSummonLayout.computeSummonFormationPositions === "function") {
+          const positions = globalScope.VibeSummonLayout.computeSummonFormationPositions(
+            0,
+            0,
+            summonCount,
+            formationRadius
+          );
+          ctx.fillStyle = visual.stroke;
+          for (const point of positions) {
+            const px = point.x * tileSize;
+            const py = point.y * tileSize;
+            ctx.beginPath();
+            ctx.arc(px, py, 5 + Math.sin(phase * Math.PI * 2 + point.index) * 0.4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
       }
-      ctx.restore();
 
       const result = { canvas, rotation: 0 };
       areaEffectCanvasCache.set(key, result);
