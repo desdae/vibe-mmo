@@ -8,6 +8,7 @@
     const gameState = deps.gameState;
     const buildWorldFrameViewModel = typeof deps.buildWorldFrameViewModel === "function" ? deps.buildWorldFrameViewModel : null;
     const renderWorldFrame = typeof deps.renderWorldFrame === "function" ? deps.renderWorldFrame : null;
+    const updateResourceBars = typeof deps.updateResourceBars === "function" ? deps.updateResourceBars : null;
     if (!ctx || !canvas || !gameState || !buildWorldFrameViewModel || !renderWorldFrame) {
       return null;
     }
@@ -40,6 +41,9 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.fillStyle = "#0a1621";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (updateResourceBars) {
+          updateResourceBars(null);
+        }
         deps.updateActionBarUI(null);
         return;
       }
@@ -49,6 +53,9 @@
       renderWorldFrame(frameViewModel);
 
       const latestSelf = gameState.self || interpolatedState.self;
+      if (updateResourceBars) {
+        updateResourceBars(latestSelf);
+      }
 
       if (deps.hudName) {
         deps.hudName.textContent = `Player: ${latestSelf.name} (${deps.getMyId() || "?"})`;

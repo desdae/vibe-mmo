@@ -12154,6 +12154,7 @@ const renderLoopTools = sharedCreateRenderLoopTools
       requestAnimationFrame,
       reportFrame,
       updateAbilityChannel,
+      updateResourceBars,
       getInterpolatedState,
       updateActionBarUI,
       buildWorldFrameViewModel: (interpolatedState, frameNow) =>
