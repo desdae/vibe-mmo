@@ -803,6 +803,10 @@
       }
       const sign = side === "left" ? -1 : 1;
       const forearmAngle = armPose ? Math.atan2(handY - armPose.elbowY, handX - armPose.elbowX) : side === "left" ? 2.18 : 0.96;
+      const forearmUnitX = Math.cos(forearmAngle);
+      const forearmUnitY = Math.sin(forearmAngle);
+      const perpX = -forearmUnitY;
+      const perpY = forearmUnitX;
       const metalPrimary = tintHex(palette.metal, profile?.accentColor || palette.accent, 0.08 + (profile?.rarityRank || 0) * 0.05);
       const metalSecondary = tintHex(palette.metalDark, profile?.trimColor || palette.outline, 0.22);
       const leatherPrimary = tintHex(palette.leather, profile?.accentColor || palette.accent, 0.14);
@@ -812,14 +816,16 @@
       if (type === "shield") {
         const shieldRadiusX = (variant % 2 === 0 ? 5.1 : 4.4) * scale;
         const shieldRadiusY = (variant % 3 === 0 ? 5.6 : 4.7) * scale;
+        const shieldCenterX = handX - sign * 1.6 * scale - forearmUnitX * 1.1 * scale;
+        const shieldCenterY = handY - 2.2 * scale - forearmUnitY * 0.7 * scale;
         ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.8 * scale;
         ctx.beginPath();
         if (variant % 2 === 0) {
-          ctx.arc(handX + sign * 4.2 * scale, handY + 1.4 * scale, shieldRadiusX, 0, Math.PI * 2);
+          ctx.arc(shieldCenterX, shieldCenterY, shieldRadiusX, 0, Math.PI * 2);
         } else {
-          ctx.ellipse(handX + sign * 4.2 * scale, handY + 1.4 * scale, shieldRadiusX, shieldRadiusY, sign * 0.18, 0, Math.PI * 2);
+          ctx.ellipse(shieldCenterX, shieldCenterY, shieldRadiusX, shieldRadiusY, sign * 0.18, 0, Math.PI * 2);
         }
         ctx.fill();
         ctx.stroke();
@@ -827,9 +833,9 @@
         ctx.lineWidth = 1 * scale;
         ctx.beginPath();
         if (variant % 2 === 0) {
-          ctx.arc(handX + sign * 4.2 * scale, handY + 1.4 * scale, 4 * scale, 0, Math.PI * 2);
+          ctx.arc(shieldCenterX, shieldCenterY, 4 * scale, 0, Math.PI * 2);
         } else {
-          ctx.ellipse(handX + sign * 4.2 * scale, handY + 1.4 * scale, 3.25 * scale, 4.1 * scale, sign * 0.18, 0, Math.PI * 2);
+          ctx.ellipse(shieldCenterX, shieldCenterY, 3.25 * scale, 4.1 * scale, sign * 0.18, 0, Math.PI * 2);
         }
         ctx.stroke();
         return;
@@ -856,21 +862,31 @@
       }
       if (type === "axe") {
         const len = (11.5 + variant * 0.9) * scale;
-        const haftAngle = forearmAngle + (attackVisual && attackVisual.kind === "dual_axes" ? sign * 0.26 : sign * 0.12);
-        const tipX = handX + Math.cos(haftAngle) * len;
-        const tipY = handY + Math.sin(haftAngle) * len;
-        drawLine(handX, handY, tipX, tipY, leatherSecondary, 2.2 * scale);
+        const gripX = handX - forearmUnitX * 1.3 * scale + perpX * sign * 0.55 * scale;
+        const gripY = handY - forearmUnitY * 1.3 * scale + perpY * sign * 0.55 * scale;
+        const haftAngle =
+          forearmAngle +
+          (attackVisual && attackVisual.kind === "dual_axes"
+            ? side === "left"
+              ? -0.44
+              : 0.44
+            : side === "left"
+              ? -0.62
+              : 0.62);
+        const tipX = gripX + Math.cos(haftAngle) * len;
+        const tipY = gripY + Math.sin(haftAngle) * len;
+        drawLine(gripX, gripY, tipX, tipY, leatherSecondary, 2.2 * scale);
         ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 1.2 * scale;
-        const perpX = -Math.sin(haftAngle);
-        const perpY = Math.cos(haftAngle);
+        const bladePerpX = -Math.sin(haftAngle);
+        const bladePerpY = Math.cos(haftAngle);
         ctx.beginPath();
         ctx.moveTo(tipX, tipY);
-        ctx.lineTo(tipX + perpX * (5.2 + variant * 0.55) * scale, tipY + perpY * (5.2 + variant * 0.55) * scale);
+        ctx.lineTo(tipX + bladePerpX * (5.2 + variant * 0.55) * scale, tipY + bladePerpY * (5.2 + variant * 0.55) * scale);
         ctx.lineTo(
-          tipX + perpX * (2 + variant * 0.2) * scale - Math.cos(haftAngle) * (4.1 + variant * 0.5) * scale,
-          tipY + perpY * (2 + variant * 0.2) * scale - Math.sin(haftAngle) * (4.1 + variant * 0.5) * scale
+          tipX + bladePerpX * (2 + variant * 0.2) * scale - Math.cos(haftAngle) * (4.1 + variant * 0.5) * scale,
+          tipY + bladePerpY * (2 + variant * 0.2) * scale - Math.sin(haftAngle) * (4.1 + variant * 0.5) * scale
         );
         ctx.lineTo(tipX - Math.cos(haftAngle) * 3.2 * scale, tipY - Math.sin(haftAngle) * 3.2 * scale);
         ctx.closePath();
@@ -880,28 +896,35 @@
       }
       if (type === "sword") {
         const len = (13 + variant * 1.15) * scale;
+        const gripX = handX - forearmUnitX * 1.15 * scale + perpX * sign * 0.4 * scale;
+        const gripY = handY - forearmUnitY * 1.15 * scale + perpY * sign * 0.4 * scale;
         const bladeAngle =
-          forearmAngle +
-          (attackVisual && attackVisual.kind === "swing"
-            ? side === "left"
-              ? -0.9
-              : 0.9
+          attackVisual && attackVisual.kind === "swing"
+            ? forearmAngle + (side === "left" ? -0.68 : 0.68)
             : side === "left"
-              ? -0.18
-              : 0.18);
-        const tipX = handX + Math.cos(bladeAngle) * len;
-        const tipY = handY + Math.sin(bladeAngle) * len;
-        const perpX = -Math.sin(bladeAngle);
-        const perpY = Math.cos(bladeAngle);
-        drawLine(handX, handY, tipX, tipY, metalSecondary, 2.4 * scale);
-        drawLine(handX + perpX * 0.35 * scale, handY + perpY * 0.35 * scale, tipX + perpX * 0.35 * scale, tipY + perpY * 0.35 * scale, mixColors("#f3f6fb", profile?.accentColor || "#f3f6fb", 0.18), 1 * scale);
+              ? -2.18
+              : -0.96;
+        const tipX = gripX + Math.cos(bladeAngle) * len;
+        const tipY = gripY + Math.sin(bladeAngle) * len;
+        const bladePerpX = -Math.sin(bladeAngle);
+        const bladePerpY = Math.cos(bladeAngle);
+        drawLine(gripX, gripY, tipX, tipY, metalSecondary, 2.4 * scale);
+        drawLine(gripX + bladePerpX * 0.35 * scale, gripY + bladePerpY * 0.35 * scale, tipX + bladePerpX * 0.35 * scale, tipY + bladePerpY * 0.35 * scale, mixColors("#f3f6fb", profile?.accentColor || "#f3f6fb", 0.18), 1 * scale);
         drawLine(
-          handX - perpX * (1.7 + variant * 0.42) * scale,
-          handY - perpY * (1.7 + variant * 0.42) * scale,
-          handX + perpX * (2.1 + variant * 0.52) * scale,
-          handY + perpY * (2.1 + variant * 0.52) * scale,
+          gripX - bladePerpX * (1.7 + variant * 0.42) * scale,
+          gripY - bladePerpY * (1.7 + variant * 0.42) * scale,
+          gripX + bladePerpX * (2.1 + variant * 0.52) * scale,
+          gripY + bladePerpY * (2.1 + variant * 0.52) * scale,
           metalSecondary,
           1.6 * scale
+        );
+        drawLine(
+          gripX - Math.cos(bladeAngle) * 2.2 * scale,
+          gripY - Math.sin(bladeAngle) * 2.2 * scale,
+          gripX - Math.cos(bladeAngle) * 0.5 * scale,
+          gripY - Math.sin(bladeAngle) * 0.5 * scale,
+          leatherPrimary,
+          1.55 * scale
         );
         return;
       }
@@ -1510,21 +1533,21 @@
           const raiseT = clamp(attackVisual.progress / 0.34, 0, 1);
           const slashT = clamp((attackVisual.progress - 0.34) / 0.66, 0, 1);
           if (side === "left") {
-            const idleUpper = 2.28;
-            const idleLower = 1.96;
-            const raisedUpper = 4.88;
-            const raisedLower = 4.08;
-            const slashUpper = 1.34;
-            const slashLower = 0.78;
+            const idleUpper = 2.34;
+            const idleLower = 2.08;
+            const raisedUpper = 4.72;
+            const raisedLower = 3.84;
+            const slashUpper = 1.1;
+            const slashLower = 0.56;
             upperAngle = attackVisual.progress < 0.34 ? lerp(idleUpper, raisedUpper, raiseT) : lerp(raisedUpper, slashUpper, slashT);
             lowerAngle = attackVisual.progress < 0.34 ? lerp(idleLower, raisedLower, raiseT) : lerp(raisedLower, slashLower, slashT);
           } else {
-            const idleUpper = 1.02;
-            const idleLower = 1.34;
-            const raisedUpper = -2.28;
-            const raisedLower = -1.18;
-            const slashUpper = 1.78;
-            const slashLower = 1.14;
+            const idleUpper = 0.88;
+            const idleLower = 1.2;
+            const raisedUpper = -2.46;
+            const raisedLower = -1.42;
+            const slashUpper = 1.96;
+            const slashLower = 1.36;
             upperAngle = attackVisual.progress < 0.34 ? lerp(idleUpper, raisedUpper, raiseT) : lerp(raisedUpper, slashUpper, slashT);
             lowerAngle = attackVisual.progress < 0.34 ? lerp(idleLower, raisedLower, raiseT) : lerp(raisedLower, slashLower, slashT);
           }
@@ -1567,11 +1590,11 @@
       } else {
         if (mainHandType === "sword" && archetype === "warrior" && side === mainHandSide) {
           if (side === "left") {
-            upperAngle = 2.28;
-            lowerAngle = 1.96;
+            upperAngle = 2.54;
+            lowerAngle = 3.06;
           } else {
-            upperAngle = 1.02;
-            lowerAngle = 1.34;
+            upperAngle = 0.62;
+            lowerAngle = 0.08;
           }
         }
         upperAngle += walkSwing * 0.12 * sign;
