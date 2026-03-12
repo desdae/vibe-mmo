@@ -3105,7 +3105,8 @@
           vendorLayer.addChild(vendorNode.container);
         }
         const p = worldToScreen(Number(vendor.x) + 0.5, Number(vendor.y) + 0.5, cameraX, cameraY, width, height);
-        updateLabeledSpriteNode(vendorNode, p.x, p.y, String(vendor.name || "Quartermaster"), 1, 1, getVendorSpriteFrame(), (graphics) => {
+        const vendorBob = Math.sin(frameNow / 340) * 1.2;
+        updateLabeledSpriteNode(vendorNode, p.x, p.y - 4 + vendorBob, String(vendor.name || "Quartermaster"), 1, 1, getVendorSpriteFrame(), (graphics) => {
           graphics.clear();
         });
         vendorNode.hpBack.clear();
