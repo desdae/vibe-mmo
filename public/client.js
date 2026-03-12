@@ -12227,6 +12227,12 @@ const worldViewModelTools = sharedCreateWorldViewModelTools
       getAreaEffects: () => Array.from(activeAreaEffectsById.values()),
       getExplosionViews,
       getTownVendor,
+      getActionDefById,
+      getAbilityVisualHook,
+      getProjectileSpriteFrame:
+        projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
+          ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
+          : null,
       getActiveMobAttackState,
       getPlayerAttackState: (player, isSelf, frameNow) => {
         void frameNow;
@@ -12319,6 +12325,8 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       getLootBagSprite,
       getTownTileSprite,
       getVendorNpcSprite,
+      getActionDefById,
+      getAbilityVisualHook,
       getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
         ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
         : null

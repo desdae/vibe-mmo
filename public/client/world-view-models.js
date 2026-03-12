@@ -7,6 +7,9 @@
     const getAreaEffects = typeof deps.getAreaEffects === "function" ? deps.getAreaEffects : () => [];
     const getExplosionViews = typeof deps.getExplosionViews === "function" ? deps.getExplosionViews : () => [];
     const getTownVendor = typeof deps.getTownVendor === "function" ? deps.getTownVendor : () => null;
+    const getActionDefById = typeof deps.getActionDefById === "function" ? deps.getActionDefById : () => null;
+    const getAbilityVisualHook = typeof deps.getAbilityVisualHook === "function" ? deps.getAbilityVisualHook : () => "default";
+    const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
     if (!gameState) {
       return null;
     }
@@ -51,6 +54,20 @@
 
       const rawExplosionViews = getExplosionViews(frameNow);
       const explosionViews = Array.isArray(rawExplosionViews) ? rawExplosionViews : [];
+      const projectileViews = projectiles.map((projectile) => {
+        const abilityId = String(projectile && projectile.abilityId || "").trim();
+        const actionDef = getActionDefById(abilityId);
+        const projectileHook = String(
+          getAbilityVisualHook(abilityId, actionDef, "projectileRenderer", "default") || "default"
+        )
+          .trim()
+          .toLowerCase();
+        return {
+          projectile,
+          projectileHook,
+          spriteFrame: getProjectileSpriteFrame ? getProjectileSpriteFrame(projectile, frameNow) : null
+        };
+      });
 
       return {
         frameNow,
@@ -58,7 +75,7 @@
         cameraY,
         self,
         latestSelf: gameState.self || self,
-        projectileViews: projectiles.map((projectile) => ({ projectile })),
+        projectileViews,
         mobViews,
         playerViews,
         selfView,

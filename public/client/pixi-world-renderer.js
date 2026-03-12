@@ -98,7 +98,8 @@
       activeSpriteNodes: 0,
       pooledSprites: 0,
       particleEmitters: 0,
-      particleSprites: 0
+      particleSprites: 0,
+      projectileSamples: []
     };
     const spritePools = {
       loot: [],
@@ -649,16 +650,36 @@
       pool.push(sprite);
     }
 
-    function getTextureFromCanvas(canvas) {
+    function getTextureFromCanvas(canvas, samplingMode = "linear") {
       if (!canvas || typeof canvas.getContext !== "function") {
         return null;
       }
-      const cached = canvasTextureCache.get(canvas);
+      const modeKey = String(samplingMode || "linear").trim().toLowerCase() === "nearest" ? "nearest" : "linear";
+      let cacheByMode = canvasTextureCache.get(canvas);
+      if (!cacheByMode) {
+        cacheByMode = new Map();
+        canvasTextureCache.set(canvas, cacheByMode);
+      }
+      const cached = cacheByMode.get(modeKey);
       if (cached) {
         return cached;
       }
       const texture = PIXI.Texture.from(canvas);
-      canvasTextureCache.set(canvas, texture);
+      const baseTexture = texture && texture.baseTexture ? texture.baseTexture : null;
+      if (baseTexture) {
+        if (modeKey === "nearest" && PIXI.SCALE_MODES && PIXI.SCALE_MODES.NEAREST !== undefined) {
+          baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+        } else if (PIXI.SCALE_MODES && PIXI.SCALE_MODES.LINEAR !== undefined) {
+          baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+        }
+        if (PIXI.MIPMAP_MODES && PIXI.MIPMAP_MODES.OFF !== undefined && baseTexture.mipmap !== undefined) {
+          baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF;
+        }
+        if (typeof baseTexture.update === "function") {
+          baseTexture.update();
+        }
+      }
+      cacheByMode.set(modeKey, texture);
       return texture;
     }
 
@@ -912,7 +933,23 @@
       });
     }
 
-    function getProjectileParticleConfig(projectile) {
+    function getProjectileParticleConfig(projectile, projectileHook = "") {
+      const normalizedHook = String(projectileHook || "").trim().toLowerCase();
+      if (
+        normalizedHook === "fireball" ||
+        normalizedHook === "fire_spark" ||
+        normalizedHook === "frostbolt" ||
+        normalizedHook === "arcane_missiles" ||
+        normalizedHook === "bone_arrow" ||
+        normalizedHook === "ranger_arrow" ||
+        normalizedHook === "poison_arrow" ||
+        normalizedHook === "explosive_arrow" ||
+        normalizedHook === "shrapnel_grenade" ||
+        normalizedHook === "shrapnel_shard" ||
+        normalizedHook === "ballista_bolt"
+      ) {
+        return null;
+      }
       const text = `${String(projectile && projectile.abilityId || "")} ${String(projectile && projectile.name || "")}`.toLowerCase();
       if (text.includes("fire")) {
         return projectileParticleConfigs.fire;
@@ -930,6 +967,14 @@
         return projectileParticleConfigs.poison;
       }
       return null;
+    }
+
+    function getSpriteCanvasDebugKey(spriteFrame) {
+      const canvas = spriteFrame && spriteFrame.canvas;
+      if (!canvas || typeof canvas !== "object") {
+        return "";
+      }
+      return String(canvas.__vibeSpriteKey || "");
     }
 
     function getAreaEffectVisualConfig(effect) {
@@ -1947,8 +1992,10 @@
       }
     }
 
-    function updateSprite(sprite, x, y, spriteFrame) {
-      const texture = spriteFrame && spriteFrame.canvas ? getTextureFromCanvas(spriteFrame.canvas) : null;
+    function updateSprite(sprite, x, y, spriteFrame, options = null) {
+      const samplingMode =
+        options && String(options.samplingMode || "").trim().toLowerCase() === "nearest" ? "nearest" : "linear";
+      const texture = spriteFrame && spriteFrame.canvas ? getTextureFromCanvas(spriteFrame.canvas, samplingMode) : null;
       if (!texture) {
         sprite.visible = false;
         sprite.texture = PIXI.Texture.EMPTY;
@@ -1963,6 +2010,7 @@
         Math.max(0.001, Number(spriteFrame.scaleY) || 1)
       );
       sprite.alpha = Math.max(0, Math.min(1, Number(spriteFrame.alpha) || 1));
+      sprite.roundPixels = samplingMode === "nearest";
       return true;
     }
 
@@ -2416,7 +2464,7 @@
         (item) => item.entry.bag.id,
         (sprite, item) => {
           const p = worldToScreen(Number(item.entry.bag.x) + 0.5, Number(item.entry.bag.y) + 0.5, cameraX, cameraY, width, height);
-          updateSprite(sprite, p.x, p.y, item.spriteFrame);
+          updateSprite(sprite, p.x, p.y, item.spriteFrame, { samplingMode: "nearest" });
         },
         lootSpriteLayer,
         spritePools.loot
@@ -2529,8 +2577,19 @@
 
       const projectileSpriteEntries = [];
       for (const entry of frameViewModel.projectileViews) {
-        const spriteFrame = getProjectileSpriteFrame ? getProjectileSpriteFrame(entry.projectile, frameNow) : null;
-        projectileSpriteEntries.push({ entry, spriteFrame: spriteFrame && spriteFrame.canvas ? spriteFrame : getGenericProjectileSpriteFrame(entry.projectile, frameNow) });
+        const spriteFrame =
+          entry && entry.spriteFrame && entry.spriteFrame.canvas
+            ? entry.spriteFrame
+            : (getProjectileSpriteFrame ? getProjectileSpriteFrame(entry.projectile, frameNow) : null);
+        const projectileHook = String(entry && entry.projectileHook || "default").trim().toLowerCase();
+        const resolvedSpriteFrame =
+          spriteFrame && spriteFrame.canvas ? spriteFrame : getGenericProjectileSpriteFrame(entry.projectile, frameNow);
+        projectileSpriteEntries.push({
+          entry,
+          spriteFrame: resolvedSpriteFrame,
+          projectileHook,
+          isGenericFallback: !(spriteFrame && spriteFrame.canvas)
+        });
       }
       syncSpriteMap(
         projectileNodes,
@@ -2538,7 +2597,7 @@
         (item) => item.entry.projectile.id,
         (sprite, item) => {
           const p = worldToScreen(Number(item.entry.projectile.x) + 0.5, Number(item.entry.projectile.y) + 0.5, cameraX, cameraY, width, height);
-          updateSprite(sprite, p.x, p.y, item.spriteFrame);
+          updateSprite(sprite, p.x, p.y, item.spriteFrame, { samplingMode: "nearest" });
         },
         projectileSpriteLayer,
         spritePools.projectile
@@ -2572,7 +2631,7 @@
       );
       if (pixiParticleSystem && typeof pixiParticleSystem.renderWorldEmitter === "function") {
         for (const entry of frameViewModel.projectileViews) {
-          const config = getProjectileParticleConfig(entry.projectile);
+          const config = getProjectileParticleConfig(entry.projectile, entry.projectileHook);
           if (!config) {
             continue;
           }
@@ -2625,7 +2684,22 @@
           Number(particleStats.pooledSpriteCount || 0),
         particleEmitters: Number(particleStats.emitterCount || 0),
         particleSprites: Number(particleStats.particleCount || 0),
-        fallbackNodes: lootFallbackNodes.size + projectileFallbackNodes.size
+        fallbackNodes: lootFallbackNodes.size + projectileFallbackNodes.size,
+        projectileSamples: projectileSpriteEntries.slice(0, 12).map((item) => ({
+          id: Number(item.entry && item.entry.projectile && item.entry.projectile.id) || 0,
+          abilityId: String(item.entry && item.entry.projectile && item.entry.projectile.abilityId || ""),
+          hook: String(item.projectileHook || ""),
+          genericFallback: !!item.isGenericFallback,
+          spriteKey: getSpriteCanvasDebugKey(item.spriteFrame),
+          width:
+            item.spriteFrame && item.spriteFrame.canvas && Number(item.spriteFrame.canvas.width)
+              ? Number(item.spriteFrame.canvas.width)
+              : 0,
+          height:
+            item.spriteFrame && item.spriteFrame.canvas && Number(item.spriteFrame.canvas.height)
+              ? Number(item.spriteFrame.canvas.height)
+              : 0
+        }))
       };
       app.renderer.render(stage);
     }

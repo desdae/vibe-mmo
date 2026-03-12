@@ -222,9 +222,23 @@
       return sprite;
     }
 
-    function createVariantFrames(variantCount, frameCount, buildFrame) {
+    function tagSpriteCanvas(sprite, key) {
+      if (!sprite || typeof sprite !== "object") {
+        return sprite;
+      }
+      try {
+        sprite.__vibeSpriteKey = String(key || "");
+      } catch (_error) {
+        // Canvas tagging is best-effort only.
+      }
+      return sprite;
+    }
+
+    function createVariantFrames(variantCount, frameCount, buildFrame, familyKey = "projectile") {
       return Array.from({ length: variantCount }, (_, variantIndex) =>
-        Array.from({ length: frameCount }, (_, frameIndex) => buildFrame(variantIndex, frameIndex))
+        Array.from({ length: frameCount }, (_, frameIndex) =>
+          tagSpriteCanvas(buildFrame(variantIndex, frameIndex), `${familyKey}:v${variantIndex}:f${frameIndex}`)
+        )
       );
     }
 
@@ -599,15 +613,16 @@
       return sprite;
     }
 
-    const fireballSprites = createVariantFrames(FIREBALL_VARIANTS, FIREBALL_FRAMES, createFireballSprite);
-    const fireSparkSprites = createVariantFrames(FIRE_SPARK_VARIANTS, FIRE_SPARK_FRAMES, createFireSparkSprite);
-    const frostboltSprites = createVariantFrames(FROSTBOLT_VARIANTS, FROSTBOLT_FRAMES, createFrostboltSprite);
+    const fireballSprites = createVariantFrames(FIREBALL_VARIANTS, FIREBALL_FRAMES, createFireballSprite, "fireball");
+    const fireSparkSprites = createVariantFrames(FIRE_SPARK_VARIANTS, FIRE_SPARK_FRAMES, createFireSparkSprite, "fire_spark");
+    const frostboltSprites = createVariantFrames(FROSTBOLT_VARIANTS, FROSTBOLT_FRAMES, createFrostboltSprite, "frostbolt");
     const arcaneMissileSprites = createVariantFrames(
       ARCANE_MISSILE_VARIANTS,
       ARCANE_MISSILE_FRAMES,
-      createArcaneMissileSprite
+      createArcaneMissileSprite,
+      "arcane_missiles"
     );
-    const boneArrowSprites = createVariantFrames(BONE_ARROW_VARIANTS, BONE_ARROW_FRAMES, createBoneArrowSprite);
+    const boneArrowSprites = createVariantFrames(BONE_ARROW_VARIANTS, BONE_ARROW_FRAMES, createBoneArrowSprite, "bone_arrow");
     const rangerArrowSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         shaftColor: "#d9dfeb",
@@ -619,7 +634,7 @@
         tailColor: "rgba(206, 221, 255, ALPHA)",
         ringColor: "rgba(244, 247, 255, 0.72)"
       })
-    );
+    , "ranger_arrow");
     const poisonArrowSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         shaftColor: "#bfd8c1",
@@ -631,7 +646,7 @@
         tailColor: "rgba(117, 226, 139, ALPHA)",
         ringColor: "rgba(190, 255, 184, 0.72)"
       })
-    );
+    , "poison_arrow");
     const explosiveArrowSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         shaftColor: "#e8d2ba",
@@ -643,7 +658,7 @@
         tailColor: "rgba(255, 152, 76, ALPHA)",
         ringColor: "rgba(255, 204, 124, 0.72)"
       })
-    );
+    , "explosive_arrow");
     const shrapnelShardSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         size: 50,
@@ -657,7 +672,7 @@
         accentColor: "rgba(255, 251, 240, 0.74)",
         tailColor: "rgba(228, 216, 184, ALPHA)"
       })
-    );
+    , "shrapnel_shard");
     const ballistaBoltSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         size: 66,
@@ -672,7 +687,7 @@
         tailColor: "rgba(219, 208, 172, ALPHA)",
         ringColor: "rgba(171, 122, 71, 0.8)"
       })
-    );
+    , "ballista_bolt");
     const shrapnelGrenadeSprites = createVariantFrames(GRENADE_VARIANTS, GRENADE_FRAMES, (variant, frame) =>
       createGrenadeSprite(variant, frame, {
         bodyFill: "#5e6673",
@@ -682,7 +697,7 @@
         fuseSpark: "rgba(255, 247, 196, 0.94)",
         trailColor: "rgba(255, 222, 172, ALPHA)"
       })
-    );
+    , "shrapnel_grenade");
 
     function getProjectileVisualState(projectile, now) {
       const key = String(projectile.id ?? "");
