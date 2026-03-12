@@ -734,7 +734,8 @@ const mobilePanelState = {
   tooltipHideTimer: 0,
   lootHoldTimer: 0,
   lootHoldTriggered: false,
-  suppressLootClickUntil: 0
+  suppressLootClickUntil: 0,
+  suppressItemTapUntil: 0
 };
 const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
   maxParticles: 10,
@@ -3159,6 +3160,18 @@ function positionHoverTooltip(clientX, clientY) {
   if (!hoverTooltipEl || hoverTooltipEl.classList.contains("hidden")) {
     return;
   }
+  if (hoverTooltipEl.classList.contains("mobile-item-tooltip")) {
+    const activePanel = getMobilePanelElement(mobilePanelState.activeTab);
+    const panelRect = activePanel ? activePanel.getBoundingClientRect() : null;
+    const tooltipWidth = hoverTooltipEl.offsetWidth || 0;
+    const tooltipHeight = hoverTooltipEl.offsetHeight || 0;
+    const left = Math.round(Math.max(10, (window.innerWidth - tooltipWidth) * 0.5));
+    const preferredTop = panelRect ? panelRect.top - tooltipHeight - 12 : 12;
+    const top = Math.round(Math.max(10, preferredTop));
+    hoverTooltipEl.style.left = `${left}px`;
+    hoverTooltipEl.style.top = `${top}px`;
+    return;
+  }
   const margin = 14;
   const tooltipWidth = hoverTooltipEl.offsetWidth || 0;
   const tooltipHeight = hoverTooltipEl.offsetHeight || 0;
@@ -3181,6 +3194,7 @@ function showItemTooltip(itemInput, event, qty = null) {
     return;
   }
   hoverTooltipEl.innerHTML = buildItemTooltipHtml(itemInput, qty);
+  hoverTooltipEl.classList.toggle("mobile-item-tooltip", isMobilePanelMode());
   hoverTooltipEl.classList.remove("hidden");
   positionHoverTooltip(event.clientX, event.clientY);
 }
@@ -3190,6 +3204,7 @@ function hideHoverTooltip() {
     return;
   }
   hoverTooltipEl.classList.add("hidden");
+  hoverTooltipEl.classList.remove("mobile-item-tooltip");
   hoverTooltipEl.innerHTML = "";
 }
 
@@ -5625,8 +5640,16 @@ function updateInventoryUI() {
   hideHoverTooltip();
 
   const mobileLayout = isTouchJoystickEnabled();
-  const slotSizePx = mobileLayout ? 56 : INVENTORY_SLOT_SIZE_PX;
-  const slotGapPx = mobileLayout ? 8 : INVENTORY_SLOT_GAP_PX;
+  const mobileGapPx = inventoryState.cols >= 8 ? 5 : 6;
+  const mobileAvailableWidth = Math.max(
+    180,
+    window.innerWidth - 16 - INVENTORY_PANEL_PADDING_PX * 2 - INVENTORY_PANEL_BORDER_PX * 2
+  );
+  const mobileSlotSizePx = Math.floor(
+    (mobileAvailableWidth - Math.max(0, inventoryState.cols - 1) * mobileGapPx) / Math.max(1, inventoryState.cols)
+  );
+  const slotSizePx = mobileLayout ? clamp(mobileSlotSizePx, 32, 56) : INVENTORY_SLOT_SIZE_PX;
+  const slotGapPx = mobileLayout ? mobileGapPx : INVENTORY_SLOT_GAP_PX;
   ensureInventorySlotsLength();
   const gridWidth =
     inventoryState.cols * slotSizePx + Math.max(0, inventoryState.cols - 1) * slotGapPx;
@@ -5690,6 +5713,10 @@ function updateInventoryUI() {
       applyItemRarityChrome(slotEl, slotData);
       slotEl.addEventListener("contextmenu", (event) => {
         event.preventDefault();
+        if (isTouchJoystickEnabled()) {
+          mobilePanelState.suppressItemTapUntil = performance.now() + 900;
+          return;
+        }
         if (!trySellInventoryItemAtIndex(i)) {
           equipInventoryItemAtIndex(i);
         }
@@ -6214,10 +6241,7 @@ function showMobileItemTooltip(itemInput, clientX, clientY, qty = null) {
     qty
   );
   clearMobileTooltipHideTimer();
-  mobilePanelState.tooltipHideTimer = window.setTimeout(() => {
-    mobilePanelState.tooltipHideTimer = 0;
-    hideHoverTooltip();
-  }, 2600);
+  mobilePanelState.suppressItemTapUntil = performance.now() + 900;
 }
 
 function bindMobileItemSlotInteraction(node, itemInput, onTap, qty = null) {
@@ -6245,6 +6269,9 @@ function bindMobileItemSlotInteraction(node, itemInput, onTap, qty = null) {
     }
     event.preventDefault();
     event.stopPropagation();
+    if (performance.now() < (Number(mobilePanelState.suppressItemTapUntil) || 0)) {
+      return;
+    }
   });
   node.addEventListener(
     "touchstart",
@@ -6305,6 +6332,7 @@ function bindMobileItemSlotInteraction(node, itemInput, onTap, qty = null) {
       event.preventDefault();
       event.stopPropagation();
       if (holdTriggered || tapCanceled) {
+        mobilePanelState.suppressItemTapUntil = performance.now() + 900;
         holdTriggered = false;
         tapCanceled = false;
         return;

@@ -1119,6 +1119,15 @@ body {
   pointer-events: none;
 }
 
+#hover-tooltip.mobile-item-tooltip {
+  max-width: min(92vw, 560px);
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+  border-radius: 12px;
+  background: rgba(7, 12, 18, 0.985);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.52);
+}
+
 .tooltip-title-row {
   display: flex;
   align-items: center;
