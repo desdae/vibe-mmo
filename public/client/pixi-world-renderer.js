@@ -20,6 +20,29 @@
             }
             return hash;
           };
+    const seededUnit =
+      typeof deps.seededUnit === "function"
+        ? deps.seededUnit
+        : (seed, n) => {
+            const x = Math.sin(((Number(seed) || 0) + n * 374761393) * 0.000001) * 43758.5453;
+            return x - Math.floor(x);
+          };
+    const normalizeDirection =
+      typeof deps.normalizeDirection === "function"
+        ? deps.normalizeDirection
+        : (dx, dy) => {
+            const len = Math.hypot(Number(dx) || 0, Number(dy) || 0);
+            if (len <= 1e-6) {
+              return null;
+            }
+            return {
+              dx: (Number(dx) || 0) / len,
+              dy: (Number(dy) || 0) / len
+            };
+          };
+    const getActionDefById = typeof deps.getActionDefById === "function" ? deps.getActionDefById : () => null;
+    const getAbilityVisualHook =
+      typeof deps.getAbilityVisualHook === "function" ? deps.getAbilityVisualHook : () => "";
     const getLootBagSprite = typeof deps.getLootBagSprite === "function" ? deps.getLootBagSprite : null;
     const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
     const getTownTileSprite = typeof deps.getTownTileSprite === "function" ? deps.getTownTileSprite : null;
@@ -86,6 +109,7 @@
     const canvasTextureCache = new WeakMap();
     const humanoidRuntimeByKey = new Map();
     const areaEffectCanvasCache = new Map();
+    const dynamicAreaEffectRuntime = new Map();
     const backgroundTextureCache = new Map();
     const genericCanvasCache = new Map();
     let lastDebugStats = {
@@ -299,6 +323,48 @@
       canvas.width = Math.max(1, Math.ceil(Number(width) || 1));
       canvas.height = Math.max(1, Math.ceil(Number(height) || 1));
       return canvas;
+    }
+
+    function getDynamicAreaEffectCanvas(key, width, height, now, debugKey = "") {
+      const runtimeKey = String(key || "");
+      const normalizedWidth = Math.max(1, Math.ceil(Number(width) || 1));
+      const normalizedHeight = Math.max(1, Math.ceil(Number(height) || 1));
+      let runtime = dynamicAreaEffectRuntime.get(runtimeKey);
+      if (!runtime) {
+        const canvas = createRuntimeCanvas(normalizedWidth, normalizedHeight);
+        if (!canvas) {
+          return null;
+        }
+        runtime = { canvas, lastSeenAt: Number(now) || performance.now() };
+        dynamicAreaEffectRuntime.set(runtimeKey, runtime);
+      } else if (
+        !runtime.canvas ||
+        runtime.canvas.width !== normalizedWidth ||
+        runtime.canvas.height !== normalizedHeight
+      ) {
+        runtime.canvas = createRuntimeCanvas(normalizedWidth, normalizedHeight);
+        if (!runtime.canvas) {
+          dynamicAreaEffectRuntime.delete(runtimeKey);
+          return null;
+        }
+      }
+      runtime.lastSeenAt = Number(now) || performance.now();
+      if (debugKey && runtime.canvas && typeof runtime.canvas === "object") {
+        try {
+          runtime.canvas.__vibeSpriteKey = String(debugKey);
+        } catch (_error) {
+          // Debug tagging is best-effort only.
+        }
+      }
+      return runtime.canvas;
+    }
+
+    function pruneDynamicAreaEffectRuntime(now = performance.now()) {
+      for (const [key, runtime] of dynamicAreaEffectRuntime.entries()) {
+        if (now - (Number(runtime && runtime.lastSeenAt) || 0) > 700) {
+          dynamicAreaEffectRuntime.delete(key);
+        }
+      }
     }
 
     function getBackgroundGridTexture() {
@@ -620,7 +686,25 @@
       pool.push(sprite);
     }
 
-    function getTextureFromCanvas(canvas, samplingMode = "linear") {
+    function configureCanvasTexture(texture, modeKey, forceUpdate = false) {
+      const baseTexture = texture && texture.baseTexture ? texture.baseTexture : null;
+      if (!baseTexture) {
+        return;
+      }
+      if (modeKey === "nearest" && PIXI.SCALE_MODES && PIXI.SCALE_MODES.NEAREST !== undefined) {
+        baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+      } else if (PIXI.SCALE_MODES && PIXI.SCALE_MODES.LINEAR !== undefined) {
+        baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
+      }
+      if (PIXI.MIPMAP_MODES && PIXI.MIPMAP_MODES.OFF !== undefined && baseTexture.mipmap !== undefined) {
+        baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF;
+      }
+      if (forceUpdate && typeof baseTexture.update === "function") {
+        baseTexture.update();
+      }
+    }
+
+    function getTextureFromCanvas(canvas, samplingMode = "linear", forceUpdate = false) {
       if (!canvas || typeof canvas.getContext !== "function") {
         return null;
       }
@@ -632,23 +716,11 @@
       }
       const cached = cacheByMode.get(modeKey);
       if (cached) {
+        configureCanvasTexture(cached, modeKey, forceUpdate);
         return cached;
       }
       const texture = PIXI.Texture.from(canvas);
-      const baseTexture = texture && texture.baseTexture ? texture.baseTexture : null;
-      if (baseTexture) {
-        if (modeKey === "nearest" && PIXI.SCALE_MODES && PIXI.SCALE_MODES.NEAREST !== undefined) {
-          baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
-        } else if (PIXI.SCALE_MODES && PIXI.SCALE_MODES.LINEAR !== undefined) {
-          baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
-        }
-        if (PIXI.MIPMAP_MODES && PIXI.MIPMAP_MODES.OFF !== undefined && baseTexture.mipmap !== undefined) {
-          baseTexture.mipmap = PIXI.MIPMAP_MODES.OFF;
-        }
-        if (typeof baseTexture.update === "function") {
-          baseTexture.update();
-        }
-      }
+      configureCanvasTexture(texture, modeKey, true);
       cacheByMode.set(modeKey, texture);
       return texture;
     }
@@ -1221,7 +1293,7 @@
       }
     }
 
-    function getTracerAreaEffectSpriteFrame(effect, paletteKey) {
+    function getTracerAreaEffectSpriteFrame(effect, paletteKey, frameNow) {
       const palettes = {
         ricochet: {
           outer: [245, 181, 96],
@@ -1237,85 +1309,69 @@
         }
       };
       const palette = palettes[paletteKey] || palettes.ricochet;
-      const key = `tracer:${paletteKey}`;
-      let cached = areaEffectCanvasCache.get(key);
-      if (!cached) {
-        const canvas = createRuntimeCanvas(160, 48);
-        if (!canvas) {
-          return null;
-        }
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          return null;
-        }
-        const midY = canvas.height * 0.5;
-        const gradient = ctx.createLinearGradient(0, midY, canvas.width, midY);
-        gradient.addColorStop(0, "rgba(255,255,255,0)");
-        gradient.addColorStop(0.12, `rgba(${palette.core[0]}, ${palette.core[1]}, ${palette.core[2]}, 0.78)`);
-        gradient.addColorStop(0.5, `rgba(${palette.hot[0]}, ${palette.hot[1]}, ${palette.hot[2]}, 0.96)`);
-        gradient.addColorStop(0.88, `rgba(${palette.core[0]}, ${palette.core[1]}, ${palette.core[2]}, 0.78)`);
-        gradient.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.save();
-        ctx.lineCap = "round";
-        ctx.shadowBlur = 16;
-        ctx.shadowColor = `rgba(${palette.outer[0]}, ${palette.outer[1]}, ${palette.outer[2]}, 0.42)`;
-        ctx.strokeStyle = gradient;
-        ctx.lineWidth = 10;
-        ctx.beginPath();
-        ctx.moveTo(10, midY);
-        ctx.lineTo(canvas.width - 16, midY);
-        ctx.stroke();
-        ctx.lineWidth = 2.6;
-        ctx.strokeStyle = `rgba(${palette.hot[0]}, ${palette.hot[1]}, ${palette.hot[2]}, 0.96)`;
-        ctx.beginPath();
-        ctx.moveTo(14, midY);
-        ctx.lineTo(canvas.width - 22, midY);
-        ctx.stroke();
-        for (let i = 0; i < 8; i += 1) {
-          const x = 18 + i * 16;
-          ctx.strokeStyle = `rgba(${palette.streak[0]}, ${palette.streak[1]}, ${palette.streak[2]}, 0.34)`;
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.moveTo(x - 4, midY - 3);
-          ctx.lineTo(x + 8, midY + 2);
-          ctx.stroke();
-        }
-        ctx.fillStyle = `rgba(${palette.hot[0]}, ${palette.hot[1]}, ${palette.hot[2]}, 0.96)`;
-        ctx.beginPath();
-        ctx.moveTo(canvas.width - 8, midY);
-        ctx.lineTo(canvas.width - 20, midY - 6);
-        ctx.lineTo(canvas.width - 15, midY);
-        ctx.lineTo(canvas.width - 20, midY + 6);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-        cached = { canvas };
-        areaEffectCanvasCache.set(key, cached);
-      }
       const startX = Number(effect && (Number.isFinite(Number(effect.startX)) ? effect.startX : effect.x)) + 0.5;
       const startY = Number(effect && (Number.isFinite(Number(effect.startY)) ? effect.startY : effect.y)) + 0.5;
-      const dirX = Number(effect && effect.dx) || 1;
-      const dirY = Number(effect && effect.dy) || 0;
+      const dir = normalizeDirection(effect && effect.dx, effect && effect.dy) || { dx: 1, dy: 0 };
+      const dirX = dir.dx;
+      const dirY = dir.dy;
       const lengthTiles = Math.max(0.25, Number(effect && (effect.length || effect.radius)) || 1);
       const endX = startX + dirX * lengthTiles;
       const endY = startY + dirY * lengthTiles;
-      const dx = endX - startX;
-      const dy = endY - startY;
-      const lengthPx = Math.max(10, Math.hypot(dx, dy) * tileSize);
+      const deltaXPx = (endX - startX) * tileSize;
+      const deltaYPx = (endY - startY) * tileSize;
+      const widthPx =
+        paletteKey === "piercing"
+          ? Math.max(3.4, (Number(effect && effect.width) || 0.5) * tileSize)
+          : Math.max(2.5, (Number(effect && effect.width) || 0.35) * tileSize);
+      const padding = Math.max(18, Math.ceil(widthPx * 3));
+      const canvasWidth = Math.max(1, Math.ceil(Math.abs(deltaXPx) + padding * 2));
+      const canvasHeight = Math.max(1, Math.ceil(Math.abs(deltaYPx) + padding * 2));
+      const runtimeKey = `tracer:${paletteKey}:${String(effect && effect.id || `${effect && effect.abilityId || ""}:${effect && effect.startedAt || 0}`)}`;
+      const canvas = getDynamicAreaEffectCanvas(runtimeKey, canvasWidth, canvasHeight, frameNow, runtimeKey);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const fadeIn = paletteKey === "piercing" ? clamp((frameNow - effect.startedAt) / 60, 0, 1) : 1;
+      const fadeOut = 1 - clamp((frameNow - effect.endsAt + 120) / 120, 0, 1);
+      const alpha = paletteKey === "piercing" ? fadeIn * fadeOut : fadeOut;
+      const start = {
+        x: padding + Math.max(0, -deltaXPx),
+        y: padding + Math.max(0, -deltaYPx)
+      };
+      const end = {
+        x: start.x + deltaXPx,
+        y: start.y + deltaYPx
+      };
+      drawTaperedTracerBeam(ctx, start, end, Number(effect && effect.seed) || 0, frameNow, {
+        alpha,
+        widthPx,
+        outerGlowColor: palette.outer,
+        coreColor: palette.core,
+        hotColor: palette.hot,
+        streakColor: palette.streak,
+        sparkCount: paletteKey === "piercing" ? 8 : 4
+      });
       return {
-        canvas: cached.canvas,
-        rotation: Math.atan2(dy, dx),
-        scaleX: lengthPx / 160,
-        scaleY: 1,
-        alpha: 0.96
+        canvas,
+        rotation: 0,
+        alpha: 1,
+        dynamic: true,
+        centerWorldX: (startX + endX) * 0.5,
+        centerWorldY: (startY + endY) * 0.5
       };
     }
 
     function resolveBeamWorldEndpoints(effect) {
       const startX = Number.isFinite(Number(effect && effect.startX)) ? Number(effect.startX) : Number(effect && effect.x) || 0;
       const startY = Number.isFinite(Number(effect && effect.startY)) ? Number(effect.startY) : Number(effect && effect.y) || 0;
-      const dirX = Number(effect && effect.dx) || 0;
-      const dirY = Number(effect && effect.dy) || 0;
+      const dir = normalizeDirection(effect && effect.dx, effect && effect.dy) || { dx: 0, dy: -1 };
+      const dirX = dir.dx;
+      const dirY = dir.dy;
       const lengthTiles = Math.max(0.25, Number(effect && (effect.length || effect.radius)) || 1);
       return {
         startX,
@@ -1326,16 +1382,358 @@
       };
     }
 
-    function getAreaEffectSpriteFrame(effect, frameNow) {
+    function buildParametricJaggedBeamPoints(start, end, seed, options = {}) {
+      const segmentCount = Math.max(4, Math.floor(Number(options.segmentCount) || 12));
+      const amplitudePx = Math.max(0, Number(options.amplitudePx) || 12);
+      const phase = Number(options.phase) || 0;
+      const taperPower = Math.max(0.4, Number(options.taperPower) || 1.1);
+      const waveFrequency = Math.max(0.5, Number(options.waveFrequency) || 3.4);
+      const noiseMix = clamp(Number(options.noiseMix) || 0.55, 0, 1);
+      const points = [];
+      const beamDx = end.x - start.x;
+      const beamDy = end.y - start.y;
+      const beamLengthPx = Math.max(1, Math.hypot(beamDx, beamDy));
+      const dirX = beamDx / beamLengthPx;
+      const dirY = beamDy / beamLengthPx;
+      const perpX = -dirY;
+      const perpY = dirX;
+      const seedBase = Math.floor(Number(seed) || 0);
+
+      for (let i = 0; i <= segmentCount; i += 1) {
+        const t = i / segmentCount;
+        let offset = 0;
+        if (i > 0 && i < segmentCount) {
+          const envelope = Math.pow(Math.sin(t * Math.PI), taperPower);
+          const jitter = seededUnit(seedBase, 100 + i * 17) * 2 - 1;
+          const wavePhase = phase + t * Math.PI * 2 * waveFrequency + seededUnit(seedBase, 200 + i * 19) * Math.PI;
+          const wave = Math.sin(wavePhase);
+          offset = amplitudePx * envelope * (jitter * noiseMix + wave * (1 - noiseMix));
+        }
+        points.push({
+          x: start.x + beamDx * t + perpX * offset,
+          y: start.y + beamDy * t + perpY * offset
+        });
+      }
+      return points;
+    }
+
+    function strokeBeamPolyline(targetCtx, points) {
+      if (!targetCtx || !Array.isArray(points) || points.length < 2) {
+        return;
+      }
+      targetCtx.beginPath();
+      targetCtx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        targetCtx.lineTo(points[i].x, points[i].y);
+      }
+      targetCtx.stroke();
+    }
+
+    function drawParametricJaggedBeam(targetCtx, start, end, seed, now, options = {}) {
+      const alpha = clamp(Number(options.alpha) || 1, 0, 1);
+      if (!targetCtx || alpha <= 0) {
+        return;
+      }
+      const widthPx = Math.max(2, Number(options.widthPx) || 14);
+      const outerGlowColor = options.outerGlowColor || [122, 208, 255];
+      const coreColor = options.coreColor || [180, 235, 255];
+      const hotColor = options.hotColor || [248, 251, 255];
+      const branchColor = options.branchColor || coreColor;
+      const burstColor = options.burstColor || coreColor;
+      const phase = now * (Number(options.phaseSpeed) || 0.0095) + (Number(options.phaseOffset) || 0);
+      const mainPoints = buildParametricJaggedBeamPoints(start, end, seed, {
+        segmentCount: options.segmentCount,
+        amplitudePx: options.amplitudePx ?? widthPx * 0.9,
+        phase,
+        taperPower: options.taperPower,
+        waveFrequency: options.waveFrequency,
+        noiseMix: options.noiseMix
+      });
+
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = "lighter";
+      targetCtx.lineCap = "round";
+      targetCtx.lineJoin = "round";
+
+      targetCtx.strokeStyle = `rgba(${outerGlowColor[0]}, ${outerGlowColor[1]}, ${outerGlowColor[2]}, ${(0.32 * alpha).toFixed(3)})`;
+      targetCtx.lineWidth = widthPx * 1.65;
+      strokeBeamPolyline(targetCtx, mainPoints);
+
+      targetCtx.strokeStyle = `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${(0.92 * alpha).toFixed(3)})`;
+      targetCtx.lineWidth = widthPx * 0.72;
+      strokeBeamPolyline(targetCtx, mainPoints);
+
+      targetCtx.strokeStyle = `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.98 * alpha).toFixed(3)})`;
+      targetCtx.lineWidth = Math.max(1.2, widthPx * 0.22);
+      strokeBeamPolyline(targetCtx, mainPoints);
+
+      const branchCount = Math.max(0, Math.floor(Number(options.branchCount) || 0));
+      for (let branchIndex = 0; branchIndex < branchCount; branchIndex += 1) {
+        const startT = 0.18 + seededUnit(seed, 310 + branchIndex * 29) * 0.6;
+        const endT = Math.min(0.98, startT + 0.08 + seededUnit(seed, 311 + branchIndex * 29) * 0.22);
+        const baseAngle = (seededUnit(seed, 312 + branchIndex * 29) - 0.5) * Math.PI * 1.2;
+        const directionX = end.x - start.x;
+        const directionY = end.y - start.y;
+        const len = Math.max(1, Math.hypot(directionX, directionY));
+        const dirX = directionX / len;
+        const dirY = directionY / len;
+        const perpX = -dirY;
+        const perpY = dirX;
+        const startPoint = {
+          x: start.x + directionX * startT,
+          y: start.y + directionY * startT
+        };
+        const branchLength = widthPx * (1.8 + seededUnit(seed, 313 + branchIndex * 29) * 2.7);
+        const branchDirSign = seededUnit(seed, 314 + branchIndex * 29) * 2 - 1;
+        const endPoint = {
+          x:
+            startPoint.x +
+            dirX * branchLength * (0.25 + (endT - startT) * 0.8) +
+            perpX * branchLength * 0.7 * branchDirSign * Math.cos(baseAngle),
+          y:
+            startPoint.y +
+            dirY * branchLength * (0.25 + (endT - startT) * 0.8) +
+            perpY * branchLength * 0.7 * branchDirSign * Math.cos(baseAngle)
+        };
+        const branchPoints = buildParametricJaggedBeamPoints(startPoint, endPoint, seed + branchIndex * 997, {
+          segmentCount: Math.max(4, Math.floor((Number(options.segmentCount) || 10) * 0.45)),
+          amplitudePx: Math.max(2, widthPx * 0.32),
+          phase: phase * 1.24 + branchIndex * 0.9,
+          taperPower: 0.95,
+          waveFrequency: 2.8,
+          noiseMix: 0.62
+        });
+        targetCtx.strokeStyle = `rgba(${branchColor[0]}, ${branchColor[1]}, ${branchColor[2]}, ${(0.52 * alpha).toFixed(3)})`;
+        targetCtx.lineWidth = Math.max(1, widthPx * 0.16);
+        strokeBeamPolyline(targetCtx, branchPoints);
+      }
+
+      const burstRadius = Math.max(5, widthPx * 0.9);
+      for (const point of [start, end]) {
+        const burst = targetCtx.createRadialGradient(point.x, point.y, 0, point.x, point.y, burstRadius);
+        burst.addColorStop(0, `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.95 * alpha).toFixed(3)})`);
+        burst.addColorStop(0.42, `rgba(${burstColor[0]}, ${burstColor[1]}, ${burstColor[2]}, ${(0.4 * alpha).toFixed(3)})`);
+        burst.addColorStop(1, "rgba(0, 0, 0, 0)");
+        targetCtx.fillStyle = burst;
+        targetCtx.beginPath();
+        targetCtx.arc(point.x, point.y, burstRadius, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+
+      targetCtx.restore();
+    }
+
+    function drawArcaneBeamTexture(targetCtx, effect, start, end, now, beamWidthPx) {
+      const beamLengthPx = Math.max(1, Math.hypot(end.x - start.x, end.y - start.y));
+      const dirX = (end.x - start.x) / beamLengthPx;
+      const dirY = (end.y - start.y) / beamLengthPx;
+      const effectSeed = Number(effect && effect.seed) || 0;
+      const lifeT = clamp((now - effect.startedAt) / Math.max(1, effect.durationMs), 0, 1);
+      const fadeOut = 1 - clamp((now - effect.endsAt + 300) / 300, 0, 1);
+      const alpha = clamp((0.82 - lifeT * 0.2) * fadeOut, 0, 1);
+      if (alpha <= 0) {
+        return;
+      }
+
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = "lighter";
+
+      targetCtx.strokeStyle = `rgba(165, 132, 255, ${(0.45 * alpha).toFixed(3)})`;
+      targetCtx.lineCap = "round";
+      targetCtx.lineWidth = beamWidthPx * 1.9;
+      targetCtx.beginPath();
+      targetCtx.moveTo(start.x, start.y);
+      targetCtx.lineTo(end.x, end.y);
+      targetCtx.stroke();
+
+      const beamGradient = targetCtx.createLinearGradient(start.x, start.y, end.x, end.y);
+      beamGradient.addColorStop(0, `rgba(206, 176, 255, ${(0.88 * alpha).toFixed(3)})`);
+      beamGradient.addColorStop(0.5, `rgba(245, 236, 255, ${(0.98 * alpha).toFixed(3)})`);
+      beamGradient.addColorStop(1, `rgba(196, 168, 255, ${(0.9 * alpha).toFixed(3)})`);
+      targetCtx.strokeStyle = beamGradient;
+      targetCtx.lineWidth = beamWidthPx * 0.9;
+      targetCtx.beginPath();
+      targetCtx.moveTo(start.x, start.y);
+      targetCtx.lineTo(end.x, end.y);
+      targetCtx.stroke();
+
+      targetCtx.strokeStyle = `rgba(255, 252, 255, ${(0.95 * alpha).toFixed(3)})`;
+      targetCtx.lineWidth = Math.max(1.5, beamWidthPx * 0.22);
+      targetCtx.beginPath();
+      targetCtx.moveTo(start.x, start.y);
+      targetCtx.lineTo(end.x, end.y);
+      targetCtx.stroke();
+
+      const perpX = -dirY;
+      const perpY = dirX;
+      for (let strand = 0; strand < 2; strand += 1) {
+        targetCtx.beginPath();
+        targetCtx.strokeStyle = `rgba(233, 220, 255, ${(0.56 * alpha).toFixed(3)})`;
+        targetCtx.lineWidth = Math.max(1.2, beamWidthPx * 0.18);
+        for (let i = 0; i <= 32; i += 1) {
+          const t = i / 32;
+          const phase = now * 0.008 + strand * Math.PI + t * Math.PI * 6;
+          const wobble = Math.sin(phase) * beamWidthPx * 0.55;
+          const px = start.x + (end.x - start.x) * t + perpX * wobble;
+          const py = start.y + (end.y - start.y) * t + perpY * wobble;
+          if (i === 0) {
+            targetCtx.moveTo(px, py);
+          } else {
+            targetCtx.lineTo(px, py);
+          }
+        }
+        targetCtx.stroke();
+      }
+
+      for (let i = 0; i < 20; i += 1) {
+        const t = (seededUnit(effectSeed, i * 23 + 11) + now * 0.00035) % 1;
+        const baseX = start.x + (end.x - start.x) * t;
+        const baseY = start.y + (end.y - start.y) * t;
+        const wiggle = (seededUnit(effectSeed, i * 31 + 7) - 0.5) * beamWidthPx * 1.7;
+        const px = baseX + perpX * wiggle;
+        const py = baseY + perpY * wiggle;
+        const radius = 0.8 + seededUnit(effectSeed, i * 19 + 3) * 1.8;
+        targetCtx.beginPath();
+        targetCtx.fillStyle = `rgba(244, 238, 255, ${(0.38 + seededUnit(effectSeed, i * 13 + 5) * 0.4 * alpha).toFixed(3)})`;
+        targetCtx.arc(px, py, radius, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+
+      const burstRadius = Math.max(6, beamWidthPx * 1.1);
+      for (const point of [start, end]) {
+        const burst = targetCtx.createRadialGradient(point.x, point.y, 0, point.x, point.y, burstRadius);
+        burst.addColorStop(0, `rgba(250, 243, 255, ${(0.9 * alpha).toFixed(3)})`);
+        burst.addColorStop(0.5, `rgba(196, 159, 255, ${(0.45 * alpha).toFixed(3)})`);
+        burst.addColorStop(1, "rgba(124, 90, 220, 0)");
+        targetCtx.fillStyle = burst;
+        targetCtx.beginPath();
+        targetCtx.arc(point.x, point.y, burstRadius, 0, Math.PI * 2);
+        targetCtx.fill();
+      }
+
+      targetCtx.restore();
+    }
+
+    function drawLightningBeamTexture(targetCtx, effect, start, end, now, beamWidthPx, lengthTiles) {
+      const fadeIn = clamp((now - effect.startedAt) / 55, 0, 1);
+      const fadeOut = 1 - clamp((now - effect.endsAt + 130) / 130, 0, 1);
+      const alpha = clamp(fadeIn * fadeOut, 0, 1);
+      if (alpha <= 0) {
+        return;
+      }
+      const seed = Number(effect.seed) || hashString(`${effect.id || "lightning"}:${effect.startedAt || 0}`);
+      drawParametricJaggedBeam(targetCtx, start, end, seed, now, {
+        alpha,
+        widthPx: beamWidthPx,
+        segmentCount: Math.max(8, Math.round(lengthTiles * 3.5)),
+        amplitudePx: beamWidthPx * 1.05,
+        taperPower: 0.78,
+        waveFrequency: 4.8,
+        noiseMix: 0.68,
+        phaseSpeed: 0.022,
+        outerGlowColor: [92, 198, 255],
+        coreColor: [141, 228, 255],
+        hotColor: [250, 252, 255],
+        branchColor: [179, 239, 255],
+        burstColor: [143, 218, 255],
+        branchCount: Math.max(2, Math.round(lengthTiles * 0.4))
+      });
+    }
+
+    function drawTaperedTracerBeam(targetCtx, start, end, seed, now, options = {}) {
+      const alpha = clamp(Number(options.alpha) || 1, 0, 1);
+      if (!targetCtx || alpha <= 0) {
+        return;
+      }
+      const widthPx = Math.max(2, Number(options.widthPx) || 8);
+      const outerGlowColor = options.outerGlowColor || [246, 196, 116];
+      const coreColor = options.coreColor || [244, 234, 212];
+      const hotColor = options.hotColor || [255, 252, 244];
+      const streakColor = options.streakColor || [255, 221, 148];
+      const sparkCount = Math.max(0, Math.floor(Number(options.sparkCount) || 10));
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      const dirX = dx / length;
+      const dirY = dy / length;
+      const perpX = -dirY;
+      const perpY = dirX;
+
+      targetCtx.save();
+      targetCtx.globalCompositeOperation = "lighter";
+      targetCtx.lineCap = "round";
+      targetCtx.lineJoin = "round";
+
+      targetCtx.strokeStyle = `rgba(${outerGlowColor[0]}, ${outerGlowColor[1]}, ${outerGlowColor[2]}, ${(0.28 * alpha).toFixed(3)})`;
+      targetCtx.lineWidth = widthPx * 1.8;
+      targetCtx.beginPath();
+      targetCtx.moveTo(start.x, start.y);
+      targetCtx.lineTo(end.x, end.y);
+      targetCtx.stroke();
+
+      const gradient = targetCtx.createLinearGradient(start.x, start.y, end.x, end.y);
+      gradient.addColorStop(0, `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${(0.78 * alpha).toFixed(3)})`);
+      gradient.addColorStop(0.55, `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.96 * alpha).toFixed(3)})`);
+      gradient.addColorStop(1, `rgba(${coreColor[0]}, ${coreColor[1]}, ${coreColor[2]}, ${(0.78 * alpha).toFixed(3)})`);
+      targetCtx.strokeStyle = gradient;
+      targetCtx.lineWidth = widthPx * 0.7;
+      targetCtx.beginPath();
+      targetCtx.moveTo(start.x, start.y);
+      targetCtx.lineTo(end.x, end.y);
+      targetCtx.stroke();
+
+      targetCtx.strokeStyle = `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.98 * alpha).toFixed(3)})`;
+      targetCtx.lineWidth = Math.max(1.1, widthPx * 0.18);
+      targetCtx.beginPath();
+      targetCtx.moveTo(start.x, start.y);
+      targetCtx.lineTo(end.x, end.y);
+      targetCtx.stroke();
+
+      for (let i = 0; i < sparkCount; i += 1) {
+        const t = (seededUnit(seed, 410 + i * 17) + now * 0.00042) % 1;
+        const baseX = start.x + dx * t;
+        const baseY = start.y + dy * t;
+        const drift = (seededUnit(seed, 430 + i * 19) - 0.5) * widthPx * 1.6;
+        const px = baseX + perpX * drift;
+        const py = baseY + perpY * drift;
+        const tail = 3 + seededUnit(seed, 450 + i * 11) * 5;
+        targetCtx.strokeStyle = `rgba(${streakColor[0]}, ${streakColor[1]}, ${streakColor[2]}, ${(0.34 + seededUnit(seed, 470 + i * 7) * 0.4 * alpha).toFixed(3)})`;
+        targetCtx.lineWidth = 1;
+        targetCtx.beginPath();
+        targetCtx.moveTo(px - dirX * tail * 0.35, py - dirY * tail * 0.35);
+        targetCtx.lineTo(px + dirX * tail, py + dirY * tail);
+        targetCtx.stroke();
+      }
+
+      if (options.arrowHead !== false) {
+        targetCtx.save();
+        targetCtx.translate(end.x, end.y);
+        targetCtx.rotate(Math.atan2(dy, dx));
+        targetCtx.fillStyle = `rgba(${hotColor[0]}, ${hotColor[1]}, ${hotColor[2]}, ${(0.96 * alpha).toFixed(3)})`;
+        targetCtx.beginPath();
+        targetCtx.moveTo(widthPx * 1.1, 0);
+        targetCtx.lineTo(-widthPx * 0.1, -widthPx * 0.45);
+        targetCtx.lineTo(widthPx * 0.22, 0);
+        targetCtx.lineTo(-widthPx * 0.1, widthPx * 0.45);
+        targetCtx.closePath();
+        targetCtx.fill();
+        targetCtx.restore();
+      }
+
+      targetCtx.restore();
+    }
+
+    function getAreaEffectSpriteFrame(effect, frameNow, areaHook = "") {
       const abilityId = String(effect && effect.abilityId || "").toLowerCase();
+      const normalizedHook = String(areaHook || "").trim().toLowerCase();
       if (String(effect && effect.kind || "") === "beam") {
         return null;
       }
-      if (abilityId.includes("ricochet")) {
-        return getTracerAreaEffectSpriteFrame(effect, "ricochet");
+      if (normalizedHook === "ricochet_shot" || abilityId.includes("ricochet")) {
+        return getTracerAreaEffectSpriteFrame(effect, "ricochet", frameNow);
       }
-      if (abilityId.includes("piercing")) {
-        return getTracerAreaEffectSpriteFrame(effect, "piercing");
+      if (normalizedHook === "piercing_bolt" || abilityId.includes("piercing")) {
+        return getTracerAreaEffectSpriteFrame(effect, "piercing", frameNow);
       }
       const radiusPx = Math.max(6, (Number(effect && effect.radius) || 1) * tileSize);
       const roundedRadius = Math.max(6, Math.round(radiusPx));
@@ -1373,16 +1771,24 @@
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(phase * Math.PI * 2 * 0.08);
-      if (abilityId.includes("blizzard")) {
+      if (normalizedHook === "blizzard" || abilityId.includes("blizzard")) {
         ctx.restore();
         drawDetailedBlizzardTexture(ctx, size, roundedRadius, phaseBucket);
-      } else if (abilityId.includes("rain")) {
+      } else if (normalizedHook === "rain_of_arrows" || abilityId.includes("rain")) {
         ctx.restore();
         drawDetailedRainTexture(ctx, size, roundedRadius, phaseBucket);
-      } else if (abilityId.includes("caltrop")) {
+      } else if (normalizedHook === "caltrops" || abilityId.includes("caltrop")) {
         ctx.restore();
         drawDetailedCaltropsTexture(ctx, size, roundedRadius);
-      } else if (String(effect && effect.kind || "") === "summon" && (abilityId.includes("hydra") || abilityId.includes("ballista"))) {
+      } else if (
+        String(effect && effect.kind || "") === "summon" &&
+        (
+          normalizedHook === "fire_hydra" ||
+          normalizedHook === "ballista_nest" ||
+          abilityId.includes("hydra") ||
+          abilityId.includes("ballista")
+        )
+      ) {
         ctx.restore();
         drawDetailedSummonTexture(ctx, size, roundedRadius, effect, phaseBucket);
       } else {
@@ -1448,68 +1854,54 @@
       return result;
     }
 
-    function getBeamAreaEffectSpriteFrame(effect) {
-      const visual = getAreaEffectVisualConfig(effect);
-      const key = `beam:${visual.stroke}:${visual.glow}`;
-      let cached = areaEffectCanvasCache.get(key);
-      if (!cached) {
-        const width = 32;
-        const height = 128;
-        const canvas = createRuntimeCanvas(width, height);
-        if (!canvas) {
-          return null;
-        }
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          return null;
-        }
-        const midX = width * 0.5;
-        const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, "rgba(255,255,255,0)");
-        gradient.addColorStop(0.12, visual.stroke);
-        gradient.addColorStop(0.5, "#ffffff");
-        gradient.addColorStop(0.88, visual.stroke);
-        gradient.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.save();
-        ctx.shadowBlur = 14;
-        ctx.shadowColor = visual.glow;
-        ctx.strokeStyle = gradient;
-        ctx.lineCap = "round";
-        ctx.lineWidth = 5;
-        ctx.beginPath();
-        ctx.moveTo(midX, 10);
-        ctx.lineTo(midX, height - 10);
-        ctx.stroke();
-        ctx.lineWidth = 2.2;
-        ctx.globalAlpha = 0.85;
-        ctx.beginPath();
-        for (let y = 12; y < height - 12; y += 16) {
-          const jitter = ((y / 16) % 2 === 0 ? -1 : 1) * 3;
-          if (y === 12) {
-            ctx.moveTo(midX, y);
-          } else {
-            ctx.lineTo(midX + jitter, y);
-          }
-        }
-        ctx.stroke();
-        ctx.restore();
-        cached = { canvas };
-        areaEffectCanvasCache.set(key, cached);
-      }
+    function getBeamAreaEffectSpriteFrame(effect, frameNow, areaHook = "") {
+      const normalizedHook = String(areaHook || "").trim().toLowerCase();
+      const resolvedHook = normalizedHook === "arcane_beam" ? "arcane_beam" : "lightning_beam";
       const endpoints = resolveBeamWorldEndpoints(effect);
-      const startX = endpoints.startX + 0.5;
-      const startY = endpoints.startY + 0.5;
-      const endX = endpoints.endX + 0.5;
-      const endY = endpoints.endY + 0.5;
-      const dx = endX - startX;
-      const dy = endY - startY;
-      const lengthPx = Math.max(8, Math.hypot(dx, dy) * tileSize);
+      const startWorldX = endpoints.startX + 0.5;
+      const startWorldY = endpoints.startY + 0.5;
+      const endWorldX = endpoints.endX + 0.5;
+      const endWorldY = endpoints.endY + 0.5;
+      const deltaXPx = (endWorldX - startWorldX) * tileSize;
+      const deltaYPx = (endWorldY - startWorldY) * tileSize;
+      const widthTiles = Math.max(
+        0.2,
+        Number(effect && effect.width) || (resolvedHook === "arcane_beam" ? 0.8 : 0.6)
+      );
+      const beamWidthPx = Math.max(3, widthTiles * tileSize);
+      const padding = Math.max(26, Math.ceil(beamWidthPx * (resolvedHook === "arcane_beam" ? 3.2 : 3.4)));
+      const canvasWidth = Math.max(1, Math.ceil(Math.abs(deltaXPx) + padding * 2));
+      const canvasHeight = Math.max(1, Math.ceil(Math.abs(deltaYPx) + padding * 2));
+      const runtimeKey = `beam:${resolvedHook}:${String(effect && effect.id || `${effect && effect.abilityId || ""}:${effect && effect.startedAt || 0}`)}`;
+      const canvas = getDynamicAreaEffectCanvas(runtimeKey, canvasWidth, canvasHeight, frameNow, runtimeKey);
+      if (!canvas) {
+        return null;
+      }
+      const targetCtx = canvas.getContext("2d");
+      if (!targetCtx) {
+        return null;
+      }
+      targetCtx.clearRect(0, 0, canvas.width, canvas.height);
+      const start = {
+        x: padding + Math.max(0, -deltaXPx),
+        y: padding + Math.max(0, -deltaYPx)
+      };
+      const end = {
+        x: start.x + deltaXPx,
+        y: start.y + deltaYPx
+      };
+      if (resolvedHook === "arcane_beam") {
+        drawArcaneBeamTexture(targetCtx, effect, start, end, frameNow, beamWidthPx);
+      } else {
+        drawLightningBeamTexture(targetCtx, effect, start, end, frameNow, beamWidthPx, endpoints.lengthTiles);
+      }
       return {
-        canvas: cached.canvas,
-        rotation: Math.atan2(dy, dx) + Math.PI / 2,
-        scaleX: 1,
-        scaleY: lengthPx / 128,
-        alpha: 0.96
+        canvas,
+        rotation: 0,
+        alpha: 1,
+        dynamic: true,
+        centerWorldX: (startWorldX + endWorldX) * 0.5,
+        centerWorldY: (startWorldY + endWorldY) * 0.5
       };
     }
 
@@ -1944,7 +2336,7 @@
     function updateSpriteNode(node, x, y, spriteFrame, drawFallback) {
       node.container.position.set(x, y);
       if (spriteFrame && spriteFrame.canvas) {
-        const texture = getTextureFromCanvas(spriteFrame.canvas);
+        const texture = getTextureFromCanvas(spriteFrame.canvas, "linear", !!spriteFrame.dynamic);
         if (texture) {
           node.graphics.clear();
           node.sprite.visible = true;
@@ -1965,7 +2357,10 @@
     function updateSprite(sprite, x, y, spriteFrame, options = null) {
       const samplingMode =
         options && String(options.samplingMode || "").trim().toLowerCase() === "nearest" ? "nearest" : "linear";
-      const texture = spriteFrame && spriteFrame.canvas ? getTextureFromCanvas(spriteFrame.canvas, samplingMode) : null;
+      const texture =
+        spriteFrame && spriteFrame.canvas
+          ? getTextureFromCanvas(spriteFrame.canvas, samplingMode, !!spriteFrame.dynamic)
+          : null;
       if (!texture) {
         sprite.visible = false;
         sprite.texture = PIXI.Texture.EMPTY;
@@ -2069,7 +2464,7 @@
     function updateLabeledSpriteNode(node, x, y, label, hp, maxHp, spriteFrame, drawFallback, overlayOptions = null) {
       node.container.position.set(x, y);
       if (spriteFrame && spriteFrame.canvas) {
-        const texture = getTextureFromCanvas(spriteFrame.canvas);
+        const texture = getTextureFromCanvas(spriteFrame.canvas, "linear", !!spriteFrame.dynamic);
         if (texture) {
           node.graphics.clear();
           node.sprite.visible = true;
@@ -2288,6 +2683,18 @@
       const underlaySpriteEffects = [];
       const overlaySpriteEffects = [];
       for (const effect of frameViewModel.areaEffects) {
+        const actionDef = getActionDefById(String(effect && effect.abilityId || ""));
+        const areaHook = String(
+          getAbilityVisualHook(
+            effect && effect.abilityId,
+            actionDef,
+            "areaEffectRenderer",
+            "",
+            String(effect && effect.kind || "")
+          ) || ""
+        )
+          .trim()
+          .toLowerCase();
         const center = worldToScreen(Number(effect.x) + 0.5, Number(effect.y) + 0.5, cameraX, cameraY, width, height);
         const radius = Math.max(6, (Number(effect.radius) || 1) * tileSize);
         const abilityId = String(effect.abilityId || "").toLowerCase();
@@ -2299,22 +2706,41 @@
           abilityId.includes("poison") || abilityId.includes("caltrop") ? 0x7bd65d :
           0x79b9ff;
         const targetGraphics = String(effect.kind || "") === "summon" ? areaOverlayGraphics : areaUnderlayGraphics;
-        const spriteFrame = getAreaEffectSpriteFrame(effect, now);
+        const spriteFrame = getAreaEffectSpriteFrame(effect, now, areaHook);
         if (String(effect.kind || "") === "beam") {
-          const beamFrame = getBeamAreaEffectSpriteFrame(effect);
+          const beamFrame = getBeamAreaEffectSpriteFrame(effect, now, areaHook);
           if (beamFrame) {
+            const beamCenter = worldToScreen(
+              Number.isFinite(Number(beamFrame.centerWorldX)) ? Number(beamFrame.centerWorldX) : Number(effect.x) + 0.5,
+              Number.isFinite(Number(beamFrame.centerWorldY)) ? Number(beamFrame.centerWorldY) : Number(effect.y) + 0.5,
+              cameraX,
+              cameraY,
+              width,
+              height
+            );
             underlaySpriteEffects.push({
               effect,
-              center,
+              center: beamCenter,
               spriteFrame: beamFrame
             });
             continue;
           }
         }
         if (spriteFrame) {
+          const spriteCenter =
+            Number.isFinite(Number(spriteFrame.centerWorldX)) && Number.isFinite(Number(spriteFrame.centerWorldY))
+              ? worldToScreen(
+                  Number(spriteFrame.centerWorldX),
+                  Number(spriteFrame.centerWorldY),
+                  cameraX,
+                  cameraY,
+                  width,
+                  height
+                )
+              : center;
           (String(effect.kind || "") === "summon" ? overlaySpriteEffects : underlaySpriteEffects).push({
             effect,
-            center,
+            center: spriteCenter,
             spriteFrame
           });
           continue;
@@ -2332,6 +2758,7 @@
           targetGraphics.endFill();
         }
       }
+      pruneDynamicAreaEffectRuntime(now);
       syncSpriteMap(
         areaUnderlayNodes,
         underlaySpriteEffects,
