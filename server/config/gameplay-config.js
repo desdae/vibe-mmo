@@ -93,7 +93,25 @@ function buildGameplayConfig(parsed, defaults) {
       attackCooldownMs: parseGameplayInt(mob.attackCooldownMs, defaults.mob.attackCooldownMs, 50, 600000),
       minSeparation: parseGameplayNumber(mob.minSeparation, defaults.mob.minSeparation, 0, 10),
       separationIterations: parseGameplayInt(mob.separationIterations, defaults.mob.separationIterations, 0, 20),
-      levelDistance: parseGameplayNumber(mob.levelDistance, defaults.mob.levelDistance, 1, 500),
+      baseLevel: parseGameplayInt(mob.baseLevel, defaults.mob.baseLevel, 1, 1000),
+      levelStartDistance: parseGameplayNumber(
+        mob.levelStartDistance,
+        defaults.mob.levelStartDistance,
+        0,
+        5000
+      ),
+      levelDistance: parseGameplayNumber(
+        mob.levelDistance ?? mob.levelDistanceStep,
+        defaults.mob.levelDistance,
+        1,
+        500
+      ),
+      levelDistanceStep: parseGameplayNumber(
+        mob.levelDistanceStep ?? mob.levelDistance,
+        defaults.mob.levelDistanceStep,
+        1,
+        500
+      ),
       levelHealthMultiplier: parseGameplayNumber(
         mob.levelHealthMultiplier,
         defaults.mob.levelHealthMultiplier,

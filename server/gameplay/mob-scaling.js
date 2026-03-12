@@ -3,19 +3,24 @@ function clamp(value, min, max) {
 }
 
 function createMobScalingTools(options = {}) {
-  const levelDistance = Math.max(1, Number(options.levelDistance) || 10);
+  const baseLevel = Math.max(1, Math.floor(Number(options.baseLevel) || 1));
+  const levelStartDistance = Math.max(0, Number(options.levelStartDistance) || 0);
+  const levelDistance = Math.max(1, Number(options.levelDistanceStep ?? options.levelDistance) || 10);
   const healthMultiplierPerLevel = Math.max(1, Number(options.healthMultiplierPerLevel) || 1.25);
   const damageMultiplierPerLevel = Math.max(1, Number(options.damageMultiplierPerLevel) || 1.15);
   const speedMultiplierPerLevel = Math.max(1, Number(options.speedMultiplierPerLevel) || 1.03);
 
   function getMobLevelForDistance(distanceFromCenter) {
     const distance = Math.max(0, Number(distanceFromCenter) || 0);
-    return Math.max(1, Math.floor(distance / levelDistance) + 1);
+    if (distance < levelStartDistance) {
+      return baseLevel;
+    }
+    return Math.max(baseLevel, baseLevel + Math.floor((distance - levelStartDistance) / levelDistance));
   }
 
   function getMobScalingForLevel(level) {
-    const normalizedLevel = Math.max(1, Math.floor(Number(level) || 1));
-    const levelOffset = Math.max(0, normalizedLevel - 1);
+    const normalizedLevel = Math.max(baseLevel, Math.floor(Number(level) || baseLevel));
+    const levelOffset = Math.max(0, normalizedLevel - baseLevel);
     return {
       level: normalizedLevel,
       healthMultiplier: Math.pow(healthMultiplierPerLevel, levelOffset),

@@ -155,7 +155,10 @@ const {
   minSpawnRadiusFromCenter: MIN_SPAWN_RADIUS_FROM_CENTER,
   observedSpawnPadding: OBSERVED_SPAWN_PADDING,
   unobservedDespawnMs: UNOBSERVED_DESPAWN_MS,
+  mobBaseLevel: MOB_BASE_LEVEL,
+  mobLevelStartDistance: MOB_LEVEL_START_DISTANCE,
   mobLevelDistance: MOB_LEVEL_DISTANCE,
+  mobLevelDistanceStep: MOB_LEVEL_DISTANCE_STEP,
   mobLevelHealthMultiplier: MOB_LEVEL_HEALTH_MULTIPLIER,
   mobLevelDamageMultiplier: MOB_LEVEL_DAMAGE_MULTIPLIER,
   mobLevelSpeedMultiplier: MOB_LEVEL_SPEED_MULTIPLIER
@@ -524,7 +527,10 @@ const createLootBag = lootBagTools.createLootBag;
 const tickLootBags = lootBagTools.tickLootBags;
 
 const mobScalingTools = createMobScalingTools({
+  baseLevel: MOB_BASE_LEVEL,
+  levelStartDistance: MOB_LEVEL_START_DISTANCE,
   levelDistance: MOB_LEVEL_DISTANCE,
+  levelDistanceStep: MOB_LEVEL_DISTANCE_STEP,
   healthMultiplierPerLevel: MOB_LEVEL_HEALTH_MULTIPLIER,
   damageMultiplierPerLevel: MOB_LEVEL_DAMAGE_MULTIPLIER,
   speedMultiplierPerLevel: MOB_LEVEL_SPEED_MULTIPLIER

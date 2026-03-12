@@ -42,7 +42,9 @@
     "attackCooldownMs": 900,
     "minSeparation": 0.85,
     "separationIterations": 2,
-    "levelDistance": 10,
+    "baseLevel": 1,
+    "levelStartDistance": 30,
+    "levelDistanceStep": 10,
     "levelHealthMultiplier": 1.25,
     "levelDamageMultiplier": 1.15,
     "levelSpeedMultiplier": 1.03
