@@ -6685,6 +6685,11 @@ function beginMobileAbilityAim(slotId, touchId, clientX, clientY) {
     return false;
   }
 
+  if (touchJoystickState.active) {
+    endTouchJoystick();
+    sendMove();
+  }
+
   const radiusPx = getMobileAbilityAimRadiusPx();
   mobileAbilityAimState.active = true;
   mobileAbilityAimState.touchId = touchId;
@@ -13643,6 +13648,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       endTouchJoystick,
       resetTouchJoystick,
       resetMobileAbilityAim,
+      hasActiveMobileAbilityAim: () => mobileAbilityAimState.active,
       hasActiveTouchJoystick: () => touchJoystickState.active,
       getActiveTouchJoystickId: () => touchJoystickState.touchId,
       setStatus,

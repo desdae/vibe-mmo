@@ -18,6 +18,10 @@
         ? deps.requestAnimationFrame.bind(globalScope)
         : globalScope.requestAnimationFrame.bind(globalScope);
 
+    function isCompactHud() {
+      return Math.max(0, Number(globalScope.innerWidth) || 0) <= 640;
+    }
+
     function renderFrame() {
       requestFrame(renderFrame);
 
@@ -58,14 +62,21 @@
       }
       deps.updateActionBarUI(latestSelf);
 
+      const compactHud = isCompactHud();
       if (deps.hudName) {
-        deps.hudName.textContent = `Player: ${latestSelf.name} (${deps.getMyId() || "?"})`;
+        deps.hudName.textContent = compactHud
+          ? `${latestSelf.name || "Player"} #${deps.getMyId() || "?"}`
+          : `Player: ${latestSelf.name} (${deps.getMyId() || "?"})`;
       }
       if (deps.hudClass) {
-        deps.hudClass.textContent = `Class: ${latestSelf.classType} | HP: ${latestSelf.hp}/${latestSelf.maxHp} | Copper: ${latestSelf.copper ?? 0} | Lvl: ${latestSelf.level ?? 1} EXP: ${latestSelf.exp ?? 0}/${latestSelf.expToNext ?? 20} | SP: ${latestSelf.skillPoints ?? 0}`;
+        deps.hudClass.textContent = compactHud
+          ? `${latestSelf.classType} Lv ${latestSelf.level ?? 1} HP ${latestSelf.hp}/${latestSelf.maxHp} Cu ${latestSelf.copper ?? 0} SP ${latestSelf.skillPoints ?? 0}`
+          : `Class: ${latestSelf.classType} | HP: ${latestSelf.hp}/${latestSelf.maxHp} | Copper: ${latestSelf.copper ?? 0} | Lvl: ${latestSelf.level ?? 1} EXP: ${latestSelf.exp ?? 0}/${latestSelf.expToNext ?? 20} | SP: ${latestSelf.skillPoints ?? 0}`;
       }
       if (deps.hudPos) {
-        deps.hudPos.textContent = `Pos: ${latestSelf.x.toFixed(1)}, ${latestSelf.y.toFixed(1)}`;
+        deps.hudPos.textContent = compactHud
+          ? `Pos ${latestSelf.x.toFixed(1)}, ${latestSelf.y.toFixed(1)}`
+          : `Pos: ${latestSelf.x.toFixed(1)}, ${latestSelf.y.toFixed(1)}`;
       }
     }
 

@@ -142,6 +142,10 @@
       if (typeof deps.isTouchJoystickEnabled === "function" && !deps.isTouchJoystickEnabled()) {
         return;
       }
+      if (typeof deps.hasActiveMobileAbilityAim === "function" && deps.hasActiveMobileAbilityAim()) {
+        event.preventDefault();
+        return;
+      }
       if (typeof deps.hasActiveTouchJoystick === "function" && deps.hasActiveTouchJoystick()) {
         return;
       }
@@ -161,6 +165,9 @@
     }
 
     function onTouchMove(event) {
+      if (typeof deps.hasActiveMobileAbilityAim === "function" && deps.hasActiveMobileAbilityAim()) {
+        return;
+      }
       if (typeof deps.hasActiveTouchJoystick !== "function" || !deps.hasActiveTouchJoystick()) {
         return;
       }
@@ -185,6 +192,9 @@
     }
 
     function onTouchEnd(event) {
+      if (typeof deps.hasActiveMobileAbilityAim === "function" && deps.hasActiveMobileAbilityAim()) {
+        return;
+      }
       if (typeof deps.hasActiveTouchJoystick !== "function" || !deps.hasActiveTouchJoystick()) {
         return;
       }
