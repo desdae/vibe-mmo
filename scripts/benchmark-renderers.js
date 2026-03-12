@@ -119,6 +119,9 @@ async function runScenario(port, rendererMode) {
     }, null, { timeout: 12000 });
     await delay(1200);
 
+    const screenshotPath = path.join(TMP_DIR, `renderer-benchmark-${rendererMode}.png`);
+    await page.screenshot({ path: screenshotPath });
+
     const samples = [];
     for (let i = 0; i < TOTAL_SAMPLES; i += 1) {
       const snapshot = await page.evaluate(() => {
@@ -157,6 +160,7 @@ async function runScenario(port, rendererMode) {
       peakProjectileCount: Math.max(...projectileSamples, 0),
       avgVisibleMobCount: average(visibleMobSamples),
       avgTotalMobCount: average(totalMobSamples),
+      screenshot: path.relative(ROOT, screenshotPath),
       consoleErrors,
       pageErrors
     };
@@ -199,6 +203,7 @@ function buildMarkdownReport(results) {
     lines.push("");
     lines.push(`- server log out: \`${result.serverLog.out}\``);
     lines.push(`- server log err: \`${result.serverLog.err}\``);
+    lines.push(`- screenshot: \`${result.screenshot}\``);
     lines.push(`- console errors: ${result.consoleErrors.length}`);
     lines.push(`- page errors: ${result.pageErrors.length}`);
     lines.push("");
