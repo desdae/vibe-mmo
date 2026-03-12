@@ -12011,35 +12011,42 @@ const sharedCreateRenderLoopTools =
   sharedClientRenderLoop && typeof sharedClientRenderLoop.createRenderLoopTools === "function"
     ? sharedClientRenderLoop.createRenderLoopTools
     : null;
-const renderLoopTools = sharedCreateRenderLoopTools
-  ? sharedCreateRenderLoopTools({
+const sharedClientWorldViewModels = globalThis.VibeClientWorldViewModels || null;
+const sharedCreateWorldViewModelTools =
+  sharedClientWorldViewModels && typeof sharedClientWorldViewModels.createWorldViewModelTools === "function"
+    ? sharedClientWorldViewModels.createWorldViewModelTools
+    : null;
+const worldViewModelTools = sharedCreateWorldViewModelTools
+  ? sharedCreateWorldViewModelTools({
+      gameState,
+      getActiveMobAttackState,
+      getMobAttackVisualType,
+      isHumanoidMob,
+      getHoveredMob,
+      getHoveredLootBag,
+      getHoveredVendor
+    })
+  : null;
+const sharedClientCanvasWorldRenderer = globalThis.VibeClientCanvasWorldRenderer || null;
+const sharedCreateCanvasWorldRenderer =
+  sharedClientCanvasWorldRenderer && typeof sharedClientCanvasWorldRenderer.createCanvasWorldRenderer === "function"
+    ? sharedClientCanvasWorldRenderer.createCanvasWorldRenderer
+    : null;
+const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
+  ? sharedCreateCanvasWorldRenderer({
       ctx,
       canvas,
-      gameState,
-      requestAnimationFrame,
-      reportFrame,
-      updateAbilityChannel,
-      getInterpolatedState,
-      setLastRenderState: (state) => {
-        lastRenderState = state;
-      },
       updateActionBarUI,
       updateMobCastSpatialAudio,
       updateProjectileSpatialAudio,
       drawGrid,
       drawAbilityCastPreview,
-      getHoveredMob,
-      getHoveredLootBag,
-      getHoveredVendor,
       drawProjectile,
       drawExplosionEffects,
       drawAreaEffects,
       drawVendorNpc,
       drawLootBag,
       drawMob,
-      isHumanoidMob,
-      getActiveMobAttackState,
-      getMobAttackVisualType,
       drawSkeletonSwordSwing,
       drawSkeletonArcherBowShot,
       drawCreeperIgnitionAnimation,
@@ -12064,7 +12071,44 @@ const renderLoopTools = sharedCreateRenderLoopTools
       drawPlayerCastBar,
       drawMobTooltip,
       drawLootBagTooltip,
-      drawVendorTooltip,
+      drawVendorTooltip
+    })
+  : null;
+const sharedClientRendererBootstrap = globalThis.VibeClientRendererBootstrap || null;
+const sharedCreateRendererBootstrap =
+  sharedClientRendererBootstrap && typeof sharedClientRendererBootstrap.createRendererBootstrap === "function"
+    ? sharedClientRendererBootstrap.createRendererBootstrap
+    : null;
+const rendererBootstrap = sharedCreateRendererBootstrap
+  ? sharedCreateRendererBootstrap({
+      windowObject: window,
+      canvasWorldRenderer
+    })
+  : null;
+const renderLoopTools = sharedCreateRenderLoopTools
+  ? sharedCreateRenderLoopTools({
+      ctx,
+      canvas,
+      gameState,
+      requestAnimationFrame,
+      reportFrame,
+      updateAbilityChannel,
+      getInterpolatedState,
+      updateActionBarUI,
+      buildWorldFrameViewModel: (interpolatedState, frameNow) =>
+        worldViewModelTools ? worldViewModelTools.buildWorldFrameViewModel(interpolatedState, frameNow) : null,
+      renderWorldFrame: (frameViewModel) => {
+        if (rendererBootstrap) {
+          return rendererBootstrap.renderWorldFrame(frameViewModel);
+        }
+        if (canvasWorldRenderer) {
+          return canvasWorldRenderer.renderWorldFrame(frameViewModel);
+        }
+        return null;
+      },
+      setLastRenderState: (state) => {
+        lastRenderState = state;
+      },
       hudName,
       hudClass,
       hudPos,
@@ -12127,6 +12171,7 @@ function render() {
 
 function buildAutomationSnapshot() {
   return {
+    rendererMode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas",
     self: gameState.self
       ? {
           id: myId,
@@ -12202,6 +12247,13 @@ function installAutomationApi() {
   }
   window.__vibemmoTest = Object.freeze({
     getState: () => buildAutomationSnapshot(),
+    getRendererMode: () => (rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"),
+    setRendererMode(mode) {
+      if (!rendererBootstrap) {
+        return "canvas";
+      }
+      return rendererBootstrap.setRendererMode(mode);
+    },
     connectAndJoin,
     send: (payload) => sendJsonMessage(payload),
     setMove(dx, dy) {
