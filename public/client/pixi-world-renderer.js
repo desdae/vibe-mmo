@@ -63,10 +63,13 @@
     let mobNodes = new Map();
     let projectileNodes = new Map();
     let lootNodes = new Map();
+    let areaUnderlayNodes = new Map();
+    let areaOverlayNodes = new Map();
     let vendorNode = null;
     let pixiParticleSystem = null;
     const canvasTextureCache = new WeakMap();
     const humanoidCanvasCache = new Map();
+    const areaEffectCanvasCache = new Map();
 
     const classColors = Object.freeze({
       warrior: 0xcbd5e1,
@@ -242,6 +245,16 @@
       } catch {
         return "";
       }
+    }
+
+    function createRuntimeCanvas(width, height) {
+      if (typeof document === "undefined" || !document || typeof document.createElement !== "function") {
+        return null;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.ceil(Number(width) || 1));
+      canvas.height = Math.max(1, Math.ceil(Number(height) || 1));
+      return canvas;
     }
 
     function ensureApp(width, height) {
@@ -669,6 +682,165 @@
       return null;
     }
 
+    function getAreaEffectVisualConfig(effect) {
+      const abilityId = String(effect && effect.abilityId || "").toLowerCase();
+      if (abilityId.includes("fire")) {
+        return {
+          kind: "fire",
+          stroke: "#ffae6b",
+          fill: "rgba(255, 117, 59, 0.16)",
+          glow: "rgba(255, 117, 59, 0.28)"
+        };
+      }
+      if (abilityId.includes("frost") || abilityId.includes("blizzard")) {
+        return {
+          kind: "frost",
+          stroke: "#c8efff",
+          fill: "rgba(124, 198, 255, 0.12)",
+          glow: "rgba(124, 198, 255, 0.22)"
+        };
+      }
+      if (abilityId.includes("arcane")) {
+        return {
+          kind: "arcane",
+          stroke: "#e0c7ff",
+          fill: "rgba(170, 121, 255, 0.12)",
+          glow: "rgba(170, 121, 255, 0.24)"
+        };
+      }
+      if (abilityId.includes("lightning")) {
+        return {
+          kind: "lightning",
+          stroke: "#fff2a3",
+          fill: "rgba(255, 224, 100, 0.12)",
+          glow: "rgba(255, 224, 100, 0.22)"
+        };
+      }
+      if (abilityId.includes("poison") || abilityId.includes("caltrop")) {
+        return {
+          kind: "poison",
+          stroke: "#c7ff9f",
+          fill: "rgba(116, 201, 96, 0.12)",
+          glow: "rgba(116, 201, 96, 0.22)"
+        };
+      }
+      if (abilityId.includes("rain")) {
+        return {
+          kind: "rain",
+          stroke: "#f0e8c2",
+          fill: "rgba(212, 184, 110, 0.10)",
+          glow: "rgba(212, 184, 110, 0.18)"
+        };
+      }
+      return {
+        kind: "default",
+        stroke: "#c7ddf1",
+        fill: "rgba(121, 185, 255, 0.10)",
+        glow: "rgba(121, 185, 255, 0.18)"
+      };
+    }
+
+    function getAreaEffectSpriteFrame(effect, frameNow) {
+      if (String(effect && effect.kind || "") === "beam") {
+        return null;
+      }
+      const radiusPx = Math.max(6, (Number(effect && effect.radius) || 1) * tileSize);
+      const roundedRadius = Math.max(6, Math.round(radiusPx));
+      const phaseBucket = Math.floor((Number(frameNow) || 0) / 90) % 6;
+      const visual = getAreaEffectVisualConfig(effect);
+      const summonCount = Math.max(1, Math.round(Number(effect && effect.summonCount) || 1));
+      const formationRadius = Math.max(0, Number(effect && effect.formationRadius) || 0.9);
+      const key = [
+        String(effect && effect.kind || "area"),
+        String(effect && effect.abilityId || ""),
+        roundedRadius,
+        phaseBucket,
+        summonCount,
+        Math.round(formationRadius * 100)
+      ].join("|");
+      const cached = areaEffectCanvasCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const padding = 20;
+      const size = roundedRadius * 2 + padding * 2;
+      const canvas = createRuntimeCanvas(size, size);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      const cx = size * 0.5;
+      const cy = size * 0.5;
+      const phase = phaseBucket / 6;
+      const pulse = 0.92 + Math.sin(phase * Math.PI * 2) * 0.06;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(phase * Math.PI * 2 * 0.08);
+      ctx.fillStyle = visual.fill;
+      ctx.strokeStyle = visual.stroke;
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 14;
+      ctx.shadowColor = visual.glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, roundedRadius * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.lineWidth = 1.2;
+      ctx.globalAlpha = 0.78;
+      if (visual.kind === "frost" || visual.kind === "arcane" || visual.kind === "lightning") {
+        for (let i = 0; i < 6; i += 1) {
+          const a = phase * Math.PI * 2 + i * ((Math.PI * 2) / 6);
+          const r = roundedRadius * (0.54 + (i % 2) * 0.08);
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a) * (r - 5), Math.sin(a) * (r - 5));
+          ctx.lineTo(Math.cos(a) * (r + 5), Math.sin(a) * (r + 5));
+          ctx.stroke();
+        }
+      } else if (visual.kind === "poison" || visual.kind === "rain") {
+        for (let i = 0; i < 18; i += 1) {
+          const a = i * ((Math.PI * 2) / 18) + phase * 0.6;
+          const r = roundedRadius * 0.88;
+          ctx.beginPath();
+          ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 1.5, 0, Math.PI * 2);
+          ctx.fillStyle = visual.stroke;
+          ctx.fill();
+        }
+      } else {
+        ctx.setLineDash([7, 5]);
+        ctx.beginPath();
+        ctx.arc(0, 0, roundedRadius * 0.74, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      if (String(effect && effect.kind || "") === "summon" && globalScope.VibeSummonLayout && typeof globalScope.VibeSummonLayout.computeSummonFormationPositions === "function") {
+        const positions = globalScope.VibeSummonLayout.computeSummonFormationPositions(
+          0,
+          0,
+          summonCount,
+          formationRadius
+        );
+        ctx.fillStyle = visual.stroke;
+        for (const point of positions) {
+          const px = point.x * tileSize;
+          const py = point.y * tileSize;
+          ctx.beginPath();
+          ctx.arc(px, py, 5 + Math.sin(phase * Math.PI * 2 + point.index) * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+
+      const result = { canvas, rotation: 0 };
+      areaEffectCanvasCache.set(key, result);
+      return result;
+    }
+
 
     function drawPlayerGraphic(graphics, player, isSelf) {
       const classType = String(player && player.classType || "").toLowerCase();
@@ -965,6 +1137,8 @@
       const now = frameViewModel.frameNow;
       areaUnderlayGraphics.clear();
       areaOverlayGraphics.clear();
+      const underlaySpriteEffects = [];
+      const overlaySpriteEffects = [];
       for (const effect of frameViewModel.areaEffects) {
         const center = worldToScreen(Number(effect.x) + 0.5, Number(effect.y) + 0.5, cameraX, cameraY, width, height);
         const radius = Math.max(6, (Number(effect.radius) || 1) * tileSize);
@@ -977,6 +1151,15 @@
           abilityId.includes("poison") || abilityId.includes("caltrop") ? 0x7bd65d :
           0x79b9ff;
         const targetGraphics = String(effect.kind || "") === "summon" ? areaOverlayGraphics : areaUnderlayGraphics;
+        const spriteFrame = getAreaEffectSpriteFrame(effect, now);
+        if (spriteFrame) {
+          (String(effect.kind || "") === "summon" ? overlaySpriteEffects : underlaySpriteEffects).push({
+            effect,
+            center,
+            spriteFrame
+          });
+          continue;
+        }
         targetGraphics.lineStyle(2, color, 0.9);
         targetGraphics.beginFill(color, String(effect.kind || "") === "summon" ? 0.1 : 0.08);
         if (String(effect.kind || "") === "beam") {
@@ -989,21 +1172,27 @@
           targetGraphics.drawCircle(center.x, center.y, radius);
           targetGraphics.endFill();
         }
-        if (String(effect.kind || "") === "summon" && globalScope.VibeSummonLayout && typeof globalScope.VibeSummonLayout.computeSummonFormationPositions === "function") {
-          const positions = globalScope.VibeSummonLayout.computeSummonFormationPositions(
-            Number(effect.x) + 0.5,
-            Number(effect.y) + 0.5,
-            Math.max(1, Math.round(Number(effect.summonCount) || 1)),
-            Math.max(0, Number(effect.formationRadius) || 0.9)
-          );
-          for (const point of positions) {
-            const screen = worldToScreen(point.x, point.y, cameraX, cameraY, width, height);
-            targetGraphics.beginFill(color, 0.95);
-            targetGraphics.drawCircle(screen.x, screen.y, 5 + Math.sin(now * 0.01 + point.index) * 0.5);
-            targetGraphics.endFill();
-          }
-        }
       }
+      syncNodeMap(
+        areaUnderlayNodes,
+        underlaySpriteEffects,
+        (entry) => entry.effect.id,
+        () => createSpriteNode(),
+        (node, entry) => {
+          updateSpriteNode(node, entry.center.x, entry.center.y, entry.spriteFrame, null);
+        },
+        areaUnderlayLayer
+      );
+      syncNodeMap(
+        areaOverlayNodes,
+        overlaySpriteEffects,
+        (entry) => entry.effect.id,
+        () => createSpriteNode(),
+        (node, entry) => {
+          updateSpriteNode(node, entry.center.x, entry.center.y, entry.spriteFrame, null);
+        },
+        areaOverlayLayer
+      );
     }
 
     function updateTooltip(frameViewModel) {
