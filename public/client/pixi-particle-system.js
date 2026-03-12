@@ -22,6 +22,8 @@
 
     const emittersByKey = new Map();
     const textureCache = new Map();
+    const spritePool = [];
+    const MAX_SPRITE_POOL_SIZE = 2048;
 
     function clamp(value, min, max) {
       return Math.max(min, Math.min(max, value));
@@ -135,11 +137,45 @@
         if (particle.sprite && particle.sprite.parent) {
           particle.sprite.parent.removeChild(particle.sprite);
         }
-        if (particle.sprite && typeof particle.sprite.destroy === "function") {
-          particle.sprite.destroy();
-        }
+        releaseParticleSprite(particle.sprite);
       }
       emitter.particles.length = 0;
+    }
+
+    function acquireParticleSprite(texture) {
+      const sprite = spritePool.length ? spritePool.pop() : new PIXI.Sprite(texture || PIXI.Texture.WHITE);
+      sprite.texture = texture || PIXI.Texture.WHITE;
+      sprite.anchor.set(0.5, 0.5);
+      sprite.visible = true;
+      sprite.alpha = 1;
+      sprite.rotation = 0;
+      sprite.scale.set(1, 1);
+      if (sprite.parent !== parentContainer) {
+        if (sprite.parent) {
+          sprite.parent.removeChild(sprite);
+        }
+        parentContainer.addChild(sprite);
+      }
+      return sprite;
+    }
+
+    function releaseParticleSprite(sprite) {
+      if (!sprite) {
+        return;
+      }
+      if (sprite.parent) {
+        sprite.parent.removeChild(sprite);
+      }
+      sprite.visible = false;
+      sprite.alpha = 1;
+      sprite.rotation = 0;
+      sprite.scale.set(1, 1);
+      sprite.texture = PIXI.Texture.EMPTY;
+      if (spritePool.length < MAX_SPRITE_POOL_SIZE) {
+        spritePool.push(sprite);
+      } else if (typeof sprite.destroy === "function") {
+        sprite.destroy();
+      }
     }
 
     function spawnParticle(emitter, now, config) {
@@ -169,10 +205,7 @@
         sprite: null
       };
       const texture = createParticleTexture(particle);
-      const sprite = new PIXI.Sprite(texture);
-      sprite.anchor.set(0.5, 0.5);
-      sprite.visible = true;
-      parentContainer.addChild(sprite);
+      const sprite = acquireParticleSprite(texture);
       particle.sprite = sprite;
       emitter.particles.push(particle);
     }
@@ -190,9 +223,7 @@
           if (particle.sprite && particle.sprite.parent) {
             particle.sprite.parent.removeChild(particle.sprite);
           }
-          if (particle.sprite && typeof particle.sprite.destroy === "function") {
-            particle.sprite.destroy();
-          }
+          releaseParticleSprite(particle.sprite);
           continue;
         }
         alive.push(particle);

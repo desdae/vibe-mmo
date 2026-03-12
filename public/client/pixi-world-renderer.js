@@ -46,13 +46,18 @@
     let root = null;
     let backgroundLayer = null;
     let areaUnderlayLayer = null;
-    let lootLayer = null;
+    let areaUnderlaySpriteLayer = null;
+    let areaUnderlayFallbackLayer = null;
+    let lootSpriteLayer = null;
+    let lootFallbackLayer = null;
     let particleLayer = null;
     let mobLayer = null;
     let playerLayer = null;
-    let projectileLayer = null;
+    let projectileSpriteLayer = null;
+    let projectileFallbackLayer = null;
     let vendorLayer = null;
     let areaOverlayLayer = null;
+    let areaOverlaySpriteLayer = null;
     let tooltipLayer = null;
     let backgroundGraphics = null;
     let areaUnderlayGraphics = null;
@@ -63,13 +68,21 @@
     let mobNodes = new Map();
     let projectileNodes = new Map();
     let lootNodes = new Map();
+    let lootFallbackNodes = new Map();
     let areaUnderlayNodes = new Map();
     let areaOverlayNodes = new Map();
+    let projectileFallbackNodes = new Map();
     let vendorNode = null;
     let pixiParticleSystem = null;
     const canvasTextureCache = new WeakMap();
     const humanoidCanvasCache = new Map();
     const areaEffectCanvasCache = new Map();
+    const spritePools = {
+      loot: [],
+      projectile: [],
+      areaUnderlay: [],
+      areaOverlay: []
+    };
 
     const classColors = Object.freeze({
       warrior: 0xcbd5e1,
@@ -300,13 +313,48 @@
 
       backgroundLayer = new PIXI.Container();
       areaUnderlayLayer = new PIXI.Container();
-      lootLayer = new PIXI.Container();
-      particleLayer = new PIXI.Container();
+      areaUnderlaySpriteLayer = new PIXI.ParticleContainer(512, {
+        position: true,
+        rotation: true,
+        alpha: true,
+        scale: true,
+        uvs: true
+      });
+      areaUnderlayFallbackLayer = new PIXI.Container();
+      lootSpriteLayer = new PIXI.ParticleContainer(1024, {
+        position: true,
+        rotation: true,
+        alpha: true,
+        scale: true,
+        uvs: true
+      });
+      lootFallbackLayer = new PIXI.Container();
+      particleLayer = new PIXI.ParticleContainer(4096, {
+        position: true,
+        rotation: true,
+        alpha: true,
+        scale: true,
+        uvs: true
+      });
       mobLayer = new PIXI.Container();
       playerLayer = new PIXI.Container();
-      projectileLayer = new PIXI.Container();
+      projectileSpriteLayer = new PIXI.ParticleContainer(4096, {
+        position: true,
+        rotation: true,
+        alpha: true,
+        scale: true,
+        uvs: true
+      });
+      projectileFallbackLayer = new PIXI.Container();
       vendorLayer = new PIXI.Container();
       areaOverlayLayer = new PIXI.Container();
+      areaOverlaySpriteLayer = new PIXI.ParticleContainer(512, {
+        position: true,
+        rotation: true,
+        alpha: true,
+        scale: true,
+        uvs: true
+      });
       tooltipLayer = new PIXI.Container();
 
       backgroundGraphics = new PIXI.Graphics();
@@ -323,8 +371,24 @@
 
       backgroundLayer.addChild(backgroundGraphics);
       areaUnderlayLayer.addChild(areaUnderlayGraphics);
+      areaUnderlayLayer.addChild(areaUnderlaySpriteLayer);
+      areaUnderlayLayer.addChild(areaUnderlayFallbackLayer);
       areaOverlayLayer.addChild(areaOverlayGraphics);
-      root.addChild(backgroundLayer, areaUnderlayLayer, lootLayer, particleLayer, vendorLayer, mobLayer, playerLayer, projectileLayer, areaOverlayLayer, tooltipLayer);
+      areaOverlayLayer.addChild(areaOverlaySpriteLayer);
+      root.addChild(
+        backgroundLayer,
+        areaUnderlayLayer,
+        lootSpriteLayer,
+        lootFallbackLayer,
+        particleLayer,
+        vendorLayer,
+        mobLayer,
+        playerLayer,
+        projectileSpriteLayer,
+        projectileFallbackLayer,
+        areaOverlayLayer,
+        tooltipLayer
+      );
       pixiParticleSystem = createPixiParticleSystem
         ? createPixiParticleSystem({
             PIXI,
@@ -425,6 +489,37 @@
       sprite.visible = false;
       container.addChild(graphics, sprite);
       return { container, graphics, sprite };
+    }
+
+    function acquirePooledSprite(pool, parentContainer) {
+      const sprite = Array.isArray(pool) && pool.length ? pool.pop() : new PIXI.Sprite(PIXI.Texture.EMPTY);
+      sprite.anchor.set(0.5, 0.5);
+      sprite.visible = true;
+      sprite.alpha = 1;
+      sprite.rotation = 0;
+      sprite.scale.set(1, 1);
+      if (sprite.parent !== parentContainer) {
+        if (sprite.parent) {
+          sprite.parent.removeChild(sprite);
+        }
+        parentContainer.addChild(sprite);
+      }
+      return sprite;
+    }
+
+    function releasePooledSprite(pool, sprite) {
+      if (!sprite) {
+        return;
+      }
+      if (sprite.parent) {
+        sprite.parent.removeChild(sprite);
+      }
+      sprite.visible = false;
+      sprite.texture = PIXI.Texture.EMPTY;
+      sprite.alpha = 1;
+      sprite.rotation = 0;
+      sprite.scale.set(1, 1);
+      pool.push(sprite);
     }
 
     function getTextureFromCanvas(canvas) {
@@ -994,6 +1089,22 @@
       }
     }
 
+    function updateSprite(sprite, x, y, spriteFrame) {
+      const texture = spriteFrame && spriteFrame.canvas ? getTextureFromCanvas(spriteFrame.canvas) : null;
+      if (!texture) {
+        sprite.visible = false;
+        sprite.texture = PIXI.Texture.EMPTY;
+        return false;
+      }
+      sprite.visible = true;
+      sprite.texture = texture;
+      sprite.position.set(x, y);
+      sprite.rotation = Number(spriteFrame.rotation) || 0;
+      sprite.scale.set(1, 1);
+      sprite.alpha = 1;
+      return true;
+    }
+
     function updateLabeledNode(node, x, y, label, hp, maxHp, drawFn) {
       node.container.position.set(x, y);
       drawFn(node.graphics);
@@ -1073,6 +1184,27 @@
           node.container.parent.removeChild(node.container);
         }
         destroyNode(node);
+        nodeMap.delete(id);
+      }
+    }
+
+    function syncSpriteMap(nodeMap, entries, idSelector, updateFn, parentContainer, pool) {
+      const seen = new Set();
+      for (const entry of entries) {
+        const id = String(idSelector(entry));
+        seen.add(id);
+        let sprite = nodeMap.get(id);
+        if (!sprite) {
+          sprite = acquirePooledSprite(pool, parentContainer);
+          nodeMap.set(id, sprite);
+        }
+        updateFn(sprite, entry);
+      }
+      for (const [id, sprite] of nodeMap.entries()) {
+        if (seen.has(id)) {
+          continue;
+        }
+        releasePooledSprite(pool, sprite);
         nodeMap.delete(id);
       }
     }
@@ -1173,25 +1305,25 @@
           targetGraphics.endFill();
         }
       }
-      syncNodeMap(
+      syncSpriteMap(
         areaUnderlayNodes,
         underlaySpriteEffects,
         (entry) => entry.effect.id,
-        () => createSpriteNode(),
-        (node, entry) => {
-          updateSpriteNode(node, entry.center.x, entry.center.y, entry.spriteFrame, null);
+        (sprite, entry) => {
+          updateSprite(sprite, entry.center.x, entry.center.y, entry.spriteFrame);
         },
-        areaUnderlayLayer
+        areaUnderlaySpriteLayer,
+        spritePools.areaUnderlay
       );
-      syncNodeMap(
+      syncSpriteMap(
         areaOverlayNodes,
         overlaySpriteEffects,
         (entry) => entry.effect.id,
-        () => createSpriteNode(),
-        (node, entry) => {
-          updateSpriteNode(node, entry.center.x, entry.center.y, entry.spriteFrame, null);
+        (sprite, entry) => {
+          updateSprite(sprite, entry.center.x, entry.center.y, entry.spriteFrame);
         },
-        areaOverlayLayer
+        areaOverlaySpriteLayer,
+        spritePools.areaOverlay
       );
     }
 
@@ -1248,30 +1380,45 @@
         pixiParticleSystem.pruneEmitters(frameNow);
       }
 
-      syncNodeMap(
+      const lootSpriteEntries = [];
+      const lootFallbackEntries = [];
+      for (const entry of frameViewModel.lootBagViews) {
+        const bagId = String((entry.bag && entry.bag.id) || `${entry.bag.x}:${entry.bag.y}`);
+        const seed = hashString(`lootbag:${bagId}`);
+        const spriteCanvas = getLootBagSprite ? getLootBagSprite(seed) : null;
+        if (spriteCanvas) {
+          lootSpriteEntries.push({
+            entry,
+            spriteFrame: {
+              canvas: spriteCanvas,
+              rotation: 0
+            }
+          });
+        } else {
+          lootFallbackEntries.push(entry);
+        }
+      }
+      syncSpriteMap(
         lootNodes,
-        frameViewModel.lootBagViews,
+        lootSpriteEntries,
+        (item) => item.entry.bag.id,
+        (sprite, item) => {
+          const p = worldToScreen(Number(item.entry.bag.x) + 0.5, Number(item.entry.bag.y) + 0.5, cameraX, cameraY, width, height);
+          updateSprite(sprite, p.x, p.y, item.spriteFrame);
+        },
+        lootSpriteLayer,
+        spritePools.loot
+      );
+      syncNodeMap(
+        lootFallbackNodes,
+        lootFallbackEntries,
         (entry) => entry.bag.id,
-        () => createSpriteNode(),
+        () => createSimpleNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.bag.x) + 0.5, Number(entry.bag.y) + 0.5, cameraX, cameraY, width, height);
-          const bagId = String((entry.bag && entry.bag.id) || `${entry.bag.x}:${entry.bag.y}`);
-          const seed = hashString(`lootbag:${bagId}`);
-          const spriteCanvas = getLootBagSprite ? getLootBagSprite(seed) : null;
-          updateSpriteNode(
-            node,
-            p.x,
-            p.y,
-            spriteCanvas
-              ? {
-                  canvas: spriteCanvas,
-                  rotation: 0
-                }
-              : null,
-            (graphics) => drawLootGraphic(graphics, entry.bag, frameNow)
-          );
+          updateSimpleNode(node, p.x, p.y, (graphics) => drawLootGraphic(graphics, entry.bag, frameNow));
         },
-        lootLayer
+        lootFallbackLayer
       );
       if (pixiParticleSystem && typeof pixiParticleSystem.renderWorldEmitter === "function") {
         for (const entry of frameViewModel.lootBagViews) {
@@ -1353,23 +1500,37 @@
         playerLayer
       );
 
-      syncNodeMap(
+      const projectileSpriteEntries = [];
+      const projectileFallbackEntries = [];
+      for (const entry of frameViewModel.projectileViews) {
+        const spriteFrame = getProjectileSpriteFrame ? getProjectileSpriteFrame(entry.projectile, frameNow) : null;
+        if (spriteFrame && spriteFrame.canvas) {
+          projectileSpriteEntries.push({ entry, spriteFrame });
+        } else {
+          projectileFallbackEntries.push(entry);
+        }
+      }
+      syncSpriteMap(
         projectileNodes,
-        frameViewModel.projectileViews,
+        projectileSpriteEntries,
+        (item) => item.entry.projectile.id,
+        (sprite, item) => {
+          const p = worldToScreen(Number(item.entry.projectile.x) + 0.5, Number(item.entry.projectile.y) + 0.5, cameraX, cameraY, width, height);
+          updateSprite(sprite, p.x, p.y, item.spriteFrame);
+        },
+        projectileSpriteLayer,
+        spritePools.projectile
+      );
+      syncNodeMap(
+        projectileFallbackNodes,
+        projectileFallbackEntries,
         (entry) => entry.projectile.id,
-        () => createSpriteNode(),
+        () => createSimpleNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.projectile.x) + 0.5, Number(entry.projectile.y) + 0.5, cameraX, cameraY, width, height);
-          const spriteFrame = getProjectileSpriteFrame ? getProjectileSpriteFrame(entry.projectile, frameNow) : null;
-          updateSpriteNode(
-            node,
-            p.x,
-            p.y,
-            spriteFrame,
-            (graphics) => drawProjectileGraphic(graphics, entry.projectile, frameNow)
-          );
+          updateSimpleNode(node, p.x, p.y, (graphics) => drawProjectileGraphic(graphics, entry.projectile, frameNow));
         },
-        projectileLayer
+        projectileFallbackLayer
       );
       if (pixiParticleSystem && typeof pixiParticleSystem.renderWorldEmitter === "function") {
         for (const entry of frameViewModel.projectileViews) {
