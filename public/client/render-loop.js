@@ -56,6 +56,7 @@
       if (updateResourceBars) {
         updateResourceBars(latestSelf);
       }
+      deps.updateActionBarUI(latestSelf);
 
       if (deps.hudName) {
         deps.hudName.textContent = `Player: ${latestSelf.name} (${deps.getMyId() || "?"})`;

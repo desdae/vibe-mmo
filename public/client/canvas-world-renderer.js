@@ -128,8 +128,6 @@
       if (frameViewModel.hoveredVendor) {
         deps.drawVendorTooltip(frameViewModel.hoveredVendor.vendor, frameViewModel.hoveredVendor.p);
       }
-
-      deps.updateActionBarUI(frameViewModel.latestSelf);
     }
 
     return {
