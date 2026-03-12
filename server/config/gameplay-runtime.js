@@ -4,7 +4,10 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
   map: {
     width: 1000,
     height: 1000,
-    visibilityRange: 20
+    visibilityRange: 20,
+    maxViewportWidth: 2560,
+    maxViewportHeight: 1440,
+    visibilityPaddingTiles: 2
   },
   town: {
     enabled: true,
@@ -75,6 +78,9 @@ function loadGameplayRuntimeConfig(gameplayConfigPath) {
     mapWidth: gameplayConfig.map.width,
     mapHeight: gameplayConfig.map.height,
     visibilityRange: gameplayConfig.map.visibilityRange,
+    maxViewportWidth: gameplayConfig.map.maxViewportWidth,
+    maxViewportHeight: gameplayConfig.map.maxViewportHeight,
+    visibilityPaddingTiles: gameplayConfig.map.visibilityPaddingTiles,
     townConfig: gameplayConfig.town,
     tickMs: gameplayConfig.tickMs,
     basePlayerSpeed: gameplayConfig.player.baseSpeed,

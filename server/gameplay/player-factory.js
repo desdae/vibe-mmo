@@ -60,6 +60,7 @@ function createPlayerFactory(options = {}) {
   const expNeededForLevel =
     typeof options.expNeededForLevel === "function" ? options.expNeededForLevel : () => 20;
   const sanitizeSpawn = typeof options.sanitizeSpawn === "function" ? options.sanitizeSpawn : (spawn) => spawn;
+  const defaultVisibilityRange = Math.max(1, Number(options.defaultVisibilityRange) || 20);
   const players = options.players instanceof Map ? options.players : null;
 
   if (!players) {
@@ -186,6 +187,10 @@ function createPlayerFactory(options = {}) {
       burningUntil: 0,
       burnAppliedAt: 0,
       burnDurationMs: 0,
+      clientViewportWidth: 0,
+      clientViewportHeight: 0,
+      visibilityRangeX: defaultVisibilityRange,
+      visibilityRangeY: defaultVisibilityRange,
       inventorySlots: createEmptyInventorySlots(),
       equipmentSlots: createEmptyEquipmentSlots(),
       input: { dx: 0, dy: 0 },

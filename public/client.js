@@ -325,6 +325,8 @@ const vfxIdState = {
 const gameState = {
   map: { width: 1000, height: 1000 },
   visibilityRange: 20,
+  visibilityRangeX: 20,
+  visibilityRangeY: 20,
   self: null,
   players: [],
   projectiles: [],
@@ -6345,6 +6347,14 @@ function sendJsonMessage(payload) {
   return true;
 }
 
+function sendViewportToServer() {
+  return sendJsonMessage({
+    type: "viewport",
+    viewportWidth: Math.max(1, Math.floor(Number(canvas.width) || 0)),
+    viewportHeight: Math.max(1, Math.floor(Number(canvas.height) || 0))
+  });
+}
+
 function triggerRemotePlayerSwing(playerId, dx, dy) {
   const angle = Math.atan2(dy, dx);
   remotePlayerSwings.set(playerId, {
@@ -8070,7 +8080,9 @@ const serverMessageHandlers = {
       type: "join",
       name,
       classType,
-      isAdmin: !!isAdmin
+      isAdmin: !!isAdmin,
+      viewportWidth: Math.max(1, Math.floor(Number(canvas.width) || 0)),
+      viewportHeight: Math.max(1, Math.floor(Number(canvas.height) || 0))
     });
   },
   __close: () => {
@@ -8109,6 +8121,8 @@ const serverMessageHandlers = {
     }
     gameState.map = msg.map || gameState.map;
     gameState.visibilityRange = msg.visibilityRange || gameState.visibilityRange;
+    gameState.visibilityRangeX = msg.visibilityRangeX || gameState.visibilityRangeX;
+    gameState.visibilityRangeY = msg.visibilityRangeY || gameState.visibilityRangeY;
     resetClientSessionState();
     joinScreen.classList.add("hidden");
     gameUI.classList.remove("hidden");
@@ -8252,6 +8266,7 @@ function resizeCanvas() {
   if (rendererBootstrap && typeof rendererBootstrap.resize === "function") {
     rendererBootstrap.resize(canvas.width, canvas.height);
   }
+  sendViewportToServer();
   updateInventoryUI();
   updateEquipmentUI();
 }

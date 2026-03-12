@@ -18,7 +18,15 @@ function buildGameplayConfig(parsed, defaults) {
     map: {
       width: parseGameplayInt(map.width, defaults.map.width, 10, 10000),
       height: parseGameplayInt(map.height, defaults.map.height, 10, 10000),
-      visibilityRange: parseGameplayNumber(map.visibilityRange, defaults.map.visibilityRange, 1, 100)
+      visibilityRange: parseGameplayNumber(map.visibilityRange, defaults.map.visibilityRange, 1, 100),
+      maxViewportWidth: parseGameplayInt(map.maxViewportWidth, defaults.map.maxViewportWidth, 320, 4096),
+      maxViewportHeight: parseGameplayInt(map.maxViewportHeight, defaults.map.maxViewportHeight, 240, 2160),
+      visibilityPaddingTiles: parseGameplayNumber(
+        map.visibilityPaddingTiles,
+        defaults.map.visibilityPaddingTiles,
+        0,
+        12
+      )
     },
     town: {
       enabled: town.enabled !== undefined ? !!town.enabled : defaults.town.enabled,

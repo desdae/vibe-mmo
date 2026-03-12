@@ -2,7 +2,10 @@
   "map": {
     "width": 1000,
     "height": 1000,
-    "visibilityRange": 20
+    "visibilityRange": 20,
+    "maxViewportWidth": 2560,
+    "maxViewportHeight": 1440,
+    "visibilityPaddingTiles": 2
   },
   "town": {
     "enabled": true,

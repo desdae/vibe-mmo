@@ -10,6 +10,10 @@ function createJoinedPlayer(ws, msg, deps) {
     return joinResult;
   }
   const player = joinResult.player;
+  const viewportState =
+    typeof deps.updatePlayerViewport === "function"
+      ? deps.updatePlayerViewport(player, msg.viewportWidth, msg.viewportHeight)
+      : null;
 
   deps.sendJson(ws, {
     type: "welcome",
@@ -23,7 +27,9 @@ function createJoinedPlayer(ws, msg, deps) {
       maxMana: player.maxMana
     },
     map: { width: deps.MAP_WIDTH, height: deps.MAP_HEIGHT },
-    visibilityRange: deps.VISIBILITY_RANGE,
+    visibilityRange: viewportState ? Math.max(1, viewportState.x, viewportState.y) : deps.VISIBILITY_RANGE,
+    visibilityRangeX: viewportState ? viewportState.x : deps.VISIBILITY_RANGE,
+    visibilityRangeY: viewportState ? viewportState.y : deps.VISIBILITY_RANGE,
     equipment: deps.ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] },
     sounds: deps.buildSoundManifest()
   });
@@ -45,6 +51,13 @@ function createJoinedPlayer(ws, msg, deps) {
   deps.sendSelfProgress(player);
 
   return { player };
+}
+
+function handleViewportMessage(player, msg, deps) {
+  if (!player || typeof deps.updatePlayerViewport !== "function") {
+    return;
+  }
+  deps.updatePlayerViewport(player, msg.viewportWidth, msg.viewportHeight);
 }
 
 function handleMoveMessage(player, msg, deps) {
@@ -188,6 +201,11 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
 
   if (msg.type === "move") {
     handleMoveMessage(player, msg, deps);
+    return { player };
+  }
+
+  if (msg.type === "viewport") {
+    handleViewportMessage(player, msg, deps);
     return { player };
   }
 

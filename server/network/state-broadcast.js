@@ -1,11 +1,35 @@
+function getPlayerVisibilityExtents(player, deps) {
+  if (typeof deps.getPlayerVisibilityExtents === "function") {
+    const extents = deps.getPlayerVisibilityExtents(player);
+    if (extents && Number(extents.x) > 0 && Number(extents.y) > 0) {
+      return {
+        x: Math.max(1, Number(extents.x) || 0),
+        y: Math.max(1, Number(extents.y) || 0)
+      };
+    }
+  }
+  const fallback = Math.max(1, Number(deps.VISIBILITY_RANGE) || 20);
+  return { x: fallback, y: fallback };
+}
+
+function isVisibleToPlayer(player, entity, deps, padX = 0, padY = padX) {
+  const { inVisibilityRange } = deps;
+  if (typeof inVisibilityRange !== "function") {
+    return false;
+  }
+  const extents = getPlayerVisibilityExtents(player, deps);
+  return inVisibilityRange(player, entity, {
+    x: extents.x + Math.max(0, Number(padX) || 0),
+    y: extents.y + Math.max(0, Number(padY) || 0)
+  });
+}
+
 function collectNearbyEntitiesForPlayer(player, deps) {
   const {
     players,
     projectiles,
     mobs,
     lootBags,
-    inVisibilityRange,
-    VISIBILITY_RANGE,
     serializePlayer,
     serializeMob
   } = deps;
@@ -21,14 +45,14 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     if (other.id === player.id) {
       continue;
     }
-    if (inVisibilityRange(player, other, VISIBILITY_RANGE)) {
+    if (isVisibleToPlayer(player, other, deps)) {
       nearbyPlayers.push(serializePlayer(other));
       nearbyPlayerObjects.push(other);
     }
   }
 
   for (const projectile of projectiles.values()) {
-    if (inVisibilityRange(player, projectile, VISIBILITY_RANGE)) {
+    if (isVisibleToPlayer(player, projectile, deps)) {
       nearbyProjectiles.push({
         id: projectile.id,
         ownerId: projectile.ownerId,
@@ -43,14 +67,14 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     if (!mob.alive) {
       continue;
     }
-    if (inVisibilityRange(player, mob, VISIBILITY_RANGE)) {
+    if (isVisibleToPlayer(player, mob, deps)) {
       nearbyMobs.push(serializeMob(mob));
       nearbyMobObjects.push(mob);
     }
   }
 
   for (const bag of lootBags.values()) {
-    if (inVisibilityRange(player, bag, VISIBILITY_RANGE)) {
+    if (isVisibleToPlayer(player, bag, deps)) {
       nearbyLootBags.push(bag);
     }
   }
@@ -172,13 +196,13 @@ function sendAreaEffectEvents(player, now, deps) {
 }
 
 function sendVisibleDamageEvents(player, deps) {
-  const { pendingDamageEvents, sendBinary, encodeDamageEventPacket, inVisibilityRange, VISIBILITY_RANGE } = deps;
+  const { pendingDamageEvents, sendBinary, encodeDamageEventPacket } = deps;
   if (!pendingDamageEvents.length) {
     return;
   }
   const visibleDamageEvents = [];
   for (const event of pendingDamageEvents) {
-    if (inVisibilityRange(player, event, VISIBILITY_RANGE)) {
+    if (isVisibleToPlayer(player, event, deps)) {
       visibleDamageEvents.push({
         x: event.x,
         y: event.y,
@@ -194,14 +218,14 @@ function sendVisibleDamageEvents(player, deps) {
 }
 
 function sendVisibleExplosionEvents(player, deps) {
-  const { pendingExplosionEvents, sendBinary, encodeExplosionEventPacket, inVisibilityRange, VISIBILITY_RANGE } = deps;
+  const { pendingExplosionEvents, sendBinary, encodeExplosionEventPacket } = deps;
   if (!pendingExplosionEvents.length) {
     return;
   }
   const visibleExplosionEvents = [];
   for (const event of pendingExplosionEvents) {
-    const range = VISIBILITY_RANGE + Math.max(0, Number(event.radius) || 0);
-    if (inVisibilityRange(player, event, range)) {
+    const radius = Math.max(0, Number(event.radius) || 0);
+    if (isVisibleToPlayer(player, event, deps, radius, radius)) {
       visibleExplosionEvents.push(event);
     }
   }
@@ -214,16 +238,14 @@ function sendVisibleProjectileHitEvents(player, deps) {
   const {
     pendingProjectileHitEvents,
     sendBinary,
-    encodeProjectileHitEventPacket,
-    inVisibilityRange,
-    VISIBILITY_RANGE
+    encodeProjectileHitEventPacket
   } = deps;
   if (!pendingProjectileHitEvents.length) {
     return;
   }
   const visibleProjectileHitEvents = [];
   for (const event of pendingProjectileHitEvents) {
-    if (inVisibilityRange(player, event, VISIBILITY_RANGE + 2)) {
+    if (isVisibleToPlayer(player, event, deps, 2, 2)) {
       visibleProjectileHitEvents.push(event);
     }
   }
@@ -233,13 +255,13 @@ function sendVisibleProjectileHitEvents(player, deps) {
 }
 
 function sendVisibleMobDeathEvents(player, deps) {
-  const { pendingMobDeathEvents, sendBinary, encodeMobDeathEventPacket, inVisibilityRange, VISIBILITY_RANGE } = deps;
+  const { pendingMobDeathEvents, sendBinary, encodeMobDeathEventPacket } = deps;
   if (!pendingMobDeathEvents.length) {
     return;
   }
   const visibleMobDeathEvents = [];
   for (const event of pendingMobDeathEvents) {
-    if (inVisibilityRange(player, event, VISIBILITY_RANGE + 2)) {
+    if (isVisibleToPlayer(player, event, deps, 2, 2)) {
       visibleMobDeathEvents.push(event);
     }
   }

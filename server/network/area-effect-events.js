@@ -91,6 +91,8 @@ function createAreaEffectEventBuilder(options = {}) {
   const activeAreaEffects = options.activeAreaEffects;
   const inVisibilityRange = options.inVisibilityRange;
   const visibilityRange = Math.max(0, Number(options.visibilityRange) || 0);
+  const getPlayerVisibilityExtents =
+    typeof options.getPlayerVisibilityExtents === "function" ? options.getPlayerVisibilityExtents : null;
 
   if (!activeAreaEffects || typeof activeAreaEffects.values !== "function") {
     throw new Error("createAreaEffectEventBuilder requires activeAreaEffects Map-like object");
@@ -108,7 +110,15 @@ function createAreaEffectEventBuilder(options = {}) {
       if (!effect || now >= Number(effect.endsAt)) {
         continue;
       }
-      const visibility = visibilityRange + Math.max(0, Number(effect.radius) || 0);
+      const extents =
+        getPlayerVisibilityExtents && recipient
+          ? getPlayerVisibilityExtents(recipient)
+          : { x: visibilityRange, y: visibilityRange };
+      const pad = Math.max(0, Number(effect.radius) || 0);
+      const visibility = {
+        x: Math.max(0, Number(extents && extents.x) || visibilityRange) + pad,
+        y: Math.max(0, Number(extents && extents.y) || visibilityRange) + pad
+      };
       if (!inVisibilityRange(recipient, effect, visibility)) {
         continue;
       }

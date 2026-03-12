@@ -25,6 +25,7 @@ const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
 const { createGameHttpServer } = require("./server/network/http-server");
 const { createSoundManifestBuilder } = require("./server/network/sound-manifest");
+const { createPlayerVisibilityTools } = require("./server/network/player-visibility");
 const { createEntityUpdatePacketBuilder } = require("./server/network/entity-update-packet");
 const { serializePlayer, serializeMob, serializeLootBag } = require("./server/network/entity-serializers");
 const { createEventBuilders } = require("./server/network/event-builders");
@@ -126,6 +127,9 @@ const {
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
   visibilityRange: VISIBILITY_RANGE,
+  maxViewportWidth: MAX_VIEWPORT_WIDTH,
+  maxViewportHeight: MAX_VIEWPORT_HEIGHT,
+  visibilityPaddingTiles: VISIBILITY_PADDING_TILES,
   townConfig: TOWN_CONFIG,
   tickMs: TICK_MS,
   basePlayerSpeed: BASE_PLAYER_SPEED,
@@ -228,6 +232,15 @@ if (IS_PROD_MODE && selectedIndexFileName !== preferredIndexFileName) {
   console.warn("[server] Missing public/index.prod.html, falling back to index.dev.html");
 }
 const buildSoundManifest = createSoundManifestBuilder({ publicDir });
+const playerVisibilityTools = createPlayerVisibilityTools({
+  defaultVisibilityRange: VISIBILITY_RANGE,
+  maxViewportWidth: MAX_VIEWPORT_WIDTH,
+  maxViewportHeight: MAX_VIEWPORT_HEIGHT,
+  visibilityPaddingTiles: VISIBILITY_PADDING_TILES,
+  tileSize: 32
+});
+const getPlayerVisibilityExtents = playerVisibilityTools.getPlayerVisibilityExtents;
+const updatePlayerViewport = playerVisibilityTools.updatePlayerViewport;
 
 const abilityNormalizationTools = createAbilityNormalizationTools({
   defaultProjectileHitRadius: DEFAULT_PROJECTILE_HIT_RADIUS
@@ -457,6 +470,7 @@ const playerFactory = createPlayerFactory({
     const vendor = getVendorNpc();
     return vendor ? { x: vendor.x, y: vendor.y } : spawn;
   },
+  defaultVisibilityRange: VISIBILITY_RANGE,
   players
 });
 const createPlayer = playerFactory.createPlayer;
@@ -908,7 +922,8 @@ const {
 const buildAreaEffectEventsForRecipient = createAreaEffectEventBuilder({
   activeAreaEffects,
   inVisibilityRange,
-  visibilityRange: VISIBILITY_RANGE
+  visibilityRange: VISIBILITY_RANGE,
+  getPlayerVisibilityExtents
 });
 
 const mobCombatTools = createMobCombatTools({
@@ -1028,6 +1043,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     sendInventoryState,
     sendEquipmentState,
     sendSelfProgress,
+    updatePlayerViewport,
     clamp,
     normalizeDirection,
     clearPlayerCast,
@@ -1057,6 +1073,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     mobs,
     lootBags,
     VISIBILITY_RANGE,
+    getPlayerVisibilityExtents,
     inVisibilityRange,
     serializePlayer,
     serializeMob,
