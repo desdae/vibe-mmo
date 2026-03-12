@@ -8349,6 +8349,36 @@ function getFloatingDamageViews(frameNow) {
   return views;
 }
 
+function getExplosionViews(frameNow) {
+  if (!activeExplosions.length) {
+    return [];
+  }
+  const active = [];
+  const views = [];
+  for (const entry of activeExplosions) {
+    const age = frameNow - Number(entry.createdAt || frameNow);
+    const durationMs = Math.max(1, Number(entry.durationMs) || 380);
+    if (age >= durationMs) {
+      continue;
+    }
+    active.push(entry);
+    views.push({
+      id: Number(entry.id) || 0,
+      x: Number(entry.x) || 0,
+      y: Number(entry.y) || 0,
+      radius: Math.max(0.1, Number(entry.radius) || 0.1),
+      abilityId: String(entry.abilityId || ""),
+      progress: clamp(age / durationMs, 0, 1),
+      alpha: clamp(1 - age / durationMs, 0, 1)
+    });
+  }
+  activeExplosions.length = 0;
+  for (const entry of active) {
+    activeExplosions.push(entry);
+  }
+  return views;
+}
+
 function drawExplosionEffects(cameraX, cameraY) {
   if (!activeExplosions.length) {
     return;
@@ -12195,6 +12225,7 @@ const worldViewModelTools = sharedCreateWorldViewModelTools
   ? sharedCreateWorldViewModelTools({
       gameState,
       getAreaEffects: () => Array.from(activeAreaEffectsById.values()),
+      getExplosionViews,
       getTownVendor,
       getActiveMobAttackState,
       getMobAttackVisualType,

@@ -52,6 +52,7 @@
     let areaUnderlayFallbackLayer = null;
     let lootSpriteLayer = null;
     let lootFallbackLayer = null;
+    let explosionLayer = null;
     let particleLayer = null;
     let mobLayer = null;
     let playerLayer = null;
@@ -74,6 +75,7 @@
     let projectileNodes = new Map();
     let lootNodes = new Map();
     let lootFallbackNodes = new Map();
+    let explosionNodes = new Map();
     let areaUnderlayNodes = new Map();
     let areaOverlayNodes = new Map();
     let projectileFallbackNodes = new Map();
@@ -100,6 +102,7 @@
     };
     const spritePools = {
       loot: [],
+      explosion: [],
       projectile: [],
       areaUnderlay: [],
       areaOverlay: []
@@ -436,6 +439,13 @@
         uvs: true
       });
       lootFallbackLayer = new PIXI.Container();
+      explosionLayer = new PIXI.ParticleContainer(1024, {
+        position: true,
+        rotation: true,
+        alpha: true,
+        scale: true,
+        uvs: true
+      });
       particleLayer = new PIXI.ParticleContainer(4096, {
         position: true,
         rotation: true,
@@ -498,6 +508,7 @@
         playerLayer,
         projectileSpriteLayer,
         projectileFallbackLayer,
+        explosionLayer,
         areaOverlayLayer,
         floatingDamageLayer,
         tooltipLayer
@@ -1257,6 +1268,21 @@
       };
     }
 
+    function resolveBeamWorldEndpoints(effect) {
+      const startX = Number.isFinite(Number(effect && effect.startX)) ? Number(effect.startX) : Number(effect && effect.x) || 0;
+      const startY = Number.isFinite(Number(effect && effect.startY)) ? Number(effect.startY) : Number(effect && effect.y) || 0;
+      const dirX = Number(effect && effect.dx) || 0;
+      const dirY = Number(effect && effect.dy) || 0;
+      const lengthTiles = Math.max(0.25, Number(effect && (effect.length || effect.radius)) || 1);
+      return {
+        startX,
+        startY,
+        endX: startX + dirX * lengthTiles,
+        endY: startY + dirY * lengthTiles,
+        lengthTiles
+      };
+    }
+
     function getAreaEffectSpriteFrame(effect, frameNow) {
       const abilityId = String(effect && effect.abilityId || "").toLowerCase();
       if (String(effect && effect.kind || "") === "beam") {
@@ -1427,10 +1453,11 @@
         cached = { canvas };
         areaEffectCanvasCache.set(key, cached);
       }
-      const startX = Number(effect && effect.x) + 0.5;
-      const startY = Number(effect && effect.y) + 0.5;
-      const endX = Number(effect && effect.targetX) + 0.5;
-      const endY = Number(effect && effect.targetY) + 0.5;
+      const endpoints = resolveBeamWorldEndpoints(effect);
+      const startX = endpoints.startX + 0.5;
+      const startY = endpoints.startY + 0.5;
+      const endX = endpoints.endX + 0.5;
+      const endY = endpoints.endY + 0.5;
       const dx = endX - startX;
       const dy = endY - startY;
       const lengthPx = Math.max(8, Math.hypot(dx, dy) * tileSize);
@@ -1441,6 +1468,100 @@
         scaleY: lengthPx / 128,
         alpha: 0.96
       };
+    }
+
+    function getExplosionSpriteFrame(explosionView) {
+      const abilityId = String(explosionView && explosionView.abilityId || "").toLowerCase();
+      const radiusPx = Math.max(6, (Number(explosionView && explosionView.radius) || 1) * tileSize);
+      const roundedRadius = Math.max(6, Math.round(radiusPx));
+      const phaseBucket = clamp(Math.floor((Number(explosionView && explosionView.progress) || 0) * 6), 0, 5);
+      const key = `explosion:${abilityId}:${roundedRadius}:${phaseBucket}`;
+      const cached = areaEffectCanvasCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const size = roundedRadius * 2 + 20;
+      const canvas = createRuntimeCanvas(size, size);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      const cx = size * 0.5;
+      const cy = size * 0.5;
+      const progress = phaseBucket / 5;
+      const ringRadius = roundedRadius * (0.25 + progress * 0.85);
+      const alpha = 1 - progress;
+      if (abilityId === "warstomp") {
+        ctx.save();
+        ctx.globalAlpha = 0.9 * alpha;
+        ctx.strokeStyle = "rgba(222, 243, 255, 0.92)";
+        ctx.lineWidth = Math.max(1.4, 3.6 * (1 - progress));
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 0.42 * alpha;
+        ctx.strokeStyle = "rgba(112, 193, 248, 0.85)";
+        ctx.lineWidth = Math.max(1, 2.4 * (1 - progress));
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius * 0.7, 0, Math.PI * 2);
+        ctx.stroke();
+        for (let i = 0; i < 10; i += 1) {
+          const a = (Math.PI * 2 * i) / 10 + progress * 0.8;
+          const inner = ringRadius * 0.15;
+          const outer = ringRadius * 0.95;
+          ctx.globalAlpha = 0.5 * alpha;
+          ctx.strokeStyle = "rgba(180, 225, 255, 0.72)";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+          ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else if (abilityId === "blink") {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        const blinkGradient = ctx.createRadialGradient(cx, cy, ringRadius * 0.12, cx, cy, ringRadius);
+        blinkGradient.addColorStop(0, `rgba(240, 226, 255, ${(0.75 * alpha).toFixed(3)})`);
+        blinkGradient.addColorStop(0.55, `rgba(170, 126, 255, ${(0.46 * alpha).toFixed(3)})`);
+        blinkGradient.addColorStop(1, "rgba(118, 75, 245, 0)");
+        ctx.fillStyle = blinkGradient;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.78 * alpha;
+        ctx.strokeStyle = "rgba(209, 188, 255, 0.94)";
+        ctx.lineWidth = Math.max(1.1, 2.8 * (1 - progress));
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius * 0.92, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 0.5 * alpha;
+        const gradient = ctx.createRadialGradient(cx, cy, ringRadius * 0.2, cx, cy, ringRadius);
+        gradient.addColorStop(0, "rgba(255, 230, 140, 0.95)");
+        gradient.addColorStop(0.45, "rgba(255, 132, 56, 0.82)");
+        gradient.addColorStop(1, "rgba(255, 52, 28, 0)");
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.85 * alpha;
+        ctx.strokeStyle = "rgba(255, 240, 190, 0.9)";
+        ctx.lineWidth = Math.max(1.2, 3.2 * (1 - progress));
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+      const result = { canvas, rotation: 0, alpha: clamp(Number(explosionView && explosionView.alpha) || 1, 0, 1) };
+      areaEffectCanvasCache.set(key, result);
+      return result;
     }
 
     function getGenericPlayerSpriteFrame(player, isSelf) {
@@ -2132,15 +2253,9 @@
         if (String(effect.kind || "") === "beam") {
           const beamFrame = getBeamAreaEffectSpriteFrame(effect);
           if (beamFrame) {
-            const endX = Number(effect.targetX) + 0.5;
-            const endY = Number(effect.targetY) + 0.5;
-            const end = worldToScreen(endX, endY, cameraX, cameraY, width, height);
             underlaySpriteEffects.push({
               effect,
-              center: {
-                x: (center.x + end.x) * 0.5,
-                y: (center.y + end.y) * 0.5
-              },
+              center,
               spriteFrame: beamFrame
             });
             continue;
@@ -2157,10 +2272,10 @@
         targetGraphics.lineStyle(2, color, 0.9);
         targetGraphics.beginFill(color, String(effect.kind || "") === "summon" ? 0.1 : 0.08);
         if (String(effect.kind || "") === "beam") {
-          const endX = Number(effect.targetX) + 0.5;
-          const endY = Number(effect.targetY) + 0.5;
-          const end = worldToScreen(endX, endY, cameraX, cameraY, width, height);
-          targetGraphics.moveTo(center.x, center.y);
+          const endpoints = resolveBeamWorldEndpoints(effect);
+          const start = worldToScreen(endpoints.startX + 0.5, endpoints.startY + 0.5, cameraX, cameraY, width, height);
+          const end = worldToScreen(endpoints.endX + 0.5, endpoints.endY + 0.5, cameraX, cameraY, width, height);
+          targetGraphics.moveTo(start.x, start.y);
           targetGraphics.lineTo(end.x, end.y);
         } else {
           targetGraphics.drawCircle(center.x, center.y, radius);
@@ -2390,6 +2505,25 @@
         projectileSpriteLayer,
         spritePools.projectile
       );
+      const explosionSpriteEntries = [];
+      for (const explosionView of Array.isArray(frameViewModel.explosionViews) ? frameViewModel.explosionViews : []) {
+        const spriteFrame = getExplosionSpriteFrame(explosionView);
+        if (!spriteFrame) {
+          continue;
+        }
+        explosionSpriteEntries.push({ explosionView, spriteFrame });
+      }
+      syncSpriteMap(
+        explosionNodes,
+        explosionSpriteEntries,
+        (item) => item.explosionView.id,
+        (sprite, item) => {
+          const p = worldToScreen(Number(item.explosionView.x) + 0.5, Number(item.explosionView.y) + 0.5, cameraX, cameraY, width, height);
+          updateSprite(sprite, p.x, p.y, item.spriteFrame);
+        },
+        explosionLayer,
+        spritePools.explosion
+      );
       syncNodeMap(
         projectileFallbackNodes,
         [],
@@ -2436,6 +2570,7 @@
           playerNodes.size +
           mobNodes.size +
           projectileNodes.size +
+          explosionNodes.size +
           lootNodes.size +
           areaUnderlayNodes.size +
           areaOverlayNodes.size +
@@ -2443,6 +2578,7 @@
           (vendorNode ? 1 : 0),
         pooledSprites:
           spritePools.loot.length +
+          spritePools.explosion.length +
           spritePools.projectile.length +
           spritePools.areaUnderlay.length +
           spritePools.areaOverlay.length +

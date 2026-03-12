@@ -5,6 +5,7 @@
     const deps = rawDeps && typeof rawDeps === "object" ? rawDeps : {};
     const gameState = deps.gameState;
     const getAreaEffects = typeof deps.getAreaEffects === "function" ? deps.getAreaEffects : () => [];
+    const getExplosionViews = typeof deps.getExplosionViews === "function" ? deps.getExplosionViews : () => [];
     const getTownVendor = typeof deps.getTownVendor === "function" ? deps.getTownVendor : () => null;
     if (!gameState) {
       return null;
@@ -46,6 +47,9 @@
         statusVisual: typeof deps.getPlayerStatusVisualState === "function" ? deps.getPlayerStatusVisualState(self, true, frameNow) : null
       };
 
+      const rawExplosionViews = getExplosionViews(frameNow);
+      const explosionViews = Array.isArray(rawExplosionViews) ? rawExplosionViews : [];
+
       return {
         frameNow,
         cameraX,
@@ -58,6 +62,7 @@
         selfView,
         lootBagViews: lootBags.map((bag) => ({ bag })),
         areaEffects: Array.isArray(getAreaEffects()) ? getAreaEffects() : [],
+        explosionViews,
         floatingDamageViews: typeof deps.getFloatingDamageViews === "function" ? deps.getFloatingDamageViews(frameNow) : [],
         townVendor: getTownVendor(),
         hoveredMob: typeof deps.getHoveredMob === "function" ? deps.getHoveredMob(mobs, cameraX, cameraY) : null,
