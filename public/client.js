@@ -12228,9 +12228,30 @@ function render() {
   renderLoopTools.renderFrame();
 }
 
+function getAutomationDebugMetricsSnapshot() {
+  const now = performance.now();
+  const upKbps = (Math.max(0, Number(debugState.upBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
+  const downKbps = (Math.max(0, Number(debugState.downBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
+  let fps = 0;
+  if (uiPanelTools && typeof uiPanelTools.getFps === "function") {
+    fps = Number(uiPanelTools.getFps(now)) || 0;
+  } else if (Array.isArray(debugState.frameSamples) && debugState.frameSamples.length > 1) {
+    const first = Number(debugState.frameSamples[0]) || now;
+    const elapsedMs = Math.max(1, now - first);
+    fps = ((debugState.frameSamples.length - 1) * 1000) / elapsedMs;
+  }
+  return {
+    upKbps,
+    downKbps,
+    fps,
+    mobCount: Math.max(0, Math.floor(Number(debugState.totalMobCount) || 0))
+  };
+}
+
 function buildAutomationSnapshot() {
   return {
     rendererMode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas",
+    debugMetrics: getAutomationDebugMetricsSnapshot(),
     self: gameState.self
       ? {
           id: myId,
