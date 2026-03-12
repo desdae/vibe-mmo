@@ -41,6 +41,11 @@
             };
           };
     const getActionDefById = typeof deps.getActionDefById === "function" ? deps.getActionDefById : () => null;
+    const findAbilityDefById = typeof deps.findAbilityDefById === "function" ? deps.findAbilityDefById : () => null;
+    const getAbilityEffectiveRangeForSelf =
+      typeof deps.getAbilityEffectiveRangeForSelf === "function" ? deps.getAbilityEffectiveRangeForSelf : () => 0;
+    const getAbilityPreviewState =
+      typeof deps.getAbilityPreviewState === "function" ? deps.getAbilityPreviewState : () => null;
     const getAbilityVisualHook =
       typeof deps.getAbilityVisualHook === "function" ? deps.getAbilityVisualHook : () => "";
     const getLootBagSprite = typeof deps.getLootBagSprite === "function" ? deps.getLootBagSprite : null;
@@ -87,6 +92,7 @@
     let vendorLayer = null;
     let areaOverlayLayer = null;
     let areaOverlaySpriteLayer = null;
+    let abilityPreviewLayer = null;
     let floatingDamageLayer = null;
     let tooltipLayer = null;
     let backgroundGraphics = null;
@@ -94,6 +100,7 @@
     let townSprite = null;
     let areaUnderlayGraphics = null;
     let areaOverlayGraphics = null;
+    let abilityPreviewGraphics = null;
     let tooltipGraphics = null;
     let tooltipText = null;
     let playerNodes = new Map();
@@ -528,6 +535,7 @@
       vendorLayer = new PIXI.Container();
       areaOverlayLayer = new PIXI.Container();
       areaOverlaySpriteLayer = createMixedTextureSpriteLayer();
+      abilityPreviewLayer = new PIXI.Container();
       floatingDamageLayer = new PIXI.Container();
       tooltipLayer = new PIXI.Container();
 
@@ -538,6 +546,7 @@
       townSprite.visible = false;
       areaUnderlayGraphics = new PIXI.Graphics();
       areaOverlayGraphics = new PIXI.Graphics();
+      abilityPreviewGraphics = new PIXI.Graphics();
       tooltipGraphics = new PIXI.Graphics();
       tooltipText = new PIXI.Text("", {
         fontFamily: "Segoe UI",
@@ -553,8 +562,10 @@
       areaUnderlayLayer.addChild(areaUnderlayFallbackLayer);
       areaOverlayLayer.addChild(areaOverlayGraphics);
       areaOverlayLayer.addChild(areaOverlaySpriteLayer);
+      abilityPreviewLayer.addChild(abilityPreviewGraphics);
       root.addChild(
         backgroundLayer,
+        abilityPreviewLayer,
         projectileSpriteLayer,
         projectileFallbackLayer,
         explosionLayer,
@@ -3009,6 +3020,119 @@
       );
     }
 
+    function drawAbilityPreview(frameViewModel) {
+      if (!abilityPreviewGraphics) {
+        return;
+      }
+      abilityPreviewGraphics.clear();
+      if (!frameViewModel || !frameViewModel.self) {
+        return;
+      }
+
+      const previewState = getAbilityPreviewState();
+      if (!previewState || !previewState.abilityId) {
+        return;
+      }
+
+      const width = app.renderer.width / (app.renderer.resolution || 1);
+      const height = app.renderer.height / (app.renderer.resolution || 1);
+      const cameraX = frameViewModel.cameraX;
+      const cameraY = frameViewModel.cameraY;
+      const now = Number(frameViewModel.frameNow) || performance.now();
+      const self = frameViewModel.self;
+      const abilityId = String(previewState.abilityId || "");
+      const abilityDef = findAbilityDefById(abilityId) || getActionDefById(abilityId) || {};
+      const kind = String(abilityDef.kind || "").trim().toLowerCase();
+      const targetX = Number(previewState.targetX);
+      const targetY = Number(previewState.targetY);
+      if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+        return;
+      }
+
+      const start = worldToScreen(Number(self.x) + 0.5, Number(self.y) + 0.5, cameraX, cameraY, width, height);
+      const end = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY, width, height);
+      const dx = targetX - Number(self.x);
+      const dy = targetY - Number(self.y);
+      const len = Math.hypot(dx, dy);
+      const direction = normalizeDirection(dx, dy) || normalizeDirection(self.lastDirection && self.lastDirection.dx, self.lastDirection && self.lastDirection.dy) || { dx: 0, dy: 1 };
+      const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(abilityId, self));
+      const inRange = castRange <= 0 || len <= castRange + 0.001;
+      const pulse = 0.72 + Math.sin(now * 0.011) * 0.14;
+      const strokeColor = inRange ? 0xd6e4ff : 0xffa4a4;
+      const fillColor = inRange ? 0x7cb2f0 : 0xd66868;
+
+      abilityPreviewGraphics.lineStyle(1.2, strokeColor, inRange ? 0.46 : 0.48);
+      abilityPreviewGraphics.moveTo(start.x, start.y);
+      abilityPreviewGraphics.lineTo(end.x, end.y);
+
+      if (kind === "area" || kind === "summon" || kind === "teleport") {
+        const radiusTiles =
+          kind === "teleport"
+            ? 0.45
+            : Math.max(0.2, Number(abilityDef.areaRadius || abilityDef.radius) || 2.5);
+        abilityPreviewGraphics.beginFill(fillColor, inRange ? 0.12 : 0.14);
+        abilityPreviewGraphics.lineStyle(1.6, strokeColor, 0.72);
+        abilityPreviewGraphics.drawCircle(end.x, end.y, Math.max(8, radiusTiles * tileSize));
+        abilityPreviewGraphics.endFill();
+      } else if (kind === "meleecone") {
+        const coneAngleDeg = Math.max(24, Number(abilityDef.coneAngleDeg) || 90);
+        const halfAngle = (coneAngleDeg * Math.PI) / 360;
+        const radiusPx = Math.max(18, Math.max(0.5, castRange || len || 1.8) * tileSize);
+        const facing = Math.atan2(direction.dy, direction.dx);
+        abilityPreviewGraphics.beginFill(fillColor, inRange ? 0.16 * pulse : 0.15 * pulse);
+        abilityPreviewGraphics.lineStyle(1.6, strokeColor, 0.72);
+        abilityPreviewGraphics.moveTo(start.x, start.y);
+        abilityPreviewGraphics.arc(start.x, start.y, radiusPx, facing - halfAngle, facing + halfAngle);
+        abilityPreviewGraphics.lineTo(start.x, start.y);
+        abilityPreviewGraphics.endFill();
+      } else if (kind === "beam" || kind === "chain") {
+        const beamWidthPx = Math.max(4, (Number(abilityDef.beamWidth) || 0.5) * tileSize);
+        abilityPreviewGraphics.lineStyle(beamWidthPx * 1.7, fillColor, inRange ? 0.18 * pulse : 0.18 * pulse);
+        abilityPreviewGraphics.moveTo(start.x, start.y);
+        abilityPreviewGraphics.lineTo(end.x, end.y);
+        abilityPreviewGraphics.lineStyle(Math.max(1.2, beamWidthPx * 0.28), 0xf2f8ff, inRange ? 0.86 * pulse : 0.82 * pulse);
+        abilityPreviewGraphics.moveTo(start.x, start.y);
+        abilityPreviewGraphics.lineTo(end.x, end.y);
+      } else {
+        const projectileCount = Math.max(1, Math.floor(Number(abilityDef.projectileCount) || 1));
+        const spreadDeg = Math.max(0, Number(abilityDef.spreadDeg) || 0);
+        const previewRange = Math.max(castRange, len, 0.5);
+        const baseAngle = Math.atan2(direction.dy, direction.dx);
+        abilityPreviewGraphics.lineStyle(1.4, 0xecf2fa, inRange ? 0.8 * pulse : 0.76 * pulse);
+        for (let index = 0; index < projectileCount; index += 1) {
+          const spreadOffset =
+            projectileCount > 1 && spreadDeg > 0
+              ? (((index / Math.max(1, projectileCount - 1)) - 0.5) * spreadDeg * Math.PI) / 180
+              : 0;
+          const angle = baseAngle + spreadOffset;
+          const endPoint = worldToScreen(
+            Number(self.x) + Math.cos(angle) * previewRange + 0.5,
+            Number(self.y) + Math.sin(angle) * previewRange + 0.5,
+            cameraX,
+            cameraY,
+            width,
+            height
+          );
+          abilityPreviewGraphics.moveTo(start.x, start.y);
+          abilityPreviewGraphics.lineTo(endPoint.x, endPoint.y);
+        }
+        const endpointRadiusPx = Math.max(
+          5,
+          Math.max(Number(abilityDef.explosionRadius) || 0, Number(abilityDef.projectileHitRadius) || 0.25) * tileSize
+        );
+        abilityPreviewGraphics.beginFill(fillColor, inRange ? 0.12 * pulse : 0.12 * pulse);
+        abilityPreviewGraphics.lineStyle(1.5, strokeColor, 0.72);
+        abilityPreviewGraphics.drawCircle(end.x, end.y, endpointRadiusPx);
+        abilityPreviewGraphics.endFill();
+      }
+
+      if (Number.isFinite(Number(previewState.snappedTargetId))) {
+        abilityPreviewGraphics.lineStyle(1.6, 0xfff6c6, 0.72 * pulse);
+        abilityPreviewGraphics.drawCircle(end.x, end.y, 12 + pulse * 2.5);
+        abilityPreviewGraphics.drawCircle(end.x, end.y, 5.8 + pulse * 1.2);
+      }
+    }
+
     function updateTooltip(frameViewModel) {
       tooltipGraphics.clear();
       tooltipText.text = "";
@@ -3061,6 +3185,7 @@
 
       drawTownAndGrid(frameViewModel);
       drawAreaEffects(frameViewModel);
+      drawAbilityPreview(frameViewModel);
       if (pixiParticleSystem && typeof pixiParticleSystem.pruneEmitters === "function") {
         pixiParticleSystem.pruneEmitters(frameNow);
       }

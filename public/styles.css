@@ -405,11 +405,16 @@ body {
   border: 1px solid rgba(132, 184, 208, 0.45);
   background: linear-gradient(180deg, rgba(14, 30, 44, 0.96), rgba(8, 18, 29, 0.98));
   overflow: hidden;
+  touch-action: none;
 }
 
 .action-slot.drag-hover {
   outline: 2px solid rgba(117, 205, 255, 0.82);
   outline-offset: -2px;
+}
+
+.action-slot.aiming {
+  box-shadow: 0 0 0 2px rgba(110, 204, 255, 0.4), 0 0 14px rgba(84, 183, 255, 0.32);
 }
 
 .action-slot .slot-progress {

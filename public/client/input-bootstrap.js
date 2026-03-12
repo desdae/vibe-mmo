@@ -88,6 +88,9 @@
       if (typeof deps.resetTouchJoystick === "function" && deps.resetTouchJoystick()) {
         changed = true;
       }
+      if (typeof deps.resetMobileAbilityAim === "function" && deps.resetMobileAbilityAim()) {
+        changed = true;
+      }
       if (changed) {
         deps.sendMove();
       }

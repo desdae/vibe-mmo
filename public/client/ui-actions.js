@@ -128,13 +128,26 @@
       return screenToWorld(mouseState.sx, mouseState.sy, self);
     }
 
-    function executeBoundAction(slotId) {
+    function resolveTargetWorld(explicitTarget) {
+      if (
+        explicitTarget &&
+        Number.isFinite(Number(explicitTarget.x)) &&
+        Number.isFinite(Number(explicitTarget.y))
+      ) {
+        return {
+          x: Number(explicitTarget.x),
+          y: Number(explicitTarget.y)
+        };
+      }
+      return getActionTargetWorld();
+    }
+
+    function executeParsedBinding(binding, explicitTarget = null, options = {}) {
       const self = getCurrentSelf();
-      if (!self || self.hp <= 0) {
+      if (!self || self.hp <= 0 || !binding) {
         return false;
       }
 
-      const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
       if (binding.kind === "item") {
         if (!binding.id) {
           return false;
@@ -144,7 +157,7 @@
       }
 
       const actionId = binding.id;
-      const target = getActionTargetWorld();
+      const target = resolveTargetWorld(explicitTarget);
       if (!target) {
         return false;
       }
@@ -156,7 +169,24 @@
       if (actionId === "none") {
         return false;
       }
-      return useAbilityAt(actionId, target.x, target.y);
+      return useAbilityAt(actionId, target.x, target.y, options);
+    }
+
+    function executeBoundAction(slotId) {
+      const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+      return executeParsedBinding(binding);
+    }
+
+    function executeBoundActionAt(slotId, worldX, worldY, options = {}) {
+      const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+      return executeParsedBinding(
+        binding,
+        {
+          x: worldX,
+          y: worldY
+        },
+        options
+      );
     }
 
     function tryPrimaryAutoAction(force = false) {
@@ -190,6 +220,7 @@
       getActionVisualState,
       getActionTargetWorld,
       executeBoundAction,
+      executeBoundActionAt,
       tryPrimaryAutoAction
     };
   }

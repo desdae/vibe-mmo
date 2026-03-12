@@ -116,6 +116,7 @@
       abilityChannel.lastRetargetSentAt = 0;
       abilityChannel.lastSentTargetX = NaN;
       abilityChannel.lastSentTargetY = NaN;
+      abilityChannel.trackPointer = false;
     }
 
     function applyServerCastState(targetState, payload) {
@@ -127,6 +128,7 @@
         targetState.abilityId = "";
         targetState.startedAt = 0;
         targetState.durationMs = 0;
+        targetState.trackPointer = false;
         return;
       }
 
@@ -156,7 +158,7 @@
       };
     }
 
-    function useAbilityAt(abilityId, worldX, worldY) {
+    function useAbilityAt(abilityId, worldX, worldY, options = {}) {
       const self = getCurrentSelf();
       if (!self || self.hp <= 0) {
         return false;
@@ -194,6 +196,7 @@
         abilityChannel.lastRetargetSentAt = 0;
         abilityChannel.lastSentTargetX = NaN;
         abilityChannel.lastSentTargetY = NaN;
+        abilityChannel.trackPointer = options.trackPointer !== false;
         if (len > 0) {
           const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(resolvedAbilityId, self) || len);
           const distance = castRange > 0 ? Math.min(len, castRange) : len;
@@ -217,6 +220,9 @@
     function updateLocalCastTargetFromMouse() {
       const self = getCurrentSelf();
       if (!self || !abilityChannel.active) {
+        return false;
+      }
+      if (abilityChannel.trackPointer === false) {
         return false;
       }
       const targetWorld = screenToWorld(mouseState.sx, mouseState.sy, self);

@@ -415,7 +415,8 @@ const abilityChannel = {
   targetY: 0,
   lastRetargetSentAt: 0,
   lastSentTargetX: NaN,
-  lastSentTargetY: NaN
+  lastSentTargetY: NaN,
+  trackPointer: false
 };
 const mouseState = {
   leftDown: false,
@@ -457,6 +458,7 @@ const actionSlotEls = new Map();
 const actionBindings = new Map();
 let actionBindingsClassType = null;
 let suppressActionBarClickUntil = 0;
+let actionBarTouchListenersBound = false;
 const classDefsById = new Map();
 const abilityDefsById = new Map();
 const abilityIdsByHash = new Map();
@@ -596,6 +598,22 @@ const touchJoystickState = {
   vectorDy: 0,
   radiusPx: 68,
   deadzonePx: 10
+};
+const mobileAbilityAimState = {
+  active: false,
+  touchId: null,
+  slotId: "",
+  abilityId: "",
+  currentClientX: 0,
+  currentClientY: 0,
+  startClientX: 0,
+  startClientY: 0,
+  targetX: 0,
+  targetY: 0,
+  snappedTargetId: null,
+  snappedTargetKind: "",
+  radiusPx: 128,
+  deadzonePx: 14
 };
 const debugGearState = {
   visible: false,
@@ -6106,6 +6124,25 @@ function ensureActionBarInitialized() {
       resumeSpatialAudioContext();
       executeBoundAction(slotId);
     });
+    slot.addEventListener(
+      "touchstart",
+      (event) => {
+        if (!isTouchJoystickEnabled() || mobileAbilityAimState.active) {
+          return;
+        }
+        const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+        if (!touch) {
+          return;
+        }
+        resumeSpatialAudioContext();
+        if (!beginMobileAbilityAim(slotId, touch.identifier, touch.clientX, touch.clientY)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      { passive: false }
+    );
 
     actionBar.appendChild(slot);
 
@@ -6116,6 +6153,7 @@ function ensureActionBarInitialized() {
       name
     });
   }
+  ensureActionBarTouchListenersBound();
 }
 
 function applyDefaultActionBindings(classType) {
@@ -6170,6 +6208,7 @@ function updateActionBarUI(self) {
     slot.name.textContent = display.name;
     slot.root.classList.toggle("empty", !display.bound);
     slot.root.classList.toggle("bound", display.bound);
+    slot.root.classList.toggle("aiming", mobileAbilityAimState.active && mobileAbilityAimState.slotId === slotId);
     slot.root.title = display.tooltip || display.name;
     slot.root.draggable = display.bound;
 
@@ -6454,6 +6493,289 @@ function endTouchJoystick() {
   return resetTouchJoystick();
 }
 
+function getMobileAbilityAimRadiusPx() {
+  const viewportMin = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+  return clamp(viewportMin * 0.23, 104, 164);
+}
+
+function getMobileAbilityAimFallbackDirection(self) {
+  const touchMoveDir = normalizeDirection(touchJoystickState.vectorDx, touchJoystickState.vectorDy);
+  if (touchMoveDir) {
+    return touchMoveDir;
+  }
+  const facingDir = normalizeDirection(self && self.lastDirection && self.lastDirection.dx, self && self.lastDirection && self.lastDirection.dy);
+  if (facingDir) {
+    return facingDir;
+  }
+  return { dx: 0, dy: 1 };
+}
+
+function usesVariableMobileAimDistance(actionId, actionDef) {
+  const kind = String(actionDef && actionDef.kind || "").trim().toLowerCase();
+  return actionId === "pickup_bag" || kind === "area" || kind === "summon" || kind === "teleport";
+}
+
+function supportsMobileAbilityAim(actionId, actionDef) {
+  const resolvedActionId = String(actionId || "").trim();
+  const kind = String(actionDef && actionDef.kind || "").trim().toLowerCase();
+  const range = Math.max(0, Number(actionDef && actionDef.range) || 0);
+  if (!resolvedActionId || resolvedActionId === "none") {
+    return false;
+  }
+  if (kind === "selfbuff") {
+    return false;
+  }
+  if (kind === "area" && range <= 0.001) {
+    return false;
+  }
+  return range > 0.001 || kind === "meleecone";
+}
+
+function getMobileAimFallbackDistance(actionId, actionDef, range) {
+  const resolvedRange = Math.max(0, Number(range) || 0);
+  if (resolvedRange <= 0) {
+    return 0;
+  }
+  if (usesVariableMobileAimDistance(actionId, actionDef)) {
+    return clamp(resolvedRange * 0.68, Math.min(1.25, resolvedRange), resolvedRange);
+  }
+  return resolvedRange;
+}
+
+function findMobileAimSnapTarget(self, actionId, actionDef, direction, range) {
+  const kind = String(actionDef && actionDef.kind || "").trim().toLowerCase();
+  if (!self || !direction || !["projectile", "beam", "chain", "meleecone"].includes(kind)) {
+    return null;
+  }
+  const maxRange = Math.max(0.75, Number(range) || 0);
+  const fullAbilityDef = findAbilityDefById(actionId);
+  const maxAngleRad =
+    kind === "meleecone"
+      ? clamp((((Number(fullAbilityDef && fullAbilityDef.coneAngleDeg) || 120) * Math.PI) / 180) * 0.45, 0.26, Math.PI * 0.72)
+      : kind === "chain"
+        ? 0.54
+        : kind === "beam"
+          ? 0.34
+          : 0.3;
+  const minDot = Math.cos(maxAngleRad);
+  const beamWidth = Math.max(0.35, Number(fullAbilityDef && fullAbilityDef.beamWidth) || 0.5);
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const mob of Array.isArray(gameState.mobs) ? gameState.mobs : []) {
+    if (!mob || Number(mob.hp) <= 0) {
+      continue;
+    }
+    const dx = Number(mob.x) - Number(self.x);
+    const dy = Number(mob.y) - Number(self.y);
+    const dist = Math.hypot(dx, dy);
+    if (!Number.isFinite(dist) || dist <= 0.0001 || dist > maxRange + 0.85) {
+      continue;
+    }
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const dot = dirX * direction.dx + dirY * direction.dy;
+    if (dot < minDot) {
+      continue;
+    }
+    const lateralDistance = Math.abs(dx * direction.dy - dy * direction.dx);
+    if ((kind === "beam" || kind === "chain") && lateralDistance > beamWidth + 0.45) {
+      continue;
+    }
+    const score = dot * 4.2 - dist / Math.max(1, maxRange) - lateralDistance * 0.12;
+    if (score <= bestScore) {
+      continue;
+    }
+    bestScore = score;
+    best = {
+      id: mob.id,
+      kind: "mob",
+      x: Number(mob.x) || 0,
+      y: Number(mob.y) || 0
+    };
+  }
+
+  return best;
+}
+
+function updateMobileAbilityAimTarget() {
+  if (!mobileAbilityAimState.active) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    return false;
+  }
+  const actionId = String(mobileAbilityAimState.abilityId || "");
+  const actionDef = getActionDefById(actionId);
+  const range = Math.max(0, getAbilityEffectiveRangeForSelf(actionId, self));
+  const rawDx = Number(mobileAbilityAimState.currentClientX) - Number(mobileAbilityAimState.startClientX);
+  const rawDy = Number(mobileAbilityAimState.currentClientY) - Number(mobileAbilityAimState.startClientY);
+  const rawLen = Math.hypot(rawDx, rawDy);
+  const radiusPx = Math.max(1, Number(mobileAbilityAimState.radiusPx) || 1);
+  const deadzonePx = Math.max(0, Number(mobileAbilityAimState.deadzonePx) || 0);
+  const dragDirection = rawLen > deadzonePx ? normalizeDirection(rawDx, rawDy) : null;
+  const direction = dragDirection || getMobileAbilityAimFallbackDirection(self);
+  if (!direction) {
+    return false;
+  }
+  const dragStrength = rawLen > deadzonePx ? clamp((rawLen - deadzonePx) / Math.max(1, radiusPx - deadzonePx), 0, 1) : 0;
+  const variableDistance = usesVariableMobileAimDistance(actionId, actionDef);
+  const fallbackDistance = getMobileAimFallbackDistance(actionId, actionDef, range);
+  const distance =
+    range <= 0
+      ? 0
+      : variableDistance
+        ? (dragStrength > 0 ? range * Math.max(0.12, dragStrength) : fallbackDistance)
+        : range;
+  const snapTarget = findMobileAimSnapTarget(self, actionId, actionDef, direction, range);
+
+  mobileAbilityAimState.snappedTargetId = snapTarget ? snapTarget.id : null;
+  mobileAbilityAimState.snappedTargetKind = snapTarget ? snapTarget.kind : "";
+  if (snapTarget) {
+    mobileAbilityAimState.targetX = snapTarget.x;
+    mobileAbilityAimState.targetY = snapTarget.y;
+    return true;
+  }
+
+  mobileAbilityAimState.targetX = Number(self.x) + direction.dx * distance;
+  mobileAbilityAimState.targetY = Number(self.y) + direction.dy * distance;
+  return true;
+}
+
+function resetMobileAbilityAim() {
+  const changed = mobileAbilityAimState.active;
+  mobileAbilityAimState.active = false;
+  mobileAbilityAimState.touchId = null;
+  mobileAbilityAimState.slotId = "";
+  mobileAbilityAimState.abilityId = "";
+  mobileAbilityAimState.currentClientX = 0;
+  mobileAbilityAimState.currentClientY = 0;
+  mobileAbilityAimState.startClientX = 0;
+  mobileAbilityAimState.startClientY = 0;
+  mobileAbilityAimState.targetX = 0;
+  mobileAbilityAimState.targetY = 0;
+  mobileAbilityAimState.snappedTargetId = null;
+  mobileAbilityAimState.snappedTargetKind = "";
+  if (changed) {
+    updateActionBarUI(getCurrentSelf());
+  }
+  return changed;
+}
+
+function beginMobileAbilityAim(slotId, touchId, clientX, clientY) {
+  if (!isTouchJoystickEnabled() || mobileAbilityAimState.active || abilityChannel.active) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    return false;
+  }
+  const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+  if (binding.kind !== "action") {
+    return false;
+  }
+  const actionId = String(binding.id || "").trim();
+  const actionDef = getActionDefById(actionId);
+  if (!supportsMobileAbilityAim(actionId, actionDef)) {
+    return false;
+  }
+  const now = performance.now();
+  if (!hasEnoughManaForAbility(self, actionId) || !canUseAbilityNow(actionId, now, self)) {
+    return false;
+  }
+
+  const radiusPx = getMobileAbilityAimRadiusPx();
+  mobileAbilityAimState.active = true;
+  mobileAbilityAimState.touchId = touchId;
+  mobileAbilityAimState.slotId = String(slotId || "");
+  mobileAbilityAimState.abilityId = actionId;
+  mobileAbilityAimState.startClientX = Number(clientX) || 0;
+  mobileAbilityAimState.startClientY = Number(clientY) || 0;
+  mobileAbilityAimState.currentClientX = mobileAbilityAimState.startClientX;
+  mobileAbilityAimState.currentClientY = mobileAbilityAimState.startClientY;
+  mobileAbilityAimState.radiusPx = radiusPx;
+  mobileAbilityAimState.deadzonePx = Math.round(radiusPx * 0.14);
+  suppressActionBarClickUntil = now + 360;
+  updateMobileAbilityAimTarget();
+  updateActionBarUI(self);
+  return true;
+}
+
+function updateMobileAbilityAim(clientX, clientY) {
+  if (!mobileAbilityAimState.active) {
+    return false;
+  }
+  mobileAbilityAimState.currentClientX = Number(clientX) || 0;
+  mobileAbilityAimState.currentClientY = Number(clientY) || 0;
+  return updateMobileAbilityAimTarget();
+}
+
+function commitMobileAbilityAim() {
+  if (!mobileAbilityAimState.active) {
+    return false;
+  }
+  const slotId = String(mobileAbilityAimState.slotId || "");
+  const targetX = Number(mobileAbilityAimState.targetX);
+  const targetY = Number(mobileAbilityAimState.targetY);
+  const didCast =
+    slotId &&
+    Number.isFinite(targetX) &&
+    Number.isFinite(targetY)
+      ? executeBoundActionAt(slotId, targetX, targetY, { trackPointer: false })
+      : false;
+  suppressActionBarClickUntil = performance.now() + 360;
+  resetMobileAbilityAim();
+  return didCast;
+}
+
+function handleMobileAbilityAimTouchMove(event) {
+  if (!mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileAbilityAimState.touchId) {
+      continue;
+    }
+    updateMobileAbilityAim(touch.clientX, touch.clientY);
+    event.preventDefault();
+    return;
+  }
+}
+
+function handleMobileAbilityAimTouchEnd(event) {
+  if (!mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileAbilityAimState.touchId) {
+      continue;
+    }
+    updateMobileAbilityAim(touch.clientX, touch.clientY);
+    if (event.type === "touchcancel") {
+      resetMobileAbilityAim();
+    } else {
+      commitMobileAbilityAim();
+    }
+    event.preventDefault();
+    return;
+  }
+}
+
+function ensureActionBarTouchListenersBound() {
+  if (actionBarTouchListenersBound) {
+    return;
+  }
+  actionBarTouchListenersBound = true;
+  window.addEventListener("touchmove", handleMobileAbilityAimTouchMove, { passive: false });
+  window.addEventListener("touchend", handleMobileAbilityAimTouchEnd, { passive: false });
+  window.addEventListener("touchcancel", handleMobileAbilityAimTouchEnd, { passive: false });
+}
+
 function sendViewportToServer() {
   return sendJsonMessage({
     type: "viewport",
@@ -6523,6 +6845,7 @@ function pushSnapshot(msg) {
 
 function clearEntityRuntime() {
   resetTouchJoystick();
+  resetMobileAbilityAim();
   entityRuntime.self = null;
   entityRuntime.players.clear();
   entityRuntime.mobMeta.clear();
@@ -8026,6 +8349,7 @@ function getInterpolatedState() {
 
 function resetClientSessionState() {
   resetTouchJoystick();
+  resetMobileAbilityAim();
   gameState.self = null;
   gameState.players = [];
   gameState.projectiles = [];
@@ -8681,11 +9005,11 @@ function hasEnoughManaForAbility(self, abilityId) {
   return abilityRuntimeTools.hasEnoughManaForAbility(self, abilityId);
 }
 
-function useAbilityAt(abilityId, worldX, worldY) {
+function useAbilityAt(abilityId, worldX, worldY, options = {}) {
   if (!abilityRuntimeTools) {
     return false;
   }
-  return abilityRuntimeTools.useAbilityAt(abilityId, worldX, worldY);
+  return abilityRuntimeTools.useAbilityAt(abilityId, worldX, worldY, options);
 }
 
 function updateAbilityChannel(now) {
@@ -8707,6 +9031,13 @@ function executeBoundAction(slotId) {
     return false;
   }
   return uiActionTools.executeBoundAction(slotId);
+}
+
+function executeBoundActionAt(slotId, worldX, worldY, options = {}) {
+  if (!uiActionTools || typeof uiActionTools.executeBoundActionAt !== "function") {
+    return false;
+  }
+  return uiActionTools.executeBoundActionAt(slotId, worldX, worldY, options);
 }
 
 function tryPrimaryAutoAction(force = false) {
@@ -9840,16 +10171,27 @@ function getCaltropSprite() {
   return sprite;
 }
 
+function getCurrentAbilityPreviewState() {
+  if (mobileAbilityAimState.active && mobileAbilityAimState.abilityId) {
+    return mobileAbilityAimState;
+  }
+  if (abilityChannel.active && abilityChannel.abilityId) {
+    return abilityChannel;
+  }
+  return null;
+}
+
 function drawCircularTargetPreview(self, cameraX, cameraY, now, options = {}) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || (options.fallbackId ? findAbilityDefById(options.fallbackId) : null);
   const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
   const areaRadius = Math.max(0.2, Number(options.radius) || Number(abilityDef?.areaRadius || abilityDef?.radius || 2.5));
@@ -10160,20 +10502,21 @@ function drawTargetCircleCastPreview(self, cameraX, cameraY, now) {
 }
 
 function drawBallistaNestCastPreview(self, cameraX, cameraY, now) {
+  const previewState = getCurrentAbilityPreviewState();
   const preview = drawCircularTargetPreview(self, cameraX, cameraY, now, {
     fallbackId: "ballistaNest",
     strokeColor: "rgba(248, 219, 170, 0.72)",
     fillColor: "rgba(188, 126, 66, 0.13)"
   });
-  if (!preview || !self) {
+  if (!preview || !self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("ballistaNest");
   const level = getSelfAbilityLevel(self, activeAbilityId, 1);
   const summonCount = sharedGetSummonCountForLevel(
@@ -10230,15 +10573,16 @@ function drawAreaEffects(cameraX, cameraY, now, layer = "all") {
 }
 
 function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("blizzard");
   const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
   const areaRadius = Math.max(0.2, Number(abilityDef?.areaRadius || abilityDef?.radius || 3));
@@ -10273,15 +10617,16 @@ function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
 }
 
 function drawFireHydraCastPreview(self, cameraX, cameraY, now) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("fireHydra");
   const level = getSelfAbilityLevel(self, activeAbilityId, 1);
   const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
@@ -10328,6 +10673,151 @@ function drawFireHydraCastPreview(self, cameraX, cameraY, now) {
   ctx.restore();
 }
 
+function drawAbilityPreviewSnapMarker(previewState, cameraX, cameraY, now) {
+  if (!previewState || !Number.isFinite(Number(previewState.snappedTargetId))) {
+    return;
+  }
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+  const p = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
+  const pulse = 0.82 + Math.sin(now * 0.015) * 0.16;
+  ctx.save();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = `rgba(255, 246, 198, ${(0.72 * pulse).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 12 + pulse * 2.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 5.8 + pulse * 1.2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGenericAbilityCastPreview(self, cameraX, cameraY, now, previewState) {
+  if (!self || !previewState) {
+    return;
+  }
+  const activeAbilityId = String(previewState.abilityId || "");
+  const abilityDef = findAbilityDefById(activeAbilityId) || getActionDefById(activeAbilityId);
+  const kind = String(abilityDef && abilityDef.kind || "").trim().toLowerCase();
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+
+  const start = worldToScreen(self.x + 0.5, self.y + 0.5, cameraX, cameraY);
+  const end = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
+  const dx = targetX - self.x;
+  const dy = targetY - self.y;
+  const len = Math.hypot(dx, dy);
+  const direction = len > 0.0001 ? { dx: dx / len, dy: dy / len } : getMobileAbilityAimFallbackDirection(self);
+  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
+  const inRange = castRange <= 0 || len <= castRange + 0.001;
+  const strokeColor = inRange ? "rgba(214, 228, 255, 0.72)" : "rgba(255, 164, 164, 0.72)";
+  const fillColor = inRange ? "rgba(124, 178, 240, 0.14)" : "rgba(214, 104, 104, 0.14)";
+  const pulse = 0.72 + Math.sin(now * 0.011) * 0.14;
+
+  if (kind === "area" || kind === "summon" || kind === "teleport") {
+    drawCircularTargetPreview(self, cameraX, cameraY, now, {
+      fallbackId: activeAbilityId,
+      radius: kind === "teleport" ? 0.45 : undefined,
+      strokeColor,
+      fillColor
+    });
+    return;
+  }
+
+  ctx.save();
+  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = inRange ? "rgba(206, 220, 245, 0.46)" : "rgba(255, 141, 141, 0.48)";
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (kind === "meleecone") {
+    const coneAngleDeg = Math.max(24, Number(abilityDef && abilityDef.coneAngleDeg) || 90);
+    const halfAngle = (coneAngleDeg * Math.PI) / 360;
+    const radiusPx = Math.max(18, Math.max(0.5, castRange || len || 1.8) * TILE_SIZE);
+    const facing = Math.atan2(direction.dy, direction.dx);
+    ctx.fillStyle = inRange ? `rgba(239, 230, 185, ${(0.16 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.15 * pulse).toFixed(3)})`;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.arc(start.x, start.y, radiusPx, facing - halfAngle, facing + halfAngle);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  if (kind === "beam" || kind === "chain") {
+    const beamWidthPx = Math.max(4, (Number(abilityDef && abilityDef.beamWidth) || 0.5) * TILE_SIZE);
+    ctx.strokeStyle = inRange ? `rgba(176, 214, 255, ${(0.18 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.18 * pulse).toFixed(3)})`;
+    ctx.lineWidth = beamWidthPx * 1.7;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.strokeStyle = inRange ? `rgba(242, 248, 255, ${(0.86 * pulse).toFixed(3)})` : `rgba(255, 210, 210, ${(0.82 * pulse).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1.2, beamWidthPx * 0.28);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  const projectileCount = Math.max(1, Math.floor(Number(abilityDef && abilityDef.projectileCount) || 1));
+  const spreadDeg = Math.max(0, Number(abilityDef && abilityDef.spreadDeg) || 0);
+  const lineCount = projectileCount > 1 ? projectileCount : 1;
+  const baseAngle = Math.atan2(direction.dy, direction.dx);
+  const previewRange = Math.max(castRange, len, 0.5);
+  for (let index = 0; index < lineCount; index += 1) {
+    const spreadOffset =
+      lineCount > 1 && spreadDeg > 0
+        ? (((index / Math.max(1, lineCount - 1)) - 0.5) * spreadDeg * Math.PI) / 180
+        : 0;
+    const angle = baseAngle + spreadOffset;
+    const endPoint = worldToScreen(
+      self.x + Math.cos(angle) * previewRange + 0.5,
+      self.y + Math.sin(angle) * previewRange + 0.5,
+      cameraX,
+      cameraY
+    );
+    ctx.strokeStyle = inRange ? `rgba(236, 242, 250, ${(0.8 * pulse).toFixed(3)})` : `rgba(255, 210, 210, ${(0.76 * pulse).toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(endPoint.x, endPoint.y);
+    ctx.stroke();
+  }
+
+  const endpointRadiusPx = Math.max(
+    5,
+    Math.max(Number(abilityDef && abilityDef.explosionRadius) || 0, Number(abilityDef && abilityDef.projectileHitRadius) || 0.25) * TILE_SIZE
+  );
+  ctx.beginPath();
+  ctx.fillStyle = inRange ? `rgba(165, 208, 255, ${(0.12 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.12 * pulse).toFixed(3)})`;
+  ctx.arc(end.x, end.y, endpointRadiusPx, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = strokeColor;
+  ctx.arc(end.x, end.y, endpointRadiusPx, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 const ABILITY_AREA_EFFECT_RENDERERS = Object.freeze({
   blizzard: drawBlizzardAreaEffect,
   arcane_beam: drawArcaneBeamAreaEffect,
@@ -10348,15 +10838,19 @@ const ABILITY_CAST_PREVIEW_RENDERERS = Object.freeze({
 });
 
 function drawAbilityCastPreview(self, cameraX, cameraY, now) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const actionDef = getActionDefById(abilityChannel.abilityId);
-  const castHook = getAbilityVisualHook(abilityChannel.abilityId, actionDef, "castPreviewRenderer", "");
+  const actionDef = getActionDefById(previewState.abilityId);
+  const castHook = getAbilityVisualHook(previewState.abilityId, actionDef, "castPreviewRenderer", "");
   const drawCastPreview = ABILITY_CAST_PREVIEW_RENDERERS[castHook];
   if (drawCastPreview) {
     drawCastPreview(self, cameraX, cameraY, now);
+  } else {
+    drawGenericAbilityCastPreview(self, cameraX, cameraY, now, previewState);
   }
+  drawAbilityPreviewSnapMarker(previewState, cameraX, cameraY, now);
 }
 
 function hashString(value) {
@@ -13052,6 +13546,9 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       getCreeperWalkSprite,
       getSpiderWalkSprite,
       getActionDefById,
+      findAbilityDefById,
+      getAbilityEffectiveRangeForSelf,
+      getAbilityPreviewState: getCurrentAbilityPreviewState,
       getAbilityVisualHook,
       getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
         ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
@@ -13145,6 +13642,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       updateTouchJoystick,
       endTouchJoystick,
       resetTouchJoystick,
+      resetMobileAbilityAim,
       hasActiveTouchJoystick: () => touchJoystickState.active,
       getActiveTouchJoystickId: () => touchJoystickState.touchId,
       setStatus,
