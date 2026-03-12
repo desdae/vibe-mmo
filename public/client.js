@@ -12126,6 +12126,8 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       getMobRenderStyle,
       lootBagSparkleConfig: LOOT_BAG_SPARKLE_PARTICLE_CONFIG,
       getLootBagSprite,
+      getTownTileSprite,
+      getVendorNpcSprite,
       getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
         ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
         : null

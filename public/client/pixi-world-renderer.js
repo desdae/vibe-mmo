@@ -22,6 +22,8 @@
           };
     const getLootBagSprite = typeof deps.getLootBagSprite === "function" ? deps.getLootBagSprite : null;
     const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
+    const getTownTileSprite = typeof deps.getTownTileSprite === "function" ? deps.getTownTileSprite : null;
+    const getVendorNpcSprite = typeof deps.getVendorNpcSprite === "function" ? deps.getVendorNpcSprite : null;
     const sanitizeCssColor =
       typeof deps.sanitizeCssColor === "function"
         ? deps.sanitizeCssColor
@@ -337,26 +339,35 @@
       if (!ctx) {
         return null;
       }
-      for (let x = 0; x < widthTiles; x += 1) {
-        for (let y = 0; y < heightTiles; y += 1) {
+      const wallSet = new Set(
+        Array.isArray(wallTiles)
+          ? wallTiles.map((tile) => `${Number(tile.x) || 0}:${Number(tile.y) || 0}`)
+          : []
+      );
+      for (let y = 0; y < heightTiles; y += 1) {
+        for (let x = 0; x < widthTiles; x += 1) {
+          const tileX = minX + x;
+          const tileY = minY + y;
           const px = x * tileSize;
           const py = y * tileSize;
-          ctx.fillStyle = "#2d261e";
-          ctx.fillRect(px, py, tileSize, tileSize);
-          ctx.fillStyle = "rgba(59,51,40,0.35)";
-          ctx.fillRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+          const isWall = wallSet.has(`${tileX}:${tileY}`);
+          const tileSprite = getTownTileSprite ? getTownTileSprite(isWall ? "wall" : "floor", tileX, tileY) : null;
+          if (tileSprite && tileSprite.width > 0 && tileSprite.height > 0) {
+            ctx.drawImage(tileSprite, px, py, tileSize, tileSize);
+          } else {
+            ctx.fillStyle = isWall ? "#7e6041" : "#2d261e";
+            ctx.fillRect(px, py, tileSize, tileSize);
+          }
+          const isGate =
+            (tileY === Number(townLayout.minY) && tileX >= Number(townLayout.northGate && townLayout.northGate.min) && tileX <= Number(townLayout.northGate && townLayout.northGate.max)) ||
+            (tileY === Number(townLayout.maxY) && tileX >= Number(townLayout.southGate && townLayout.southGate.min) && tileX <= Number(townLayout.southGate && townLayout.southGate.max)) ||
+            (tileX === Number(townLayout.minX) && tileY >= Number(townLayout.westGate && townLayout.westGate.min) && tileY <= Number(townLayout.westGate && townLayout.westGate.max)) ||
+            (tileX === Number(townLayout.maxX) && tileY >= Number(townLayout.eastGate && townLayout.eastGate.min) && tileY <= Number(townLayout.eastGate && townLayout.eastGate.max));
+          if (isGate) {
+            ctx.fillStyle = "rgba(232, 196, 129, 0.16)";
+            ctx.fillRect(Math.round(px + 4), Math.round(py + 4), tileSize - 8, tileSize - 8);
+          }
         }
-      }
-      for (const tile of wallTiles || []) {
-        const px = (Number(tile.x) - minX) * tileSize;
-        const py = (Number(tile.y) - minY) * tileSize;
-        if (!Number.isFinite(px) || !Number.isFinite(py)) {
-          continue;
-        }
-        ctx.fillStyle = "#7e6041";
-        ctx.fillRect(px, py, tileSize, tileSize);
-        ctx.fillStyle = "rgba(77,60,42,0.50)";
-        ctx.fillRect(px + 1, py + 1, tileSize - 2, 6);
       }
       const texture = PIXI.Texture.from(surface);
       backgroundTextureCache.set(key, texture);
@@ -1258,6 +1269,15 @@
     }
 
     function getVendorSpriteFrame() {
+      if (getVendorNpcSprite) {
+        const vendorSprite = getVendorNpcSprite();
+        if (vendorSprite && vendorSprite.width > 0 && vendorSprite.height > 0) {
+          return {
+            canvas: vendorSprite,
+            rotation: 0
+          };
+        }
+      }
       const key = "vendor";
       const cached = genericCanvasCache.get(key);
       if (cached) {
