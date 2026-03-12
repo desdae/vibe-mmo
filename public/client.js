@@ -83,6 +83,12 @@ const mobileUiElements = (() => {
   editButton.className = "mobile-utility-button";
   editButton.textContent = "Edit";
 
+  const skillsButton = document.createElement("button");
+  skillsButton.id = "mobile-skills-button";
+  skillsButton.type = "button";
+  skillsButton.className = "mobile-utility-button";
+  skillsButton.textContent = "Skills";
+
   const bagButton = document.createElement("button");
   bagButton.id = "mobile-bag-button";
   bagButton.type = "button";
@@ -91,6 +97,7 @@ const mobileUiElements = (() => {
 
   utilityBar.appendChild(lootButton);
   utilityBar.appendChild(editButton);
+  utilityBar.appendChild(skillsButton);
   utilityBar.appendChild(bagButton);
   if (actionUi) {
     actionUi.insertBefore(utilityBar, actionUi.firstChild);
@@ -132,6 +139,7 @@ const mobileUiElements = (() => {
     utilityBar,
     lootButton,
     editButton,
+    skillsButton,
     bagButton,
     panelTabs,
     inventoryTabButton,
@@ -143,6 +151,7 @@ const mobileUiElements = (() => {
 const mobileUtilityBar = mobileUiElements.utilityBar;
 const mobileLootButton = mobileUiElements.lootButton;
 const mobileActionEditButton = mobileUiElements.editButton;
+const mobileSkillsButton = mobileUiElements.skillsButton;
 const mobileBagButton = mobileUiElements.bagButton;
 const mobilePanelTabs = mobileUiElements.panelTabs;
 const mobileInventoryTabButton = mobileUiElements.inventoryTabButton;
@@ -7345,7 +7354,7 @@ function toggleMobileActionBarEditMode() {
 }
 
 function updateMobileUtilityBar(self = null) {
-  if (!mobileUtilityBar || !mobileLootButton || !mobileActionEditButton || !mobileBagButton) {
+  if (!mobileUtilityBar || !mobileLootButton || !mobileActionEditButton || !mobileSkillsButton || !mobileBagButton) {
     return;
   }
 
@@ -7357,6 +7366,9 @@ function updateMobileUtilityBar(self = null) {
     clearMobilePendingAbilityPlacement();
     mobileActionEditButton.classList.remove("active");
     mobileActionEditButton.textContent = "Edit";
+    mobileSkillsButton.classList.remove("active", "attention");
+    mobileSkillsButton.textContent = "Skills";
+    mobileBagButton.classList.remove("active");
   }
   if (!mobileActive) {
     return;
@@ -7364,10 +7376,14 @@ function updateMobileUtilityBar(self = null) {
 
   const reachableLoot = getLootBagsWithinPickupRange(self);
   const lootCount = reachableLoot.length;
+  const skillPoints = Math.max(0, Math.floor(Number(self && self.skillPoints) || 0));
   mobileLootButton.classList.toggle("hidden", lootCount <= 0);
   mobileLootButton.textContent = lootCount > 1 ? `Loot x${lootCount}` : "Loot";
   mobileActionEditButton.classList.toggle("active", mobileActionBarEditState.active);
   mobileActionEditButton.textContent = mobileActionBarEditState.active ? "Done" : "Edit";
+  mobileSkillsButton.classList.toggle("active", mobilePanelState.open && mobilePanelState.activeTab === "spellbook");
+  mobileSkillsButton.classList.toggle("attention", skillPoints > 0 && !(mobilePanelState.open && mobilePanelState.activeTab === "spellbook"));
+  mobileSkillsButton.textContent = skillPoints > 0 ? `Skills ${skillPoints}` : "Skills";
   mobileBagButton.classList.toggle("active", mobilePanelState.open);
 }
 
@@ -7465,6 +7481,14 @@ if (mobileActionEditButton) {
     event.preventDefault();
     resumeSpatialAudioContext();
     toggleMobileActionBarEditMode();
+  });
+}
+
+if (mobileSkillsButton) {
+  mobileSkillsButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    resumeSpatialAudioContext();
+    toggleSpellbookPanel();
   });
 }
 
