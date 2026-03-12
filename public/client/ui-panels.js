@@ -19,6 +19,10 @@
     const updateInventoryUI = typeof deps.updateInventoryUI === "function" ? deps.updateInventoryUI : () => {};
     const updateSpellbookUI = typeof deps.updateSpellbookUI === "function" ? deps.updateSpellbookUI : () => {};
     const getCurrentSelf = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf : () => null;
+    const getRendererDebugStats =
+      typeof deps.getRendererDebugStats === "function"
+        ? deps.getRendererDebugStats
+        : () => (typeof globalScope.__vibemmoGetRendererDebugStats === "function" ? globalScope.__vibemmoGetRendererDebugStats() : null);
 
     function setInventoryVisible(visible) {
       if (!inventoryPanel) {
@@ -119,8 +123,14 @@
         return;
       }
 
+      const rendererStats = getRendererDebugStats();
+      const rendererLine = rendererStats && typeof rendererStats === "object"
+        ? String(rendererStats.mode || "") === "pixi"
+          ? `Renderer: pixi | Nodes: ${Math.max(0, Number(rendererStats.activeSpriteNodes) || 0)} | Pool: ${Math.max(0, Number(rendererStats.pooledSprites) || 0)} | Particles: ${Math.max(0, Number(rendererStats.particleSprites) || 0)} | Emitters: ${Math.max(0, Number(rendererStats.particleEmitters) || 0)} | Fallback: ${Math.max(0, Number(rendererStats.fallbackNodes) || 0)}`
+          : `Renderer: canvas | Players: ${Math.max(0, Number(rendererStats.players) || 0)} | Mobs: ${Math.max(0, Number(rendererStats.mobs) || 0)} | Projectiles: ${Math.max(0, Number(rendererStats.projectiles) || 0)} | Bags: ${Math.max(0, Number(rendererStats.lootBags) || 0)} | Effects: ${Math.max(0, Number(rendererStats.areaEffects) || 0)}`
+        : "";
       debugNet.textContent =
-        `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps | FPS: ${getFps(now).toFixed(1)} | Mobs: ${Math.max(0, Math.floor(Number(debugState.totalMobCount) || 0))}`;
+        `Net 10s avg | Up: ${formatKbps(debugState.upBytesWindow)} kbps | Down: ${formatKbps(debugState.downBytesWindow)} kbps | FPS: ${getFps(now).toFixed(1)} | Mobs: ${Math.max(0, Math.floor(Number(debugState.totalMobCount) || 0))}${rendererLine ? `\n${rendererLine}` : ""}`;
     }
 
     function setDebugEnabled(enabled) {

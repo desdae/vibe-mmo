@@ -320,10 +320,23 @@
       emittersByKey.clear();
     }
 
+    function getDebugStats() {
+      let particleCount = 0;
+      for (const emitter of emittersByKey.values()) {
+        particleCount += Array.isArray(emitter && emitter.particles) ? emitter.particles.length : 0;
+      }
+      return {
+        emitterCount: emittersByKey.size,
+        particleCount,
+        pooledSpriteCount: spritePool.length
+      };
+    }
+
     return {
       renderWorldEmitter,
       pruneEmitters,
-      clearEmitters
+      clearEmitters,
+      getDebugStats
     };
   }
 

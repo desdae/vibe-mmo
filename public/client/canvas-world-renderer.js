@@ -8,6 +8,14 @@
     if (!ctx || !canvas) {
       return null;
     }
+    let lastDebugStats = {
+      mode: "canvas",
+      players: 0,
+      mobs: 0,
+      projectiles: 0,
+      lootBags: 0,
+      areaEffects: 0
+    };
 
     function renderWorldFrame(frameViewModel) {
       if (!frameViewModel || !frameViewModel.self) {
@@ -20,6 +28,14 @@
       const frameNow = Number(frameViewModel.frameNow) || performance.now();
       const cameraX = Number(frameViewModel.cameraX) || 0;
       const cameraY = Number(frameViewModel.cameraY) || 0;
+      lastDebugStats = {
+        mode: "canvas",
+        players: (Array.isArray(frameViewModel.playerViews) ? frameViewModel.playerViews.length : 0) + 1,
+        mobs: Array.isArray(frameViewModel.mobViews) ? frameViewModel.mobViews.length : 0,
+        projectiles: Array.isArray(frameViewModel.projectileViews) ? frameViewModel.projectileViews.length : 0,
+        lootBags: Array.isArray(frameViewModel.lootBagViews) ? frameViewModel.lootBagViews.length : 0,
+        areaEffects: Array.isArray(frameViewModel.areaEffects) ? frameViewModel.areaEffects.length : 0
+      };
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#0a1621";
@@ -117,7 +133,8 @@
     }
 
     return {
-      renderWorldFrame
+      renderWorldFrame,
+      getDebugStats: () => ({ ...lastDebugStats })
     };
   }
 

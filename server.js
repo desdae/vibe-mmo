@@ -19,6 +19,7 @@ const {
   createClassAbilityDefsBroadcaster
 } = require("./server/runtime/config-helpers");
 const { createRuntimeBootstrap } = require("./server/runtime/runtime-bootstrap");
+const { createBenchmarkSceneTools } = require("./server/runtime/benchmark-scene");
 const { sendJson, sendBinary } = require("./server/network/transport");
 const { registerWsConnections } = require("./server/network/ws-connections");
 const { createStateBroadcaster } = require("./server/network/state-broadcast");
@@ -728,6 +729,22 @@ const inspectBot = botTickSystem.inspectBot;
 const destroyBot = botTickSystem.destroyBot;
 const setBotFollow = botTickSystem.setBotFollow;
 const clearBotFollow = botTickSystem.clearBotFollow;
+const benchmarkSceneTools = createBenchmarkSceneTools({
+  players,
+  mobs,
+  mobSpawners,
+  lootBags,
+  activeAreaEffects,
+  projectiles,
+  createBotPlayer,
+  destroyBot,
+  getMobConfig: () => MOB_CONFIG,
+  createMob,
+  clearMobCast,
+  centerX: MAP_WIDTH * 0.5,
+  centerY: MAP_HEIGHT * 0.5
+});
+const createBenchmarkScene = benchmarkSceneTools.createBenchmarkScene;
 const configOrchestrator = createConfigOrchestrator({
   paths: {
     serverConfigPath: SERVER_CONFIG_PATH,
@@ -960,6 +977,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     allocatePlayerId,
     createPlayer,
     createBotPlayer,
+    createBenchmarkScene,
     listBots,
     inspectBot,
     destroyBot,

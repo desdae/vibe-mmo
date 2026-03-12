@@ -106,13 +106,26 @@
       }
     }
 
+    function getDebugStats() {
+      if (rendererMode === PIXI_RENDERER && pixiWorldRenderer && typeof pixiWorldRenderer.getDebugStats === "function") {
+        return pixiWorldRenderer.getDebugStats();
+      }
+      if (canvasWorldRenderer && typeof canvasWorldRenderer.getDebugStats === "function") {
+        return canvasWorldRenderer.getDebugStats();
+      }
+      return {
+        mode: rendererMode
+      };
+    }
+
     applyRendererVisibility();
 
     return {
       getRendererMode,
       setRendererMode,
       resize,
-      renderWorldFrame
+      renderWorldFrame,
+      getDebugStats
     };
   }
 

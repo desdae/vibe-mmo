@@ -9,12 +9,6 @@ const SERVER_SCRIPT = path.join(ROOT, "server.js");
 const PORT_BASE = 3140;
 const SAMPLE_INTERVAL_MS = 500;
 const TOTAL_SAMPLES = 28;
-const BOT_COUNTS = Object.freeze({
-  mage: 4,
-  ranger: 4,
-  warrior: 4
-});
-
 function ensureTmpDir() {
   fs.mkdirSync(TMP_DIR, { recursive: true });
 }
@@ -114,20 +108,16 @@ async function runScenario(port, rendererMode) {
     await page.evaluate((rendererMode) => window.__vibemmoTest.setRendererMode(rendererMode), rendererMode);
     await page.waitForFunction((rendererMode) => window.__vibemmoTest.getRendererMode() === rendererMode, rendererMode);
 
-    for (const [classType, count] of Object.entries(BOT_COUNTS)) {
-      for (let i = 0; i < count; i += 1) {
-        await page.evaluate((payload) => window.__vibemmoTest.send(payload), {
-          type: "create_bot_player",
-          classType
-        });
-        await delay(70);
-      }
-    }
-
     await page.evaluate(() => window.__vibemmoTest.setMove(0, -1));
     await delay(4200);
     await page.evaluate(() => window.__vibemmoTest.stopMove());
-    await delay(2000);
+    await delay(1200);
+    await page.evaluate(() => window.__vibemmoTest.send({ type: "admin_spawn_benchmark_scene" }));
+    await page.waitForFunction(() => {
+      const state = window.__vibemmoTest.getState();
+      return Array.isArray(state.mobs) && state.mobs.length >= 16 && Array.isArray(state.players) && state.players.length >= 6;
+    }, null, { timeout: 12000 });
+    await delay(1200);
 
     const samples = [];
     for (let i = 0; i < TOTAL_SAMPLES; i += 1) {

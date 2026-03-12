@@ -12144,6 +12144,8 @@ const rendererBootstrap = sharedCreateRendererBootstrap
       pixiWorldRenderer
     })
   : null;
+globalThis.__vibemmoGetRendererDebugStats = () =>
+  rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function" ? rendererBootstrap.getDebugStats() : null;
 const renderLoopTools = sharedCreateRenderLoopTools
   ? sharedCreateRenderLoopTools({
       ctx,
@@ -12248,10 +12250,21 @@ function getAutomationDebugMetricsSnapshot() {
   };
 }
 
+function getAutomationRendererStatsSnapshot() {
+  if (rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function") {
+    const stats = rendererBootstrap.getDebugStats();
+    return stats && typeof stats === "object" ? { ...stats } : { mode: rendererBootstrap.getRendererMode() };
+  }
+  return {
+    mode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"
+  };
+}
+
 function buildAutomationSnapshot() {
   return {
     rendererMode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas",
     debugMetrics: getAutomationDebugMetricsSnapshot(),
+    rendererStats: getAutomationRendererStatsSnapshot(),
     self: gameState.self
       ? {
           id: myId,

@@ -924,6 +924,10 @@ body {
   z-index: 9;
 }
 
+#debug-net {
+  white-space: pre-line;
+}
+
 #debug-panel h2 {
   margin: 0 0 6px;
   font-size: 13px;

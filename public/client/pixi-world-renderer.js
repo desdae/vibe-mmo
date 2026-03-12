@@ -80,6 +80,19 @@
     const humanoidCanvasCache = new Map();
     const areaEffectCanvasCache = new Map();
     const backgroundTextureCache = new Map();
+    const genericCanvasCache = new Map();
+    let lastDebugStats = {
+      mode: "pixi",
+      players: 0,
+      mobs: 0,
+      projectiles: 0,
+      lootBags: 0,
+      areaEffects: 0,
+      activeSpriteNodes: 0,
+      pooledSprites: 0,
+      particleEmitters: 0,
+      particleSprites: 0
+    };
     const spritePools = {
       loot: [],
       projectile: [],
@@ -1084,6 +1097,199 @@
       };
     }
 
+    function getGenericPlayerSpriteFrame(player, isSelf) {
+      const classType = String(player && player.classType || "").toLowerCase();
+      const key = `player:${classType}:${isSelf ? "self" : "other"}`;
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const canvas = createRuntimeCanvas(42, 54);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      const bodyColor = sanitizeCssColor(
+        classType === "mage" ? "#6ab6ff" : classType === "ranger" ? "#74d68e" : classType === "warrior" ? "#cbd5e1" : "#dbe7f2"
+      ) || "#dbe7f2";
+      ctx.fillStyle = "rgba(16,24,39,0.45)";
+      ctx.beginPath();
+      ctx.ellipse(21, 43, 8, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#06131d";
+      ctx.lineWidth = 2;
+      ctx.fillStyle = bodyColor;
+      ctx.beginPath();
+      ctx.arc(21, 15, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.roundRect(15, 21, 12, 17, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(13, 27); ctx.lineTo(29, 27);
+      ctx.moveTo(18, 38); ctx.lineTo(15, 46);
+      ctx.moveTo(24, 38); ctx.lineTo(27, 46);
+      ctx.stroke();
+      if (isSelf) {
+        ctx.strokeStyle = "rgba(255,255,255,0.75)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(21, 15, 8.6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      const frame = { canvas, rotation: 0 };
+      genericCanvasCache.set(key, frame);
+      return frame;
+    }
+
+    function getGenericMobSpriteFrame(mob) {
+      const kind = getMobKind(mob);
+      const key = `mob:${kind}`;
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const canvas = createRuntimeCanvas(44, 50);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      if (kind === "creeper") {
+        ctx.fillStyle = "rgba(16,24,39,0.40)";
+        ctx.beginPath();
+        ctx.ellipse(22, 40, 9, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#111827";
+        ctx.lineWidth = 2;
+        ctx.fillStyle = "#f6f5ef";
+        ctx.beginPath();
+        ctx.roundRect(12, 10, 20, 24, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#e84444";
+        ctx.fillRect(17, 20, 10, 7);
+        const frame = { canvas, rotation: 0 };
+        genericCanvasCache.set(key, frame);
+        return frame;
+      }
+      const fillColor = sanitizeCssColor(
+        kind === "zombie" ? "#79bf56" :
+        kind === "skeleton" || kind === "skeleton_archer" ? "#e7edf5" :
+        kind === "orc" ? "#5fa24a" : "#c2d3df"
+      ) || "#c2d3df";
+      ctx.fillStyle = "rgba(16,24,39,0.40)";
+      ctx.beginPath();
+      ctx.ellipse(22, 41, 8, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "#0d1621";
+      ctx.lineWidth = 2;
+      ctx.fillStyle = fillColor;
+      ctx.beginPath();
+      ctx.arc(22, 15, kind === "orc" ? 8 : 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(16, 24); ctx.lineTo(28, 24);
+      ctx.moveTo(19, 24); ctx.lineTo(16, 34);
+      ctx.moveTo(25, 24); ctx.lineTo(28, 34);
+      ctx.stroke();
+      if (kind === "skeleton_archer") {
+        ctx.strokeStyle = "#8d6d48";
+        ctx.beginPath();
+        ctx.arc(31, 16, 7, -1.05, 1.05);
+        ctx.stroke();
+      } else if (kind === "skeleton") {
+        ctx.strokeStyle = "#e8eef6";
+        ctx.beginPath();
+        ctx.moveTo(29, 15); ctx.lineTo(35, 8);
+        ctx.stroke();
+      } else if (kind === "orc") {
+        ctx.strokeStyle = "#d3dbe7";
+        ctx.beginPath();
+        ctx.moveTo(14, 15); ctx.lineTo(8, 8);
+        ctx.moveTo(30, 15); ctx.lineTo(36, 8);
+        ctx.stroke();
+      }
+      const frame = { canvas, rotation: 0 };
+      genericCanvasCache.set(key, frame);
+      return frame;
+    }
+
+    function getGenericProjectileSpriteFrame(projectile, frameNow) {
+      const color = getProjectileColor(projectile);
+      const pulseBucket = Math.floor((Number(frameNow) || 0) / 50) % 4;
+      const key = `projectile:${color}:${pulseBucket}`;
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const canvas = createRuntimeCanvas(22, 22);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      const colorHex = `#${(color >>> 0).toString(16).padStart(6, "0")}`;
+      const glowRadius = 6.6 + pulseBucket * 0.45;
+      const gradient = ctx.createRadialGradient(11, 11, 0, 11, 11, glowRadius);
+      gradient.addColorStop(0, `${colorHex}`);
+      gradient.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(11, 11, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = colorHex;
+      ctx.beginPath();
+      ctx.arc(11, 11, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      const frame = { canvas, rotation: 0 };
+      genericCanvasCache.set(key, frame);
+      return frame;
+    }
+
+    function getVendorSpriteFrame() {
+      const key = "vendor";
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const canvas = createRuntimeCanvas(38, 46);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      ctx.fillStyle = "rgba(16,24,39,0.40)";
+      ctx.beginPath();
+      ctx.ellipse(19, 37, 8, 4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#6c3e22";
+      ctx.beginPath();
+      ctx.arc(19, 12, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#9b5d30";
+      ctx.fillRect(13, 20, 12, 13);
+      ctx.fillStyle = "#e4c45e";
+      ctx.beginPath();
+      ctx.arc(25, 18, 3, 0, Math.PI * 2);
+      ctx.fill();
+      const frame = { canvas, rotation: 0 };
+      genericCanvasCache.set(key, frame);
+      return frame;
+    }
+
 
     function drawPlayerGraphic(graphics, player, isSelf) {
       const classType = String(player && player.classType || "").toLowerCase();
@@ -1604,18 +1810,12 @@
       const vendor = frameViewModel.townVendor;
       if (vendor) {
         if (!vendorNode) {
-          vendorNode = createLabeledNode();
+          vendorNode = createLabeledSpriteNode();
           vendorLayer.addChild(vendorNode.container);
         }
         const p = worldToScreen(Number(vendor.x) + 0.5, Number(vendor.y) + 0.5, cameraX, cameraY, width, height);
-        updateLabeledNode(vendorNode, p.x, p.y, String(vendor.name || "Quartermaster"), 1, 1, (graphics) => {
+        updateLabeledSpriteNode(vendorNode, p.x, p.y, String(vendor.name || "Quartermaster"), 1, 1, getVendorSpriteFrame(), (graphics) => {
           graphics.clear();
-          graphics.beginFill(0x6c3e22, 1);
-          graphics.drawCircle(0, -4, 7);
-          graphics.endFill();
-          graphics.beginFill(0xe4c45e, 1);
-          graphics.drawCircle(5, 0, 3);
-          graphics.endFill();
         });
         vendorNode.hpBack.clear();
         vendorNode.hpFill.clear();
@@ -1636,7 +1836,7 @@
             String(entry.mob.name || "Mob"),
             entry.mob.hp,
             entry.mob.maxHp,
-            spriteFrame,
+            spriteFrame || getGenericMobSpriteFrame(entry.mob),
             (graphics) => drawMobGraphic(graphics, entry.mob)
           );
         },
@@ -1658,7 +1858,7 @@
             String(entry.player.name || "Player"),
             entry.player.hp,
             entry.player.maxHp,
-            spriteFrame,
+            spriteFrame || getGenericPlayerSpriteFrame(entry.player, !!entry.isSelf),
             (graphics) => drawPlayerGraphic(graphics, entry.player, !!entry.isSelf)
           );
         },
@@ -1666,14 +1866,9 @@
       );
 
       const projectileSpriteEntries = [];
-      const projectileFallbackEntries = [];
       for (const entry of frameViewModel.projectileViews) {
         const spriteFrame = getProjectileSpriteFrame ? getProjectileSpriteFrame(entry.projectile, frameNow) : null;
-        if (spriteFrame && spriteFrame.canvas) {
-          projectileSpriteEntries.push({ entry, spriteFrame });
-        } else {
-          projectileFallbackEntries.push(entry);
-        }
+        projectileSpriteEntries.push({ entry, spriteFrame: spriteFrame && spriteFrame.canvas ? spriteFrame : getGenericProjectileSpriteFrame(entry.projectile, frameNow) });
       }
       syncSpriteMap(
         projectileNodes,
@@ -1688,13 +1883,10 @@
       );
       syncNodeMap(
         projectileFallbackNodes,
-        projectileFallbackEntries,
+        [],
         (entry) => entry.projectile.id,
         () => createSimpleNode(),
-        (node, entry) => {
-          const p = worldToScreen(Number(entry.projectile.x) + 0.5, Number(entry.projectile.y) + 0.5, cameraX, cameraY, width, height);
-          updateSimpleNode(node, p.x, p.y, (graphics) => drawProjectileGraphic(graphics, entry.projectile, frameNow));
-        },
+        () => {},
         projectileFallbackLayer
       );
       if (pixiParticleSystem && typeof pixiParticleSystem.renderWorldEmitter === "function") {
@@ -1718,6 +1910,35 @@
       }
 
       updateTooltip(frameViewModel);
+      const particleStats =
+        pixiParticleSystem && typeof pixiParticleSystem.getDebugStats === "function"
+          ? pixiParticleSystem.getDebugStats()
+          : { emitterCount: 0, particleCount: 0, pooledSpriteCount: 0 };
+      lastDebugStats = {
+        mode: "pixi",
+        players: (Array.isArray(frameViewModel.playerViews) ? frameViewModel.playerViews.length : 0) + 1,
+        mobs: Array.isArray(frameViewModel.mobViews) ? frameViewModel.mobViews.length : 0,
+        projectiles: Array.isArray(frameViewModel.projectileViews) ? frameViewModel.projectileViews.length : 0,
+        lootBags: Array.isArray(frameViewModel.lootBagViews) ? frameViewModel.lootBagViews.length : 0,
+        areaEffects: Array.isArray(frameViewModel.areaEffects) ? frameViewModel.areaEffects.length : 0,
+        activeSpriteNodes:
+          playerNodes.size +
+          mobNodes.size +
+          projectileNodes.size +
+          lootNodes.size +
+          areaUnderlayNodes.size +
+          areaOverlayNodes.size +
+          (vendorNode ? 1 : 0),
+        pooledSprites:
+          spritePools.loot.length +
+          spritePools.projectile.length +
+          spritePools.areaUnderlay.length +
+          spritePools.areaOverlay.length +
+          Number(particleStats.pooledSpriteCount || 0),
+        particleEmitters: Number(particleStats.emitterCount || 0),
+        particleSprites: Number(particleStats.particleCount || 0),
+        fallbackNodes: lootFallbackNodes.size + projectileFallbackNodes.size
+      };
       app.renderer.render(stage);
     }
 
@@ -1726,7 +1947,8 @@
       resize,
       show,
       hide,
-      renderWorldFrame
+      renderWorldFrame,
+      getDebugStats: () => ({ ...lastDebugStats })
     };
   }
 
