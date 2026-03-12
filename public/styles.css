@@ -930,6 +930,36 @@ body {
   text-transform: uppercase;
 }
 
+.debug-renderer-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.debug-renderer-controls label {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #9ab7ca;
+}
+
+.debug-renderer-controls select,
+.debug-renderer-controls button {
+  border: 1px solid rgba(98, 161, 193, 0.48);
+  background: rgba(9, 20, 31, 0.9);
+  color: #dcefff;
+  border-radius: 6px;
+  padding: 7px 8px;
+  font: inherit;
+}
+
+.debug-renderer-controls button {
+  cursor: pointer;
+  background: rgba(29, 82, 111, 0.92);
+}
+
 .debug-admin {
   margin-top: 10px;
   display: grid;

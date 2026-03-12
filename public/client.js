@@ -33,6 +33,8 @@ const equipmentPanel = document.getElementById("equipment-panel");
 const equipmentGrid = document.getElementById("equipment-grid");
 const debugPanel = document.getElementById("debug-panel");
 const debugNet = document.getElementById("debug-net");
+const debugRendererSelect = document.getElementById("debug-renderer-select");
+const debugRendererApplyButton = document.getElementById("debug-renderer-apply");
 const debugAdminControls = document.getElementById("debug-admin-controls");
 const debugBotClassSelect = document.getElementById("debug-bot-class");
 const debugCreateBotButton = document.getElementById("debug-create-bot");
@@ -1037,6 +1039,22 @@ function updateAdminDebugControls() {
   if (debugToggleGearLabButton) {
     debugToggleGearLabButton.classList.toggle("hidden", !isAdmin);
   }
+}
+
+function updateRendererDebugControls() {
+  if (!debugRendererSelect) {
+    return;
+  }
+  const mode = rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas";
+  debugRendererSelect.value = mode === "pixi" ? "pixi" : "canvas";
+}
+
+function applyRendererModeFromDebugControls() {
+  if (!debugRendererSelect || !rendererBootstrap) {
+    return;
+  }
+  rendererBootstrap.setRendererMode(debugRendererSelect.value);
+  updateRendererDebugControls();
 }
 
 function handleCreateBotPlayer() {
@@ -5703,6 +5721,12 @@ function initializeDpsPanel() {
 }
 
 function initializeDebugAdminControls() {
+  if (debugRendererApplyButton) {
+    debugRendererApplyButton.addEventListener("click", applyRendererModeFromDebugControls);
+  }
+  if (debugRendererSelect) {
+    debugRendererSelect.addEventListener("change", applyRendererModeFromDebugControls);
+  }
   if (debugCreateBotButton) {
     debugCreateBotButton.addEventListener("click", handleCreateBotPlayer);
   }
@@ -5739,6 +5763,7 @@ function initializeDebugAdminControls() {
     }
     hideBotContextMenu();
   });
+  updateRendererDebugControls();
   updateAdminDebugControls();
 }
 

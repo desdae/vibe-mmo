@@ -89,6 +89,14 @@
       <div id="debug-panel" class="hidden">
         <h2>Debug</h2>
         <div id="debug-net"></div>
+        <div id="debug-renderer-controls" class="debug-renderer-controls">
+          <label for="debug-renderer-select">Renderer</label>
+          <select id="debug-renderer-select">
+            <option value="canvas">Canvas</option>
+            <option value="pixi">Pixi WebGL</option>
+          </select>
+          <button id="debug-renderer-apply" type="button">Apply</button>
+        </div>
         <div id="debug-admin-controls" class="debug-admin hidden">
           <label for="debug-bot-class">Bot class</label>
           <select id="debug-bot-class"></select>
@@ -126,6 +134,7 @@
       <div id="bot-context-menu" class="bot-context-menu hidden"></div>
     </div>
 
+    <script src="/vendor/pixi.min.js"></script>
     <script src="/shared/protocol.js"></script>
     <script src="/shared/protocol-codecs.js"></script>
     <script src="/shared/ability-visuals.js"></script>
