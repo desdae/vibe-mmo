@@ -112,6 +112,7 @@
     const dynamicAreaEffectRuntime = new Map();
     const backgroundTextureCache = new Map();
     const genericCanvasCache = new Map();
+    let staticSpriteCachesWarmed = false;
     let lastDebugStats = {
       mode: "pixi",
       players: 0,
@@ -323,6 +324,21 @@
       canvas.width = Math.max(1, Math.ceil(Number(width) || 1));
       canvas.height = Math.max(1, Math.ceil(Number(height) || 1));
       return canvas;
+    }
+
+    function drawCanvasRoundedRect(targetCtx, x, y, width, height, radius) {
+      const r = Math.min(radius, width * 0.5, height * 0.5);
+      targetCtx.beginPath();
+      targetCtx.moveTo(x + r, y);
+      targetCtx.lineTo(x + width - r, y);
+      targetCtx.quadraticCurveTo(x + width, y, x + width, y + r);
+      targetCtx.lineTo(x + width, y + height - r);
+      targetCtx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+      targetCtx.lineTo(x + r, y + height);
+      targetCtx.quadraticCurveTo(x, y + height, x, y + height - r);
+      targetCtx.lineTo(x, y + r);
+      targetCtx.quadraticCurveTo(x, y, x + r, y);
+      targetCtx.closePath();
     }
 
     function getDynamicAreaEffectCanvas(key, width, height, now, debugKey = "") {
@@ -557,6 +573,7 @@
             hashString
           })
         : null;
+      prewarmStaticSpriteCaches();
       if (app.ticker && typeof app.ticker.stop === "function") {
         app.ticker.stop();
       }
@@ -723,6 +740,13 @@
       configureCanvasTexture(texture, modeKey, true);
       cacheByMode.set(modeKey, texture);
       return texture;
+    }
+
+    function warmCanvasTexture(canvas, samplingMode = "linear") {
+      if (!canvas || Number(canvas.width) <= 0 || Number(canvas.height) <= 0) {
+        return null;
+      }
+      return getTextureFromCanvas(canvas, samplingMode);
     }
 
     function buildPlayerHumanoidStyle(player) {
@@ -1194,6 +1218,185 @@
       return canvas;
     }
 
+    function getHydraSummonIconCanvas(frameIndex = 0) {
+      const key = `hydra-summon-icon:${Math.max(0, Math.floor(Number(frameIndex) || 0)) % 6}`;
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached.canvas;
+      }
+      const size = 76;
+      const canvas = createRuntimeCanvas(size, size);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      const phase = (Math.max(0, Math.floor(Number(frameIndex) || 0)) % 6) / 6;
+      const bob = Math.sin(phase * Math.PI * 2);
+      const flicker = Math.cos(phase * Math.PI * 2);
+
+      ctx.translate(size / 2, size / 2 + 4);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      const tailGlow = ctx.createRadialGradient(0, 22, 0, 0, 22, 26);
+      tailGlow.addColorStop(0, "rgba(255, 196, 96, 0.34)");
+      tailGlow.addColorStop(0.5, "rgba(255, 112, 34, 0.18)");
+      tailGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = tailGlow;
+      ctx.beginPath();
+      ctx.arc(0, 22, 26, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(63, 16, 9, 0.92)";
+      ctx.beginPath();
+      ctx.ellipse(0, 21, 17, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 171, 82, 0.72)";
+      ctx.lineWidth = 1.8;
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(255, 96, 41, 0.82)";
+      ctx.lineWidth = 8;
+      const neckEndX = bob * 5;
+      const neckEndY = -9 - Math.abs(flicker) * 2;
+      ctx.beginPath();
+      ctx.moveTo(-1.5, 14);
+      ctx.quadraticCurveTo(-7 + bob * 2.8, 2, neckEndX, neckEndY);
+      ctx.stroke();
+
+      const headX = neckEndX + 1.5;
+      const headY = neckEndY - 4.5;
+      const headGlow = ctx.createRadialGradient(headX, headY, 0, headX, headY, 15);
+      headGlow.addColorStop(0, "rgba(255, 248, 196, 0.88)");
+      headGlow.addColorStop(0.42, "rgba(255, 153, 74, 0.48)");
+      headGlow.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = headGlow;
+      ctx.beginPath();
+      ctx.arc(headX, headY, 15, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(221, 63, 30, 0.98)";
+      ctx.beginPath();
+      ctx.ellipse(headX, headY, 7.5, 6.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(255, 208, 129, 0.82)";
+      ctx.lineWidth = 1.3;
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(255, 214, 115, 0.98)";
+      ctx.beginPath();
+      ctx.arc(headX + 1.2, headY - 1, 2.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(255, 191, 111, 0.76)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(headX + 3.8, headY - 1.8);
+      ctx.lineTo(headX + 10, headY - 5.5 - Math.abs(bob) * 2.8);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(headX + 2, headY + 4);
+      ctx.lineTo(headX + 8.5, headY + 8.5 + Math.abs(bob) * 1.5);
+      ctx.stroke();
+
+      genericCanvasCache.set(key, { canvas, rotation: 0 });
+      return canvas;
+    }
+
+    function getBallistaSummonIconCanvas(frameIndex = 0) {
+      const key = `ballista-summon-icon:${Math.max(0, Math.floor(Number(frameIndex) || 0)) % 6}`;
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached.canvas;
+      }
+      const size = 76;
+      const canvas = createRuntimeCanvas(size, size);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      const phase = (Math.max(0, Math.floor(Number(frameIndex) || 0)) % 6) / 6 * Math.PI * 2;
+      const recoil = Math.sin(phase) * 2.6;
+
+      ctx.translate(size / 2, size / 2 + 6);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      ctx.fillStyle = "rgba(42, 28, 18, 0.92)";
+      ctx.beginPath();
+      ctx.ellipse(0, 16, 15, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(207, 169, 114, 0.92)";
+      ctx.lineWidth = 3.4;
+      ctx.beginPath();
+      ctx.moveTo(-9, 14);
+      ctx.lineTo(-2, 0);
+      ctx.lineTo(9, 14);
+      ctx.moveTo(-4, 16);
+      ctx.lineTo(0, 4);
+      ctx.lineTo(4, 16);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(138, 101, 58, 0.98)";
+      ctx.strokeStyle = "rgba(241, 222, 174, 0.72)";
+      ctx.lineWidth = 1.5;
+      drawCanvasRoundedRect(ctx, -14, -2, 28, 8, 3);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.strokeStyle = "rgba(228, 214, 191, 0.96)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(-12, -1);
+      ctx.lineTo(14 + recoil, -13);
+      ctx.moveTo(-12, 5);
+      ctx.lineTo(14 + recoil, 17);
+      ctx.moveTo(14 + recoil, -13);
+      ctx.lineTo(14 + recoil, 17);
+      ctx.stroke();
+
+      ctx.fillStyle = "rgba(230, 219, 196, 0.96)";
+      ctx.beginPath();
+      ctx.moveTo(18 + recoil, 2);
+      ctx.lineTo(11 + recoil, -2.8);
+      ctx.lineTo(13.5 + recoil, 2);
+      ctx.lineTo(11 + recoil, 6.8);
+      ctx.closePath();
+      ctx.fill();
+
+      genericCanvasCache.set(key, { canvas, rotation: 0 });
+      return canvas;
+    }
+
+    function prewarmStaticSpriteCaches() {
+      if (staticSpriteCachesWarmed) {
+        return;
+      }
+      staticSpriteCachesWarmed = true;
+
+      warmCanvasTexture(getCaltropIconCanvas());
+      for (let frameIndex = 0; frameIndex < 6; frameIndex += 1) {
+        warmCanvasTexture(getHydraSummonIconCanvas(frameIndex));
+        warmCanvasTexture(getBallistaSummonIconCanvas(frameIndex));
+      }
+      if (getVendorNpcSprite) {
+        warmCanvasTexture(getVendorNpcSprite());
+      }
+      if (getLootBagSprite) {
+        for (let variant = 0; variant < 8; variant += 1) {
+          warmCanvasTexture(getLootBagSprite(variant));
+        }
+      }
+    }
+
     function drawDetailedCaltropsTexture(ctx, size, radius) {
       const cx = size * 0.5;
       const cy = size * 0.5;
@@ -1230,7 +1433,6 @@
       const cy = size * 0.5;
       const count = Math.max(1, Math.round(Number(effect && effect.summonCount) || 1));
       const formationRadius = Math.max(0, Number(effect && effect.formationRadius) || 0.9);
-      const phase = phaseBucket / 6;
       const abilityId = String(effect && effect.abilityId || "").toLowerCase();
       const positions =
         globalScope.VibeSummonLayout && typeof globalScope.VibeSummonLayout.computeSummonFormationPositions === "function"
@@ -1248,49 +1450,21 @@
         const px = cx + point.x * tileSize;
         const py = cy + point.y * tileSize;
         if (isHydra) {
-          ctx.fillStyle = "rgba(59,13,8,0.74)";
-          ctx.beginPath();
-          ctx.ellipse(px, py + 7, 10, 5.2, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = "rgba(255,192,104,0.52)";
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.arc(px, py + 4, 8.5, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.strokeStyle = "rgba(255,96,41,0.82)";
-          ctx.lineWidth = 5;
-          ctx.beginPath();
-          ctx.moveTo(px - 1, py + 5);
-          ctx.quadraticCurveTo(px - 6 + Math.sin(phase * Math.PI * 2 + point.index) * 2, py - 3, px + 1, py - 10);
-          ctx.stroke();
-          ctx.fillStyle = "rgba(221,63,30,0.98)";
-          ctx.beginPath();
-          ctx.ellipse(px + 1, py - 15, 5.5, 4.8, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.fillStyle = "rgba(255,214,115,0.98)";
-          ctx.beginPath();
-          ctx.arc(px + 2, py - 16, 1.8, 0, Math.PI * 2);
-          ctx.fill();
+          const hydraIcon = getHydraSummonIconCanvas((phaseBucket + point.index) % 6);
+          if (hydraIcon) {
+            const scale = 0.44;
+            const width = hydraIcon.width * scale;
+            const height = hydraIcon.height * scale;
+            ctx.drawImage(hydraIcon, px - width * 0.5, py - height * 0.56 - 2, width, height);
+          }
         } else {
-          ctx.fillStyle = "rgba(60,40,24,0.78)";
-          ctx.beginPath();
-          ctx.ellipse(px, py + 7.5, 10.5, 4.8, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = "rgba(207,169,114,0.92)";
-          ctx.lineWidth = 2.4;
-          ctx.beginPath();
-          ctx.moveTo(px - 8, py + 5);
-          ctx.lineTo(px - 2, py - 7);
-          ctx.lineTo(px + 8, py + 5);
-          ctx.stroke();
-          ctx.strokeStyle = "rgba(228,214,191,0.96)";
-          ctx.lineWidth = 1.35;
-          ctx.beginPath();
-          ctx.moveTo(px - 10, py - 3);
-          ctx.lineTo(px + 10, py - 3);
-          ctx.moveTo(px + 10, py - 3);
-          ctx.lineTo(px + 15, py + Math.sin(phase * Math.PI * 2 + point.index) * 2);
-          ctx.stroke();
+          const ballistaIcon = getBallistaSummonIconCanvas((phaseBucket + point.index) % 6);
+          if (ballistaIcon) {
+            const scale = 0.46;
+            const width = ballistaIcon.width * scale;
+            const height = ballistaIcon.height * scale;
+            ctx.drawImage(ballistaIcon, px - width * 0.5, py - height * 0.56 - 1.5, width, height);
+          }
         }
       }
     }
