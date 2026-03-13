@@ -1,3 +1,6 @@
+const { createEffectEngine } = require("../gameplay/effects/effect-engine");
+const { buildItemUseEffectDefsFromItemDef } = require("../gameplay/effects/item-use-effect-defs");
+
 function createJoinedPlayer(ws, msg, deps) {
   const joinResult = deps.createPlayer({
     ws,
@@ -104,18 +107,13 @@ function handleUseItemMessage(player, msg, deps) {
     return;
   }
   const itemDef = deps.ITEM_CONFIG.itemDefs.get(itemId);
-  if (!itemDef || !itemDef.effect || typeof itemDef.effect.type !== "string") {
+  const effectDefs = buildItemUseEffectDefsFromItemDef(itemDef);
+  if (!effectDefs.length) {
     return;
   }
-  const effectType = String(itemDef.effect.type).trim().toLowerCase();
-  if (effectType !== "heal" && effectType !== "mana") {
-    return;
-  }
-  const effectValue = Math.max(0, Number(itemDef.effect.value) || 0);
-  const effectDuration = Math.max(0, Number(itemDef.effect.duration) || 0);
-  if (effectValue <= 0) {
-    return;
-  }
+  const effectType = String(effectDefs[0].type || "").trim().toLowerCase();
+  const effectValue = Math.max(0, Number(effectDefs[0].amount) || 0);
+  const effectDuration = Math.max(0, Number(effectDefs[0].duration) || 0);
   if (!deps.consumeInventoryItem(player, itemId, 1)) {
     return;
   }
@@ -123,21 +121,41 @@ function handleUseItemMessage(player, msg, deps) {
   let healedNow = 0;
   let restoredManaNow = 0;
   let overTime = false;
-  if (effectType === "heal") {
-    if (effectDuration > 0) {
-      overTime = deps.addHealOverTimeEffect(player, effectValue, effectDuration);
-    } else {
-      const beforeHp = player.hp;
-      player.hp = deps.clamp(player.hp + effectValue, 0, player.maxHp);
-      healedNow = Math.max(0, player.hp - beforeHp);
+
+  const effectEngine = createEffectEngine({ clamp: deps.clamp });
+  const compiled = effectEngine.compile(effectDefs, { defaultTrigger: "onUse" });
+  effectEngine.run(compiled, "onUse", {
+    now: Date.now(),
+    source: { id: player.id },
+    target: player,
+    ops: {
+      applyHeal: (target, amount, durationSec) => {
+        if (!target) {
+          return;
+        }
+        if ((Number(durationSec) || 0) > 0) {
+          // `amount` is total value across `durationSec`, matching existing potion behavior.
+          overTime = deps.addHealOverTimeEffect(target, amount, durationSec) || overTime;
+          return;
+        }
+        const beforeHp = target.hp;
+        target.hp = deps.clamp(target.hp + amount, 0, target.maxHp);
+        healedNow += Math.max(0, target.hp - beforeHp);
+      },
+      applyMana: (target, amount, durationSec) => {
+        if (!target) {
+          return;
+        }
+        if ((Number(durationSec) || 0) > 0) {
+          overTime = deps.addManaOverTimeEffect(target, amount, durationSec) || overTime;
+          return;
+        }
+        const beforeMana = target.mana;
+        target.mana = deps.clamp(target.mana + amount, 0, target.maxMana);
+        restoredManaNow += Math.max(0, target.mana - beforeMana);
+      }
     }
-  } else if (effectDuration > 0) {
-    overTime = deps.addManaOverTimeEffect(player, effectValue, effectDuration);
-  } else {
-    const beforeMana = player.mana;
-    player.mana = deps.clamp(player.mana + effectValue, 0, player.maxMana);
-    restoredManaNow = Math.max(0, player.mana - beforeMana);
-  }
+  });
 
   deps.sendInventoryState(player);
   deps.syncPlayerCopperFromInventory(player, true);
