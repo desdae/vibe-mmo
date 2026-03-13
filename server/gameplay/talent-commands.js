@@ -72,12 +72,15 @@ function createTalentCommandTools(options = {}) {
   }
 
   function getTalentTreeData(player) {
+    console.log('[talent] getTalentTreeData for:', player.name, 'class:', player.classType);
     if (!player || !player.classType) {
+      console.log('[talent] Invalid player');
       return null;
     }
 
     const talentTree = talentSystem.getTalentTreeForClass(player.classType);
     if (!talentTree) {
+      console.log('[talent] No talent tree found');
       return null;
     }
 
@@ -86,9 +89,12 @@ function createTalentCommandTools(options = {}) {
       player.level,
       player.talents
     );
+    console.log('[talent] Player level:', player.level, 'availablePoints:', availablePoints);
+    console.log('[talent] Player talents:', player.talents);
 
     const totalPoints = talentSystem.getTotalTalentPoints(player.classType, player.level);
     const spentPoints = talentSystem.getSpentTalentPoints(player.talents);
+    console.log('[talent] totalPoints:', totalPoints, 'spentPoints:', spentPoints);
 
     const talentsWithState = talentTree.talents.map(talent => {
       const talentId = String(talent.id || "").trim().toLowerCase();
@@ -107,22 +113,27 @@ function createTalentCommandTools(options = {}) {
         }
       }
 
+      const canUpgrade = prerequisitesMet && currentRank < maxRank && availablePoints > 0;
+      console.log('[talent] Talent:', talent.name, 'currentRank:', currentRank, 'maxRank:', maxRank, 'prereqsMet:', prerequisitesMet, 'canUpgrade:', canUpgrade);
+
       return {
         ...talent,
         currentRank,
         maxRank,
-        canUpgrade: prerequisitesMet && currentRank < maxRank && availablePoints > 0,
+        canUpgrade,
         prerequisitesMet
       };
     });
 
-    return {
+    const result = {
       className: talentTree.className,
       talents: talentsWithState,
       availablePoints,
       totalPoints,
       spentPoints
     };
+    console.log('[talent] Returning talent tree data:', result.availablePoints, 'points');
+    return result;
   }
 
   return {
