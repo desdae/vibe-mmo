@@ -82,6 +82,8 @@ function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSp
     const movementSpeed = clamp(Number.isFinite(classSpeedRaw) ? classSpeedRaw : basePlayerSpeed, 0.1, 20);
     const startingItems = parseClassStartingItems(entry.startingItems, itemDefs, normalizeItemEntries);
     const startingEquipment = parseClassStartingEquipment(entry.startingEquipment, itemDefs);
+    const talentTree = String(entry.talentTree || "").trim().toLowerCase() || null;
+    const talentPointsPerLevel = Math.max(1, Number(entry.talentPointsPerLevel) || 1);
     const def = {
       id,
       name: String(entry.name || id).slice(0, 48),
@@ -91,6 +93,8 @@ function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSp
       manaRegen,
       speed: movementSpeed,
       movementSpeed,
+      talentTree,
+      talentPointsPerLevel,
       renderStyle: parseHumanoidRenderStyle(entry.renderStyle),
       abilities,
       abilityLevels,
