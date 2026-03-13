@@ -398,6 +398,21 @@ const allocateMobId = worldState.allocateMobId;
 const allocateLootBagId = worldState.allocateLootBagId;
 const allocateAreaEffectId = worldState.allocateAreaEffectId;
 const allocateItemInstanceId = worldState.allocateItemInstanceId;
+
+function broadcastChatMessage(sender, text) {
+  const message = {
+    type: "chat_message",
+    sender: sender.name,
+    text: text,
+    isAdmin: !!sender.isAdmin
+  };
+  players.forEach(p => {
+    if (p.ws) {
+      sendJson(p.ws, message);
+    }
+  });
+}
+
 const worldEventQueues = createWorldEventQueues({
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT
@@ -1265,7 +1280,8 @@ const runtimeBootstrap = createRuntimeBootstrap({
     rollEquipmentItemAt,
     consumeInventoryItem,
     addHealOverTimeEffect,
-    addManaOverTimeEffect
+    addManaOverTimeEffect,
+    broadcastChatMessage
   }),
   entityUpdateDeps: {
     getPendingHealAmount,

@@ -47,7 +47,8 @@ function createWsConnectionDeps({
   rollEquipmentItemAt,
   consumeInventoryItem,
   addHealOverTimeEffect,
-  addManaOverTimeEffect
+  addManaOverTimeEffect,
+  broadcastChatMessage
 }) {
   return {
     sendJson,
@@ -96,6 +97,7 @@ function createWsConnectionDeps({
     consumeInventoryItem,
     addHealOverTimeEffect,
     addManaOverTimeEffect,
+    broadcastChatMessage,
     allocatePlayerId,
     createPlayer,
     createBotPlayer,

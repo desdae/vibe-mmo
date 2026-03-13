@@ -589,6 +589,20 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "chat_message") {
+    if (player.hp <= 0) {
+      return { player };
+    }
+    const text = String(msg.text || "").trim();
+    if (!text || text.length > 200) {
+      return { player };
+    }
+    
+    // Broadcast chat message to all players
+    deps.broadcastChatMessage(player, text);
+    return { player };
+  }
+
   return { player };
 }
 
