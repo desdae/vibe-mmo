@@ -42,6 +42,9 @@
       },
       teleport: {
         iconRenderer: "blink"
+      },
+      charge: {
+        iconRenderer: "charge"
       }
     },
     byId: {

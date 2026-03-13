@@ -248,14 +248,17 @@ function loadAbilityConfigFromDisk(configPath, options) {
     const speed = Math.max(0, Number(entry.speed) || 0);
     const coneAngleDeg = clamp(Number(entry.coneAngle) || 60, 5, 180);
     const coneCos = Math.cos((coneAngleDeg * Math.PI) / 360);
+    const deliveryType = entry.delivery && typeof entry.delivery === "object" ? String(entry.delivery.type || "").trim().toLowerCase() : "";
     const kind =
       typeof entry.kind === "string" && entry.kind.trim()
         ? entry.kind.trim()
-        : speed > 0
-          ? "projectile"
-          : coneAngleDeg > 0
-            ? "meleeCone"
-            : defaultAbilityKind;
+        : deliveryType === "charge"
+          ? "charge"
+          : speed > 0
+            ? "projectile"
+            : coneAngleDeg > 0
+              ? "meleeCone"
+              : defaultAbilityKind;
 
     const castMsRaw = Number(entry.castMs);
     const castTimeRaw = Number(entry.castTime);
