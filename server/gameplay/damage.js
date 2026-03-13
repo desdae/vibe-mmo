@@ -9,6 +9,9 @@ function createDamageTools(options = {}) {
   const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
   const clamp =
     typeof options.clamp === "function" ? options.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
+  const onTalentSpellHit = typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : () => {};
+  const onTalentKill = typeof options.onTalentKill === "function" ? options.onTalentKill : () => {};
+  const onTalentDamageDealt = typeof options.onTalentDamageDealt === "function" ? options.onTalentDamageDealt : () => {};
 
   function rollLeechAmount(baseAmount, percent) {
     const amount = Math.max(0, Number(baseAmount) || 0);
@@ -43,6 +46,12 @@ function createDamageTools(options = {}) {
     if (dealt > 0) {
       queueDamageEvent(mob, dealt, "mob", ownerId);
       markMobProvokedByPlayer(mob, ownerId);
+      
+      // Trigger talent effects on damage dealt
+      if (ownerPlayer) {
+        onTalentDamageDealt(ownerPlayer, mob, dealt);
+      }
+      
       if (ownerPlayer && extra.allowLeech !== false) {
         const healAmount = rollLeechAmount(dealt, ownerPlayer.lifeSteal);
         if (healAmount > 0) {
@@ -56,6 +65,10 @@ function createDamageTools(options = {}) {
     }
     if (mob.hp <= 0) {
       killMob(mob, ownerId);
+      // Trigger talent on-kill effects
+      if (ownerPlayer) {
+        onTalentKill(ownerPlayer, mob);
+      }
     }
     return dealt;
   }

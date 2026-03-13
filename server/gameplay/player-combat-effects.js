@@ -204,6 +204,14 @@ function createPlayerCombatEffectTools(options = {}) {
         now
       );
     }
+    
+    // Trigger talent on-spell-hit effects (for PvP)
+    const onTalentSpellHit = typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : () => {};
+    const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
+    const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
+    if (ownerPlayer) {
+      onTalentSpellHit(ownerPlayer, player, abilityDef, now);
+    }
   }
 
   function applyProjectileHitEffectsToPlayer(player, projectile, dealtDamage, now = Date.now()) {

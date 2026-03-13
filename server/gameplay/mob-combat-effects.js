@@ -185,6 +185,14 @@ function createMobCombatEffectTools(options = {}) {
         now
       );
     }
+    
+    // Trigger talent on-spell-hit effects
+    const onTalentSpellHit = typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : () => {};
+    const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
+    const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
+    if (ownerPlayer) {
+      onTalentSpellHit(ownerPlayer, mob, abilityDef, now);
+    }
   }
 
   return {

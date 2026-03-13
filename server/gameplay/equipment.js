@@ -397,6 +397,7 @@ function createEquipmentTools(options = {}) {
     const armorPercent = getEquippedStatTotal(player, "armor.percent");
     const baseBlockChance = Math.max(0, getEquippedBaseStatTotal(player, "blockChance"));
     const talentStats = getTalentStats(player);
+    const talentBuffStats = getTalentBuffStats(player);
     return {
       maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat") + (talentStats["maxHp.flat"] || 0),
       maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent") + (talentStats["maxHp.percent"] || 0),
@@ -418,8 +419,10 @@ function createEquipmentTools(options = {}) {
       castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent") + (talentStats["castSpeed.percent"] || 0),
       armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))) + Math.round(talentStats["armor.flat"] || 0),
       blockChance: clamp(baseBlockChance, 0, 0.75),
-      meleeDamagePercent: getEquippedStatTotal(player, "meleeDamage.percent") + (talentStats["meleeDamage.percent"] || 0),
-      spellPower: getEquippedStatTotal(player, "spellPower.flat") + (talentStats["spellPower.flat"] || 0)
+      meleeDamagePercent: getEquippedStatTotal(player, "meleeDamage.percent") + (talentStats["meleeDamage.percent"] || 0) + (talentBuffStats["meleeDamage.percent"] || 0),
+      spellPower: getEquippedStatTotal(player, "spellPower.flat") + (talentStats["spellPower.flat"] || 0),
+      damageReductionPercent: (talentStats["damageReduction.percent"] || 0) + (talentBuffStats["damageReduction.percent"] || 0),
+      conditionalDamageReductionPercent: (talentStats["conditionalDamageReductionPercent"] || 0) + (talentBuffStats["conditionalDamageReductionPercent"] || 0)
     };
   }
 

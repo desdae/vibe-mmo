@@ -424,6 +424,7 @@ const equipmentTools = createEquipmentTools({
   equipmentConfigProvider: () => EQUIPMENT_CONFIG,
   getServerConfig: () => SERVER_CONFIG,
   getTalentStats: (player) => coreServices.talentSystem?.calculateTalentStats(player.classType, player.talents) || {},
+  getTalentBuffStats,
   allocateItemInstanceId,
   randomInt,
   clamp,
@@ -636,7 +637,8 @@ const mobCombatEffectTools = createMobCombatEffectTools({
   clamp,
   randomInt,
   applyDamageToMob,
-  getAbilityDotDamageRange
+  getAbilityDotDamageRange,
+  getPlayerById: (playerId) => players.get(String(playerId || "")) || null
 });
 const stunMob = mobCombatEffectTools.stunMob;
 const applySlowToMob = mobCombatEffectTools.applySlowToMob;
@@ -698,6 +700,31 @@ const tickPlayerDotEffects = playerCombatEffectTools.tickPlayerDotEffects;
 const applyAbilityHitEffectsToPlayer = playerCombatEffectTools.applyAbilityHitEffectsToPlayer;
 const applyProjectileHitEffectsToPlayer = playerCombatEffectTools.applyProjectileHitEffectsToPlayer;
 const stunPlayer = playerCombatEffectTools.stunPlayer;
+const applySlowToPlayer = playerCombatEffectTools.applySlowToPlayer;
+
+// Create talent effect tools after combat tools are available
+const { createTalentEffectTools } = require("./server/gameplay/talent-effects");
+const talentEffectTools = createTalentEffectTools({
+  randomInt,
+  clamp,
+  talentSystem: coreServices.talentSystem,
+  stunMob,
+  stunPlayer,
+  applySlowToMob,
+  applySlowToPlayer
+});
+const onTalentSpellHit = talentEffectTools.onTalentSpellHit;
+const onTalentKill = talentEffectTools.onTalentKill;
+const onTalentDamageDealt = talentEffectTools.onTalentDamageDealt;
+const tickTalentBuffs = talentEffectTools.tickTalentBuffs;
+const getTalentBuffStats = talentEffectTools.getTalentBuffStats;
+
+// Wire up talent effects in damage and combat tools
+damageTools.onTalentSpellHit = onTalentSpellHit;
+damageTools.onTalentKill = onTalentKill;
+damageTools.onTalentDamageDealt = onTalentDamageDealt;
+mobCombatEffectTools.onTalentSpellHit = onTalentSpellHit;
+playerCombatEffectTools.onTalentSpellHit = onTalentSpellHit;
 const notifyAbilityUsed = (player, abilityDef, now = Date.now()) => {
   if (!player || !player.ws || typeof sendJson !== "function" || !abilityDef) {
     return;
@@ -922,6 +949,7 @@ const playerTickSystem = createPlayerTickSystem({
   tickPlayerManaEffects,
   tickPlayerBuffs,
   tickPlayerDotEffects,
+  tickTalentBuffs,
   clearPlayerCast,
   playerHasMovementInput,
   clearPlayerBuffs,

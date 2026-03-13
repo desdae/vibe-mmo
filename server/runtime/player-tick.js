@@ -10,6 +10,7 @@ function createPlayerTickSystem({
   tickPlayerManaEffects,
   tickPlayerBuffs,
   tickPlayerDotEffects,
+  tickTalentBuffs,
   clearPlayerCast,
   playerHasMovementInput,
   clearPlayerBuffs,
@@ -80,6 +81,9 @@ function createPlayerTickSystem({
 
     for (const player of players.values()) {
       tickPlayerBuffs(player, now);
+      if (typeof tickTalentBuffs === "function") {
+        tickTalentBuffs(player, now);
+      }
       if (player.hp > 0 && player.hp < player.maxHp && player.healthRegen > 0) {
         player.hp = clamp(player.hp + player.healthRegen * dt, 0, player.maxHp);
       }

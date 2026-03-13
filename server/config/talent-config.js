@@ -218,6 +218,30 @@ function createTalentSystem(options = {}) {
     return Math.max(0, totalPoints - spentPoints);
   }
   
+  function getTalentEffects(classType, playerTalents) {
+    const effects = [];
+    const talentTree = getTalentTreeForClass(classType);
+    if (!talentTree || !Array.isArray(talentTree.talents) || !playerTalents) {
+      return effects;
+    }
+
+    for (const [talentId, rank] of Object.entries(playerTalents)) {
+      const talentRank = Math.max(0, Number(rank) || 0);
+      if (talentRank <= 0) continue;
+
+      const talent = getTalentById(classType, talentId);
+      if (!talent || !Array.isArray(talent.effects)) continue;
+
+      for (const effect of talent.effects) {
+        if (effect.onSpellHit || effect.onKill || effect.onDamageDealt) {
+          effects.push({ ...effect, rank: talentRank });
+        }
+      }
+    }
+
+    return effects;
+  }
+
   return {
     getTalentTreeForClass,
     getTalentPointsPerLevel,
