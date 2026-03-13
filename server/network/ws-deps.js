@@ -2,6 +2,7 @@ function createWsConnectionDeps({
   getClassConfig,
   getAbilityConfig,
   getItemConfig,
+  getTalentTreeData,
   allocatePlayerId,
   createPlayer,
   createBotPlayer,
@@ -34,6 +35,7 @@ function createWsConnectionDeps({
   usePlayerAbility,
   updatePlayerCastTarget,
   levelUpPlayerAbility,
+  spendTalentPoint,
   tryPickupLootBag,
   getVendorNpc,
   isPlayerNearVendor,
@@ -58,6 +60,8 @@ function createWsConnectionDeps({
     get ITEM_CONFIG() {
       return getItemConfig();
     },
+    getTalentTreeData,
+    spendTalentPoint,
     MAP_WIDTH: mapWidth,
     MAP_HEIGHT: mapHeight,
     VISIBILITY_RANGE: visibilityRange,

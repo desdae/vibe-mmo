@@ -9,17 +9,23 @@ function loadTalentConfigFromDisk(configPath) {
 function createTalentSystem(options = {}) {
   const talentConfig = options.talentConfig || {};
   const classConfig = options.classConfig || {};
-  
+
   function getTalentTreeForClass(classType) {
-    const classDef = classConfig[String(classType || "").trim().toLowerCase()];
+    const normalizedType = String(classType || "").trim().toLowerCase();
+    const classDef = classConfig instanceof Map 
+      ? classConfig.get(normalizedType) 
+      : classConfig[normalizedType];
     if (!classDef || !classDef.talentTree) {
       return null;
     }
     return talentConfig[String(classDef.talentTree).trim().toLowerCase()] || null;
   }
-  
+
   function getTalentPointsPerLevel(classType) {
-    const classDef = classConfig[String(classType || "").trim().toLowerCase()];
+    const normalizedType = String(classType || "").trim().toLowerCase();
+    const classDef = classConfig instanceof Map 
+      ? classConfig.get(normalizedType) 
+      : classConfig[normalizedType];
     if (!classDef) {
       return 1;
     }
