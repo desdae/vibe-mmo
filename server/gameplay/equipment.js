@@ -64,6 +64,7 @@ function createEquipmentTools(options = {}) {
   const equipmentConfigProvider =
     typeof options.equipmentConfigProvider === "function" ? options.equipmentConfigProvider : () => null;
   const getServerConfig = typeof options.getServerConfig === "function" ? options.getServerConfig : () => ({});
+  const getTalentStats = typeof options.getTalentStats === "function" ? options.getTalentStats : () => ({});
   const allocateItemInstanceId =
     typeof options.allocateItemInstanceId === "function" ? options.allocateItemInstanceId : () => String(Date.now());
   const randomInt =
@@ -395,27 +396,30 @@ function createEquipmentTools(options = {}) {
     const baseArmor = Math.max(0, getEquippedBaseStatTotal(player, "armor"));
     const armorPercent = getEquippedStatTotal(player, "armor.percent");
     const baseBlockChance = Math.max(0, getEquippedBaseStatTotal(player, "blockChance"));
+    const talentStats = getTalentStats(player);
     return {
-      maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat"),
-      maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent"),
-      maxManaFlat: getEquippedStatTotal(player, "maxMana.flat"),
-      maxManaPercent: getEquippedStatTotal(player, "maxMana.percent"),
-      healthRegenFlat: getEquippedStatTotal(player, "healthRegen.flat"),
-      healthRegenPercent: getEquippedStatTotal(player, "healthRegen.percent"),
-      manaRegenFlat: getEquippedStatTotal(player, "manaRegen.flat"),
-      manaRegenPercent: getEquippedStatTotal(player, "manaRegen.percent"),
-      moveSpeedPercent: getEquippedStatTotal(player, "moveSpeed.percent"),
-      critChancePercent: getEquippedStatTotal(player, "critChance.percent"),
-      critDamagePercent: getEquippedStatTotal(player, "critDamage.percent"),
-      lifeStealPercent: getEquippedStatTotal(player, "lifeSteal.percent"),
-      manaStealPercent: getEquippedStatTotal(player, "manaSteal.percent"),
-      lifeOnKillFlat: getEquippedStatTotal(player, "lifeOnKill.flat"),
-      manaOnKillFlat: getEquippedStatTotal(player, "manaOnKill.flat"),
-      thornsFlat: getEquippedStatTotal(player, "thorns.flat"),
-      attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent"),
-      castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent"),
-      armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))),
-      blockChance: clamp(baseBlockChance, 0, 0.75)
+      maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat") + (talentStats["maxHp.flat"] || 0),
+      maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent") + (talentStats["maxHp.percent"] || 0),
+      maxManaFlat: getEquippedStatTotal(player, "maxMana.flat") + (talentStats["maxMana.flat"] || 0),
+      maxManaPercent: getEquippedStatTotal(player, "maxMana.percent") + (talentStats["maxMana.percent"] || 0),
+      healthRegenFlat: getEquippedStatTotal(player, "healthRegen.flat") + (talentStats["healthRegen.flat"] || 0),
+      healthRegenPercent: getEquippedStatTotal(player, "healthRegen.percent") + (talentStats["healthRegen.percent"] || 0),
+      manaRegenFlat: getEquippedStatTotal(player, "manaRegen.flat") + (talentStats["manaRegen.flat"] || 0),
+      manaRegenPercent: getEquippedStatTotal(player, "manaRegen.percent") + (talentStats["manaRegen.percent"] || 0),
+      moveSpeedPercent: getEquippedStatTotal(player, "moveSpeed.percent") + (talentStats["moveSpeed.percent"] || 0),
+      critChancePercent: getEquippedStatTotal(player, "critChance.percent") + (talentStats["critChance.percent"] || 0),
+      critDamagePercent: getEquippedStatTotal(player, "critDamage.percent") + (talentStats["critDamage.percent"] || 0),
+      lifeStealPercent: getEquippedStatTotal(player, "lifeSteal.percent") + (talentStats["lifeSteal.percent"] || 0),
+      manaStealPercent: getEquippedStatTotal(player, "manaSteal.percent") + (talentStats["manaSteal.percent"] || 0),
+      lifeOnKillFlat: getEquippedStatTotal(player, "lifeOnKill.flat") + (talentStats["lifeOnKill.flat"] || 0),
+      manaOnKillFlat: getEquippedStatTotal(player, "manaOnKill.flat") + (talentStats["manaOnKill.flat"] || 0),
+      thornsFlat: getEquippedStatTotal(player, "thorns.flat") + (talentStats["thorns.flat"] || 0),
+      attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent") + (talentStats["attackSpeed.percent"] || 0),
+      castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent") + (talentStats["castSpeed.percent"] || 0),
+      armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))) + Math.round(talentStats["armor.flat"] || 0),
+      blockChance: clamp(baseBlockChance, 0, 0.75),
+      meleeDamagePercent: getEquippedStatTotal(player, "meleeDamage.percent") + (talentStats["meleeDamage.percent"] || 0),
+      spellPower: getEquippedStatTotal(player, "spellPower.flat") + (talentStats["spellPower.flat"] || 0)
     };
   }
 
@@ -574,6 +578,15 @@ function createEquipmentTools(options = {}) {
     player.thorns = Math.max(0, derived.thornsFlat);
     player.attackSpeedMultiplier = Math.max(0.1, 1 + derived.attackSpeedPercent / 100);
     player.castSpeedMultiplier = Math.max(0.1, 1 + derived.castSpeedPercent / 100);
+    player.meleeDamageBonusPercent = Math.max(0, derived.meleeDamagePercent);
+    player.spellPower = Math.max(0, derived.spellPower);
+    
+    // Handle conditional talent effects (e.g., damage reduction when HP below 30%)
+    const hpPercent = player.hp / Math.max(1, player.maxHp);
+    player.damageReductionPercent = Math.max(0, derived.damageReductionPercent || 0);
+    if (hpPercent < 0.3 && derived.conditionalDamageReductionPercent) {
+      player.damageReductionPercent += derived.conditionalDamageReductionPercent;
+    }
   }
 
   function getPlayerModifiedAbilityCooldownMs(player, abilityDef, abilityLevel, getBaseCooldownMs) {

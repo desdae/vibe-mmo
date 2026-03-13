@@ -423,6 +423,7 @@ const broadcastClassAndAbilityDefs = classAbilityDefsBroadcaster.broadcastClassA
 const equipmentTools = createEquipmentTools({
   equipmentConfigProvider: () => EQUIPMENT_CONFIG,
   getServerConfig: () => SERVER_CONFIG,
+  getTalentStats: (player) => coreServices.talentSystem?.calculateTalentStats(player.classType, player.talents) || {},
   allocateItemInstanceId,
   randomInt,
   clamp,

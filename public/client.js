@@ -4563,7 +4563,27 @@ function renderTalentTreeWithData(self, talentTreeData) {
       node.classList.add("available");
     }
 
-    node.title = `${talent.name} (Rank ${talent.currentRank}/${talent.maxRank})\n${talent.description}${isLocked ? '\n[Locked - Complete prerequisites]' : ''}${canUpgrade ? '\n[Click to upgrade]' : ''}${isMaxRank ? '\n[Max Rank]' : ''}`;
+    // Format description with actual values
+    let formattedDesc = talent.description || "";
+    const effects = Array.isArray(talent.effects) ? talent.effects : [];
+    for (const effect of effects) {
+      if (effect.value !== undefined) {
+        formattedDesc = formattedDesc.replace(/{value}/g, String(effect.value * talent.currentRank || effect.value));
+      }
+      if (effect.onSpellHit) {
+        formattedDesc = formattedDesc.replace(/{chance}/g, String(effect.onSpellHit.chance * talent.currentRank || effect.onSpellHit.chance));
+        formattedDesc = formattedDesc.replace(/{duration}/g, String(effect.onSpellHit.duration || 1));
+      }
+      if (effect.conditionalStat && effect.conditionalStat.condition === "hpBelow30Percent") {
+        formattedDesc = formattedDesc.replace(/{value}/g, String(effect.conditionalStat.value * talent.currentRank || effect.conditionalStat.value));
+      }
+    }
+    // Replace any remaining placeholders with base values
+    formattedDesc = formattedDesc.replace(/{value}/g, "X");
+    formattedDesc = formattedDesc.replace(/{chance}/g, "X");
+    formattedDesc = formattedDesc.replace(/{duration}/g, "X");
+
+    node.title = `${talent.name} (Rank ${talent.currentRank}/${talent.maxRank})\n${formattedDesc}${isLocked ? '\n[Locked - Complete prerequisites]' : ''}${canUpgrade ? '\n[Click to upgrade]' : ''}${isMaxRank ? '\n[Max Rank]' : ''}`;
 
     const icon = document.createElement("div");
     icon.className = "talent-icon";

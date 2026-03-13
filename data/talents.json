@@ -5,7 +5,7 @@
       {
         "id": "juggernaut",
         "name": "Juggernaut",
-        "description": "Increases maximum health by 4% per rank.",
+        "description": "Increases maximum health by {value}% per rank.",
         "maxRank": 5,
         "icon": "health_boost",
         "tier": 1,
@@ -17,7 +17,7 @@
       {
         "id": "iron_will",
         "name": "Iron Will",
-        "description": "Increases armor by 3% per rank.",
+        "description": "Increases armor by {value}% per rank.",
         "maxRank": 5,
         "icon": "armor_up",
         "tier": 1,
@@ -29,7 +29,7 @@
       {
         "id": "enraged_strikes",
         "name": "Enraged Strikes",
-        "description": "Increases melee damage by 2% per rank.",
+        "description": "Increases melee damage by {value}% per rank.",
         "maxRank": 5,
         "icon": "melee_damage",
         "tier": 1,
@@ -153,7 +153,7 @@
       {
         "id": "frostbite",
         "name": "Frostbite",
-        "description": "Your spells have a 2% chance per rank to freeze the target for 1s.",
+        "description": "Your spells have a {chance}% chance per rank to freeze the target for {duration}s.",
         "maxRank": 5,
         "icon": "frost",
         "tier": 1,

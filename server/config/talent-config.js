@@ -142,33 +142,55 @@ function createTalentSystem(options = {}) {
     if (!talentTree || !Array.isArray(talentTree.talents) || !playerTalents) {
       return stats;
     }
-    
+
     for (const [talentId, rank] of Object.entries(playerTalents)) {
       const talentRank = Math.max(0, Number(rank) || 0);
       if (talentRank <= 0) {
         continue;
       }
-      
+
       const talent = getTalentById(classType, talentId);
       if (!talent || !Array.isArray(talent.effects)) {
         continue;
       }
-      
+
       for (const effect of talent.effects) {
+        // Handle direct stat bonuses
         if (effect.stat) {
           const statKey = String(effect.stat);
           const valuePerRank = Number(effect.value) || 0;
           const totalValue = valuePerRank * talentRank;
-          
+
           if (statKey.endsWith(".percent")) {
             stats[statKey] = (Number(stats[statKey]) || 0) + totalValue;
           } else {
             stats[statKey] = (Number(stats[statKey]) || 0) + totalValue;
           }
         }
+        
+        // Handle conditional stat bonuses (e.g., damage reduction when HP < 30%)
+        if (effect.conditionalStat && effect.conditionalStat.condition) {
+          const condition = effect.conditionalStat.condition;
+          const statKey = String(effect.conditionalStat.stat);
+          const valuePerRank = Number(effect.conditionalStat.value) || 0;
+          const totalValue = valuePerRank * talentRank;
+          
+          if (condition === "hpBelow30Percent") {
+            stats["conditionalDamageReductionPercent"] = (Number(stats["conditionalDamageReductionPercent"]) || 0) + totalValue;
+          }
+        }
+        
+        // Handle on-damage-dealt effects (e.g., attack power stacks)
+        if (effect.onDamageDealt) {
+          const statKey = String(effect.onDamageDealt.stat);
+          const valuePerRank = Number(effect.onDamageDealt.value) || 0;
+          const totalValue = valuePerRank * talentRank;
+          const maxStacks = Math.max(1, Number(effect.onDamageDealt.maxStacks) || 1);
+          stats[`${statKey}.onDamageDealt`] = { value: totalValue, maxStacks };
+        }
       }
     }
-    
+
     return stats;
   }
   
