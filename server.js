@@ -424,7 +424,7 @@ const equipmentTools = createEquipmentTools({
   equipmentConfigProvider: () => EQUIPMENT_CONFIG,
   getServerConfig: () => SERVER_CONFIG,
   getTalentStats: (player) => coreServices.talentSystem?.calculateTalentStats(player.classType, player.talents) || {},
-  getTalentBuffStats,
+  getTalentBuffStats: () => ({}),  // Placeholder, will be updated after talentEffectTools created
   allocateItemInstanceId,
   randomInt,
   clamp,
@@ -725,6 +725,9 @@ damageTools.onTalentKill = onTalentKill;
 damageTools.onTalentDamageDealt = onTalentDamageDealt;
 mobCombatEffectTools.onTalentSpellHit = onTalentSpellHit;
 playerCombatEffectTools.onTalentSpellHit = onTalentSpellHit;
+
+// Update equipment tools with actual getTalentBuffStats
+equipmentTools.getTalentBuffStats = getTalentBuffStats;
 const notifyAbilityUsed = (player, abilityDef, now = Date.now()) => {
   if (!player || !player.ws || typeof sendJson !== "function" || !abilityDef) {
     return;
