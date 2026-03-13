@@ -2965,6 +2965,7 @@ function buildAbilityTooltip(abilityId) {
   if (String(kind).toLowerCase() === "meleecone") {
     tooltipDamagePercentBonus += getActiveSelfBuffStatTotal("meleeDamagePercent");
   }
+  tooltipDamagePercentBonus += getAbilityTalentModNumber(self, ability.id, "damageBonusPercent");
   if (tooltipDamagePercentBonus !== 0 && totalDamageMax > 0) {
     const damageScale = Math.max(0, 1 + tooltipDamagePercentBonus / 100);
     totalDamageMin = Math.max(0, Math.floor(totalDamageMin * damageScale));
@@ -2973,7 +2974,7 @@ function buildAbilityTooltip(abilityId) {
   const durationMs = Math.max(0, Number(ability.durationMs) || 0);
   const durationPerLevelMs = Math.max(0, Number(ability.durationPerLevelMs) || 0);
   const totalDurationMs = durationMs + durationPerLevelMs * Math.max(0, level - 1);
-  const stunDurationMs = Math.max(0, Number(ability.stunDurationMs) || 0);
+  const stunDurationMs = getAbilityEffectiveStunDurationMsForSelf(ability.id, self);
   const slowDurationMs = Math.max(0, Number(ability.slowDurationMs) || 0);
   const rawSlowMultiplier = Number(ability.slowMultiplier);
   const slowMultiplier = Number.isFinite(rawSlowMultiplier)
@@ -3912,17 +3913,63 @@ function getSelfAbilityLevel(self, abilityId, fallbackLevel = 1) {
   return level;
 }
 
+function getSelfTalentAbilityMods(self) {
+  const tree = self && self.talentTree && typeof self.talentTree === "object" ? self.talentTree : null;
+  const mods = tree && tree.abilityMods && typeof tree.abilityMods === "object" ? tree.abilityMods : null;
+  return mods && typeof mods === "object" ? mods : null;
+}
+
+function getAbilityTalentModNumber(self, abilityId, bucketKey) {
+  const mods = getSelfTalentAbilityMods(self);
+  const bucket = mods && mods[bucketKey] && typeof mods[bucketKey] === "object" ? mods[bucketKey] : null;
+  if (!bucket) {
+    return 0;
+  }
+  const id = String(abilityId || "").trim();
+  if (!id) {
+    return 0;
+  }
+  const value = Number(bucket[id]) || 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getAbilityEffectiveStunDurationMsForSelf(abilityId, self) {
+  const ability = abilityDefsById.get(String(abilityId || ""));
+  const base = Math.max(0, Number(ability && ability.stunDurationMs) || 0);
+  if (!ability) {
+    return base;
+  }
+  const bonus = getAbilityTalentModNumber(self, ability.id, "stunDurationBonusMs");
+  if (bonus === 0) {
+    return base;
+  }
+  return Math.max(0, base + bonus);
+}
+
 function getAbilityEffectiveRangeForSelf(abilityId, self) {
   const ability = abilityDefsById.get(String(abilityId || ""));
   if (!ability) {
     return Math.max(0, Number(getActionDefById(abilityId).range) || 0);
   }
   const level = getSelfAbilityLevel(self, ability.id, 1);
-  if (sharedGetAbilityRangeForLevel) {
-    return Math.max(0, Number(sharedGetAbilityRangeForLevel(ability, level)) || 0);
+  const baseRange = sharedGetAbilityRangeForLevel
+    ? Math.max(0, Number(sharedGetAbilityRangeForLevel(ability, level)) || 0)
+    : (() => {
+        const levelOffset = Math.max(0, level - 1);
+        return Math.max(
+          0,
+          Math.max(0, Number(ability.range) || 0) + Math.max(0, Number(ability.rangePerLevel) || 0) * levelOffset
+        );
+      })();
+
+  if (baseRange <= 0) {
+    return baseRange;
   }
-  const levelOffset = Math.max(0, level - 1);
-  return Math.max(0, Math.max(0, Number(ability.range) || 0) + Math.max(0, Number(ability.rangePerLevel) || 0) * levelOffset);
+  const bonus = getAbilityTalentModNumber(self, ability.id, "rangeBonus");
+  if (bonus === 0) {
+    return baseRange;
+  }
+  return Math.max(0, baseRange + bonus);
 }
 
 function getAbilityEffectiveCooldownMsForSelf(abilityId, self) {
@@ -3935,11 +3982,18 @@ function getAbilityEffectiveCooldownMsForSelf(abilityId, self) {
     return baseCooldownMs;
   }
   const level = getSelfAbilityLevel(self, ability.id, 1);
-  if (sharedGetAbilityCooldownMsForLevel) {
-    return Math.max(0, Number(sharedGetAbilityCooldownMsForLevel(ability, level)) || 0);
+  const baseForLevel = sharedGetAbilityCooldownMsForLevel
+    ? Math.max(0, Number(sharedGetAbilityCooldownMsForLevel(ability, level)) || 0)
+    : (() => {
+        const levelOffset = Math.max(0, level - 1);
+        return Math.max(0, baseCooldownMs - Math.max(0, Number(ability.cooldownReductionPerLevel) || 0) * 1000 * levelOffset);
+      })();
+
+  const reductionMs = getAbilityTalentModNumber(self, ability.id, "cooldownReductionMs");
+  if (reductionMs === 0) {
+    return baseForLevel;
   }
-  const levelOffset = Math.max(0, level - 1);
-  return Math.max(0, baseCooldownMs - Math.max(0, Number(ability.cooldownReductionPerLevel) || 0) * 1000 * levelOffset);
+  return Math.max(0, baseForLevel - reductionMs);
 }
 
 function parseAbilityLevelsPayload(rawLevels) {
@@ -4522,6 +4576,10 @@ function handleTalentUpdate(msg) {
   // Store the fresh talent tree data
   self.talentTree = msg.talentTree;
   self.talentPoints = msg.talentTree.availablePoints || 0;
+  if (selfStatic) {
+    selfStatic.talentTree = msg.talentTree;
+    selfStatic.talentPoints = self.talentPoints;
+  }
   console.log('[talent] Updated talent points:', self.talentPoints);
   
   if (talentPanel && !talentPanel.classList.contains("hidden")) {
