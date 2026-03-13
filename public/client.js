@@ -34,6 +34,10 @@ const spellbookSummary = (() => {
   spellbookPanel.insertBefore(summary, spellbookGrid);
   return summary;
 })();
+const talentPanel = document.getElementById("talent-panel");
+const talentTreeContainer = document.getElementById("talent-tree-container");
+const talentPointsDisplay = document.getElementById("talent-points-display");
+const talentPointsAvailableEl = document.getElementById("talent-points-available");
 const actionBar = document.getElementById("action-bar");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
@@ -4442,6 +4446,143 @@ function updateSpellbookUI(self) {
   }
 }
 
+let talentTreeState = {
+  signature: "",
+  availablePoints: 0
+};
+
+function buildTalentTreeSignature(self) {
+  if (!self) return "";
+  return `${self.classType}:${self.level}:${self.talentPoints}:${JSON.stringify(self.talents || {})}`;
+}
+
+function renderTalentTree(self) {
+  if (!talentTreeContainer || !talentPointsAvailableEl) {
+    return;
+  }
+  
+  if (!self || !self.talentTree) {
+    talentTreeContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">No talent tree available</div>';
+    talentPointsAvailableEl.textContent = "0";
+    talentTreeState.signature = "";
+    return;
+  }
+  
+  const signature = buildTalentTreeSignature(self);
+  if (signature === talentTreeState.signature) {
+    return;
+  }
+  
+  talentTreeState.signature = signature;
+  talentTreeState.availablePoints = self.talentPoints || 0;
+  talentPointsAvailableEl.textContent = String(talentTreeState.availablePoints);
+  
+  talentTreeContainer.innerHTML = "";
+  
+  const talents = Array.isArray(self.talentTree.talents) ? self.talentTree.talents : [];
+  const availablePoints = self.talentTree.availablePoints || 0;
+  
+  for (const talent of talents) {
+    const node = document.createElement("div");
+    const canUpgrade = talent.canUpgrade && availablePoints > 0;
+    const isMaxRank = talent.currentRank >= talent.maxRank;
+    const isLocked = !talent.prerequisitesMet;
+    
+    node.className = "talent-node";
+    if (isMaxRank) {
+      node.classList.add("max-rank");
+    } else if (isLocked) {
+      node.classList.add("locked");
+    } else if (canUpgrade) {
+      node.classList.add("available");
+    }
+    
+    node.title = `${talent.name} (Rank ${talent.currentRank}/${talent.maxRank})\n${talent.description}${isLocked ? '\n[Locked - Complete prerequisites]' : ''}${canUpgrade ? '\n[Click to upgrade]' : ''}${isMaxRank ? '\n[Max Rank]' : ''}`;
+    
+    const icon = document.createElement("div");
+    icon.className = "talent-icon";
+    icon.textContent = getTalentIconChar(talent.icon);
+    node.appendChild(icon);
+    
+    const rank = document.createElement("div");
+    rank.className = "talent-rank";
+    rank.textContent = `${talent.currentRank}/${talent.maxRank}`;
+    node.appendChild(rank);
+    
+    if (canUpgrade) {
+      node.addEventListener("click", () => {
+        spendTalentPoint(talent.id);
+      });
+    }
+    
+    talentTreeContainer.appendChild(node);
+  }
+}
+
+function getTalentIconChar(iconType) {
+  const iconMap = {
+    health_boost: "❤",
+    armor_up: "🛡",
+    melee_damage: "⚔",
+    charge: "💨",
+    warstomp: "💥",
+    blood_wrath: "🩸",
+    defense_stance: "🏰",
+    mortal_strike: "💀",
+    berserker: "😤",
+    avatar: "👑",
+    spell_power: "✨",
+    frost: "❄",
+    fire: "🔥",
+    mana: "💧",
+    ice_barrier: "🧊",
+    combustion: "🔥",
+    presence_of_mind: "🧠",
+    deep_freeze: "🥶",
+    living_bomb: "💣",
+    arcane_power: "⭐",
+    precision: "🎯",
+    attack_speed: "⚡",
+    hunters_mark: "🏹",
+    eagle_eye: "🦅",
+    poison_arrow: "☠",
+    explosive_arrow: "💥",
+    camouflage: "🌿",
+    aimed_shot: "🎯",
+    beast_mastery: "🐾",
+    barrage: "🌧"
+  };
+  return iconMap[iconType] || "★";
+}
+
+function spendTalentPoint(talentId) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  socket.send(JSON.stringify({
+    type: "spend_talent_point",
+    talentId: String(talentId || "").trim()
+  }));
+}
+
+function handleTalentUpdate(msg) {
+  if (!msg || !msg.talentTree) {
+    return;
+  }
+  const self = getCurrentSelf();
+  if (!self) return;
+  
+  self.talentTree = msg.talentTree;
+  self.talentPoints = msg.talentTree.availablePoints || 0;
+  
+  if (talentPanel && !talentPanel.classList.contains("hidden")) {
+    renderTalentTree(self);
+  }
+  if (talentPointsAvailableEl) {
+    talentPointsAvailableEl.textContent = String(self.talentPoints || 0);
+  }
+}
+
 function createIconUrl(cacheKey, drawFn) {
   const cached = iconUrlCache.get(cacheKey);
   if (cached) {
@@ -7636,6 +7777,32 @@ function toggleSpellbookPanel() {
   setDesktopSpellbookVisible(spellbookPanel.classList.contains("hidden"));
 }
 
+function toggleTalentPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "talents") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("talents", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
+  if (!uiPanelTools) {
+    return;
+  }
+  setDesktopTalentVisible(talentPanel.classList.contains("hidden"));
+}
+
+function setDesktopTalentVisible(visible) {
+  if (!talentPanel || !uiPanelTools) {
+    return;
+  }
+  talentPanel.classList.toggle("hidden", !visible);
+  if (visible) {
+    renderTalentTree(getCurrentSelf());
+  }
+}
+
 if (mobileBagButton) {
   mobileBagButton.addEventListener("click", (event) => {
     event.preventDefault();
@@ -10494,6 +10661,7 @@ const serverMessageHandlers = {
   projectile_hit_events: (msg) => addProjectileHitEvents(msg.events),
   mob_death_events: (msg) => addMobDeathEvents(msg.events),
   self_progress: (msg) => handleServerSelfProgress(msg),
+  talent_update: (msg) => handleTalentUpdate(msg),
   loot_picked: (msg) => handleServerLootPicked(msg),
   item_used: (msg) => handleServerItemUsed(msg),
   vendor_sale_result: (msg) => {
@@ -11497,6 +11665,56 @@ function drawExplosionEffects(cameraX, cameraY) {
         ctx.moveTo(screen.x + Math.cos(a) * inner, screen.y + Math.sin(a) * inner);
         ctx.lineTo(screen.x + Math.cos(a) * outer, screen.y + Math.sin(a) * outer);
         ctx.stroke();
+      }
+      ctx.restore();
+      continue;
+    }
+
+    if (String(fx.abilityId || "").toLowerCase() === "charge") {
+      ctx.save();
+      // Outer shockwave ring
+      ctx.globalAlpha = 0.85 * alpha;
+      ctx.strokeStyle = "rgba(255, 220, 140, 0.95)";
+      ctx.lineWidth = Math.max(1.6, 4.2 * (1 - progress));
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, ringRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner impact ring
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.strokeStyle = "rgba(255, 180, 80, 0.88)";
+      ctx.lineWidth = Math.max(1.2, 2.8 * (1 - progress));
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, ringRadius * 0.65, 0, Math.PI * 2);
+      ctx.stroke();
+      // Radial impact lines
+      for (let i = 0; i < 12; i += 1) {
+        const a = (Math.PI * 2 * i) / 12 + progress * 0.6;
+        const inner = ringRadius * 0.2;
+        const outer = ringRadius * 0.9;
+        ctx.globalAlpha = 0.55 * alpha;
+        ctx.strokeStyle = "rgba(255, 200, 100, 0.78)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(screen.x + Math.cos(a) * inner, screen.y + Math.sin(a) * inner);
+        ctx.lineTo(screen.x + Math.cos(a) * outer, screen.y + Math.sin(a) * outer);
+        ctx.stroke();
+      }
+      // Dust particles
+      ctx.globalAlpha = 0.35 * alpha;
+      ctx.fillStyle = "rgba(200, 180, 150, 0.65)";
+      for (let i = 0; i < 8; i += 1) {
+        const particleAngle = (Math.PI * 2 * i) / 8 + progress * 1.2;
+        const particleDist = ringRadius * (0.4 + (i % 3) * 0.15);
+        const particleSize = 1.8 + (i % 4) * 0.4;
+        ctx.beginPath();
+        ctx.arc(
+          screen.x + Math.cos(particleAngle) * particleDist,
+          screen.y + Math.sin(particleAngle) * particleDist,
+          particleSize,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
       }
       ctx.restore();
       continue;
@@ -15646,6 +15864,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleInventoryPanel,
       toggleEquipmentPanel,
       toggleSpellbookPanel,
+      toggleTalentPanel,
       toggleDpsPanel,
       executeBoundAction,
       tryContextVendorInteraction,

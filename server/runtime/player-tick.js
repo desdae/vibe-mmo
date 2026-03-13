@@ -150,34 +150,34 @@ function createPlayerTickSystem({
         player.chargeData.hasImpacted = true;
         player.x = cast.chargeTargetX;
         player.y = cast.chargeTargetY;
-        
-        ctx.queueExplosionEvent(player.x, player.y, player.chargeData.impactRadius * 0.6, cast.abilityId);
-        
+
+        abilityHandlerContext.queueExplosionEvent(player.x, player.y, player.chargeData.impactRadius * 0.6, cast.abilityId);
+
         // Apply damage and stun to mobs in impact radius
-        for (const mob of ctx.mobs.values()) {
+        for (const mob of mobs.values()) {
           if (!mob.alive) continue;
           const mobDist = Math.hypot(mob.x - player.x, mob.y - player.y);
           if (mobDist > player.chargeData.impactRadius) continue;
-          const dealt = ctx.applyDamageToMob(mob, ctx.randomInt(player.chargeData.damageMin, player.chargeData.damageMax), player.id);
-          ctx.applyAbilityHitEffectsToMob(mob, player.id, player.chargeData.abilityDef, player.chargeData.abilityLevel, dealt, now);
+          const dealt = abilityHandlerContext.applyDamageToMob(mob, abilityHandlerContext.randomInt(player.chargeData.damageMin, player.chargeData.damageMax), player.id);
+          abilityHandlerContext.applyAbilityHitEffectsToMob(mob, player.id, player.chargeData.abilityDef, player.chargeData.abilityLevel, dealt, now);
           if (player.chargeData.stunDurationMs > 0) {
-            ctx.stunMob(mob, player.chargeData.stunDurationMs, now);
+            abilityHandlerContext.stunMob(mob, player.chargeData.stunDurationMs, now);
           }
         }
-        
+
         // Apply damage and stun to enemy players in impact radius
-        for (const otherPlayer of ctx.players.values()) {
+        for (const otherPlayer of players.values()) {
           if (otherPlayer.id === player.id || !otherPlayer.alive || otherPlayer.hp <= 0) continue;
           const playerDist = Math.hypot(otherPlayer.x - player.x, otherPlayer.y - player.y);
           if (playerDist > player.chargeData.impactRadius) continue;
-          if (ctx.isPlayerEnemy(player, otherPlayer)) {
-            const dealt = ctx.applyDamageToPlayer(otherPlayer, ctx.randomInt(player.chargeData.damageMin, player.chargeData.damageMax), player.id, "physical");
+          if (abilityHandlerContext.isPlayerEnemy(player, otherPlayer)) {
+            const dealt = abilityHandlerContext.applyDamageToPlayer(otherPlayer, abilityHandlerContext.randomInt(player.chargeData.damageMin, player.chargeData.damageMax), player.id, "physical");
             if (dealt > 0 && player.chargeData.stunDurationMs > 0) {
-              ctx.stunPlayer(otherPlayer, player.chargeData.stunDurationMs, now);
+              abilityHandlerContext.stunPlayer(otherPlayer, player.chargeData.stunDurationMs, now);
             }
           }
         }
-        
+
         // Clear charge state
         clearPlayerCast(player);
         player.chargeData = null;

@@ -78,6 +78,7 @@ const { createPlayerFactory } = require("./server/gameplay/player-factory");
 const { createEquipmentTools } = require("./server/gameplay/equipment");
 const { createPlayerBuffTools } = require("./server/gameplay/player-buffs");
 const { createVendorTools } = require("./server/gameplay/vendor");
+const { createNormalizeItemEntries } = require("./server/gameplay/drops");
 const { createCoreServices } = require("./server/runtime/core-services");
 const { createBotTickSystem } = require("./server/runtime/bot-tick");
 const {
@@ -120,6 +121,7 @@ const GAMEPLAY_CONFIG_PATH = path.join(__dirname, "config", "gameplay.json");
 const CLASS_CONFIG_PATH = path.join(__dirname, "data", "classes.json");
 const ABILITY_CONFIG_PATH = path.join(__dirname, "data", "abilities.json");
 const EQUIPMENT_CONFIG_PATH = path.join(__dirname, "data", "equipment.json");
+const TALENT_CONFIG_PATH = path.join(__dirname, "data", "talents.json");
 
 const gameplayRuntime = loadGameplayRuntimeConfig(GAMEPLAY_CONFIG_PATH);
 const GAMEPLAY_CONFIG = gameplayRuntime.gameplayConfig;
@@ -290,6 +292,15 @@ try {
   );
 }
 let GLOBAL_DROP_CONFIG = { entries: [] };
+let ABILITY_CONFIG = loadAbilityConfig();
+const normalizeItemEntries = createNormalizeItemEntries({ itemDefs: ITEM_CONFIG.itemDefs });
+let CLASS_CONFIG = loadClassConfigFromDisk(
+  CLASS_CONFIG_PATH,
+  ABILITY_CONFIG.abilityDefs,
+  ITEM_CONFIG.itemDefs,
+  BASE_PLAYER_SPEED,
+  normalizeItemEntries
+);
 const coreServices = createCoreServices({
   sendJson,
   itemDefs: ITEM_CONFIG.itemDefs,
@@ -307,9 +318,10 @@ const coreServices = createCoreServices({
   getServerConfig: () => SERVER_CONFIG,
   getGlobalDropConfig: () => GLOBAL_DROP_CONFIG,
   mapWidth: MAP_WIDTH,
-  mapHeight: MAP_HEIGHT
+  mapHeight: MAP_HEIGHT,
+  talentConfigPath: TALENT_CONFIG_PATH,
+  classConfig: CLASS_CONFIG.classDefs
 });
-const normalizeItemEntries = coreServices.normalizeItemEntries;
 const sendSelfProgress = coreServices.sendSelfProgress;
 const sendInventoryState = coreServices.sendInventoryState;
 const sendEquipmentState = coreServices.sendEquipmentState;
@@ -332,14 +344,6 @@ const getDistanceFromCenter = coreServices.getDistanceFromCenter;
 const rollGlobalDropsForPlayer = coreServices.rollGlobalDropsForPlayer;
 const rollMobDrops = coreServices.rollMobDrops;
 
-let ABILITY_CONFIG = loadAbilityConfig();
-let CLASS_CONFIG = loadClassConfigFromDisk(
-  CLASS_CONFIG_PATH,
-  ABILITY_CONFIG.abilityDefs,
-  ITEM_CONFIG.itemDefs,
-  BASE_PLAYER_SPEED,
-  normalizeItemEntries
-);
 let MOB_CONFIG = loadMobConfigFromDisk(
   MOB_CONFIG_PATH,
   ITEM_CONFIG.itemDefs,
@@ -740,6 +744,21 @@ const playerCommandTools = createPlayerCommandTools({
 const tryPickupLootBag = playerCommandTools.tryPickupLootBag;
 const usePlayerAbility = playerCommandTools.usePlayerAbility;
 const updatePlayerCastTarget = playerCommandTools.updatePlayerCastTarget;
+
+const { createTalentCommandTools } = require("./server/gameplay/talent-commands");
+const talentCommandTools = createTalentCommandTools({
+  talentSystem: coreServices.talentSystem,
+  sendJson,
+  sendSelfProgress,
+  sendTalentUpdate: (player) => {
+    sendJson(player.ws, {
+      type: "talent_update",
+      talentTree: talentCommandTools.getTalentTreeData(player)
+    });
+  }
+});
+const spendTalentPoint = talentCommandTools.spendTalentPoint;
+const getTalentTreeData = talentCommandTools.getTalentTreeData;
 const botTickSystem = createBotTickSystem({
   players,
   mobs,
@@ -1055,6 +1074,8 @@ const runtimeBootstrap = createRuntimeBootstrap({
     usePlayerAbility,
     updatePlayerCastTarget,
     levelUpPlayerAbility,
+    spendTalentPoint,
+    getTalentTreeData,
     tryPickupLootBag,
     getVendorNpc,
     isPlayerNearVendor,

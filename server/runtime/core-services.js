@@ -3,6 +3,7 @@ const { createNormalizeItemEntries, createDropRollTools } = require("../gameplay
 const { createInventoryTools } = require("../gameplay/inventory");
 const { createPlayerResourceTools } = require("../gameplay/player-resources");
 const { createProgressionTools } = require("../gameplay/progression");
+const { loadTalentConfigFromDisk, createTalentSystem } = require("../config/talent-config");
 
 function createCoreServices({
   sendJson,
@@ -21,7 +22,9 @@ function createCoreServices({
   getServerConfig,
   getGlobalDropConfig,
   mapWidth,
-  mapHeight
+  mapHeight,
+  talentConfigPath,
+  classConfig
 }) {
   const normalizeItemEntries = createNormalizeItemEntries({
     itemDefs
@@ -54,10 +57,18 @@ function createCoreServices({
   const consumeInventoryItem = inventoryTools.consumeInventoryItem;
   const syncPlayerCopperFromInventory = inventoryTools.syncPlayerCopperFromInventory;
 
+  const talentConfig = talentConfigPath ? loadTalentConfigFromDisk(talentConfigPath) : {};
+  const talentSystem = createTalentSystem({
+    talentConfig,
+    classConfig
+  });
+  const getTalentPointsPerLevel = talentSystem.getTalentPointsPerLevel;
+
   const progressionTools = createProgressionTools({
     baseExpToNext,
     expGrowthFactor,
     getExpMultiplier,
+    getTalentPointsPerLevel,
     sendSelfProgress
   });
   const expNeededForLevel = progressionTools.expNeededForLevel;
@@ -110,7 +121,9 @@ function createCoreServices({
     rollDropRules,
     getDistanceFromCenter,
     rollGlobalDropsForPlayer,
-    rollMobDrops
+    rollMobDrops,
+    talentSystem,
+    getTalentPointsPerLevel
   };
 }
 

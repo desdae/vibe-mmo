@@ -631,6 +631,111 @@ body {
   z-index: 6;
 }
 
+#talent-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 96px;
+  width: 520px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(1, 11, 19, 0.86);
+  border: 1px solid rgba(139, 92, 177, 0.35);
+  backdrop-filter: blur(2px);
+  z-index: 6;
+}
+
+#talent-tree-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  padding: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.talent-node {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  background: rgba(30, 40, 60, 0.9);
+  border: 2px solid rgba(100, 100, 120, 0.5);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  transition: all 0.15s ease;
+}
+
+.talent-node:hover {
+  border-color: rgba(180, 160, 255, 0.8);
+  background: rgba(40, 50, 80, 0.95);
+}
+
+.talent-node.available {
+  border-color: rgba(100, 200, 255, 0.7);
+  cursor: pointer;
+}
+
+.talent-node.available:hover {
+  border-color: rgba(150, 220, 255, 0.95);
+  box-shadow: 0 0 12px rgba(100, 200, 255, 0.4);
+}
+
+.talent-node.max-rank {
+  border-color: rgba(255, 215, 100, 0.8);
+  background: rgba(60, 50, 30, 0.9);
+}
+
+.talent-node.locked {
+  border-color: rgba(60, 60, 70, 0.5);
+  background: rgba(20, 20, 25, 0.8);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.talent-icon {
+  width: 60%;
+  height: 60%;
+  border-radius: 6px;
+  background: linear-gradient(135deg, rgba(100, 120, 180, 0.8), rgba(60, 80, 140, 0.9));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.talent-node.max-rank .talent-icon {
+  background: linear-gradient(135deg, rgba(200, 180, 100, 0.8), rgba(140, 120, 60, 0.9));
+}
+
+.talent-rank {
+  font-size: 11px;
+  font-weight: bold;
+  color: rgba(200, 210, 230, 0.9);
+  background: rgba(0, 0, 0, 0.5);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.talent-points-display {
+  text-align: center;
+  padding: 8px;
+  font-size: 14px;
+  color: rgba(180, 200, 255, 0.9);
+  border-top: 1px solid rgba(100, 120, 180, 0.3);
+  margin-top: 8px;
+}
+
+#talent-points-available {
+  font-weight: bold;
+  color: rgba(100, 220, 180, 1);
+  font-size: 16px;
+}
+
 #vendor-panel {
   position: fixed;
   left: 50%;

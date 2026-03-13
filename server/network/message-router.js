@@ -28,11 +28,13 @@ function createJoinedPlayer(ws, msg, deps) {
     },
     map: { width: deps.MAP_WIDTH, height: deps.MAP_HEIGHT },
     visibilityRange: viewportState ? Math.max(1, viewportState.x, viewportState.y) : deps.VISIBILITY_RANGE,
+    talentTree: typeof deps.getTalentTreeData === "function" ? deps.getTalentTreeData(player) : null,
     visibilityRangeX: viewportState ? viewportState.x : deps.VISIBILITY_RANGE,
     visibilityRangeY: viewportState ? viewportState.y : deps.VISIBILITY_RANGE,
     equipment: deps.ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] },
     sounds: deps.buildSoundManifest()
   });
+
   deps.sendJson(ws, {
     type: "class_defs",
     classes: deps.CLASS_CONFIG.clientClassDefs,
@@ -239,6 +241,23 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     }
     if (deps.levelUpPlayerAbility(player, abilityId)) {
       deps.sendSelfProgress(player);
+    }
+    return { player };
+  }
+
+  if (msg.type === "spend_talent_point") {
+    const talentId = String(msg.talentId || "").trim();
+    if (!talentId) {
+      return { player };
+    }
+    const result = deps.spendTalentPoint(player, talentId);
+    if (result.success) {
+      deps.sendSelfProgress(player);
+    } else {
+      deps.sendJson(player.ws, {
+        type: "talent_error",
+        reason: result.reason || "Failed to spend talent point"
+      });
     }
     return { player };
   }

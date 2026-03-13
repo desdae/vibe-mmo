@@ -2167,6 +2167,53 @@
           ctx.stroke();
         }
         ctx.restore();
+      } else if (abilityId === "charge") {
+        ctx.save();
+        // Outer shockwave ring
+        ctx.globalAlpha = 0.85 * alpha;
+        ctx.strokeStyle = "rgba(255, 220, 140, 0.95)";
+        ctx.lineWidth = Math.max(1.6, 4.2 * (1 - progress));
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius, 0, Math.PI * 2);
+        ctx.stroke();
+        // Inner impact ring
+        ctx.globalAlpha = 0.5 * alpha;
+        ctx.strokeStyle = "rgba(255, 180, 80, 0.88)";
+        ctx.lineWidth = Math.max(1.2, 2.8 * (1 - progress));
+        ctx.beginPath();
+        ctx.arc(cx, cy, ringRadius * 0.65, 0, Math.PI * 2);
+        ctx.stroke();
+        // Radial impact lines
+        for (let i = 0; i < 12; i += 1) {
+          const a = (Math.PI * 2 * i) / 12 + progress * 0.6;
+          const inner = ringRadius * 0.2;
+          const outer = ringRadius * 0.9;
+          ctx.globalAlpha = 0.55 * alpha;
+          ctx.strokeStyle = "rgba(255, 200, 100, 0.78)";
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(cx + Math.cos(a) * inner, cy + Math.sin(a) * inner);
+          ctx.lineTo(cx + Math.cos(a) * outer, cy + Math.sin(a) * outer);
+          ctx.stroke();
+        }
+        // Dust particles
+        ctx.globalAlpha = 0.35 * alpha;
+        ctx.fillStyle = "rgba(200, 180, 150, 0.65)";
+        for (let i = 0; i < 8; i += 1) {
+          const particleAngle = (Math.PI * 2 * i) / 8 + progress * 1.2;
+          const particleDist = ringRadius * (0.4 + (i % 3) * 0.15);
+          const particleSize = 1.8 + (i % 4) * 0.4;
+          ctx.beginPath();
+          ctx.arc(
+            cx + Math.cos(particleAngle) * particleDist,
+            cy + Math.sin(particleAngle) * particleDist,
+            particleSize,
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        }
+        ctx.restore();
       } else if (abilityId === "blink") {
         ctx.save();
         ctx.globalCompositeOperation = "lighter";

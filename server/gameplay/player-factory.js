@@ -172,6 +172,8 @@ function createPlayerFactory(options = {}) {
       exp: 0,
       expToNext: expNeededForLevel(1),
       skillPoints: 0,
+      talentPoints: 0,
+      talents: {},
       abilityLevels: new Map(classDef.abilities.map((entry) => [entry.id, entry.level])),
       abilityLastUsedAt: new Map(),
       activeCast: null,

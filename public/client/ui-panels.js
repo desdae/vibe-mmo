@@ -216,6 +216,20 @@
       toggleInventoryPanel,
       setSpellbookVisible,
       toggleSpellbookPanel,
+      setTalentVisible: (visible) => {
+        if (!deps.talentPanel) return;
+        deps.talentPanel.classList.toggle("hidden", !visible);
+        if (visible && typeof deps.renderTalentTree === "function") {
+          deps.renderTalentTree(deps.getCurrentSelf());
+        }
+      },
+      toggleTalentPanel: () => {
+        const visible = deps.talentPanel && deps.talentPanel.classList.contains("hidden");
+        returnSelf.talentVisible = visible;
+        if (typeof deps.setTalentVisible === "function") {
+          deps.setTalentVisible(visible);
+        }
+      },
       formatKbps,
       pruneTraffic,
       addTrafficEvent,

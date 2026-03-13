@@ -45,6 +45,12 @@
         return;
       }
 
+      if (event.code === "KeyT" && !deps.gameUI.classList.contains("hidden")) {
+        deps.toggleTalentPanel();
+        event.preventDefault();
+        return;
+      }
+
       if (event.code === "KeyK" && !deps.gameUI.classList.contains("hidden")) {
         deps.toggleDpsPanel();
         event.preventDefault();

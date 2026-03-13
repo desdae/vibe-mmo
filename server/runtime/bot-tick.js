@@ -742,6 +742,53 @@ function createBotTickSystem(options = {}) {
     return bot && bot.isBot ? bot : null;
   }
 
+  function tryUseBotPotion(player, now = Date.now()) {
+    if (!player || !Array.isArray(player.inventorySlots)) {
+      return false;
+    }
+    
+    const hpPercent = player.hp / Math.max(1, player.maxHp);
+    const manaPercent = player.mana / Math.max(1, player.maxMana);
+    
+    // Find and use health potion if HP is low
+    if (hpPercent < 0.5) {
+      for (let index = 0; index < player.inventorySlots.length; index += 1) {
+        const entry = player.inventorySlots[index];
+        if (!entry || !entry.itemId) continue;
+        if (String(entry.itemId).toLowerCase() === "healthpotion01") {
+          const healAmount = Math.max(1, Number(entry.effect?.value) || 20);
+          player.hp = Math.min(player.maxHp, player.hp + healAmount);
+          entry.quantity = (Number(entry.quantity) || 1) - 1;
+          if (entry.quantity <= 0) {
+            player.inventorySlots[index] = null;
+          }
+          player.lastHealReceivedAt = now;
+          player.lastHealAmount = healAmount;
+          return true;
+        }
+      }
+    }
+    
+    // Find and use mana potion if Mana is low and not casting
+    if (manaPercent < 0.3 && !player.activeCast) {
+      for (let index = 0; index < player.inventorySlots.length; index += 1) {
+        const entry = player.inventorySlots[index];
+        if (!entry || !entry.itemId) continue;
+        if (String(entry.itemId).toLowerCase() === "manapotion01") {
+          const manaAmount = Math.max(1, Number(entry.effect?.value) || 30);
+          player.mana = Math.min(player.maxMana, player.mana + manaAmount);
+          entry.quantity = (Number(entry.quantity) || 1) - 1;
+          if (entry.quantity <= 0) {
+            player.inventorySlots[index] = null;
+          }
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
   function inspectBot(botId) {
     const bot = getBotById(botId);
     if (!bot) {
@@ -838,6 +885,15 @@ function createBotTickSystem(options = {}) {
       player.input = { dx: 0, dy: 0 };
       return;
     }
+    
+    // Auto-use health/mana potions
+    const usedPotion = tryUseBotPotion(player, now);
+    if (usedPotion) {
+      player.input = { dx: 0, dy: 0 };
+      player.botState.nextDecisionAt = now + 120;
+      return;
+    }
+    
     if (Number(player.botState.nextDecisionAt) > now) {
       return;
     }

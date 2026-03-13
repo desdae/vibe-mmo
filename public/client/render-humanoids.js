@@ -1358,11 +1358,13 @@
       }
 
       if (styleName === "helmet") {
-        const family = variant % 5;
+        const family = variant % 7;
+        const isHighRarity = (profile?.rarityRank || 0) >= 3;
         ctx.fillStyle = metalPrimary;
         ctx.strokeStyle = palette.outline;
         ctx.lineWidth = 2 * scale;
         if (family === 0) {
+          // Classic closed helm
           ctx.beginPath();
           ctx.arc(cx, headY - 0.2 * scale, headRadius + 1.3 * scale, Math.PI, Math.PI * 2);
           ctx.lineTo(cx + (9.6 + (variantMinor % 2) * 0.5) * scale, headY + 2.1 * scale);
@@ -1381,6 +1383,7 @@
           ctx.lineTo(cx + 6.2 * scale, headY - 0.3 * scale);
           ctx.stroke();
         } else if (family === 1) {
+          // Winged helm
           ctx.beginPath();
           ctx.arc(cx, headY - 0.5 * scale, headRadius + 1 * scale, Math.PI, Math.PI * 2);
           ctx.lineTo(cx + 8.6 * scale, headY + 2.2 * scale);
@@ -1411,6 +1414,7 @@
           ctx.closePath();
           ctx.fill();
         } else if (family === 2) {
+          // Plumed helm
           ctx.beginPath();
           ctx.moveTo(cx - 8.4 * scale, headY + 2.4 * scale);
           ctx.quadraticCurveTo(cx - 7.6 * scale, headY - 8.2 * scale, cx, headY - (headRadius + 4.5 * scale));
@@ -1437,6 +1441,7 @@
           ctx.fill();
           drawPlume(cx, headY - (headRadius + 4.2 * scale), variantMinor % 2 === 0 ? 1 : -1, 6.6 + variantMinor * 0.18);
         } else if (family === 3) {
+          // Asymmetric helm
           ctx.beginPath();
           ctx.moveTo(cx - 9 * scale, headY + 2.6 * scale);
           ctx.quadraticCurveTo(cx - 8.5 * scale, headY - 8 * scale, cx - 2.2 * scale, headY - (headRadius + 4.1 * scale));
@@ -1461,7 +1466,80 @@
           ctx.moveTo(cx - 6.2 * scale, headY + 1.6 * scale);
           ctx.lineTo(cx + 6 * scale, headY + 1.6 * scale);
           ctx.stroke();
+        } else if (family === 4) {
+          // Horned helm
+          ctx.beginPath();
+          ctx.arc(cx, headY - 0.3 * scale, headRadius + 1.1 * scale, Math.PI, Math.PI * 2);
+          ctx.lineTo(cx + 8.2 * scale, headY + 2.4 * scale);
+          ctx.lineTo(cx + 5.4 * scale, headY + 6.8 * scale);
+          ctx.lineTo(cx - 5.4 * scale, headY + 6.8 * scale);
+          ctx.lineTo(cx - 8.2 * scale, headY + 2.4 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.fillStyle = faceShadow;
+          ctx.beginPath();
+          ctx.moveTo(cx - 4.4 * scale, headY + 0.3 * scale);
+          ctx.lineTo(cx - 1.8 * scale, headY - 4.4 * scale);
+          ctx.lineTo(cx + 1.8 * scale, headY - 4.4 * scale);
+          ctx.lineTo(cx + 4.4 * scale, headY + 0.3 * scale);
+          ctx.lineTo(cx + 2.4 * scale, headY + 5.2 * scale);
+          ctx.lineTo(cx - 2.4 * scale, headY + 5.2 * scale);
+          ctx.closePath();
+          ctx.fill();
+          // Horns
+          ctx.fillStyle = isHighRarity ? metalTrim : "#e8dcc8";
+          ctx.strokeStyle = palette.outline;
+          ctx.lineWidth = 1.4 * scale;
+          ctx.beginPath();
+          ctx.moveTo(cx - 6.8 * scale, headY - 3.2 * scale);
+          ctx.quadraticCurveTo(cx - 10.2 * scale, headY - 6.8 * scale, cx - 11.4 * scale, headY - 9.6 * scale);
+          ctx.quadraticCurveTo(cx - 9.8 * scale, headY - 7.2 * scale, cx - 7.2 * scale, headY - 4.8 * scale);
+          ctx.closePath();
+          ctx.moveTo(cx + 6.8 * scale, headY - 3.2 * scale);
+          ctx.quadraticCurveTo(cx + 10.2 * scale, headY - 6.8 * scale, cx + 11.4 * scale, headY - 9.6 * scale);
+          ctx.quadraticCurveTo(cx + 9.8 * scale, headY - 7.2 * scale, cx + 7.2 * scale, headY - 4.8 * scale);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        } else if (family === 5) {
+          // Crowned helm (high rarity)
+          ctx.beginPath();
+          ctx.arc(cx, headY - 0.4 * scale, headRadius + 1.2 * scale, Math.PI, Math.PI * 2);
+          ctx.lineTo(cx + 9.2 * scale, headY + 2.6 * scale);
+          ctx.lineTo(cx + 6.8 * scale, headY + 7.4 * scale);
+          ctx.lineTo(cx - 6.8 * scale, headY + 7.4 * scale);
+          ctx.lineTo(cx - 9.2 * scale, headY + 2.6 * scale);
+          ctx.closePath();
+          fillAndStroke();
+          ctx.fillStyle = faceShadow;
+          ctx.beginPath();
+          ctx.moveTo(cx - 4.6 * scale, headY + 0.2 * scale);
+          ctx.lineTo(cx - 1.4 * scale, headY - 4.6 * scale);
+          ctx.lineTo(cx + 1.4 * scale, headY - 4.6 * scale);
+          ctx.lineTo(cx + 4.6 * scale, headY + 0.2 * scale);
+          ctx.lineTo(cx + 2.8 * scale, headY + 5.6 * scale);
+          ctx.lineTo(cx - 2.8 * scale, headY + 5.6 * scale);
+          ctx.closePath();
+          ctx.fill();
+          // Crown spikes
+          ctx.fillStyle = regalPrimary;
+          ctx.strokeStyle = metalTrim;
+          ctx.lineWidth = 1.2 * scale;
+          for (let i = -2; i <= 2; i++) {
+            const spikeX = cx + i * 3.2 * scale;
+            const spikeHeight = 4.2 + Math.abs(i) * 0.8;
+            ctx.beginPath();
+            ctx.moveTo(spikeX, headY - (headRadius + 1.2) * scale);
+            ctx.lineTo(spikeX - 1.4 * scale, headY - (headRadius + 1.2 + spikeHeight * 0.6) * scale);
+            ctx.lineTo(spikeX, headY - (headRadius + 1.2 + spikeHeight) * scale);
+            ctx.lineTo(spikeX + 1.4 * scale, headY - (headRadius + 1.2 + spikeHeight * 0.6) * scale);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+          }
+          drawGem(cx, headY - (headRadius + 5.8) * scale, 1.4 * scale, isHighRarity ? "#ff6b9d" : metalTrim);
         } else {
+          // Dragon helm (epic+)
           ctx.beginPath();
           ctx.arc(cx - 0.7 * scale, headY - 0.6 * scale, headRadius + 0.95 * scale, Math.PI * 0.98, Math.PI * 1.98);
           ctx.lineTo(cx + 9.8 * scale, headY + 2.8 * scale);
@@ -1487,6 +1565,15 @@
           ctx.lineTo(cx - 1.2 * scale, headY + 11.1 * scale);
           ctx.moveTo(cx + 1.7 * scale, headY + 7.6 * scale);
           ctx.lineTo(cx + 1.7 * scale, headY + 10.9 * scale);
+          ctx.stroke();
+          // Dragon crest
+          ctx.fillStyle = isHighRarity ? "#c94848" : metalDark;
+          ctx.beginPath();
+          ctx.moveTo(cx, headY - (headRadius + 1) * scale);
+          ctx.quadraticCurveTo(cx + 2.8 * scale, headY - (headRadius + 4) * scale, cx + 3.2 * scale, headY - (headRadius + 8) * scale);
+          ctx.quadraticCurveTo(cx + 2.4 * scale, headY - (headRadius + 5) * scale, cx + 0.8 * scale, headY - (headRadius + 2.4) * scale);
+          ctx.closePath();
+          ctx.fill();
           ctx.stroke();
         }
         if (variantMinor % 3 === 1 && family !== 1) {
