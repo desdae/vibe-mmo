@@ -4488,6 +4488,8 @@ function renderTalentTree(self) {
     const isMaxRank = talent.currentRank >= talent.maxRank;
     const isLocked = !talent.prerequisitesMet;
     
+    console.log('[talent] Rendering talent:', talent.name, 'canUpgrade:', canUpgrade, 'isLocked:', isLocked);
+    
     node.className = "talent-node";
     if (isMaxRank) {
       node.classList.add("max-rank");
@@ -4496,25 +4498,26 @@ function renderTalentTree(self) {
     } else if (canUpgrade) {
       node.classList.add("available");
     }
-    
+
     node.title = `${talent.name} (Rank ${talent.currentRank}/${talent.maxRank})\n${talent.description}${isLocked ? '\n[Locked - Complete prerequisites]' : ''}${canUpgrade ? '\n[Click to upgrade]' : ''}${isMaxRank ? '\n[Max Rank]' : ''}`;
-    
+
     const icon = document.createElement("div");
     icon.className = "talent-icon";
     icon.textContent = getTalentIconChar(talent.icon);
     node.appendChild(icon);
-    
+
     const rank = document.createElement("div");
     rank.className = "talent-rank";
     rank.textContent = `${talent.currentRank}/${talent.maxRank}`;
     node.appendChild(rank);
-    
+
     if (canUpgrade) {
       node.addEventListener("click", () => {
+        console.log('[talent] Node clicked:', talent.id);
         spendTalentPoint(talent.id);
       });
     }
-    
+
     talentTreeContainer.appendChild(node);
   }
 }
@@ -4556,26 +4559,38 @@ function getTalentIconChar(iconType) {
 }
 
 function spendTalentPoint(talentId) {
+  console.log('[talent] spendTalentPoint called:', talentId);
+  console.log('[talent] Socket state:', socket ? socket.readyState : 'no socket');
   if (!socket || socket.readyState !== WebSocket.OPEN) {
+    console.log('[talent] Socket not ready, aborting');
     return;
   }
-  socket.send(JSON.stringify({
+  const message = JSON.stringify({
     type: "spend_talent_point",
     talentId: String(talentId || "").trim()
-  }));
+  });
+  console.log('[talent] Sending:', message);
+  socket.send(message);
 }
 
 function handleTalentUpdate(msg) {
+  console.log('[talent] handleTalentUpdate received:', msg);
   if (!msg || !msg.talentTree) {
+    console.log('[talent] No talentTree in message');
     return;
   }
   const self = getCurrentSelf();
-  if (!self) return;
-  
+  if (!self) {
+    console.log('[talent] No self found');
+    return;
+  }
+
   self.talentTree = msg.talentTree;
   self.talentPoints = msg.talentTree.availablePoints || 0;
+  console.log('[talent] Updated talent points:', self.talentPoints);
   
   if (talentPanel && !talentPanel.classList.contains("hidden")) {
+    console.log('[talent] Re-rendering talent tree');
     renderTalentTree(self);
   }
   if (talentPointsAvailableEl) {

@@ -247,13 +247,18 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
 
   if (msg.type === "spend_talent_point") {
     const talentId = String(msg.talentId || "").trim();
+    console.log('[router] spend_talent_point message received:', talentId);
     if (!talentId) {
+      console.log('[router] No talentId provided');
       return { player };
     }
     const result = deps.spendTalentPoint(player, talentId);
+    console.log('[router] spendTalentPoint result:', result);
     if (result.success) {
+      console.log('[router] Sending self_progress');
       deps.sendSelfProgress(player);
     } else {
+      console.log('[router] Sending talent_error:', result.reason);
       deps.sendJson(player.ws, {
         type: "talent_error",
         reason: result.reason || "Failed to spend talent point"

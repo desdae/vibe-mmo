@@ -27,7 +27,9 @@ function createTalentCommandTools(options = {}) {
   }
 
   function spendTalentPoint(player, talentId) {
+    console.log('[talent] spendTalentPoint called for:', player.name, 'talent:', talentId);
     if (!player || !player.classType) {
+      console.log('[talent] Invalid player');
       return { success: false, reason: "Invalid player" };
     }
 
@@ -36,12 +38,15 @@ function createTalentCommandTools(options = {}) {
       player.level,
       player.talents
     );
+    console.log('[talent] Available points:', availablePoints);
 
     if (availablePoints <= 0) {
+      console.log('[talent] No points available');
       return { success: false, reason: "No talent points available" };
     }
 
     const result = talentSystem.spendTalentPoint(player.classType, player.talents, talentId);
+    console.log('[talent] Talent system result:', result);
     if (!result.success) {
       return result;
     }
@@ -52,6 +57,8 @@ function createTalentCommandTools(options = {}) {
       player.level,
       player.talents
     );
+    console.log('[talent] New talent points:', player.talentPoints);
+    console.log('[talent] Sending talent update');
 
     sendTalentUpdate(player);
     return { success: true, reason: "", talentId, newRank: player.talents[talentId] };
