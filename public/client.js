@@ -4456,72 +4456,6 @@ function buildTalentTreeSignature(self) {
   return `${self.classType}:${self.level}:${self.talentPoints}:${JSON.stringify(self.talents || {})}`;
 }
 
-function renderTalentTree(self) {
-  if (!talentTreeContainer || !talentPointsAvailableEl) {
-    return;
-  }
-  
-  if (!self || !self.talentTree) {
-    talentTreeContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">No talent tree available</div>';
-    talentPointsAvailableEl.textContent = "0";
-    talentTreeState.signature = "";
-    return;
-  }
-  
-  const signature = buildTalentTreeSignature(self);
-  if (signature === talentTreeState.signature) {
-    return;
-  }
-  
-  talentTreeState.signature = signature;
-  talentTreeState.availablePoints = self.talentPoints || 0;
-  talentPointsAvailableEl.textContent = String(talentTreeState.availablePoints);
-  
-  talentTreeContainer.innerHTML = "";
-  
-  const talents = Array.isArray(self.talentTree.talents) ? self.talentTree.talents : [];
-  const availablePoints = self.talentTree.availablePoints || 0;
-  
-  for (const talent of talents) {
-    const node = document.createElement("div");
-    const canUpgrade = talent.canUpgrade && availablePoints > 0;
-    const isMaxRank = talent.currentRank >= talent.maxRank;
-    const isLocked = !talent.prerequisitesMet;
-    
-    console.log('[talent] Rendering talent:', talent.name, 'canUpgrade:', canUpgrade, 'isLocked:', isLocked);
-    
-    node.className = "talent-node";
-    if (isMaxRank) {
-      node.classList.add("max-rank");
-    } else if (isLocked) {
-      node.classList.add("locked");
-    } else if (canUpgrade) {
-      node.classList.add("available");
-    }
-
-    node.title = `${talent.name} (Rank ${talent.currentRank}/${talent.maxRank})\n${talent.description}${isLocked ? '\n[Locked - Complete prerequisites]' : ''}${canUpgrade ? '\n[Click to upgrade]' : ''}${isMaxRank ? '\n[Max Rank]' : ''}`;
-
-    const icon = document.createElement("div");
-    icon.className = "talent-icon";
-    icon.textContent = getTalentIconChar(talent.icon);
-    node.appendChild(icon);
-
-    const rank = document.createElement("div");
-    rank.className = "talent-rank";
-    rank.textContent = `${talent.currentRank}/${talent.maxRank}`;
-    node.appendChild(rank);
-
-    if (canUpgrade) {
-      node.addEventListener("click", () => {
-        console.log('[talent] Node clicked:', talent.id);
-        spendTalentPoint(talent.id);
-      });
-    }
-
-    talentTreeContainer.appendChild(node);
-  }
-}
-
 function getTalentIconChar(iconType) {
   const iconMap = {
     health_boost: "❤",
@@ -4585,17 +4519,84 @@ function handleTalentUpdate(msg) {
     return;
   }
 
+  // Store the fresh talent tree data
   self.talentTree = msg.talentTree;
   self.talentPoints = msg.talentTree.availablePoints || 0;
   console.log('[talent] Updated talent points:', self.talentPoints);
   
   if (talentPanel && !talentPanel.classList.contains("hidden")) {
     console.log('[talent] Re-rendering talent tree');
-    renderTalentTree(self);
+    // Pass the fresh talent tree data directly to render
+    renderTalentTreeWithData(self, msg.talentTree);
   }
   if (talentPointsAvailableEl) {
     talentPointsAvailableEl.textContent = String(self.talentPoints || 0);
   }
+}
+
+function renderTalentTreeWithData(self, talentTreeData) {
+  if (!talentTreeContainer || !talentPointsAvailableEl || !talentTreeData) {
+    return;
+  }
+  
+  talentPointsAvailableEl.textContent = String(talentTreeData.availablePoints || 0);
+  talentTreeContainer.innerHTML = "";
+  
+  const talents = Array.isArray(talentTreeData.talents) ? talentTreeData.talents : [];
+  const availablePoints = talentTreeData.availablePoints || 0;
+  
+  for (const talent of talents) {
+    const node = document.createElement("div");
+    // Use the canUpgrade from server data directly
+    const canUpgrade = talent.canUpgrade === true;
+    const isMaxRank = talent.currentRank >= talent.maxRank;
+    const isLocked = !talent.prerequisitesMet;
+    
+    console.log('[talent] Rendering talent:', talent.name, 'canUpgrade:', canUpgrade, 'isLocked:', isLocked);
+    
+    node.className = "talent-node";
+    if (isMaxRank) {
+      node.classList.add("max-rank");
+    } else if (isLocked) {
+      node.classList.add("locked");
+    } else if (canUpgrade) {
+      node.classList.add("available");
+    }
+
+    node.title = `${talent.name} (Rank ${talent.currentRank}/${talent.maxRank})\n${talent.description}${isLocked ? '\n[Locked - Complete prerequisites]' : ''}${canUpgrade ? '\n[Click to upgrade]' : ''}${isMaxRank ? '\n[Max Rank]' : ''}`;
+
+    const icon = document.createElement("div");
+    icon.className = "talent-icon";
+    icon.textContent = getTalentIconChar(talent.icon);
+    node.appendChild(icon);
+
+    const rank = document.createElement("div");
+    rank.className = "talent-rank";
+    rank.textContent = `${talent.currentRank}/${talent.maxRank}`;
+    node.appendChild(rank);
+
+    if (canUpgrade) {
+      node.addEventListener("click", () => {
+        console.log('[talent] Node clicked:', talent.id);
+        spendTalentPoint(talent.id);
+      });
+    }
+
+    talentTreeContainer.appendChild(node);
+  }
+}
+
+function renderTalentTree(self) {
+  if (!self || !self.talentTree) {
+    if (talentTreeContainer) {
+      talentTreeContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">No talent tree available</div>';
+    }
+    if (talentPointsAvailableEl) {
+      talentPointsAvailableEl.textContent = "0";
+    }
+    return;
+  }
+  renderTalentTreeWithData(self, self.talentTree);
 }
 
 function createIconUrl(cacheKey, drawFn) {
