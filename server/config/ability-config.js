@@ -69,7 +69,9 @@ const OMITTED_CLIENT_FIELDS = new Set([
   "homingRange",
   "homingTurnRate",
   "turnRate",
-  "damageMode"
+  "damageMode",
+  "dashSpeed",
+  "dashImpactRadius"
 ]);
 
 function loadAbilityConfigFromDisk(configPath, options) {
@@ -319,7 +321,13 @@ function loadAbilityConfigFromDisk(configPath, options) {
     });
     const summonAttackRange = Math.max(0, Number((summonProjectile && summonProjectile.range) || 0));
     const summonAttackIntervalMs = Math.max(0, Number((summonProjectile && summonProjectile.cooldownMs) || 0));
-    const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000));
+    const effects = Array.isArray(entry.effects) ? entry.effects : [];
+    const dashEffect = findAbilityEffect(effects, "dash");
+    const dashSpeed = dashEffect ? Math.max(1, Number(dashEffect.speed) || 12) : 0;
+    const dashImpactRadius = dashEffect ? Math.max(0.5, Number(dashEffect.impactRadius) || 2) : 0;
+    const stunEffect = findAbilityEffect(effects, "stun");
+    const stunDurationFromEffect = stunEffect ? Math.max(0, Math.round((Number(stunEffect.duration) || 0) * 1000)) : 0;
+    const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000)) || stunDurationFromEffect;
     const slowDurationMsRaw = Number(entry.slowDurationMs);
     const slowDurationSecRaw = Number(entry.slowDuration);
     const slowDurationMs =
@@ -399,6 +407,8 @@ function loadAbilityConfigFromDisk(configPath, options) {
       maxSummonCount,
       summonKind,
       summonProjectile,
+      dashSpeed,
+      dashImpactRadius,
       stunDurationMs,
       slowDurationMs,
       slowMultiplier,

@@ -473,6 +473,40 @@
     ],
     "tags": ["warrior", "aoe"]
   },
+  "charge": {
+    "id": "charge",
+    "name": "Charge",
+    "description": "Charge to an enemy up to 6 units away, stunning them and all nearby enemies for 1 second.",
+    "delivery": {
+      "type": "charge",
+      "castTime": 0,
+      "cooldown": 8,
+      "resourceCost": { "mana": 5 }
+    },
+    "targeting": {
+      "range": 6,
+      "targetType": "enemy"
+    },
+    "effects": [
+      {
+        "type": "dash",
+        "speed": 15,
+        "impactRadius": 2
+      },
+      {
+        "type": "damage",
+        "mode": "instant",
+        "amount": [2, 4],
+        "school": "physical",
+        "scalingPerLevel": [0.3, 0.6]
+      },
+      {
+        "type": "stun",
+        "duration": 1
+      }
+    ],
+    "tags": ["warrior", "charge", "melee", "stun"]
+  },
   "bloodWrath": {
     "id": "bloodWrath",
     "name": "Blood Wrath",

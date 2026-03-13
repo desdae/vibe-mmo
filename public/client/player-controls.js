@@ -115,8 +115,10 @@
         return;
       }
       const rect = canvas.getBoundingClientRect();
-      mouseState.sx = event.clientX - rect.left;
-      mouseState.sy = event.clientY - rect.top;
+      const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+      const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+      mouseState.sx = (event.clientX - rect.left) * scaleX;
+      mouseState.sy = (event.clientY - rect.top) * scaleY;
     }
 
     function screenToWorld(sx, sy, self) {

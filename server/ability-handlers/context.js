@@ -1,5 +1,6 @@
 function createAbilityHandlerContext(params = {}) {
   const {
+    players,
     mobs,
     projectiles,
     mapWidth,
@@ -19,7 +20,9 @@ function createAbilityHandlerContext(params = {}) {
     markAbilityUsed,
     applyDamageToMob,
     applyAbilityHitEffectsToMob,
+    applyDamageToPlayer,
     stunMob,
+    stunPlayer,
     queueExplosionEvent,
     getAreaAbilityTargetPosition,
     createPersistentAreaEffect,
@@ -27,10 +30,12 @@ function createAbilityHandlerContext(params = {}) {
     createPersistentSummonEffect,
     resolvePlayerMobCollisions,
     applySelfBuffs,
-    getAbilityInvulnerabilityDurationMs
+    getAbilityInvulnerabilityDurationMs,
+    isPlayerEnemy
   } = params;
 
   return {
+    players,
     mobs,
     projectiles,
     mapWidth,
@@ -50,7 +55,9 @@ function createAbilityHandlerContext(params = {}) {
     markAbilityUsed,
     applyDamageToMob,
     applyAbilityHitEffectsToMob,
+    applyDamageToPlayer,
     stunMob,
+    stunPlayer,
     queueExplosionEvent,
     getAreaAbilityTargetPosition,
     createPersistentAreaEffect,
@@ -58,7 +65,8 @@ function createAbilityHandlerContext(params = {}) {
     createPersistentSummonEffect,
     resolvePlayerMobCollisions,
     applySelfBuffs,
-    getAbilityInvulnerabilityDurationMs
+    getAbilityInvulnerabilityDurationMs,
+    isPlayerEnemy
   };
 }
 

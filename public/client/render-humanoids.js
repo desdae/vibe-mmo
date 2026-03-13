@@ -286,26 +286,85 @@
     }
 
     function getVisualMaterialColors(profile, palette, material) {
-      const basePrimary =
-        material === "plate"
-          ? palette.metal
-          : material === "leather"
-            ? palette.leather
-            : material === "robe"
-              ? palette.cloth
-              : palette.cloth;
-      const baseSecondary =
-        material === "plate"
-          ? palette.metalDark
-          : material === "leather"
-            ? palette.leatherDark
-            : palette.clothDark;
-      const accentRatio = clamp(0.12 + (profile?.rarityRank || 0) * 0.04 + (profile?.appearancePower || 0) / 240, 0.08, 0.46);
+      const styleVariant = profile?.styleVariant || "simple";
+      const rarityRank = profile?.rarityRank || 0;
+      const itemLevel = profile?.itemLevel || 1;
+      const accentColor = profile?.accentColor || palette.accent;
+      const trimColor = profile?.trimColor || palette.outline;
+      
+      // Base colors by material
+      let basePrimary, baseSecondary;
+      if (material === "plate") {
+        basePrimary = palette.metal;
+        baseSecondary = palette.metalDark;
+      } else if (material === "leather") {
+        basePrimary = palette.leather;
+        baseSecondary = palette.leatherDark;
+      } else {
+        basePrimary = palette.cloth;
+        baseSecondary = palette.clothDark;
+      }
+      
+      // Style variant tints
+      const variantTint = getStyleVariantTint(styleVariant, accentColor, rarityRank);
+      basePrimary = tintHex(basePrimary, variantTint, 0.15);
+      baseSecondary = tintHex(baseSecondary, variantTint, 0.1);
+      
+      // Rarity-based glow/shine boost
+      const rarityBoost = rarityRank >= 3 ? 0.2 + (rarityRank - 3) * 0.08 : 0;
+      const accentRatio = clamp(
+        0.12 + rarityRank * 0.04 + (profile?.appearancePower || 0) / 240 + rarityBoost,
+        0.08,
+        0.55
+      );
+      
+      // Item level brightness (higher level = slightly brighter)
+      const levelBrightness = Math.min(0.15, itemLevel / 100);
+      
       return {
-        primary: tintHex(basePrimary, profile?.accentColor || basePrimary, accentRatio),
-        secondary: tintHex(baseSecondary, profile?.accentColor || baseSecondary, accentRatio * 0.72),
-        trim: tintHex(profile?.trimColor || profile?.rarityColor || baseSecondary, "#ffffff", 0.08)
+        primary: tintHex(basePrimary, accentColor, accentRatio),
+        secondary: tintHex(baseSecondary, accentColor, accentRatio * 0.65),
+        trim: tintHex(trimColor || profile?.rarityColor || baseSecondary, "#ffffff", 0.1 + levelBrightness),
+        glow: rarityRank >= 2 ? tintHex(accentColor, "#ffffff", 0.3) : null,
+        shine: rarityRank >= 3 ? tintHex("#ffffff", accentColor, 0.7) : null,
+        styleVariant,
+        rarityRank,
+        itemLevel
       };
+    }
+
+    function getStyleVariantTint(styleVariant, accentColor, rarityRank) {
+      // Return a tint color based on the style variant
+      const variantTints = {
+        ornate: "#ffd774",
+        royal: "#e8c5ff",
+        crystalline: "#a8e8ff",
+        runeforged: "#ff8dc4",
+        gothic: "#4a5568",
+        field: "#8b9dc3",
+        fullplate: "#c5d0dc",
+        chainmail: "#94a3b8",
+        scale: "#7d8f9e",
+        brigandine: "#6b7f8f",
+        studded: "#8b7355",
+        reinforced: "#6b5f5f",
+        supple: "#a08060",
+        worn: "#7a6f65",
+        dragonscale: "#8b4545",
+        bone: "#e8dcc8",
+        embroidered: "#c9a86c",
+        layered: "#a89f94",
+        simple: "#b8c0c8",
+        ethereal: "#d4c5ff",
+        runed: "#ff9d6c"
+      };
+      
+      const baseTint = variantTints[styleVariant] || "#b8c0c8";
+      // Blend with accent color based on rarity
+      if (rarityRank >= 2) {
+        return tintHex(baseTint, accentColor, 0.2 + rarityRank * 0.05);
+      }
+      return baseTint;
     }
 
     function drawItemAura(x, y, profile, scale, spreadScale = 1) {
@@ -578,7 +637,74 @@
 
     function buildArmorVisual(entry, fallback, slotId) {
       const material = resolveArmorMaterial(entry, fallback);
-      return createSlotVisual(entry, fallback, slotId, { material });
+      const itemLevel = Number(entry?.itemLevel) || 1;
+      const rarityRank = rarityRankById[getRarityId(entry)] || 0;
+      const affixCount = Array.isArray(entry?.affixes) ? entry.affixes.length : 0;
+      const styleVariant = resolveArmorStyleVariant(entry, material, itemLevel, rarityRank, affixCount);
+      return createSlotVisual(entry, fallback, slotId, { material, styleVariant, itemLevel, affixCount });
+    }
+
+    function resolveArmorStyleVariant(entry, material, itemLevel, rarityRank, affixCount) {
+      const nameText = getNameText(entry);
+      const tags = getTagSet(entry);
+      const seed = getAppearanceSeed(entry, `variant|${material}`);
+      const baseVariant = seed % 4;
+      
+      // High item level or rarity unlocks more ornate styles
+      const isHighLevel = itemLevel >= 15;
+      const isMidLevel = itemLevel >= 8;
+      const isHighRarity = rarityRank >= 3; // epic+
+      const isMagicPlus = rarityRank >= 1; // magic+
+      
+      // Ornate/royal styles for high rarity/level
+      if (isHighRarity && (isHighLevel || affixCount >= 2)) {
+        const ornateTypes = ["ornate", "royal", "crystalline", "runeforged"];
+        return ornateTypes[seed % ornateTypes.length];
+      }
+      
+      // Material-specific variants
+      if (material === "plate") {
+        if (isHighLevel) {
+          const variants = ["fullplate", "gothic", "field", "ornate"];
+          return variants[baseVariant % variants.length];
+        }
+        if (isMidLevel) {
+          const variants = ["fullplate", "chainmail", "brigandine"];
+          return variants[baseVariant % variants.length];
+        }
+        const variants = ["fullplate", "chainmail", "scale", "brigandine"];
+        return variants[baseVariant % variants.length];
+      }
+      
+      if (material === "leather") {
+        if (isHighLevel) {
+          const variants = ["studded", "scaled", "bone", "dragonscale"];
+          return variants[baseVariant % variants.length];
+        }
+        if (isMagicPlus) {
+          const variants = ["studded", "reinforced", "supple"];
+          return variants[baseVariant % variants.length];
+        }
+        const variants = ["studded", "reinforced", "worn", "supple"];
+        return variants[baseVariant % variants.length];
+      }
+      
+      if (material === "robe") {
+        if (isHighRarity) {
+          const variants = ["ornate", "crystalline", "ethereal", "runed"];
+          return variants[baseVariant % variants.length];
+        }
+        if (isMidLevel) {
+          const variants = ["reinforced", "embroidered", "layered"];
+          return variants[baseVariant % variants.length];
+        }
+        const variants = ["simple", "layered", "worn", "embroidered"];
+        return variants[baseVariant % variants.length];
+      }
+      
+      // Default variants
+      const variants = ["simple", "reinforced", "ornate", "worn"];
+      return variants[baseVariant % variants.length];
     }
 
     function buildHeadVisual(entry, fallback, style) {
@@ -1369,6 +1495,61 @@
       }
     }
 
+    function drawChargeDashEffect(cx, cy, castState, palette, scale, entityId) {
+      if (!castState || !castState.active) return;
+      
+      const progress = clamp(Number(castState.ratio) || 0, 0, 1);
+      const elapsedMs = Number(castState.elapsedMs) || 0;
+      const durationMs = Number(castState.durationMs) || 1;
+      
+      // Get charge positions from cast state
+      const startX = castState.chargeStartX;
+      const startY = castState.chargeStartY;
+      const targetX = castState.chargeTargetX;
+      const targetY = castState.chargeTargetY;
+      
+      // Interpolate current position
+      let currentX = cx;
+      let currentY = cy;
+      if (startX !== undefined && targetX !== undefined) {
+        currentX = startX + (targetX - startX) * progress;
+        currentY = startY + (targetY - startY) * progress;
+      }
+      
+      // Speed lines trailing behind the charging player
+      const time = performance.now() / 1000;
+      const flicker = 0.5 + 0.5 * Math.sin(time * 20 + entityId);
+      
+      ctx.save();
+      ctx.globalAlpha = 0.6 * flicker;
+      ctx.globalCompositeOperation = "lighter";
+      
+      // Draw speed lines
+      ctx.strokeStyle = "rgba(255, 200, 100, 0.6)";
+      ctx.lineWidth = 2 * scale;
+      ctx.lineCap = "round";
+      
+      const lineCount = 5;
+      for (let i = 0; i < lineCount; i++) {
+        const offset = ((i / lineCount) + (time * 2) % 1) * 12 - 6;
+        const lineLen = 4 + (i % 3) * 2;
+        const yOffset = (i - lineCount / 2) * 3 * scale;
+        
+        ctx.beginPath();
+        ctx.moveTo(currentX - offset * scale - lineLen * scale, currentY + yOffset);
+        ctx.lineTo(currentX - offset * scale, currentY + yOffset);
+        ctx.stroke();
+      }
+      
+      // Dust cloud at feet
+      ctx.fillStyle = "rgba(200, 180, 150, 0.4)";
+      ctx.beginPath();
+      ctx.ellipse(currentX, currentY + 8 * scale, 6 * scale, 3 * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
+    }
+
     function drawRibCage(cx, cy, palette, scale) {
       drawLine(cx, cy - 7.4 * scale, cx, cy + 7.6 * scale, palette.boneDark, 1.7 * scale);
       ctx.strokeStyle = palette.outline;
@@ -1402,8 +1583,11 @@
       const shoulderColors = getVisualMaterialColors(shoulderProfile, palette, shouldersType);
       const armorColor = chestColors.primary;
       const armorDark = chestColors.secondary;
+      const armorTrim = chestColors.trim;
       const bodyColor = species === "skeleton" ? palette.bone : palette.skin;
       const chestVariant = Number(chestProfile?.variant || 0);
+      const styleVariant = chestColors.styleVariant || "simple";
+      const rarityRank = chestColors.rarityRank || 0;
       drawItemAura(cx, cy - 0.5 * scale, chestProfile, scale, 0.88);
 
       if (species === "skeleton" && (chestType === "ribcage" || chestType === "none" || !chestType)) {
@@ -1417,40 +1601,14 @@
         ctx.fill();
         ctx.stroke();
       } else if (chestType === "robe") {
-        ctx.fillStyle = armorColor;
-        ctx.strokeStyle = palette.outline;
-        ctx.lineWidth = 2 * scale;
-        ctx.beginPath();
-        ctx.moveTo(cx - (7 + chestVariant * 0.55) * scale, cy - 6 * scale);
-        ctx.quadraticCurveTo(cx, cy - (10.5 + (chestVariant % 2) * 1.2) * scale, cx + (7 + chestVariant * 0.55) * scale, cy - 6 * scale);
-        ctx.lineTo(cx + (9.3 + chestVariant * 0.45) * scale, cy + (10.2 + (chestVariant % 3) * 1.1) * scale);
-        ctx.quadraticCurveTo(cx, cy + (15 + (chestVariant % 2) * 1.1) * scale, cx - (9.3 + chestVariant * 0.45) * scale, cy + (10.2 + (chestVariant % 3) * 1.1) * scale);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        drawLine(cx, cy - 4 * scale, cx, cy + 11.5 * scale, armorDark, 1.1 * scale);
-        if (chestVariant % 2 === 1) {
-          drawLine(cx - 5.5 * scale, cy - 2 * scale, cx + 5.5 * scale, cy - 0.8 * scale, chestColors.trim, 1 * scale);
-        }
+        drawRobeChest(cx, cy, chestProfile, chestColors, palette, species, scale);
       } else {
-        ctx.fillStyle = species === "zombie" ? bodyColor : armorColor;
-        ctx.strokeStyle = palette.outline;
-        ctx.lineWidth = 2 * scale;
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, (7.8 + chestVariant * 0.45) * scale, (6.8 + (chestVariant % 2) * 0.65) * scale, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-        if (chestType === "plate") {
-          drawLine(cx - 6 * scale, cy + 3.8 * scale, cx + 6 * scale, cy + 3.8 * scale, armorDark, 1.4 * scale);
-          if (chestVariant % 2 === 0) {
-            drawLine(cx, cy - 5.2 * scale, cx, cy + 5 * scale, chestColors.trim, 1.2 * scale);
-          }
-        } else if (chestType === "leather") {
-          drawLine(cx - 5.2 * scale, cy - 4.8 * scale, cx + 4.6 * scale, cy + 4.6 * scale, chestColors.trim, 1 * scale);
-          if (chestVariant % 2 === 1) {
-            drawLine(cx + 5.2 * scale, cy - 4.8 * scale, cx - 4.6 * scale, cy + 4.6 * scale, armorDark, 0.9 * scale);
-          }
-        }
+        drawArmoredChest(cx, cy, chestType, styleVariant, chestProfile, chestColors, palette, species, scale);
+      }
+
+      // Draw shine effect for high rarity items
+      if (chestColors.shine && rarityRank >= 3) {
+        drawChestShine(cx, cy, chestColors, scale, chestVariant);
       }
 
       if (shouldersType === "plate") {
@@ -1472,6 +1630,248 @@
         ctx.lineTo(cx + 6.2 * scale, cy + 4.8 * scale);
         ctx.stroke();
       }
+    }
+
+    function drawRobeChest(cx, cy, profile, colors, palette, species, scale) {
+      const variant = Number(profile?.variant || 0);
+      const variantMinor = Number(profile?.variantMinor || 0);
+      const armorColor = colors.primary;
+      const armorDark = colors.secondary;
+      const armorTrim = colors.trim;
+      
+      ctx.fillStyle = armorColor;
+      ctx.strokeStyle = palette.outline;
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.moveTo(cx - (7 + variant * 0.55) * scale, cy - 6 * scale);
+      ctx.quadraticCurveTo(cx, cy - (10.5 + (variant % 2) * 1.2) * scale, cx + (7 + variant * 0.55) * scale, cy - 6 * scale);
+      ctx.lineTo(cx + (9.3 + variant * 0.45) * scale, cy + (10.2 + (variant % 3) * 1.1) * scale);
+      ctx.quadraticCurveTo(cx, cy + (15 + (variant % 2) * 1.1) * scale, cx - (9.3 + variant * 0.45) * scale, cy + (10.2 + (variant % 3) * 1.1) * scale);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      
+      // Robe folds
+      drawLine(cx, cy - 4 * scale, cx, cy + 11.5 * scale, armorDark, 1.1 * scale);
+      
+      // Style-specific details
+      if (colors.styleVariant === "embroidered" || colors.styleVariant === "ornate") {
+        // Decorative trim along edges
+        ctx.strokeStyle = armorTrim;
+        ctx.lineWidth = 0.8 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - (5 + variant * 0.3) * scale, cy - 4 * scale);
+        ctx.quadraticCurveTo(cx, cy - 8 * scale, cx + (5 + variant * 0.3) * scale, cy - 4 * scale);
+        ctx.stroke();
+      }
+      
+      if (colors.styleVariant === "runed" || colors.styleVariant === "ethereal") {
+        // Glowing runes
+        ctx.fillStyle = colors.glow || armorTrim;
+        ctx.globalAlpha = 0.7;
+        for (let i = 0; i < 3; i++) {
+          const runeY = cy - 2 * scale + i * 4 * scale;
+          ctx.beginPath();
+          ctx.arc(cx, runeY, 1.2 * scale, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+      
+      if (variant % 2 === 1) {
+        drawLine(cx - 5.5 * scale, cy - 2 * scale, cx + 5.5 * scale, cy - 0.8 * scale, armorTrim, 1 * scale);
+      }
+    }
+
+    function drawArmoredChest(cx, cy, chestType, styleVariant, profile, colors, palette, species, scale) {
+      const variant = Number(profile?.variant || 0);
+      const variantMinor = Number(profile?.variantMinor || 0);
+      const armorColor = colors.primary;
+      const armorDark = colors.secondary;
+      const armorTrim = colors.trim;
+      
+      ctx.fillStyle = species === "zombie" ? palette.skin : armorColor;
+      ctx.strokeStyle = palette.outline;
+      ctx.lineWidth = 2 * scale;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, (7.8 + variant * 0.45) * scale, (6.8 + (variant % 2) * 0.65) * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      
+      // Draw style-specific armor details
+      if (chestType === "plate") {
+        drawPlateChestDetails(cx, cy, styleVariant, colors, palette, scale, variant, variantMinor);
+      } else if (chestType === "leather") {
+        drawLeatherChestDetails(cx, cy, styleVariant, colors, palette, scale, variant, variantMinor);
+      } else {
+        // Default chainmail/scale pattern
+        ctx.strokeStyle = armorDark;
+        ctx.lineWidth = 0.9 * scale;
+        for (let row = 0; row < 4; row++) {
+          const rowY = cy - 4 * scale + row * 2.8 * scale;
+          const offset = (row % 2) * 1.5 * scale;
+          for (let col = -2; col <= 2; col++) {
+            const colX = cx + col * 3 * scale + offset;
+            ctx.beginPath();
+            ctx.arc(colX, rowY, 1.1 * scale, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    function drawPlateChestDetails(cx, cy, styleVariant, colors, palette, scale, variant, variantMinor) {
+      const armorDark = colors.secondary;
+      const armorTrim = colors.trim;
+      const glowColor = colors.glow;
+      
+      // Base plate lines
+      drawLine(cx - 6 * scale, cy + 3.8 * scale, cx + 6 * scale, cy + 3.8 * scale, armorDark, 1.4 * scale);
+      
+      if (styleVariant === "gothic") {
+        // Gothic fluting lines
+        ctx.strokeStyle = armorTrim;
+        ctx.lineWidth = 0.8 * scale;
+        for (let i = -2; i <= 2; i++) {
+          const x = cx + i * 2.5 * scale;
+          drawLine(x, cy - 5 * scale, x, cy + 4 * scale, armorTrim, 0.7 * scale);
+        }
+        // Central ridge
+        drawLine(cx, cy - 5.2 * scale, cx, cy + 5 * scale, armorTrim, 1.6 * scale);
+      } else if (styleVariant === "ornate" || styleVariant === "royal") {
+        // Ornate filigree
+        ctx.strokeStyle = glowColor || armorTrim;
+        ctx.lineWidth = 1.1 * scale;
+        ctx.beginPath();
+        ctx.moveTo(cx - 4 * scale, cy - 3 * scale);
+        ctx.quadraticCurveTo(cx, cy - 6 * scale, cx + 4 * scale, cy - 3 * scale);
+        ctx.stroke();
+        // Central emblem
+        ctx.fillStyle = glowColor || armorTrim;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - 4.5 * scale);
+        ctx.lineTo(cx - 2 * scale, cy - 1 * scale);
+        ctx.lineTo(cx + 2 * scale, cy - 1 * scale);
+        ctx.closePath();
+        ctx.fill();
+        drawLine(cx, cy - 5.2 * scale, cx, cy + 5 * scale, armorTrim, 1.2 * scale);
+      } else if (styleVariant === "field") {
+        // Simple field plate with rivets
+        drawLine(cx, cy - 5.2 * scale, cx, cy + 5 * scale, armorTrim, 1.2 * scale);
+        // Rivets
+        ctx.fillStyle = armorDark;
+        for (let i = -1; i <= 1; i++) {
+          ctx.beginPath();
+          ctx.arc(cx + i * 4 * scale, cy - 2 * scale, 0.7 * scale, 0, Math.PI * 2);
+          ctx.arc(cx + i * 4 * scale, cy + 2 * scale, 0.7 * scale, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // Standard fullplate
+        if (variant % 2 === 0) {
+          drawLine(cx, cy - 5.2 * scale, cx, cy + 5 * scale, armorTrim, 1.2 * scale);
+        }
+      }
+      
+      // High rarity glow overlay
+      if (glowColor && colors.rarityRank >= 3) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = glowColor;
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 5 * scale, 4 * scale, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function drawLeatherChestDetails(cx, cy, styleVariant, colors, palette, scale, variant, variantMinor) {
+      const armorDark = colors.secondary;
+      const armorTrim = colors.trim;
+      
+      if (styleVariant === "studded") {
+        // Studs pattern
+        ctx.fillStyle = armorDark;
+        for (let row = 0; row < 3; row++) {
+          const rowY = cy - 3 * scale + row * 3 * scale;
+          for (let col = -2; col <= 2; col++) {
+            const colX = cx + col * 3.2 * scale + (row % 2) * 1.6 * scale;
+            ctx.beginPath();
+            ctx.arc(colX, rowY, 0.6 * scale, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        // Diagonal strap
+        drawLine(cx - 5.2 * scale, cy - 4.8 * scale, cx + 4.6 * scale, cy + 4.6 * scale, armorTrim, 1.2 * scale);
+      } else if (styleVariant === "scaled" || styleVariant === "dragonscale") {
+        // Scale mail pattern
+        const scaleColor = colors.primary;
+        const scaleOutline = armorDark;
+        ctx.fillStyle = scaleColor;
+        ctx.strokeStyle = scaleOutline;
+        ctx.lineWidth = 0.5 * scale;
+        for (let row = 0; row < 5; row++) {
+          const rowY = cy - 5 * scale + row * 2.5 * scale;
+          const offset = (row % 2) * 2 * scale;
+          for (let col = -3; col <= 3; col++) {
+            const colX = cx + col * 2.2 * scale + offset;
+            ctx.beginPath();
+            ctx.arc(colX, rowY, 1.3 * scale, Math.PI, 0);
+            ctx.fill();
+            ctx.stroke();
+          }
+        }
+      } else if (styleVariant === "bone") {
+        // Bone plates
+        ctx.fillStyle = colors.trim;
+        for (let i = -1; i <= 1; i++) {
+          const plateX = cx + i * 4 * scale;
+          ctx.beginPath();
+          ctx.ellipse(plateX, cy, 2.2 * scale, 4 * scale, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+        }
+      } else {
+        // Standard leather
+        drawLine(cx - 5.2 * scale, cy - 4.8 * scale, cx + 4.6 * scale, cy + 4.6 * scale, armorTrim, 1 * scale);
+        if (variant % 2 === 1) {
+          drawLine(cx + 5.2 * scale, cy - 4.8 * scale, cx - 4.6 * scale, cy + 4.6 * scale, armorDark, 0.9 * scale);
+        }
+      }
+    }
+
+    function drawChestShine(cx, cy, colors, scale, variant) {
+      const shineColor = colors.shine;
+      if (!shineColor) return;
+      
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.5 + (colors.rarityRank - 3) * 0.1;
+      
+      // Animated shine based on time
+      const time = performance.now() / 1000;
+      const shinePhase = (time * 0.7 + variant * 0.3) % 1;
+      const shineX = cx + (shinePhase - 0.5) * 10 * scale;
+      
+      // Diagonal shine sweep
+      ctx.strokeStyle = shineColor;
+      ctx.lineWidth = 2 * scale;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(shineX - 3 * scale, cy - 4 * scale);
+      ctx.lineTo(shineX + 3 * scale, cy + 4 * scale);
+      ctx.stroke();
+      
+      // Radial glow
+      const gradientAlpha = 0.2 + Math.sin(time * 2) * 0.1;
+      ctx.globalAlpha = gradientAlpha;
+      ctx.fillStyle = shineColor;
+      ctx.beginPath();
+      ctx.arc(cx, cy - 2 * scale, 3 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.restore();
     }
 
     function drawHead(cx, cy, palette, species, scale) {
@@ -1650,8 +2050,27 @@
           : targetBowPull;
       const bowHandSide = loadout.mainHand.type === "bow" ? resolveBowHandSide(entity, options) : "left";
       const mainHandSide = loadout.mainHand.type === "bow" ? bowHandSide : resolvePrimaryHandSide(entity, attackVisual, options);
-      const cx = p.x + motion.sway * 0.12;
-      const cy = p.y + motion.bob * 0.2;
+      
+      // Handle charge position interpolation
+      let chargeCurrentX = null;
+      let chargeCurrentY = null;
+      if (castState && castState.active) {
+        const actionDef = getActionDefById(castState.abilityId);
+        if (actionDef && String(actionDef.kind || "").toLowerCase() === "charge") {
+          const progress = clamp(Number(castState.ratio) || 0, 0, 1);
+          const startX = castState.chargeStartX;
+          const startY = castState.chargeStartY;
+          const targetX = castState.chargeTargetX;
+          const targetY = castState.chargeTargetY;
+          if (startX !== undefined && targetX !== undefined && startY !== undefined && targetY !== undefined) {
+            chargeCurrentX = startX + (targetX - startX) * progress;
+            chargeCurrentY = startY + (targetY - startY) * progress;
+          }
+        }
+      }
+      
+      const cx = (chargeCurrentX !== null ? chargeCurrentX : p.x) + motion.sway * 0.12;
+      const cy = (chargeCurrentY !== null ? chargeCurrentY : p.y) + motion.bob * 0.2;
       const headY = cy - 8.3 * scale;
       const shoulderY = cy - 0.5 * scale;
       const hipY = cy + 7.8 * scale;
@@ -1660,6 +2079,14 @@
       const pantsColors = getVisualMaterialColors(loadout.pantsVisual || null, palette, loadout.pants);
       const bootsColors = getVisualMaterialColors(loadout.bootsVisual || null, palette, loadout.boots);
       const bootVariant = Number(loadout.bootsVisual?.variant || 0);
+
+      // Draw charge dash effect
+      if (castState && castState.active) {
+        const actionDef = getActionDefById(castState.abilityId);
+        if (actionDef && String(actionDef.kind || "").toLowerCase() === "charge") {
+          drawChargeDashEffect(cx, cy, castState, palette, scale, entity.id);
+        }
+      }
 
       if (species !== "skeleton") {
         drawLine(cx, headY + 7.5 * scale, cx, shoulderY - 0.6 * scale, palette.outline, 2 * scale);

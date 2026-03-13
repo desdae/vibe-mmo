@@ -6,8 +6,9 @@
         "baseMana": 30,
         "manaRegen": 0.3,
         "abilities": [
-            {"id":"slash", "level": 1}, 
+            {"id":"slash", "level": 1},
             {"id":"warstomp", "level": 1},
+            {"id":"charge", "level": 1},
             {"id":"bloodWrath", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50, "manaPotion01": 20}],

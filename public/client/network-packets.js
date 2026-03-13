@@ -960,24 +960,40 @@
         const flags = view.getUint8(offset + 2);
         offset += 3;
         const active = !!(flags & CAST_EVENT_FLAG_ACTIVE);
+        const isCharge = !!(flags & CAST_EVENT_FLAG_CHARGE);
+        
         if (active && offset + 8 > view.byteLength) {
           break;
         }
-        const target = active
-          ? {
-              id,
-              active: true,
-              abilityId: resolveAbilityIdHash(view.getUint32(offset, true)),
-              durationMs: view.getUint16(offset + 4, true),
-              elapsedMs: view.getUint16(offset + 6, true)
-            }
-          : { id, active: false };
+        
+        let target;
         if (active) {
+          target = {
+            id,
+            active: true,
+            abilityId: resolveAbilityIdHash(view.getUint32(offset, true)),
+            durationMs: view.getUint16(offset + 4, true),
+            elapsedMs: view.getUint16(offset + 6, true)
+          };
           offset += 8;
+          
+          if (isCharge && offset + 8 > view.byteLength) {
+            break;
+          }
+          if (isCharge) {
+            target.isCharge = true;
+            target.chargeStartX = dequantizePos(view.getUint16(offset, true));
+            target.chargeStartY = dequantizePos(view.getUint16(offset + 2, true));
+            target.chargeTargetX = dequantizePos(view.getUint16(offset + 4, true));
+            target.chargeTargetY = dequantizePos(view.getUint16(offset + 6, true));
+            offset += 8;
+          }
+        } else {
+          target = { id, active: false };
         }
 
         if (kind === CAST_EVENT_KIND_SELF) {
-          selfCast = active ? { active: true, abilityId: target.abilityId, durationMs: target.durationMs, elapsedMs: target.elapsedMs } : { active: false };
+          selfCast = active ? { active: true, abilityId: target.abilityId, durationMs: target.durationMs, elapsedMs: target.elapsedMs, isCharge: target.isCharge, chargeStartX: target.chargeStartX, chargeStartY: target.chargeStartY, chargeTargetX: target.chargeTargetX, chargeTargetY: target.chargeTargetY } : { active: false };
         } else if (kind === CAST_EVENT_KIND_MOB) {
           mobCasts.push(target);
         } else if (kind === CAST_EVENT_KIND_PLAYER) {

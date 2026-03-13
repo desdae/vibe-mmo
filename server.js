@@ -489,6 +489,7 @@ const inferProjectileTargetTypeFromOwner = projectileSpawnTools.inferProjectileT
 const spawnProjectileFromTemplate = projectileSpawnTools.spawnProjectileFromTemplate;
 
 const abilityHandlerContext = createAbilityHandlerContext({
+  players,
   mobs,
   projectiles,
   mapWidth: MAP_WIDTH,
@@ -517,7 +518,9 @@ const abilityHandlerContext = createAbilityHandlerContext({
   markAbilityUsed: (...args) => markAbilityUsed(...args),
   applyDamageToMob: (...args) => applyDamageToMob(...args),
   applyAbilityHitEffectsToMob: (...args) => applyAbilityHitEffectsToMob(...args),
+  applyDamageToPlayer: (...args) => applyDamageToPlayer(...args),
   stunMob: (...args) => stunMob(...args),
+  stunPlayer: (...args) => stunPlayer(...args),
   queueExplosionEvent,
   getAreaAbilityTargetPosition: (...args) => getAreaAbilityTargetPosition(...args),
   createPersistentAreaEffect: (...args) => createPersistentAreaEffect(...args),
@@ -525,7 +528,8 @@ const abilityHandlerContext = createAbilityHandlerContext({
   createPersistentSummonEffect: (...args) => createPersistentSummonEffect(...args),
   resolvePlayerMobCollisions: (...args) => resolvePlayerMobCollisions(...args),
   applySelfBuffs: (...args) => applyAbilityBuffsToPlayer(...args),
-  getAbilityInvulnerabilityDurationMs
+  getAbilityInvulnerabilityDurationMs,
+  isPlayerEnemy: (...args) => isPlayerEnemy(...args)
 });
 
 const lootBagTools = createLootBagTools({
@@ -688,6 +692,7 @@ const clearPlayerCombatEffects = playerCombatEffectTools.clearPlayerCombatEffect
 const tickPlayerDotEffects = playerCombatEffectTools.tickPlayerDotEffects;
 const applyAbilityHitEffectsToPlayer = playerCombatEffectTools.applyAbilityHitEffectsToPlayer;
 const applyProjectileHitEffectsToPlayer = playerCombatEffectTools.applyProjectileHitEffectsToPlayer;
+const stunPlayer = playerCombatEffectTools.stunPlayer;
 const notifyAbilityUsed = (player, abilityDef, now = Date.now()) => {
   if (!player || !player.ws || typeof sendJson !== "function" || !abilityDef) {
     return;

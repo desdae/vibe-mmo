@@ -129,6 +129,62 @@ function createPlayerTickSystem({
         continue;
       }
 
+      // Handle charging movement via activeCast
+      const cast = player.activeCast;
+      if (cast && cast.isCharge && cast.endsAt > now && !player.chargeData.hasImpacted) {
+        const chargeElapsed = now - cast.startedAt;
+        const t = Math.min(1, chargeElapsed / cast.durationMs);
+        
+        // Interpolate position during charge
+        const startX = cast.chargeStartX !== undefined ? cast.chargeStartX : player.x;
+        const startY = cast.chargeStartY !== undefined ? cast.chargeStartY : player.y;
+        player.x = startX + (cast.chargeTargetX - startX) * t;
+        player.y = startY + (cast.chargeTargetY - startY) * t;
+        resolvePlayerMobCollisions(player);
+        player.input = { dx: 0, dy: 0 };
+        continue;
+      }
+      
+      // Handle charge impact when cast completes
+      if (cast && cast.isCharge && cast.endsAt <= now && !player.chargeData.hasImpacted) {
+        player.chargeData.hasImpacted = true;
+        player.x = cast.chargeTargetX;
+        player.y = cast.chargeTargetY;
+        
+        ctx.queueExplosionEvent(player.x, player.y, player.chargeData.impactRadius * 0.6, cast.abilityId);
+        
+        // Apply damage and stun to mobs in impact radius
+        for (const mob of ctx.mobs.values()) {
+          if (!mob.alive) continue;
+          const mobDist = Math.hypot(mob.x - player.x, mob.y - player.y);
+          if (mobDist > player.chargeData.impactRadius) continue;
+          const dealt = ctx.applyDamageToMob(mob, ctx.randomInt(player.chargeData.damageMin, player.chargeData.damageMax), player.id);
+          ctx.applyAbilityHitEffectsToMob(mob, player.id, player.chargeData.abilityDef, player.chargeData.abilityLevel, dealt, now);
+          if (player.chargeData.stunDurationMs > 0) {
+            ctx.stunMob(mob, player.chargeData.stunDurationMs, now);
+          }
+        }
+        
+        // Apply damage and stun to enemy players in impact radius
+        for (const otherPlayer of ctx.players.values()) {
+          if (otherPlayer.id === player.id || !otherPlayer.alive || otherPlayer.hp <= 0) continue;
+          const playerDist = Math.hypot(otherPlayer.x - player.x, otherPlayer.y - player.y);
+          if (playerDist > player.chargeData.impactRadius) continue;
+          if (ctx.isPlayerEnemy(player, otherPlayer)) {
+            const dealt = ctx.applyDamageToPlayer(otherPlayer, ctx.randomInt(player.chargeData.damageMin, player.chargeData.damageMax), player.id, "physical");
+            if (dealt > 0 && player.chargeData.stunDurationMs > 0) {
+              ctx.stunPlayer(otherPlayer, player.chargeData.stunDurationMs, now);
+            }
+          }
+        }
+        
+        // Clear charge state
+        clearPlayerCast(player);
+        player.chargeData = null;
+        player.input = { dx: 0, dy: 0 };
+        continue;
+      }
+
       if (!player.input || (!player.input.dx && !player.input.dy)) {
         continue;
       }

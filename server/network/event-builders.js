@@ -108,7 +108,12 @@ function buildPlayerCastEventsForRecipient(recipient, nearbyPlayerObjects, now) 
           active: true,
           abilityId: String(activeCast.abilityId || ""),
           durationMs: Math.max(1, Math.floor(Number(activeCast.durationMs) || 0)),
-          elapsedMs: clamp(now - activeCast.startedAt, 0, activeCast.durationMs)
+          elapsedMs: clamp(now - activeCast.startedAt, 0, activeCast.durationMs),
+          isCharge: !!activeCast.isCharge,
+          chargeStartX: activeCast.chargeStartX,
+          chargeStartY: activeCast.chargeStartY,
+          chargeTargetX: activeCast.chargeTargetX,
+          chargeTargetY: activeCast.chargeTargetY
         });
       }
       continue;
@@ -122,7 +127,12 @@ function buildPlayerCastEventsForRecipient(recipient, nearbyPlayerObjects, now) 
           active: true,
           abilityId: String(activeCast.abilityId || ""),
           durationMs: Math.max(1, Math.floor(Number(activeCast.durationMs) || 0)),
-          elapsedMs: clamp(now - activeCast.startedAt, 0, activeCast.durationMs)
+          elapsedMs: clamp(now - activeCast.startedAt, 0, activeCast.durationMs),
+          isCharge: !!activeCast.isCharge,
+          chargeStartX: activeCast.chargeStartX,
+          chargeStartY: activeCast.chargeStartY,
+          chargeTargetX: activeCast.chargeTargetX,
+          chargeTargetY: activeCast.chargeTargetY
         });
       } else {
         casts.push({
@@ -149,7 +159,12 @@ function buildPlayerCastEventsForRecipient(recipient, nearbyPlayerObjects, now) 
         active: true,
         abilityId: String(selfCast.abilityId || ""),
         durationMs: Math.max(1, Math.floor(Number(selfCast.durationMs) || 0)),
-        elapsedMs: clamp(now - selfCast.startedAt, 0, selfCast.durationMs)
+        elapsedMs: clamp(now - selfCast.startedAt, 0, selfCast.durationMs),
+        isCharge: !!selfCast.isCharge,
+        chargeStartX: selfCast.chargeStartX,
+        chargeStartY: selfCast.chargeStartY,
+        chargeTargetX: selfCast.chargeTargetX,
+        chargeTargetY: selfCast.chargeTargetY
       };
     }
   } else if (sync.selfCastVersion !== currentSelfVersion) {

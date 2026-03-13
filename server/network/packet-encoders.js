@@ -305,13 +305,24 @@ function encodePlayerSwingPacket(events) {
 }
 
 function getCastRecordSize(record) {
-  return record && record.active ? 11 : 3;
+  const isCharge = record && record.isCharge;
+  if (!record || !record.active) {
+    return 3;
+  }
+  return isCharge ? 19 : 11;
 }
 
 function writeCastRecord(buffer, offset, record, kind) {
+  const isCharge = record && record.isCharge;
+  let flags = record && record.active ? CAST_EVENT_FLAG_ACTIVE : 0;
+  if (isCharge) {
+    flags |= CAST_EVENT_FLAG_CHARGE;
+  }
+  
   buffer.writeUInt8(clamp(kind, 0, 255), offset);
   buffer.writeUInt8(clamp(Math.floor(Number(record && record.id) || 0), 0, 255), offset + 1);
-  buffer.writeUInt8(record && record.active ? CAST_EVENT_FLAG_ACTIVE : 0, offset + 2);
+  buffer.writeUInt8(flags, offset + 2);
+  
   if (!(record && record.active)) {
     return offset + 3;
   }
@@ -319,6 +330,16 @@ function writeCastRecord(buffer, offset, record, kind) {
   buffer.writeUInt32LE(hashString32(String(record.abilityId || "").trim().toLowerCase()), offset + 3);
   buffer.writeUInt16LE(clamp(Math.floor(Number(record.durationMs) || 0), 1, 65535), offset + 7);
   buffer.writeUInt16LE(clamp(Math.floor(Number(record.elapsedMs) || 0), 0, 65535), offset + 9);
+  
+  if (isCharge) {
+    // Add charge-specific data: startX, startY, targetX, targetY (each 2 bytes quantized)
+    buffer.writeUInt16LE(quantizePos(record.chargeStartX || 0), offset + 11);
+    buffer.writeUInt16LE(quantizePos(record.chargeStartY || 0), offset + 13);
+    buffer.writeUInt16LE(quantizePos(record.chargeTargetX || 0), offset + 15);
+    buffer.writeUInt16LE(quantizePos(record.chargeTargetY || 0), offset + 17);
+    return offset + 19;
+  }
+  
   return offset + 11;
 }
 

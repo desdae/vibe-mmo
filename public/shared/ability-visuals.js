@@ -160,6 +160,9 @@
       warstomp: {
         iconRenderer: "warstomp"
       },
+      charge: {
+        iconRenderer: "charge"
+      },
       bonearrow: {
         iconRenderer: "melee_slash",
         projectileRenderer: "bone_arrow"

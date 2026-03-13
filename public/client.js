@@ -168,6 +168,7 @@ const mobileSpellbookTabButton = mobileUiElements.spellbookTabButton;
 const mobilePanelCloseButton = mobileUiElements.closeButton;
 
 const TILE_SIZE = 32;
+const MOBILE_PORTRAIT_TARGET_VIEW_TILES_X = 19;
 const INTERPOLATION_DELAY_MS = 100;
 const MAX_SNAPSHOTS = 120;
 const TRAFFIC_WINDOW_MS = 10000;
@@ -723,7 +724,10 @@ const mobileAbilityAimState = {
   snappedTargetId: null,
   snappedTargetKind: "",
   radiusPx: 128,
-  deadzonePx: 14
+  deadzonePx: 14,
+  lastCastDirection: null,
+  pivotClientX: 0,
+  pivotClientY: 0
 };
 const debugGearState = {
   visible: false,
@@ -5174,6 +5178,51 @@ function drawWarstompActionIcon(iconCtx, size) {
   }
 }
 
+function drawChargeActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  
+  // Speed lines background
+  iconCtx.strokeStyle = "rgba(255, 200, 100, 0.4)";
+  iconCtx.lineWidth = 2;
+  iconCtx.lineCap = "round";
+  for (let i = 0; i < 4; i++) {
+    const yOffset = (i - 1.5) * 6;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 8, mid + yOffset);
+    iconCtx.lineTo(mid - 2, mid + yOffset);
+    iconCtx.stroke();
+  }
+  
+  // Main charge arrow
+  iconCtx.strokeStyle = "#ffd774";
+  iconCtx.lineWidth = 4;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 12, mid);
+  iconCtx.lineTo(mid + 8, mid);
+  iconCtx.stroke();
+  
+  // Arrow head
+  iconCtx.fillStyle = "#fff0a4";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid + 10, mid);
+  iconCtx.lineTo(mid + 2, mid - 5);
+  iconCtx.lineTo(mid + 2, mid + 5);
+  iconCtx.closePath();
+  iconCtx.fill();
+  
+  // Impact burst at tip
+  iconCtx.strokeStyle = "rgba(255, 215, 116, 0.7)";
+  iconCtx.lineWidth = 1.5;
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI * 2 * i) / 6;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid + 8 + Math.cos(angle) * 3, mid + Math.sin(angle) * 3);
+    iconCtx.lineTo(mid + 12 + Math.cos(angle) * 6, mid + Math.sin(angle) * 6);
+    iconCtx.stroke();
+  }
+}
+
 function drawPickupBagActionIcon(iconCtx, size) {
   const mid = size / 2;
   iconCtx.fillStyle = "#8e6335";
@@ -5259,6 +5308,7 @@ const ABILITY_ICON_RENDERERS = Object.freeze({
   fire_hydra: drawFireHydraActionIcon,
   blood_wrath: drawBloodWrathActionIcon,
   warstomp: drawWarstompActionIcon,
+  charge: drawChargeActionIcon,
   pickup_bag: drawPickupBagActionIcon
 });
 
@@ -7266,8 +7316,7 @@ function handleMobileActionSlotTouchEnd(event) {
       return;
     }
     hideHoverTooltip();
-    if (aimCapable && beginMobileAbilityAim(slotId, touch.identifier, startX, startY)) {
-      commitMobileAbilityAim();
+    if (aimCapable && quickCastMobileAbility(slotId)) {
       event.preventDefault();
       return;
     }
@@ -8192,9 +8241,11 @@ function getMobileAbilityAimCanvasPoint(clientX, clientY) {
     return null;
   }
   const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+  const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
   return {
-    x: clamp((Number(clientX) || 0) - rect.left, 0, canvas.width),
-    y: clamp((Number(clientY) || 0) - rect.top, 0, canvas.height)
+    x: clamp(((Number(clientX) || 0) - rect.left) * scaleX, 0, canvas.width),
+    y: clamp(((Number(clientY) || 0) - rect.top) * scaleY, 0, canvas.height)
   };
 }
 
@@ -8354,8 +8405,10 @@ function updateMobileAbilityAimTarget() {
   const actionId = String(mobileAbilityAimState.abilityId || "");
   const actionDef = getActionDefById(actionId);
   const range = Math.max(0, getAbilityEffectiveRangeForSelf(actionId, self));
-  const dragDx = Number(mobileAbilityAimState.currentClientX) - Number(mobileAbilityAimState.aimOriginClientX);
-  const dragDy = Number(mobileAbilityAimState.currentClientY) - Number(mobileAbilityAimState.aimOriginClientY);
+  const pivotX = Number(mobileAbilityAimState.pivotClientX) || 0;
+  const pivotY = Number(mobileAbilityAimState.pivotClientY) || 0;
+  const dragDx = Number(mobileAbilityAimState.currentClientX) - pivotX;
+  const dragDy = Number(mobileAbilityAimState.currentClientY) - pivotY;
   const dragLen = Math.hypot(dragDx, dragDy);
   const deadzonePx = Math.max(0, Number(mobileAbilityAimState.deadzonePx) || 0);
   const radiusPx = Math.max(1, Number(mobileAbilityAimState.radiusPx) || 1);
@@ -8395,6 +8448,8 @@ function resetMobileAbilityAim() {
   mobileAbilityAimState.targetY = 0;
   mobileAbilityAimState.snappedTargetId = null;
   mobileAbilityAimState.snappedTargetKind = "";
+  mobileAbilityAimState.pivotClientX = 0;
+  mobileAbilityAimState.pivotClientY = 0;
   if (changed) {
     updateActionBarUI(getCurrentSelf());
   }
@@ -8430,12 +8485,18 @@ function beginMobileAbilityAim(slotId, touchId, clientX, clientY) {
 
   const radiusPx = getMobileAbilityAimRadiusPx();
   const aimOrigin = getActionSlotClientCenter(slotId, clientX, clientY);
+  const characterScreenX = canvas.width / 2;
+  const characterScreenY = canvas.height / 2;
+  const pivotX = (characterScreenX + aimOrigin.x) / 2;
+  const pivotY = (characterScreenY + aimOrigin.y) / 2;
   mobileAbilityAimState.active = true;
   mobileAbilityAimState.touchId = touchId;
   mobileAbilityAimState.slotId = String(slotId || "");
   mobileAbilityAimState.abilityId = actionId;
   mobileAbilityAimState.aimOriginClientX = Number(aimOrigin.x) || 0;
   mobileAbilityAimState.aimOriginClientY = Number(aimOrigin.y) || 0;
+  mobileAbilityAimState.pivotClientX = pivotX;
+  mobileAbilityAimState.pivotClientY = pivotY;
   mobileAbilityAimState.startClientX = Number(clientX) || 0;
   mobileAbilityAimState.startClientY = Number(clientY) || 0;
   mobileAbilityAimState.currentClientX = mobileAbilityAimState.startClientX;
@@ -8470,8 +8531,62 @@ function commitMobileAbilityAim() {
     Number.isFinite(targetY)
       ? executeBoundActionAt(slotId, targetX, targetY, { trackPointer: false })
       : false;
+  if (didCast) {
+    const self = getCurrentSelf();
+    if (self) {
+      const direction = {
+        dx: (Number(targetX) || 0) - (Number(self.x) || 0),
+        dy: (Number(targetY) || 0) - (Number(self.y) || 0)
+      };
+      const len = Math.hypot(direction.dx, direction.dy);
+      if (len > 0.001) {
+        direction.dx /= len;
+        direction.dy /= len;
+        mobileAbilityAimState.lastCastDirection = direction;
+      }
+    }
+  }
   suppressActionBarClickUntil = performance.now() + 360;
   resetMobileAbilityAim();
+  return didCast;
+}
+
+function quickCastMobileAbility(slotId) {
+  if (!isTouchJoystickEnabled() || mobileAbilityAimState.active || abilityChannel.active) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    return false;
+  }
+  const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+  if (binding.kind !== "action") {
+    return false;
+  }
+  const actionId = String(binding.id || "").trim();
+  const actionDef = getActionDefById(actionId);
+  if (!supportsMobileAbilityAim(actionId, actionDef)) {
+    return false;
+  }
+  const now = performance.now();
+  if (!hasEnoughManaForAbility(self, actionId) || !canUseAbilityNow(actionId, now, self)) {
+    return false;
+  }
+  const range = Math.max(0, getAbilityEffectiveRangeForSelf(actionId, self));
+  if (range <= 0.001) {
+    return false;
+  }
+  const direction = mobileAbilityAimState.lastCastDirection || getMobileAbilityAimFallbackDirection(self);
+  if (!direction) {
+    return false;
+  }
+  const targetX = Number(self.x) + direction.dx * range;
+  const targetY = Number(self.y) + direction.dy * range;
+  const didCast = executeBoundActionAt(slotId, targetX, targetY, { trackPointer: false });
+  if (didCast) {
+    mobileAbilityAimState.lastCastDirection = direction;
+  }
+  suppressActionBarClickUntil = performance.now() + 360;
   return didCast;
 }
 
@@ -10443,8 +10558,14 @@ function connectAndJoin(name, classType, isAdmin = false) {
 }
 
 function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const viewportWidth = Math.max(1, Math.floor(Number(window.innerWidth) || 0));
+  const viewportHeight = Math.max(1, Math.floor(Number(window.innerHeight) || 0));
+  const usePortraitMobileZoom =
+    isTouchJoystickEnabled() && viewportHeight > viewportWidth && viewportWidth > 0 && viewportHeight > 0;
+  const targetWidthPx = MOBILE_PORTRAIT_TARGET_VIEW_TILES_X * TILE_SIZE;
+  const viewportScale = usePortraitMobileZoom ? Math.max(1, targetWidthPx / viewportWidth) : 1;
+  canvas.width = Math.max(1, Math.round(viewportWidth * viewportScale));
+  canvas.height = Math.max(1, Math.round(viewportHeight * viewportScale));
   if (rendererBootstrap && typeof rendererBootstrap.resize === "function") {
     rendererBootstrap.resize(canvas.width, canvas.height);
   }
