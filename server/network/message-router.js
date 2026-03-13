@@ -446,6 +446,37 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "admin_set_level") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const requested = Math.floor(Number(msg.level) || 0);
+    const level = deps.clamp ? deps.clamp(requested, 1, 60) : Math.max(1, Math.min(60, requested));
+    player.level = level;
+    player.exp = 0;
+    if (typeof deps.expNeededForLevel === "function") {
+      player.expToNext = deps.expNeededForLevel(player.level);
+    }
+    player.skillPoints = deps.clamp ? deps.clamp(player.level - 1, 0, 65535) : Math.max(0, player.level - 1);
+
+    const talentTree = typeof deps.getTalentTreeData === "function" ? deps.getTalentTreeData(player) : null;
+    if (talentTree) {
+      player.talentPoints = Math.max(0, Math.floor(Number(talentTree.availablePoints) || 0));
+      deps.sendJson(player.ws, {
+        type: "talent_update",
+        talentTree
+      });
+    }
+
+    deps.sendSelfProgress(player);
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      message: `Level set to ${player.level}.`
+    });
+    return { player };
+  }
+
   if (msg.type === "create_bot_player") {
     if (!player.isAdmin) {
       deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });

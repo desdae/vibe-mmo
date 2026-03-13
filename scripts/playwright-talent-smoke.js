@@ -51,12 +51,79 @@ async function run() {
     await page.goto(SERVER_URL, { waitUntil: "networkidle" });
     await page.waitForFunction(() => window.__vibemmoTest && document.querySelector("#classType option[value]"));
     await page.fill("#name", "pw-talents");
-    await page.selectOption("#classType", "mage");
+    await page.selectOption("#classType", "warrior");
+    await page.check("#isAdmin");
     await page.click("#join-form button[type='submit']");
     await page.waitForFunction(() => {
       const state = window.__vibemmoTest && window.__vibemmoTest.getState();
       return !!(state && state.self);
     });
+
+    // Grant enough talent points to unlock and max Charge Mastery (requires Juggernaut rank 3).
+    await page.evaluate(() => window.__vibemmoTest.send({ type: "admin_set_level", level: 9 }));
+    await page.waitForFunction(() => {
+      const state = window.__vibemmoTest && window.__vibemmoTest.getState();
+      return !!(state && state.self && state.self.level >= 9);
+    });
+
+    // Spend talents: Juggernaut x3, Charge Mastery x5.
+    for (let i = 0; i < 3; i += 1) {
+      await page.evaluate(() => window.__vibemmoTest.send({ type: "spend_talent_point", talentId: "juggernaut" }));
+      await sleep(80);
+    }
+    for (let i = 0; i < 5; i += 1) {
+      await page.evaluate(() => window.__vibemmoTest.send({ type: "spend_talent_point", talentId: "charge_mastery" }));
+      await sleep(80);
+    }
+
+    // Tooltips should reflect the modified cooldown and range.
+    await page.waitForFunction(() => {
+      const tooltip = String(window.buildAbilityTooltip && window.buildAbilityTooltip("charge") || "");
+      return tooltip.includes("Cooldown: 5.5s") && tooltip.includes("Range: 8.50");
+    });
+    const chargeTooltip = await page.evaluate(() => String(window.buildAbilityTooltip && window.buildAbilityTooltip("charge") || ""));
+    if (!chargeTooltip.includes("Cooldown: 5.5s")) {
+      throw new Error(`Expected Charge tooltip cooldown to be reduced (got: ${chargeTooltip})`);
+    }
+    if (!chargeTooltip.includes("Range: 8.50")) {
+      throw new Error(`Expected Charge tooltip range to be increased (got: ${chargeTooltip})`);
+    }
+
+    // Gameplay should reflect the increased Charge range.
+    const firstStart = await page.evaluate(() => {
+      const state = window.__vibemmoTest.getState();
+      return { x: Number(state.self.x) || 0, y: Number(state.self.y) || 0 };
+    });
+    await page.evaluate(() => {
+      const state = window.__vibemmoTest.getState();
+      window.__vibemmoTest.castAtWorld("charge", state.self.x + 100, state.self.y);
+    });
+    await sleep(1000);
+    const firstEnd = await page.evaluate(() => {
+      const state = window.__vibemmoTest.getState();
+      return { x: Number(state.self.x) || 0, y: Number(state.self.y) || 0 };
+    });
+    const firstDistance = Math.hypot(firstEnd.x - firstStart.x, firstEnd.y - firstStart.y);
+    if (Math.abs(firstDistance - 8.5) > 0.35) {
+      throw new Error(`Expected Charge to travel ~8.5 units, traveled ${firstDistance.toFixed(2)}.`);
+    }
+
+    // Cooldown should allow another Charge after ~5.5s (base is 8s).
+    await sleep(6100);
+    const secondStart = firstEnd;
+    await page.evaluate(() => {
+      const state = window.__vibemmoTest.getState();
+      window.__vibemmoTest.castAtWorld("charge", state.self.x + 100, state.self.y);
+    });
+    await sleep(1000);
+    const secondEnd = await page.evaluate(() => {
+      const state = window.__vibemmoTest.getState();
+      return { x: Number(state.self.x) || 0, y: Number(state.self.y) || 0 };
+    });
+    const secondDistance = Math.hypot(secondEnd.x - secondStart.x, secondEnd.y - secondStart.y);
+    if (Math.abs(secondDistance - 8.5) > 0.35) {
+      throw new Error(`Expected second Charge to travel ~8.5 units, traveled ${secondDistance.toFixed(2)}.`);
+    }
 
     await page.keyboard.press("KeyT");
     await sleep(200);
@@ -112,4 +179,3 @@ run().catch((error) => {
   console.error(error && error.stack ? error.stack : String(error));
   process.exit(1);
 });
-
