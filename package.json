@@ -11,7 +11,8 @@
     "sync:pixi": "node scripts/sync-pixi-runtime.js",
     "start:prod": "node scripts/run-prod.js",
     "test:equipment:affixes": "node scripts/test-equipment-affixes.js",
-    "test:equipment:smoke": "node scripts/playwright-equipment-smoke.js"
+    "test:equipment:smoke": "node scripts/playwright-equipment-smoke.js",
+    "test:talents:smoke": "node scripts/playwright-talent-smoke.js"
   },
   "dependencies": {
     "pixi.js": "^7.4.3",

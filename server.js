@@ -434,6 +434,7 @@ const equipmentTools = createEquipmentTools({
   getAbilityDotDamageRange
 });
 const createEmptyEquipmentSlots = equipmentTools.createEmptyEquipmentSlots;
+const rollEquipmentItemAt = equipmentTools.rollEquipmentItemAt;
 const rollEquipmentDropsAt = equipmentTools.rollEquipmentDropsAt;
 const getPlayerModifiedAbilityDamageRange = equipmentTools.getPlayerModifiedAbilityDamageRange;
 const getPlayerModifiedAbilityDotDamageRange = equipmentTools.getPlayerModifiedAbilityDotDamageRange;
@@ -1124,6 +1125,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     mergeOrSwapInventorySlots,
     equipInventoryItem,
     unequipEquipmentItem,
+    rollEquipmentItemAt,
     consumeInventoryItem,
     addHealOverTimeEffect,
     addManaOverTimeEffect

@@ -44,6 +44,7 @@ function createWsConnectionDeps({
   mergeOrSwapInventorySlots,
   equipInventoryItem,
   unequipEquipmentItem,
+  rollEquipmentItemAt,
   consumeInventoryItem,
   addHealOverTimeEffect,
   addManaOverTimeEffect
@@ -91,6 +92,7 @@ function createWsConnectionDeps({
     mergeOrSwapInventorySlots,
     equipInventoryItem,
     unequipEquipmentItem,
+    rollEquipmentItemAt,
     consumeInventoryItem,
     addHealOverTimeEffect,
     addManaOverTimeEffect,

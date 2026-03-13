@@ -371,6 +371,63 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "admin_grant_equipment_item") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    if (typeof deps.rollEquipmentItemAt !== "function") {
+      deps.sendJson(player.ws, { type: "error", message: "Equipment roll unavailable." });
+      return { player };
+    }
+
+    const minAffixes = Math.max(0, Math.floor(Number(msg.minAffixes) || 0));
+    const maxAttempts = 300;
+    let rolled = null;
+    let bestAffixCount = -1;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const candidate = deps.rollEquipmentItemAt(player.x, player.y);
+      if (!candidate) {
+        continue;
+      }
+      const affixCount = Array.isArray(candidate.affixes) ? candidate.affixes.length : 0;
+      if (affixCount > bestAffixCount) {
+        rolled = candidate;
+        bestAffixCount = affixCount;
+      }
+      if (affixCount >= minAffixes) {
+        rolled = candidate;
+        bestAffixCount = affixCount;
+        break;
+      }
+    }
+
+    if (!rolled) {
+      deps.sendJson(player.ws, { type: "error", message: "Failed to roll equipment item." });
+      return { player };
+    }
+    if (bestAffixCount < minAffixes) {
+      deps.sendJson(player.ws, {
+        type: "error",
+        message: `Failed to roll equipment with at least ${minAffixes} affixes.`
+      });
+      return { player };
+    }
+
+    const addResult = deps.addItemsToInventory(player, [rolled]);
+    if (!addResult || addResult.changed !== true) {
+      deps.sendJson(player.ws, { type: "error", message: "Inventory full." });
+      return { player };
+    }
+
+    deps.sendInventoryState(player);
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      message: `Granted ${String(rolled.name || rolled.itemId || "equipment")}.`
+    });
+    return { player };
+  }
+
   if (msg.type === "create_bot_player") {
     if (!player.isAdmin) {
       deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });

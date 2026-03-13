@@ -697,6 +697,7 @@ function createEquipmentTools(options = {}) {
     createEquipmentEntryFromBaseItem,
     isEquipmentItemId,
     isEquipmentEntry,
+    rollEquipmentItemAt,
     rollEquipmentDropsAt,
     getEquippedBaseStatTotal,
     getEquippedStatTotal,

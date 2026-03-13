@@ -252,7 +252,8 @@ function createTalentSystem(options = {}) {
     calculateTalentStats,
     getTotalTalentPoints,
     getSpentTalentPoints,
-    getAvailableTalentPoints
+    getAvailableTalentPoints,
+    getTalentEffects
   };
 }
 
