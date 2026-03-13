@@ -3147,12 +3147,37 @@
         const halfAngle = (coneAngleDeg * Math.PI) / 360;
         const radiusPx = Math.max(18, Math.max(0.5, castRange || len || 1.8) * tileSize);
         const facing = Math.atan2(direction.dy, direction.dx);
+        
+        // Draw cone fill
         abilityPreviewGraphics.beginFill(fillColor, inRange ? 0.16 * pulse : 0.15 * pulse);
         abilityPreviewGraphics.lineStyle(1.6, strokeColor, 0.72);
         abilityPreviewGraphics.moveTo(start.x, start.y);
         abilityPreviewGraphics.arc(start.x, start.y, radiusPx, facing - halfAngle, facing + halfAngle);
         abilityPreviewGraphics.lineTo(start.x, start.y);
         abilityPreviewGraphics.endFill();
+        
+        // Draw slashy animation - sweeping arc trails
+        const slashAlpha = 0.35 * pulse;
+        const slashColor = inRange ? 0xfff5dc : 0xffb4b4;
+        
+        // Draw multiple arc trails for slash effect
+        for (let i = 0; i < 3; i++) {
+          const trailRadius = radiusPx * (0.6 + i * 0.15);
+          const trailAlpha = slashAlpha * (1 - i * 0.25);
+          abilityPreviewGraphics.lineStyle(2.5 - i * 0.5, slashColor, trailAlpha);
+          abilityPreviewGraphics.arc(start.x, start.y, trailRadius, facing - halfAngle * 0.8, facing + halfAngle * 0.8);
+        }
+        
+        // Draw slash marks
+        const slashCount = 3;
+        for (let i = 0; i < slashCount; i++) {
+          const slashAngle = facing - halfAngle * 0.6 + (halfAngle * 1.2 * i / (slashCount - 1));
+          const slashLength = radiusPx * (0.7 + Math.random() * 0.3);
+          const slashAlpha2 = slashAlpha * (0.7 + Math.random() * 0.3);
+          abilityPreviewGraphics.lineStyle(1.5, slashColor, slashAlpha2);
+          abilityPreviewGraphics.moveTo(start.x, start.y);
+          abilityPreviewGraphics.lineTo(start.x + Math.cos(slashAngle) * slashLength, start.y + Math.sin(slashAngle) * slashLength);
+        }
       } else if (kind === "beam" || kind === "chain") {
         const beamWidthPx = Math.max(4, (Number(abilityDef.beamWidth) || 0.5) * tileSize);
         abilityPreviewGraphics.lineStyle(beamWidthPx * 1.7, fillColor, inRange ? 0.18 * pulse : 0.18 * pulse);

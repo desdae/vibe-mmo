@@ -13095,6 +13095,8 @@ function drawGenericAbilityCastPreview(self, cameraX, cameraY, now, previewState
     const halfAngle = (coneAngleDeg * Math.PI) / 360;
     const radiusPx = Math.max(18, Math.max(0.5, castRange || len || 1.8) * TILE_SIZE);
     const facing = Math.atan2(direction.dy, direction.dx);
+    
+    // Draw cone fill
     ctx.fillStyle = inRange ? `rgba(239, 230, 185, ${(0.16 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.15 * pulse).toFixed(3)})`;
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = 1.6;
@@ -13104,6 +13106,39 @@ function drawGenericAbilityCastPreview(self, cameraX, cameraY, now, previewState
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+    
+    // Draw slashy animation - sweeping arc trails
+    const slashAlpha = 0.35 * pulse;
+    const slashColor = inRange ? `rgba(255, 245, 220, ${slashAlpha.toFixed(3)})` : `rgba(255, 180, 180, ${slashAlpha.toFixed(3)})`;
+    ctx.strokeStyle = slashColor;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    
+    // Draw multiple arc trails for slash effect
+    for (let i = 0; i < 3; i++) {
+      const trailRadius = radiusPx * (0.6 + i * 0.15);
+      const trailAlpha = slashAlpha * (1 - i * 0.25);
+      ctx.strokeStyle = inRange ? `rgba(255, 245, 220, ${trailAlpha.toFixed(3)})` : `rgba(255, 180, 180, ${trailAlpha.toFixed(3)})`;
+      ctx.lineWidth = 2.5 - i * 0.5;
+      ctx.beginPath();
+      ctx.arc(start.x, start.y, trailRadius, facing - halfAngle * 0.8, facing + halfAngle * 0.8);
+      ctx.stroke();
+    }
+    
+    // Draw slash marks
+    const slashCount = 3;
+    for (let i = 0; i < slashCount; i++) {
+      const slashAngle = facing - halfAngle * 0.6 + (halfAngle * 1.2 * i / (slashCount - 1));
+      const slashLength = radiusPx * (0.7 + Math.random() * 0.3);
+      const slashAlpha2 = slashAlpha * (0.7 + Math.random() * 0.3);
+      ctx.strokeStyle = inRange ? `rgba(255, 245, 220, ${slashAlpha2.toFixed(3)})` : `rgba(255, 180, 180, ${slashAlpha2.toFixed(3)})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(start.x + Math.cos(slashAngle) * slashLength, start.y + Math.sin(slashAngle) * slashLength);
+      ctx.stroke();
+    }
+    
     ctx.restore();
     return;
   }
