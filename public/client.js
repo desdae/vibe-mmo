@@ -7805,7 +7805,15 @@ function toggleTalentPanel() {
   if (!uiPanelTools) {
     return;
   }
-  setDesktopTalentVisible(talentPanel.classList.contains("hidden"));
+  const wasHidden = talentPanel.classList.contains("hidden");
+  setDesktopTalentVisible(wasHidden);
+  
+  // Request fresh talent tree data from server when opening
+  if (wasHidden && socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "get_talent_tree"
+    }));
+  }
 }
 
 function setDesktopTalentVisible(visible) {

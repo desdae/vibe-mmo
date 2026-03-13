@@ -267,6 +267,19 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "get_talent_tree") {
+    console.log('[router] get_talent_tree requested');
+    const talentTree = deps.getTalentTreeData(player);
+    if (talentTree) {
+      console.log('[router] Sending talent_tree with', talentTree.availablePoints, 'points');
+      deps.sendJson(player.ws, {
+        type: "talent_update",
+        talentTree
+      });
+    }
+    return { player };
+  }
+
   if (msg.type === "cast") {
     const dx = Number(msg.dx);
     const dy = Number(msg.dy);
