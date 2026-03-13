@@ -1,3 +1,6 @@
+const { createEffectEngine } = require("./effects/effect-engine");
+const { buildHitEffectDefsFromAbilityDef } = require("./effects/hit-effect-defs");
+
 function defaultClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -12,6 +15,7 @@ function createMobCombatEffectTools(options = {}) {
   const applyDamageToMob = typeof options.applyDamageToMob === "function" ? options.applyDamageToMob : () => 0;
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
+  const effectEngine = createEffectEngine({ clamp, randomInt });
 
   function stunMob(mob, durationMs, now = Date.now()) {
     if (!mob) {
@@ -163,27 +167,22 @@ function createMobCombatEffectTools(options = {}) {
     if (!mob || !mob.alive || dealtDamage <= 0 || !abilityDef) {
       return;
     }
-    const slowDurationMs = Math.max(0, Number(abilityDef.slowDurationMs) || 0);
-    const slowMultiplier = clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1);
-    if (slowDurationMs > 0 && slowMultiplier < 1) {
-      applySlowToMob(mob, slowMultiplier, slowDurationMs, now);
-    }
-    const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
-    if (stunDurationMs > 0) {
-      stunMob(mob, stunDurationMs, now);
-    }
-    const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
-    const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
-    if (dotDurationMs > 0 && dotDamageMax > 0) {
-      applyDotToMob(
-        mob,
-        ownerId,
-        String(abilityDef.dotSchool || "generic"),
-        dotDamageMin,
-        dotDamageMax,
-        dotDurationMs,
-        now
-      );
+
+    const hitEffectDefs = buildHitEffectDefsFromAbilityDef(abilityDef, abilityLevel, getAbilityDotDamageRange);
+    if (hitEffectDefs.length) {
+      const compiled = effectEngine.compile(hitEffectDefs, { defaultTrigger: "onHit" });
+      effectEngine.run(compiled, "onHit", {
+        now,
+        source: { id: ownerId ? String(ownerId) : "" },
+        target: mob,
+        ops: {
+          applySlow: (target, multiplier, durationMs, appliedAt) =>
+            applySlowToMob(target, multiplier, durationMs, appliedAt),
+          applyStun: (target, durationMs, appliedAt) => stunMob(target, durationMs, appliedAt),
+          applyDot: (target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt) =>
+            applyDotToMob(target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt)
+        }
+      });
     }
     
     // Trigger talent on-spell-hit effects
