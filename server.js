@@ -714,7 +714,8 @@ const talentEffectTools = createTalentEffectTools({
   stunMob,
   stunPlayer,
   applySlowToMob,
-  applySlowToPlayer
+  applySlowToPlayer,
+  recomputePlayerDerivedStats: equipmentTools.recomputePlayerDerivedStats
 });
 const onTalentSpellHit = talentEffectTools.onTalentSpellHit;
 const onTalentKill = talentEffectTools.onTalentKill;

@@ -156,6 +156,23 @@ function createEffectEngine(options = {}) {
       });
     }
 
+    if (type === "stack_buff") {
+      const key = String(def.key ?? def.buffKey ?? def.stat ?? def.id ?? "").trim();
+      const durationMs = normalizeDurationMs(def);
+      const maxStacks = clamp(Math.floor(normalizeNumeric(def.maxStacks, 1)), 1, 9999);
+      const stacks = clamp(Math.floor(normalizeNumeric(def.stacks, 1)), 1, maxStacks);
+      if (!key || durationMs <= 0 || maxStacks <= 0 || stacks <= 0) {
+        return null;
+      }
+      return Object.freeze({
+        type,
+        key,
+        durationMs,
+        maxStacks,
+        stacks
+      });
+    }
+
     return Object.freeze({
       type,
       raw: { ...def }
@@ -251,6 +268,14 @@ function createEffectEngine(options = {}) {
       return true;
     }
 
+    if (type === "stack_buff") {
+      if (typeof ops.applyStackBuff !== "function") {
+        return false;
+      }
+      ops.applyStackBuff(ctx.target, effect.key, effect.stacks, effect.maxStacks, effect.durationMs, now, ctx);
+      return true;
+    }
+
     return false;
   }
 
@@ -263,4 +288,3 @@ function createEffectEngine(options = {}) {
 module.exports = {
   createEffectEngine
 };
-

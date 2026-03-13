@@ -65,6 +65,11 @@ function createEquipmentTools(options = {}) {
     typeof options.equipmentConfigProvider === "function" ? options.equipmentConfigProvider : () => null;
   const getServerConfig = typeof options.getServerConfig === "function" ? options.getServerConfig : () => ({});
   const getTalentStats = typeof options.getTalentStats === "function" ? options.getTalentStats : () => ({});
+
+  const tools = {
+    // This is intentionally mutable; server.js wires the real talent buff stat provider after talentEffectTools exist.
+    getTalentBuffStats: typeof options.getTalentBuffStats === "function" ? options.getTalentBuffStats : () => ({})
+  };
   const allocateItemInstanceId =
     typeof options.allocateItemInstanceId === "function" ? options.allocateItemInstanceId : () => String(Date.now());
   const randomInt =
@@ -397,7 +402,7 @@ function createEquipmentTools(options = {}) {
     const armorPercent = getEquippedStatTotal(player, "armor.percent");
     const baseBlockChance = Math.max(0, getEquippedBaseStatTotal(player, "blockChance"));
     const talentStats = getTalentStats(player);
-    const talentBuffStats = typeof options.getTalentBuffStats === "function" ? options.getTalentBuffStats(player) : {};
+    const talentBuffStats = typeof tools.getTalentBuffStats === "function" ? tools.getTalentBuffStats(player) : {};
     return {
       maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat") + (talentStats["maxHp.flat"] || 0),
       maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent") + (talentStats["maxHp.percent"] || 0),
@@ -691,7 +696,7 @@ function createEquipmentTools(options = {}) {
     return true;
   }
 
-  return {
+  return Object.assign(tools, {
     cloneItemEntry,
     createEmptyEquipmentSlots,
     createEquipmentEntryFromBaseItem,
@@ -709,7 +714,7 @@ function createEquipmentTools(options = {}) {
     recomputePlayerDerivedStats,
     equipInventoryItem,
     unequipEquipmentItem
-  };
+  });
 }
 
 module.exports = {
