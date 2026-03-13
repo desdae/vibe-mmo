@@ -3,6 +3,8 @@ function createTalentCommandTools(options = {}) {
   const sendJson = typeof options.sendJson === "function" ? options.sendJson : () => {};
   const sendSelfProgress = typeof options.sendSelfProgress === "function" ? options.sendSelfProgress : () => {};
   const sendTalentUpdate = typeof options.sendTalentUpdate === "function" ? options.sendTalentUpdate : () => {};
+  const recomputePlayerDerivedStats =
+    typeof options.recomputePlayerDerivedStats === "function" ? options.recomputePlayerDerivedStats : () => {};
 
   if (!talentSystem) {
     return {
@@ -57,6 +59,8 @@ function createTalentCommandTools(options = {}) {
       player.level,
       player.talents
     );
+    // Talent changes can modify derived stats like maxHp; recompute immediately so the client gets instant feedback.
+    recomputePlayerDerivedStats(player);
     console.log('[talent] New talent points:', player.talentPoints);
     console.log('[talent] Sending talent update');
 

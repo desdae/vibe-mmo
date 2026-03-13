@@ -798,7 +798,8 @@ const talentCommandTools = createTalentCommandTools({
   talentSystem: coreServices.talentSystem,
   sendJson,
   sendSelfProgress,
-  sendTalentUpdate: sendTalentUpdateWrapper
+  sendTalentUpdate: sendTalentUpdateWrapper,
+  recomputePlayerDerivedStats: equipmentTools.recomputePlayerDerivedStats
 });
 
 spendTalentPoint = talentCommandTools.spendTalentPoint;
