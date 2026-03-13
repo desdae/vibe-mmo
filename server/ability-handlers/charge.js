@@ -1,4 +1,6 @@
 function executeChargeAbility({ player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now, ctx }) {
+  const abilityDefForEntity =
+    typeof ctx.getAbilityDefForEntity === "function" ? ctx.getAbilityDefForEntity(player, abilityDef, abilityLevel) : abilityDef;
   const chargeDir =
     ctx.normalizeDirection(targetDx, targetDy) ||
     ctx.normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
@@ -6,7 +8,10 @@ function executeChargeAbility({ player, abilityDef, abilityLevel, targetDx, targ
     return false;
   }
 
-  const castRange = ctx.getAbilityRangeForLevel(abilityDef, abilityLevel);
+  const castRange =
+    typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel);
   if (castRange <= 0) {
     return false;
   }
@@ -21,7 +26,7 @@ function executeChargeAbility({ player, abilityDef, abilityLevel, targetDx, targ
       : ctx.getAbilityDamageRange(abilityDef, abilityLevel);
   
   // Use stun duration from ability definition
-  const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
+  const stunDurationMs = Math.max(0, Number(abilityDefForEntity && abilityDefForEntity.stunDurationMs) || 0);
 
   ctx.markAbilityUsed(player, abilityDef, now);
   player.lastDirection = chargeDir;
@@ -53,7 +58,7 @@ function executeChargeAbility({ player, abilityDef, abilityLevel, targetDx, targ
   
   // Store charge impact data
   player.chargeData = {
-    abilityDef: abilityDef,
+    abilityDef: abilityDefForEntity || abilityDef,
     abilityLevel: abilityLevel,
     damageMin: damageMin,
     damageMax: damageMax,

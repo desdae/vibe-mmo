@@ -1,4 +1,6 @@
 function executeProjectileAbility({ player, abilityDef, abilityLevel, targetDx, targetDy, now, ctx }) {
+  const abilityDefForEntity =
+    typeof ctx.getAbilityDefForEntity === "function" ? ctx.getAbilityDefForEntity(player, abilityDef, abilityLevel) : abilityDef;
   const normalized =
     ctx.normalizeDirection(targetDx, targetDy) ||
     ctx.normalizeDirection(player.lastDirection.dx, player.lastDirection.dy);
@@ -7,7 +9,12 @@ function executeProjectileAbility({ player, abilityDef, abilityLevel, targetDx, 
   }
 
   const speed = Math.max(0.1, Number(abilityDef.speed) || 1);
-  const range = Math.max(0.25, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 6);
+  const range = Math.max(
+    0.25,
+    (typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel)) || 6
+  );
   const ttlMs = Math.max(120, Math.round((range / speed) * 1000));
   const [damageMin, damageMax] =
     typeof ctx.getAbilityDamageRangeForEntity === "function"
@@ -58,7 +65,7 @@ function executeProjectileAbility({ player, abilityDef, abilityLevel, targetDx, 
       explosionDamageMultiplier: ctx.clamp(Number(abilityDef.explosionDamageMultiplier) || 0, 0, 1),
       slowDurationMs: Math.max(0, Number(abilityDef.slowDurationMs) || 0),
       slowMultiplier: ctx.clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1),
-      stunDurationMs: Math.max(0, Number(abilityDef.stunDurationMs) || 0),
+      stunDurationMs: Math.max(0, Number(abilityDefForEntity && abilityDefForEntity.stunDurationMs) || 0),
       dotDamageMin: Math.max(0, Number(dotDamageMin) || 0),
       dotDamageMax: Math.max(0, Number(dotDamageMax) || 0),
       dotDurationMs,

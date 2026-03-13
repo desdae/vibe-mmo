@@ -85,6 +85,28 @@ function createEquipmentTools(options = {}) {
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
 
+  function getTalentAbilityMods(player) {
+    const stats = typeof getTalentStats === "function" ? getTalentStats(player) : null;
+    const mods = stats && typeof stats === "object" ? stats.abilityMods : null;
+    return mods && typeof mods === "object" ? mods : null;
+  }
+
+  function getAbilityModNumber(mods, key, abilityId) {
+    if (!mods || typeof mods !== "object") {
+      return 0;
+    }
+    const bucket = mods[key] && typeof mods[key] === "object" ? mods[key] : null;
+    if (!bucket) {
+      return 0;
+    }
+    const id = String(abilityId || "").trim();
+    if (!id) {
+      return 0;
+    }
+    const value = Number(bucket[id]) || 0;
+    return Number.isFinite(value) ? value : 0;
+  }
+
   function getEquipmentConfig() {
     const config = equipmentConfigProvider();
     return config && typeof config === "object" ? config : null;
@@ -420,11 +442,11 @@ function createEquipmentTools(options = {}) {
       lifeOnKillFlat: getEquippedStatTotal(player, "lifeOnKill.flat") + (talentStats["lifeOnKill.flat"] || 0),
       manaOnKillFlat: getEquippedStatTotal(player, "manaOnKill.flat") + (talentStats["manaOnKill.flat"] || 0),
       thornsFlat: getEquippedStatTotal(player, "thorns.flat") + (talentStats["thorns.flat"] || 0),
-      attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent") + (talentStats["attackSpeed.percent"] || 0),
-      castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent") + (talentStats["castSpeed.percent"] || 0),
+      attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent") + (talentStats["attackSpeed.percent"] || 0) + (Number(player && player.buffAttackSpeedPercent) || 0),
+      castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent") + (talentStats["castSpeed.percent"] || 0) + (Number(player && player.buffCastSpeedPercent) || 0),
       armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))) + Math.round(talentStats["armor.flat"] || 0),
       blockChance: clamp(baseBlockChance, 0, 0.75),
-      meleeDamagePercent: getEquippedStatTotal(player, "meleeDamage.percent") + (talentStats["meleeDamage.percent"] || 0) + (talentBuffStats["meleeDamage.percent"] || 0),
+      meleeDamagePercent: getEquippedStatTotal(player, "meleeDamage.percent") + (talentStats["meleeDamage.percent"] || 0) + (talentBuffStats["meleeDamage.percent"] || 0) + (Number(player && player.buffMeleeDamagePercent) || 0),
       spellPower: getEquippedStatTotal(player, "spellPower.flat") + (talentStats["spellPower.flat"] || 0),
       damageReductionPercent: (talentStats["damageReduction.percent"] || 0) + (talentBuffStats["damageReduction.percent"] || 0),
       conditionalDamageReductionPercent: (talentStats["conditionalDamageReductionPercent"] || 0) + (talentBuffStats["conditionalDamageReductionPercent"] || 0)
@@ -500,6 +522,7 @@ function createEquipmentTools(options = {}) {
     const school = inferAbilitySchool(abilityDef);
     const tags = inferAbilityTags(abilityDef);
     let percentBonus = getEquippedStatTotal(player, "damage.global.percent");
+    percentBonus += Number(player && player.buffDamageGlobalPercent) || 0;
     if (school) {
       percentBonus += getEquippedStatTotal(player, `damageSchool.${school}.percent`);
     }
@@ -508,6 +531,10 @@ function createEquipmentTools(options = {}) {
     }
     if (tags.includes("melee")) {
       percentBonus += Math.max(0, Number(player && player.meleeDamageBonusPercent) || 0);
+    }
+    if (player && abilityDef) {
+      const mods = getTalentAbilityMods(player);
+      percentBonus += getAbilityModNumber(mods, "damageBonusPercent", abilityDef.id);
     }
     const flatMin = school ? getEquippedStatTotal(player, `damage.${school}.flatMin`) : 0;
     const flatMax = school ? getEquippedStatTotal(player, `damage.${school}.flatMax`) : 0;
@@ -518,11 +545,16 @@ function createEquipmentTools(options = {}) {
     const baseRange = getAbilityDotDamageRange(abilityDef, abilityLevel);
     const school = inferAbilitySchool(abilityDef, abilityDef && abilityDef.dotSchool);
     let percentBonus = getEquippedStatTotal(player, "damage.global.percent");
+    percentBonus += Number(player && player.buffDamageGlobalPercent) || 0;
     if (school) {
       percentBonus += getEquippedStatTotal(player, `damageSchool.${school}.percent`);
     }
     for (const tag of inferAbilityTags(abilityDef)) {
       percentBonus += getEquippedStatTotal(player, `spellTag.${tag}.damagePercent`);
+    }
+    if (player && abilityDef) {
+      const mods = getTalentAbilityMods(player);
+      percentBonus += getAbilityModNumber(mods, "damageBonusPercent", abilityDef.id);
     }
     return applyDamageBonusesToRange(baseRange, percentBonus, 0, 0);
   }
@@ -532,6 +564,22 @@ function createEquipmentTools(options = {}) {
       jumpCountBonus: getPlayerAbilityModifierTotal(player, abilityDef, "jumpCount"),
       jumpDamageReductionPercent: getPlayerAbilityModifierTotal(player, abilityDef, "jumpDamageReductionPercent")
     };
+  }
+
+  function getPlayerModifiedAbilityRangeForLevel(player, abilityDef, abilityLevel, getBaseRangeForLevel) {
+    const baseRange = Math.max(
+      0,
+      typeof getBaseRangeForLevel === "function" ? Number(getBaseRangeForLevel(abilityDef, abilityLevel)) || 0 : 0
+    );
+    if (!player || !abilityDef || baseRange <= 0) {
+      return baseRange;
+    }
+    const mods = getTalentAbilityMods(player);
+    const bonus = getAbilityModNumber(mods, "rangeBonus", abilityDef.id);
+    if (bonus === 0) {
+      return baseRange;
+    }
+    return Math.max(0, baseRange + bonus);
   }
 
   function recomputePlayerDerivedStats(player) {
@@ -605,11 +653,21 @@ function createEquipmentTools(options = {}) {
     if (!player || !abilityDef || baseCooldownMs <= 0) {
       return baseCooldownMs;
     }
+    let modified = baseCooldownMs;
     const kind = String(abilityDef.kind || "").trim().toLowerCase();
     if (kind !== "meleecone") {
-      return baseCooldownMs;
+      modified = baseCooldownMs;
+    } else {
+      modified = Math.max(0, Math.round(baseCooldownMs / Math.max(0.1, Number(player.attackSpeedMultiplier) || 1)));
     }
-    return Math.max(0, Math.round(baseCooldownMs / Math.max(0.1, Number(player.attackSpeedMultiplier) || 1)));
+
+    const mods = getTalentAbilityMods(player);
+    const reductionMs = getAbilityModNumber(mods, "cooldownReductionMs", abilityDef.id);
+    if (reductionMs > 0) {
+      modified = Math.max(0, modified - Math.round(reductionMs));
+    }
+
+    return modified;
   }
 
   function getPlayerModifiedAbilityCastMs(player, abilityDef) {
@@ -709,6 +767,7 @@ function createEquipmentTools(options = {}) {
     getPlayerModifiedAbilityDamageRange,
     getPlayerModifiedAbilityDotDamageRange,
     getPlayerModifiedAbilityChainStats,
+    getPlayerModifiedAbilityRangeForLevel,
     getPlayerModifiedAbilityCooldownMs,
     getPlayerModifiedAbilityCastMs,
     recomputePlayerDerivedStats,

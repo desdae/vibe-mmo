@@ -1,4 +1,6 @@
 function executeAreaAbility({ player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now, ctx }) {
+  const abilityDefForEntity =
+    typeof ctx.getAbilityDefForEntity === "function" ? ctx.getAbilityDefForEntity(player, abilityDef, abilityLevel) : abilityDef;
   const areaRadius = Math.max(0.2, Number(abilityDef.areaRadius) || Number(abilityDef.range) || 2);
   const [damageMin, damageMax] =
     typeof ctx.getAbilityDamageRangeForEntity === "function"
@@ -10,7 +12,10 @@ function executeAreaAbility({ player, abilityDef, abilityLevel, targetDx, target
       : ctx.getAbilityDotDamageRange(abilityDef, abilityLevel);
   const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
   const durationMs = Math.max(0, Number(abilityDef.durationMs) || 0);
-  const castRange = ctx.getAbilityRangeForLevel(abilityDef, abilityLevel);
+  const castRange =
+    typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel);
   const target = ctx.getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance);
   ctx.markAbilityUsed(player, abilityDef, now);
   player.lastDirection = target.targetDir;
@@ -47,7 +52,7 @@ function executeAreaAbility({ player, abilityDef, abilityLevel, targetDx, target
       continue;
     }
     const dealt = ctx.applyDamageToMob(mob, ctx.randomInt(damageMin, damageMax), player.id);
-    ctx.applyAbilityHitEffectsToMob(mob, player.id, abilityDef, abilityLevel, dealt, now);
+    ctx.applyAbilityHitEffectsToMob(mob, player.id, abilityDefForEntity || abilityDef, abilityLevel, dealt, now);
   }
 
   return true;

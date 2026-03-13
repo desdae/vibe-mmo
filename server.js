@@ -439,6 +439,7 @@ const rollEquipmentDropsAt = equipmentTools.rollEquipmentDropsAt;
 const getPlayerModifiedAbilityDamageRange = equipmentTools.getPlayerModifiedAbilityDamageRange;
 const getPlayerModifiedAbilityDotDamageRange = equipmentTools.getPlayerModifiedAbilityDotDamageRange;
 const getPlayerModifiedAbilityChainStats = equipmentTools.getPlayerModifiedAbilityChainStats;
+const getPlayerModifiedAbilityRangeForLevel = equipmentTools.getPlayerModifiedAbilityRangeForLevel;
 const getPlayerModifiedAbilityCooldownMs = equipmentTools.getPlayerModifiedAbilityCooldownMs;
 const getPlayerModifiedAbilityCastMs = equipmentTools.getPlayerModifiedAbilityCastMs;
 const createEquipmentEntryFromBaseItem = equipmentTools.createEquipmentEntryFromBaseItem;
@@ -495,6 +496,131 @@ const normalizeProjectileTargetType = projectileSpawnTools.normalizeProjectileTa
 const inferProjectileTargetTypeFromOwner = projectileSpawnTools.inferProjectileTargetTypeFromOwner;
 const spawnProjectileFromTemplate = projectileSpawnTools.spawnProjectileFromTemplate;
 
+function getPlayerTalentAbilityMods(player) {
+  if (!player || !player.classType || !coreServices.talentSystem) {
+    return null;
+  }
+  const stats = coreServices.talentSystem.calculateTalentStats(player.classType, player.talents);
+  const mods = stats && typeof stats === "object" ? stats.abilityMods : null;
+  return mods && typeof mods === "object" ? mods : null;
+}
+
+function getAbilityModNumber(mods, key, abilityId) {
+  if (!mods || typeof mods !== "object") {
+    return 0;
+  }
+  const bucket = mods[key] && typeof mods[key] === "object" ? mods[key] : null;
+  if (!bucket) {
+    return 0;
+  }
+  const id = String(abilityId || "").trim();
+  if (!id) {
+    return 0;
+  }
+  const value = Number(bucket[id]) || 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getAbilityModStatMap(mods, abilityId) {
+  if (!mods || typeof mods !== "object") {
+    return null;
+  }
+  const bucket = mods.statBonus && typeof mods.statBonus === "object" ? mods.statBonus : null;
+  if (!bucket) {
+    return null;
+  }
+  const id = String(abilityId || "").trim();
+  if (!id) {
+    return null;
+  }
+  const statMap = bucket[id];
+  return statMap && typeof statMap === "object" ? statMap : null;
+}
+
+function buildAbilityDefForPlayer(player, abilityDef, abilityLevel) {
+  if (!player || !abilityDef) {
+    return abilityDef;
+  }
+  const mods = getPlayerTalentAbilityMods(player);
+  if (!mods) {
+    return abilityDef;
+  }
+
+  const abilityId = String(abilityDef.id || "").trim();
+  if (!abilityId) {
+    return abilityDef;
+  }
+
+  const stunBonusMs = getAbilityModNumber(mods, "stunDurationBonusMs", abilityId);
+  const statBonus = getAbilityModStatMap(mods, abilityId);
+  const ccImmunityMs = getAbilityModNumber(mods, "crowdControlImmunityMs", abilityId);
+  const damageBonusPercent = getAbilityModNumber(mods, "damageBonusPercent", abilityId);
+
+  const kind = String(abilityDef.kind || "").trim().toLowerCase();
+  const isSelfBuff = kind === "selfbuff";
+
+  const needsStunOverride = stunBonusMs !== 0;
+  const needsBuffOverride =
+    isSelfBuff && ((statBonus && Object.keys(statBonus).length > 0) || ccImmunityMs > 0 || damageBonusPercent !== 0);
+  if (!needsStunOverride && !needsBuffOverride) {
+    return abilityDef;
+  }
+
+  const overrides = {};
+  if (needsStunOverride) {
+    overrides.stunDurationMs = Math.max(0, Math.floor((Number(abilityDef.stunDurationMs) || 0) + stunBonusMs));
+  }
+
+  if (needsBuffOverride) {
+    const baseBuffEffects = Array.isArray(abilityDef.buffEffects) ? abilityDef.buffEffects : [];
+    const nextBuffEffects = baseBuffEffects.map((effect) => {
+      const safe = effect && typeof effect === "object" ? effect : {};
+      const nextStats = safe.stats && typeof safe.stats === "object" ? { ...safe.stats } : {};
+
+      if (statBonus) {
+        for (const [statKey, value] of Object.entries(statBonus)) {
+          const key = String(statKey || "").trim();
+          const delta = Number(value) || 0;
+          if (!key || !Number.isFinite(delta) || delta === 0) {
+            continue;
+          }
+          nextStats[key] = (Number(nextStats[key]) || 0) + delta;
+        }
+      }
+
+      // For self-buff abilities, interpret ability damage bonuses as a temporary global damage bonus for the buff duration.
+      if (damageBonusPercent !== 0) {
+        nextStats["damage.global.percent"] = (Number(nextStats["damage.global.percent"]) || 0) + damageBonusPercent;
+      }
+
+      return {
+        ...safe,
+        stats: nextStats
+      };
+    });
+
+    if (ccImmunityMs > 0) {
+      nextBuffEffects.push({
+        id: `${abilityId}:ccImmunity`,
+        name: "Crowd Control Immunity",
+        label: "IMM",
+        color: "rgba(245, 224, 161, 0.96)",
+        durationMs: Math.max(1, Math.floor(ccImmunityMs)),
+        stats: {
+          crowdControlImmune: true
+        }
+      });
+    }
+
+    overrides.buffEffects = nextBuffEffects;
+  }
+
+  return {
+    ...abilityDef,
+    ...overrides
+  };
+}
+
 const abilityHandlerContext = createAbilityHandlerContext({
   players,
   mobs,
@@ -508,6 +634,10 @@ const abilityHandlerContext = createAbilityHandlerContext({
   randomInt,
   rotateDirection,
   getAbilityRangeForLevel,
+  getAbilityRangeForEntity: (entity, abilityDef, abilityLevel) =>
+    entity && entity.entityType === "player"
+      ? getPlayerModifiedAbilityRangeForLevel(entity, abilityDef, abilityLevel, getAbilityRangeForLevel)
+      : getAbilityRangeForLevel(abilityDef, abilityLevel),
   getAbilityDamageRange,
   getAbilityDamageRangeForEntity: (entity, abilityDef, abilityLevel) =>
     entity && entity.entityType === "player"
@@ -522,6 +652,8 @@ const abilityHandlerContext = createAbilityHandlerContext({
     entity && entity.entityType === "player"
       ? getPlayerModifiedAbilityChainStats(entity, abilityDef, abilityLevel)
       : { jumpCountBonus: 0, jumpDamageReductionPercent: 0 },
+  getAbilityDefForEntity: (entity, abilityDef, abilityLevel) =>
+    entity && entity.entityType === "player" ? buildAbilityDefForPlayer(entity, abilityDef, abilityLevel) : abilityDef,
   markAbilityUsed: (...args) => markAbilityUsed(...args),
   applyDamageToMob: (...args) => applyDamageToMob(...args),
   applyAbilityHitEffectsToMob: (...args) => applyAbilityHitEffectsToMob(...args),

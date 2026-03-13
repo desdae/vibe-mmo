@@ -49,20 +49,34 @@ function createPlayerBuffTools(options = {}) {
 
     let healthRegenFlat = 0;
     let meleeDamagePercent = 0;
+    let attackSpeedPercent = 0;
+    let castSpeedPercent = 0;
+    let damageGlobalPercent = 0;
     let invulnerableUntil = 0;
+    let crowdControlImmuneUntil = 0;
     for (const buff of active) {
       const stats = buff.stats && typeof buff.stats === "object" ? buff.stats : {};
       healthRegenFlat += Number(stats.healthRegenFlat) || 0;
       meleeDamagePercent += Number(stats.meleeDamagePercent) || 0;
+      attackSpeedPercent += Number(stats["attackSpeed.percent"]) || 0;
+      castSpeedPercent += Number(stats["castSpeed.percent"]) || 0;
+      damageGlobalPercent += Number(stats["damage.global.percent"]) || 0;
       if (stats.invulnerable) {
         invulnerableUntil = Math.max(invulnerableUntil, Math.max(0, Number(buff.endsAt) || 0));
+      }
+      if (stats.crowdControlImmune) {
+        crowdControlImmuneUntil = Math.max(crowdControlImmuneUntil, Math.max(0, Number(buff.endsAt) || 0));
       }
     }
 
     player.activeBuffs = active;
     player.buffHealthRegenFlat = healthRegenFlat;
-    player.meleeDamageBonusPercent = meleeDamagePercent;
+    player.buffMeleeDamagePercent = meleeDamagePercent;
+    player.buffAttackSpeedPercent = attackSpeedPercent;
+    player.buffCastSpeedPercent = castSpeedPercent;
+    player.buffDamageGlobalPercent = damageGlobalPercent;
     player.invulnerableUntil = invulnerableUntil;
+    player.crowdControlImmuneUntil = crowdControlImmuneUntil;
     recomputePlayerDerivedStats(player);
     return hadChanges;
   }
@@ -132,8 +146,12 @@ function createPlayerBuffTools(options = {}) {
     }
     player.activeBuffs = [];
     player.buffHealthRegenFlat = 0;
-    player.meleeDamageBonusPercent = 0;
+    player.buffMeleeDamagePercent = 0;
+    player.buffAttackSpeedPercent = 0;
+    player.buffCastSpeedPercent = 0;
+    player.buffDamageGlobalPercent = 0;
     player.invulnerableUntil = 0;
+    player.crowdControlImmuneUntil = 0;
     recomputePlayerDerivedStats(player);
   }
 

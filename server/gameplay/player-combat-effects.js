@@ -49,6 +49,9 @@ function createPlayerCombatEffectTools(options = {}) {
     if (!player || player.hp <= 0) {
       return;
     }
+    if ((Number(player.crowdControlImmuneUntil) || 0) > now) {
+      return;
+    }
     const duration = Math.max(0, Math.floor(Number(durationMs) || 0));
     if (duration <= 0) {
       return;
@@ -61,6 +64,9 @@ function createPlayerCombatEffectTools(options = {}) {
 
   function applySlowToPlayer(player, slowMultiplier, durationMs, now = Date.now()) {
     if (!player || player.hp <= 0) {
+      return;
+    }
+    if ((Number(player.crowdControlImmuneUntil) || 0) > now) {
       return;
     }
     const duration = Math.max(0, Math.round(Number(durationMs) || 0));

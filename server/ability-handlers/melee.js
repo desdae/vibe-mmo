@@ -25,7 +25,14 @@ function executeMeleeConeAbility({ player, abilityDef, abilityLevel, targetDx, t
   if (!requestedDir) {
     return false;
   }
-  const range = Math.max(0.2, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 1.5);
+  const abilityDefForEntity =
+    typeof ctx.getAbilityDefForEntity === "function" ? ctx.getAbilityDefForEntity(player, abilityDef, abilityLevel) : abilityDef;
+  const range = Math.max(
+    0.2,
+    (typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel)) || 1.5
+  );
   const coneCos = ctx.clamp(Number(abilityDef.coneCos) || 0, -1, 1);
   const candidateMobs = [];
 
@@ -148,7 +155,7 @@ function executeMeleeConeAbility({ player, abilityDef, abilityLevel, targetDx, t
       : ctx.getAbilityDamageRange(abilityDef, abilityLevel);
   for (const hit of bestHits) {
     const dealt = ctx.applyDamageToMob(hit.mob, ctx.randomInt(damageMin, damageMax), player.id);
-    ctx.applyAbilityHitEffectsToMob(hit.mob, player.id, abilityDef, abilityLevel, dealt, now);
+    ctx.applyAbilityHitEffectsToMob(hit.mob, player.id, abilityDefForEntity || abilityDef, abilityLevel, dealt, now);
   }
   return true;
 }

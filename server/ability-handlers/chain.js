@@ -62,7 +62,14 @@ function findNextChainTarget(fromMob, excludedIds, jumpRange, ctx) {
 }
 
 function executeChainAbility({ player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now, ctx }) {
-  const castRange = Math.max(0.25, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+  const abilityDefForEntity =
+    typeof ctx.getAbilityDefForEntity === "function" ? ctx.getAbilityDefForEntity(player, abilityDef, abilityLevel) : abilityDef;
+  const castRange = Math.max(
+    0.25,
+    (typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel)) || 0
+  );
   if (castRange <= 0) {
     return false;
   }
@@ -131,7 +138,7 @@ function executeChainAbility({ player, abilityDef, abilityLevel, targetDx, targe
       now + hopIndex * 22
     );
     const dealt = ctx.applyDamageToMob(currentTarget, ctx.randomInt(segmentDamageMin, segmentDamageMax), player.id);
-    ctx.applyAbilityHitEffectsToMob(currentTarget, player.id, abilityDef, abilityLevel, dealt, now);
+    ctx.applyAbilityHitEffectsToMob(currentTarget, player.id, abilityDefForEntity || abilityDef, abilityLevel, dealt, now);
     hitIds.add(String(currentTarget.id));
     currentSource = currentTarget;
     damageMultiplier *= 1 - jumpDamageReduction;

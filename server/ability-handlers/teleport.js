@@ -6,7 +6,12 @@ function executeTeleportAbility({ player, abilityDef, abilityLevel, targetDx, ta
     return false;
   }
 
-  const castRange = Math.max(0.25, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+  const castRange = Math.max(
+    0.25,
+    (typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel)) || 0
+  );
   if (castRange <= 0) {
     return false;
   }
