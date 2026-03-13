@@ -10469,6 +10469,7 @@ function handleServerSelfProgress(msg) {
   const exp = Number(msg.exp);
   const expToNext = Number(msg.expToNext);
   const skillPoints = Number(msg.skillPoints);
+  const talentPoints = Number(msg.talentPoints);
   const abilityLevels = parseAbilityLevelsPayload(msg.abilityLevels);
   if (Number.isFinite(copper) && copper >= 0) {
     entityRuntime.self.copper = copper;
@@ -10484,6 +10485,12 @@ function handleServerSelfProgress(msg) {
   }
   if (Number.isFinite(skillPoints) && skillPoints >= 0) {
     entityRuntime.self.skillPoints = Math.floor(skillPoints);
+  }
+  if (Number.isFinite(talentPoints) && talentPoints >= 0) {
+    entityRuntime.self.talentPoints = talentPoints;
+    if (selfStatic) {
+      selfStatic.talentPoints = talentPoints;
+    }
   }
   if (msg.abilityLevels !== undefined) {
     entityRuntime.self.abilityLevels = abilityLevels;
@@ -10587,6 +10594,10 @@ const serverMessageHandlers = {
     gameState.visibilityRange = msg.visibilityRange || gameState.visibilityRange;
     gameState.visibilityRangeX = msg.visibilityRangeX || gameState.visibilityRangeX;
     gameState.visibilityRangeY = msg.visibilityRangeY || gameState.visibilityRangeY;
+    if (msg && typeof msg === "object" && msg.talentTree) {
+      selfStatic.talentTree = msg.talentTree;
+      selfStatic.talentPoints = msg.talentTree.availablePoints || 0;
+    }
     resetClientSessionState();
     joinScreen.classList.add("hidden");
     gameUI.classList.remove("hidden");

@@ -92,6 +92,7 @@ function createPlayerMessageTools(options = {}) {
       exp: player.exp,
       expToNext: player.expToNext,
       skillPoints: clamp(Math.floor(Number(player.skillPoints) || 0), 0, 65535),
+      talentPoints: clamp(Math.floor(Number(player.talentPoints) || 0), 0, 65535),
       abilityLevels: serializePlayerAbilityLevels(player)
     });
   }
