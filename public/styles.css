@@ -591,8 +591,8 @@ body {
   transform: translateX(-50%);
   width: auto;
   max-width: calc(100vw - 24px);
-  padding: 10px;
-  border-radius: 10px;
+  padding: 8px;
+  border-radius: 8px;
   background: rgba(1, 11, 19, 0.86);
   border: 1px solid rgba(83, 147, 177, 0.35);
   backdrop-filter: blur(2px);
@@ -603,10 +603,10 @@ body {
   position: fixed;
   left: 12px;
   bottom: 96px;
-  width: min(680px, calc(100vw - 24px));
+  width: min(560px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  padding: 12px;
-  border-radius: 16px;
+  padding: 10px;
+  border-radius: 12px;
   background:
     radial-gradient(circle at 50% 38%, rgba(135, 96, 28, 0.15), transparent 26%),
     linear-gradient(180deg, rgba(12, 11, 10, 0.97), rgba(6, 7, 9, 0.97));
@@ -1099,8 +1099,8 @@ body {
 
 #inventory-grid {
   display: grid;
-  grid-template-columns: repeat(5, 50px);
-  gap: 6px;
+  grid-template-columns: repeat(5, 42px);
+  gap: 4px;
 }
 
 #equipment-grid {
@@ -1114,10 +1114,11 @@ body {
     width: auto;
     max-width: none;
     bottom: 96px;
+    padding: 8px;
   }
 
   .equipment-layout {
-    min-height: 560px;
+    min-height: 420px;
   }
 
   .equipment-layout-shell {
@@ -1127,8 +1128,8 @@ body {
 
 .equipment-layout-shell {
   display: grid;
-  grid-template-columns: 190px minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px;
   align-items: start;
 }
 
@@ -1176,8 +1177,8 @@ body {
 }
 
 .equipment-slot-label {
-  margin-top: 6px;
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 10px;
   line-height: 1;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -1192,7 +1193,7 @@ body {
 
 .equipment-layout {
   position: relative;
-  min-height: 620px;
+  min-height: 480px;
   overflow: hidden;
 }
 
@@ -1211,10 +1212,10 @@ body {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 134px;
-  height: 430px;
+  width: 100px;
+  height: 340px;
   transform: translate(-50%, -41%);
-  border-radius: 92px 92px 40px 40px;
+  border-radius: 68px 68px 30px 30px;
   background:
     radial-gradient(circle at 50% 12%, rgba(255, 221, 162, 0.12), transparent 10%),
     linear-gradient(180deg, rgba(64, 48, 27, 0.16), rgba(25, 21, 15, 0.52) 30%, rgba(10, 10, 10, 0.88));
@@ -1269,19 +1270,19 @@ body {
 .equipment-anchor::before {
   content: "";
   position: absolute;
-  width: 60px;
+  width: 40px;
   height: 1px;
   background: linear-gradient(90deg, rgba(255, 203, 108, 0), rgba(255, 203, 108, 0.55), rgba(255, 203, 108, 0));
-  top: 30px;
+  top: 24px;
   z-index: -1;
 }
 
 .equipment-anchor.left-anchor::before {
-  transform: translateX(-74px);
+  transform: translateX(-54px);
 }
 
 .equipment-anchor.right-anchor::before {
-  transform: translateX(74px);
+  transform: translateX(54px);
 }
 
 .equipment-anchor.center-anchor::before,
@@ -1290,8 +1291,8 @@ body {
 }
 
 .equipment-slot.inventory-slot {
-  width: 58px;
-  height: 58px;
+  width: 48px;
+  height: 48px;
   border-radius: 0;
   border: 2px solid rgba(193, 146, 56, 0.98);
   background:
@@ -1324,8 +1325,8 @@ body {
 }
 
 .equipment-slot.belt-slot.inventory-slot {
-  width: 86px;
-  height: 36px;
+  width: 72px;
+  height: 30px;
 }
 
 .equipment-slot.belt-slot .inv-icon {
@@ -1334,21 +1335,21 @@ body {
 }
 
 .equipment-slot .inv-icon {
-  width: 28px;
-  height: 28px;
-  top: 12px;
+  width: 24px;
+  height: 24px;
+  top: 10px;
 }
 
 .equipment-slot.belt-slot .inv-icon {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
 }
 
 .inventory-slot {
   position: relative;
-  width: 50px;
-  height: 50px;
-  border-radius: 8px;
+  width: 42px;
+  height: 42px;
+  border-radius: 6px;
   border: 1px solid rgba(132, 184, 208, 0.45);
   background: linear-gradient(180deg, rgba(14, 30, 44, 0.96), rgba(8, 18, 29, 0.98));
 }
@@ -1367,10 +1368,10 @@ body {
 
 .inv-icon {
   position: absolute;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   left: 50%;
-  top: 8px;
+  top: 6px;
   transform: translateX(-50%);
   background-position: center;
   background-repeat: no-repeat;

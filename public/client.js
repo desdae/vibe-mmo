@@ -179,9 +179,9 @@ const TRAFFIC_WINDOW_MS = 10000;
 const MOB_RENDER_RADIUS = 12;
 const MOB_SPRITE_SIZE = 36;
 const DAMAGE_FLOAT_DURATION_MS = 850;
-const INVENTORY_SLOT_SIZE_PX = 50;
-const INVENTORY_SLOT_GAP_PX = 6;
-const INVENTORY_PANEL_PADDING_PX = 10;
+const INVENTORY_SLOT_SIZE_PX = 42;
+const INVENTORY_SLOT_GAP_PX = 4;
+const INVENTORY_PANEL_PADDING_PX = 8;
 const INVENTORY_PANEL_BORDER_PX = 1;
 const sharedAbilityNormalization = globalThis.VibeAbilityNormalization || null;
 const sharedCreateAbilityNormalizationTools =
@@ -648,21 +648,21 @@ const DEBUG_GEAR_FALLBACK_SUFFIXES = Object.freeze([
   { id: "debug_of_haste", name: "of Haste", minItemLevel: 1, allowedSlots: ["mainHand", "gloves", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "attackSpeed.percent", rollMin: 2, rollMax: 10 }] }
 ]);
 const EQUIPMENT_SLOT_LAYOUT = Object.freeze({
-  head: { x: 50, y: 6, label: "Helm" },
-  shoulders: { x: 10, y: 16, label: "Shoulder" },
-  necklace: { x: 90, y: 16, label: "Amulet" },
-  chest: { x: 50, y: 34, label: "Chest" },
-  gloves: { x: 10, y: 38, label: "Gloves" },
-  bracers: { x: 90, y: 38, label: "Bracer" },
-  belt: { x: 50, y: 52, label: "Belt", kind: "belt" },
-  ring1: { x: 10, y: 57, label: "Ring 1" },
-  ring2: { x: 90, y: 57, label: "Ring 2" },
-  mainHand: { x: 10, y: 76, label: "Main Hand" },
-  offHand: { x: 90, y: 76, label: "Off Hand" },
-  pants: { x: 50, y: 73, label: "Pants" },
-  trinket1: { x: 10, y: 92, label: "Trinket 1" },
-  trinket2: { x: 90, y: 92, label: "Trinket 2" },
-  boots: { x: 50, y: 92, label: "Boots" }
+  head: { x: 50, y: 4, label: "Helm" },
+  shoulders: { x: 15, y: 12, label: "Shoulder" },
+  necklace: { x: 85, y: 12, label: "Amulet" },
+  chest: { x: 50, y: 26, label: "Chest" },
+  gloves: { x: 15, y: 30, label: "Gloves" },
+  bracers: { x: 85, y: 30, label: "Bracer" },
+  belt: { x: 50, y: 42, label: "Belt", kind: "belt" },
+  ring1: { x: 15, y: 46, label: "Ring 1" },
+  ring2: { x: 85, y: 46, label: "Ring 2" },
+  mainHand: { x: 15, y: 62, label: "Main Hand" },
+  offHand: { x: 85, y: 62, label: "Off Hand" },
+  pants: { x: 50, y: 58, label: "Pants" },
+  trinket1: { x: 15, y: 76, label: "Trinket 1" },
+  trinket2: { x: 85, y: 76, label: "Trinket 2" },
+  boots: { x: 50, y: 76, label: "Boots" }
 });
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
