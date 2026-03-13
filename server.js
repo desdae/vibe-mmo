@@ -746,19 +746,27 @@ const usePlayerAbility = playerCommandTools.usePlayerAbility;
 const updatePlayerCastTarget = playerCommandTools.updatePlayerCastTarget;
 
 const { createTalentCommandTools } = require("./server/gameplay/talent-commands");
+let getTalentTreeData = null;
+let spendTalentPoint = null;
+
+const sendTalentUpdateWrapper = (player) => {
+  if (getTalentTreeData) {
+    sendJson(player.ws, {
+      type: "talent_update",
+      talentTree: getTalentTreeData(player)
+    });
+  }
+};
+
 const talentCommandTools = createTalentCommandTools({
   talentSystem: coreServices.talentSystem,
   sendJson,
   sendSelfProgress,
-  sendTalentUpdate: (player) => {
-    sendJson(player.ws, {
-      type: "talent_update",
-      talentTree: talentCommandTools.getTalentTreeData(player)
-    });
-  }
+  sendTalentUpdate: sendTalentUpdateWrapper
 });
-const spendTalentPoint = talentCommandTools.spendTalentPoint;
-const getTalentTreeData = talentCommandTools.getTalentTreeData;
+
+spendTalentPoint = talentCommandTools.spendTalentPoint;
+getTalentTreeData = talentCommandTools.getTalentTreeData;
 const botTickSystem = createBotTickSystem({
   players,
   mobs,
