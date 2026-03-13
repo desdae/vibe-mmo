@@ -143,6 +143,56 @@ function createTalentSystem(options = {}) {
       return stats;
     }
 
+    function getOrCreateAbilityMods() {
+      if (!stats.abilityMods || typeof stats.abilityMods !== "object") {
+        stats.abilityMods = {
+          cooldownReductionMs: {},
+          rangeBonus: {},
+          damageBonusPercent: {},
+          stunDurationBonusMs: {},
+          statBonus: {},
+          healingReductionPercent: {},
+          crowdControlImmunityMs: {}
+        };
+      }
+      return stats.abilityMods;
+    }
+
+    function addAbilityMapNumber(mods, key, abilityId, delta) {
+      if (!mods || typeof mods !== "object") {
+        return;
+      }
+      const bucket = mods[key] && typeof mods[key] === "object" ? mods[key] : null;
+      if (!bucket) {
+        return;
+      }
+      const id = String(abilityId || "").trim();
+      const value = Number(delta) || 0;
+      if (!id || !Number.isFinite(value) || value === 0) {
+        return;
+      }
+      bucket[id] = (Number(bucket[id]) || 0) + value;
+    }
+
+    function addAbilityStatBonus(mods, abilityId, statKey, delta) {
+      if (!mods || typeof mods !== "object") {
+        return;
+      }
+      const id = String(abilityId || "").trim();
+      const key = String(statKey || "").trim();
+      const value = Number(delta) || 0;
+      if (!id || !key || !Number.isFinite(value) || value === 0) {
+        return;
+      }
+      if (!mods.statBonus || typeof mods.statBonus !== "object") {
+        mods.statBonus = {};
+      }
+      if (!mods.statBonus[id] || typeof mods.statBonus[id] !== "object") {
+        mods.statBonus[id] = {};
+      }
+      mods.statBonus[id][key] = (Number(mods.statBonus[id][key]) || 0) + value;
+    }
+
     for (const [talentId, rank] of Object.entries(playerTalents)) {
       const talentRank = Math.max(0, Number(rank) || 0);
       if (talentRank <= 0) {
@@ -165,6 +215,61 @@ function createTalentSystem(options = {}) {
             stats[statKey] = (Number(stats[statKey]) || 0) + totalValue;
           } else {
             stats[statKey] = (Number(stats[statKey]) || 0) + totalValue;
+          }
+        }
+
+        // Handle ability modifiers (cooldown, range, damage, etc.). Values are generally specified per rank.
+        if (effect.abilityCooldownReduction && typeof effect.abilityCooldownReduction === "object") {
+          const mods = getOrCreateAbilityMods();
+          for (const [abilityId, valuePerRank] of Object.entries(effect.abilityCooldownReduction)) {
+            addAbilityMapNumber(mods, "cooldownReductionMs", abilityId, (Number(valuePerRank) || 0) * 1000 * talentRank);
+          }
+        }
+
+        if (effect.abilityRangeBonus && typeof effect.abilityRangeBonus === "object") {
+          const mods = getOrCreateAbilityMods();
+          for (const [abilityId, valuePerRank] of Object.entries(effect.abilityRangeBonus)) {
+            addAbilityMapNumber(mods, "rangeBonus", abilityId, (Number(valuePerRank) || 0) * talentRank);
+          }
+        }
+
+        if (effect.abilityDamageBonus && typeof effect.abilityDamageBonus === "object") {
+          const mods = getOrCreateAbilityMods();
+          for (const [abilityId, valuePerRank] of Object.entries(effect.abilityDamageBonus)) {
+            addAbilityMapNumber(mods, "damageBonusPercent", abilityId, (Number(valuePerRank) || 0) * talentRank);
+          }
+        }
+
+        if (effect.abilityStunDurationBonus && typeof effect.abilityStunDurationBonus === "object") {
+          const mods = getOrCreateAbilityMods();
+          for (const [abilityId, valuePerRank] of Object.entries(effect.abilityStunDurationBonus)) {
+            addAbilityMapNumber(mods, "stunDurationBonusMs", abilityId, (Number(valuePerRank) || 0) * 1000 * talentRank);
+          }
+        }
+
+        if (effect.abilityStatBonus && typeof effect.abilityStatBonus === "object") {
+          const mods = getOrCreateAbilityMods();
+          for (const [abilityId, statMap] of Object.entries(effect.abilityStatBonus)) {
+            if (!statMap || typeof statMap !== "object") {
+              continue;
+            }
+            for (const [statKey, valuePerRank] of Object.entries(statMap)) {
+              addAbilityStatBonus(mods, abilityId, statKey, (Number(valuePerRank) || 0) * talentRank);
+            }
+          }
+        }
+
+        if (effect.abilityHealingReduction && typeof effect.abilityHealingReduction === "object") {
+          const mods = getOrCreateAbilityMods();
+          for (const [abilityId, valuePerRank] of Object.entries(effect.abilityHealingReduction)) {
+            addAbilityMapNumber(mods, "healingReductionPercent", abilityId, (Number(valuePerRank) || 0) * talentRank);
+          }
+        }
+
+        if (effect.abilityCrowdControlImmunity && typeof effect.abilityCrowdControlImmunity === "object") {
+          const mods = getOrCreateAbilityMods();
+          for (const [abilityId, valuePerRank] of Object.entries(effect.abilityCrowdControlImmunity)) {
+            addAbilityMapNumber(mods, "crowdControlImmunityMs", abilityId, (Number(valuePerRank) || 0) * 1000 * talentRank);
           }
         }
         

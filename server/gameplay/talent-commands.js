@@ -132,6 +132,7 @@ function createTalentCommandTools(options = {}) {
     const result = {
       className: talentTree.className,
       talents: talentsWithState,
+      abilityMods: (talentSystem.calculateTalentStats(player.classType, player.talents) || {}).abilityMods || null,
       availablePoints,
       totalPoints,
       spentPoints
