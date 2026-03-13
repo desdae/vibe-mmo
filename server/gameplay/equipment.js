@@ -397,7 +397,7 @@ function createEquipmentTools(options = {}) {
     const armorPercent = getEquippedStatTotal(player, "armor.percent");
     const baseBlockChance = Math.max(0, getEquippedBaseStatTotal(player, "blockChance"));
     const talentStats = getTalentStats(player);
-    const talentBuffStats = getTalentBuffStats(player);
+    const talentBuffStats = typeof options.getTalentBuffStats === "function" ? options.getTalentBuffStats(player) : {};
     return {
       maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat") + (talentStats["maxHp.flat"] || 0),
       maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent") + (talentStats["maxHp.percent"] || 0),
