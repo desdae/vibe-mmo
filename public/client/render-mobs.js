@@ -367,7 +367,7 @@
           style: buildHumanoidMobStyle(mob),
           equipmentSlots: {},
           attackState,
-          castState: castProgress ? { active: true, progress: castProgress.ratio, abilityId: activeCastState.abilityId || "" } : null,
+          castState: castProgress ? { active: true, ratio: castProgress.ratio, abilityId: activeCastState.abilityId || "", isCharge: activeCastState.isCharge, chargeStartX: activeCastState.chargeStartX, chargeStartY: activeCastState.chargeStartY, chargeTargetX: activeCastState.chargeTargetX, chargeTargetY: activeCastState.chargeTargetY } : null,
           aimWorldX: typeof deps.getCurrentSelf === "function" && deps.getCurrentSelf() ? deps.getCurrentSelf().x + 0.5 : NaN,
           aimWorldY: typeof deps.getCurrentSelf === "function" && deps.getCurrentSelf() ? deps.getCurrentSelf().y + 0.5 : NaN,
           isSelf: false

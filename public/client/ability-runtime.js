@@ -136,6 +136,11 @@
         targetState.startedAt = 0;
         targetState.durationMs = 0;
         targetState.trackPointer = false;
+        targetState.isCharge = false;
+        targetState.chargeStartX = null;
+        targetState.chargeStartY = null;
+        targetState.chargeTargetX = null;
+        targetState.chargeTargetY = null;
         return;
       }
 
@@ -145,6 +150,11 @@
       targetState.abilityId = String(payload.abilityId || "");
       targetState.durationMs = durationMs;
       targetState.startedAt = performance.now() - elapsedMs;
+      targetState.isCharge = !!payload.isCharge;
+      targetState.chargeStartX = payload.chargeStartX;
+      targetState.chargeStartY = payload.chargeStartY;
+      targetState.chargeTargetX = payload.chargeTargetX;
+      targetState.chargeTargetY = payload.chargeTargetY;
     }
 
     function getCastProgress(castState, now) {

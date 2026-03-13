@@ -174,7 +174,12 @@ function buildPlayerCastEventsForRecipient(recipient, nearbyPlayerObjects, now) 
         active: true,
         abilityId: String(selfCast.abilityId || ""),
         durationMs: Math.max(1, Math.floor(Number(selfCast.durationMs) || 0)),
-        elapsedMs: clamp(now - selfCast.startedAt, 0, selfCast.durationMs)
+        elapsedMs: clamp(now - selfCast.startedAt, 0, selfCast.durationMs),
+        isCharge: !!selfCast.isCharge,
+        chargeStartX: selfCast.chargeStartX,
+        chargeStartY: selfCast.chargeStartY,
+        chargeTargetX: selfCast.chargeTargetX,
+        chargeTargetY: selfCast.chargeTargetY
       };
     } else {
       self = {

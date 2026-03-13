@@ -996,7 +996,7 @@
         attackState: entry.attackState || null,
         castState:
           entry.castVisual && Number(entry.castVisual.ratio) > 0
-            ? { active: true, progress: clamp(Number(entry.castVisual.ratio) || 0, 0, 1), abilityId: String(entry.castVisual.abilityId || "") }
+            ? { active: true, ratio: clamp(Number(entry.castVisual.ratio) || 0, 0, 1), abilityId: String(entry.castVisual.abilityId || ""), isCharge: entry.castVisual.isCharge, chargeStartX: entry.castVisual.chargeStartX, chargeStartY: entry.castVisual.chargeStartY, chargeTargetX: entry.castVisual.chargeTargetX, chargeTargetY: entry.castVisual.chargeTargetY }
             : null,
         aimWorldX,
         aimWorldY,

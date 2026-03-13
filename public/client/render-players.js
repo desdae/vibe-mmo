@@ -350,8 +350,13 @@
       }
       return {
         active: true,
-        progress: cast.ratio,
-        abilityId: castState && castState.abilityId ? castState.abilityId : ""
+        ratio: cast.ratio,
+        abilityId: castState && castState.abilityId ? castState.abilityId : "",
+        isCharge: castState && castState.isCharge,
+        chargeStartX: castState && castState.chargeStartX,
+        chargeStartY: castState && castState.chargeStartY,
+        chargeTargetX: castState && castState.chargeTargetX,
+        chargeTargetY: castState && castState.chargeTargetY
       };
     }
 
