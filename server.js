@@ -650,7 +650,8 @@ const projectileEffectTools = createProjectileEffectTools({
   clamp,
   applySlowToMob,
   stunMob,
-  applyDotToMob
+  applyDotToMob,
+  getPlayerById: (playerId) => players.get(String(playerId || "")) || null
 });
 const applyProjectileHitEffects = projectileEffectTools.applyProjectileHitEffects;
 const areaEffectTools = createAreaEffectTools({
@@ -694,7 +695,8 @@ const playerCombatEffectTools = createPlayerCombatEffectTools({
   clamp,
   randomInt,
   applyDamageToPlayer,
-  getAbilityDotDamageRange
+  getAbilityDotDamageRange,
+  getPlayerById: (playerId) => players.get(String(playerId || "")) || null
 });
 const clearPlayerCombatEffects = playerCombatEffectTools.clearPlayerCombatEffects;
 const tickPlayerDotEffects = playerCombatEffectTools.tickPlayerDotEffects;
@@ -729,6 +731,7 @@ damageTools.onTalentKill = onTalentKill;
 damageTools.onTalentDamageDealt = onTalentDamageDealt;
 mobCombatEffectTools.onTalentSpellHit = onTalentSpellHit;
 playerCombatEffectTools.onTalentSpellHit = onTalentSpellHit;
+projectileEffectTools.onTalentSpellHit = onTalentSpellHit;
 const notifyAbilityUsed = (player, abilityDef, now = Date.now()) => {
   if (!player || !player.ws || typeof sendJson !== "function" || !abilityDef) {
     return;

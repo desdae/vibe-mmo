@@ -16,7 +16,13 @@ function createPlayerCombatEffectTools(options = {}) {
     typeof options.applyDamageToPlayer === "function" ? options.applyDamageToPlayer : () => 0;
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
+  const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
   const effectEngine = createEffectEngine({ clamp, randomInt });
+
+  const tools = {
+    // Mutable callback; server.js wires talent handlers after tool creation.
+    onTalentSpellHit: typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : null
+  };
 
   function clearPlayerCombatEffects(player) {
     if (!player) {
@@ -205,11 +211,12 @@ function createPlayerCombatEffectTools(options = {}) {
     }
     
     // Trigger talent on-spell-hit effects (for PvP)
-    const onTalentSpellHit = typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : () => {};
-    const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
     const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
     if (ownerPlayer) {
-      onTalentSpellHit(ownerPlayer, player, abilityDef, now);
+      const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
+      if (handler) {
+        handler(ownerPlayer, player, abilityDef, now);
+      }
     }
   }
 
@@ -234,17 +241,25 @@ function createPlayerCombatEffectTools(options = {}) {
         }
       });
     }
+
+    // Trigger talent on-spell-hit effects for projectile hits (for PvP).
+    const ownerPlayer = projectile.ownerId ? getPlayerById(String(projectile.ownerId)) : null;
+    if (ownerPlayer) {
+      const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
+      if (handler) {
+        handler(ownerPlayer, player, null, now);
+      }
+    }
   }
 
-  return {
-    clearPlayerCombatEffects,
-    stunPlayer,
-    applySlowToPlayer,
-    applyDotToPlayer,
-    tickPlayerDotEffects,
-    applyAbilityHitEffectsToPlayer,
-    applyProjectileHitEffectsToPlayer
-  };
+  tools.clearPlayerCombatEffects = clearPlayerCombatEffects;
+  tools.stunPlayer = stunPlayer;
+  tools.applySlowToPlayer = applySlowToPlayer;
+  tools.applyDotToPlayer = applyDotToPlayer;
+  tools.tickPlayerDotEffects = tickPlayerDotEffects;
+  tools.applyAbilityHitEffectsToPlayer = applyAbilityHitEffectsToPlayer;
+  tools.applyProjectileHitEffectsToPlayer = applyProjectileHitEffectsToPlayer;
+  return tools;
 }
 
 module.exports = {

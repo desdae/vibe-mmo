@@ -7,7 +7,13 @@ function createProjectileEffectTools(options = {}) {
   const stunMob = typeof options.stunMob === "function" ? options.stunMob : () => {};
   const applyDotToMob = typeof options.applyDotToMob === "function" ? options.applyDotToMob : () => {};
   const randomInt = typeof options.randomInt === "function" ? options.randomInt : null;
+  const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
   const effectEngine = createEffectEngine({ clamp, randomInt: randomInt || undefined });
+
+  const tools = {
+    // Mutable callback; server.js wires talent handlers after tool creation.
+    onTalentSpellHit: typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : null
+  };
 
   function applyProjectileHitEffects(mob, projectile, dealtDamage, now = Date.now()) {
     if (!mob || !mob.alive || dealtDamage <= 0 || !projectile) {
@@ -28,11 +34,19 @@ function createProjectileEffectTools(options = {}) {
         }
       });
     }
+
+    // Trigger talent on-spell-hit effects for projectile impacts.
+    const ownerPlayer = projectile.ownerId ? getPlayerById(String(projectile.ownerId)) : null;
+    if (ownerPlayer) {
+      const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
+      if (handler) {
+        handler(ownerPlayer, mob, null, now);
+      }
+    }
   }
 
-  return {
-    applyProjectileHitEffects
-  };
+  tools.applyProjectileHitEffects = applyProjectileHitEffects;
+  return tools;
 }
 
 module.exports = {

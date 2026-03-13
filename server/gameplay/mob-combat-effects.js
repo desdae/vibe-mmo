@@ -15,7 +15,13 @@ function createMobCombatEffectTools(options = {}) {
   const applyDamageToMob = typeof options.applyDamageToMob === "function" ? options.applyDamageToMob : () => 0;
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
+  const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
   const effectEngine = createEffectEngine({ clamp, randomInt });
+
+  const tools = {
+    // Mutable callback; server.js wires talent handlers after tool creation.
+    onTalentSpellHit: typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : null
+  };
 
   function stunMob(mob, durationMs, now = Date.now()) {
     if (!mob) {
@@ -186,21 +192,21 @@ function createMobCombatEffectTools(options = {}) {
     }
     
     // Trigger talent on-spell-hit effects
-    const onTalentSpellHit = typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : () => {};
-    const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
     const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
     if (ownerPlayer) {
-      onTalentSpellHit(ownerPlayer, mob, abilityDef, now);
+      const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
+      if (handler) {
+        handler(ownerPlayer, mob, abilityDef, now);
+      }
     }
   }
 
-  return {
-    stunMob,
-    applySlowToMob,
-    applyDotToMob,
-    tickMobDotEffects,
-    applyAbilityHitEffectsToMob
-  };
+  tools.stunMob = stunMob;
+  tools.applySlowToMob = applySlowToMob;
+  tools.applyDotToMob = applyDotToMob;
+  tools.tickMobDotEffects = tickMobDotEffects;
+  tools.applyAbilityHitEffectsToMob = applyAbilityHitEffectsToMob;
+  return tools;
 }
 
 module.exports = {

@@ -9,9 +9,13 @@ function createDamageTools(options = {}) {
   const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
   const clamp =
     typeof options.clamp === "function" ? options.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
-  const onTalentSpellHit = typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : () => {};
-  const onTalentKill = typeof options.onTalentKill === "function" ? options.onTalentKill : () => {};
-  const onTalentDamageDealt = typeof options.onTalentDamageDealt === "function" ? options.onTalentDamageDealt : () => {};
+
+  const tools = {
+    // These callbacks are intentionally mutable; server.js wires the real talent handlers after all systems are created.
+    onTalentSpellHit: typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : null,
+    onTalentKill: typeof options.onTalentKill === "function" ? options.onTalentKill : null,
+    onTalentDamageDealt: typeof options.onTalentDamageDealt === "function" ? options.onTalentDamageDealt : null
+  };
 
   function rollLeechAmount(baseAmount, percent) {
     const amount = Math.max(0, Number(baseAmount) || 0);
@@ -49,7 +53,10 @@ function createDamageTools(options = {}) {
       
       // Trigger talent effects on damage dealt
       if (ownerPlayer) {
-        onTalentDamageDealt(ownerPlayer, mob, dealt);
+        const handler = typeof tools.onTalentDamageDealt === "function" ? tools.onTalentDamageDealt : null;
+        if (handler) {
+          handler(ownerPlayer, mob, dealt);
+        }
       }
       
       if (ownerPlayer && extra.allowLeech !== false) {
@@ -67,7 +74,10 @@ function createDamageTools(options = {}) {
       killMob(mob, ownerId);
       // Trigger talent on-kill effects
       if (ownerPlayer) {
-        onTalentKill(ownerPlayer, mob);
+        const handler = typeof tools.onTalentKill === "function" ? tools.onTalentKill : null;
+        if (handler) {
+          handler(ownerPlayer, mob);
+        }
       }
     }
     return dealt;
@@ -124,11 +134,11 @@ function createDamageTools(options = {}) {
     return dealt;
   }
 
-  return {
-    applyDamageToMob,
-    isPlayerInvulnerable,
-    applyDamageToPlayer
-  };
+  tools.applyDamageToMob = applyDamageToMob;
+  tools.isPlayerInvulnerable = isPlayerInvulnerable;
+  tools.applyDamageToPlayer = applyDamageToPlayer;
+
+  return tools;
 }
 
 module.exports = {
