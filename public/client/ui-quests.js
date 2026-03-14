@@ -301,7 +301,7 @@
         return;
       }
 
-      const displayQuests = currentQuestState.active.slice(0, 3);
+      const displayQuests = Array.isArray(currentQuestState.active) ? currentQuestState.active : [];
       questTrackerPanel.innerHTML = "";
       questTrackerPanel.classList.toggle("hidden", displayQuests.length === 0);
 

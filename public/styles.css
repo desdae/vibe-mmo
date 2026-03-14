@@ -2424,6 +2424,10 @@ body {
   right: 20px;
   width: 200px;
   z-index: 500;
+  max-height: calc(100vh - 140px);
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
 }
 
 .tracker-quest-item {
