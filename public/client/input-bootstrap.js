@@ -70,8 +70,10 @@
       }
 
       if (event.code === "KeyQ" && !deps.gameUI.classList.contains("hidden")) {
-        if (questUiTools) {
-          questUiTools.toggleQuestPanel();
+        if (deps.questUiTools && typeof deps.questUiTools.toggleQuestPanel === "function") {
+          deps.questUiTools.toggleQuestPanel();
+        } else if (deps.toggleQuestPanel) {
+          deps.toggleQuestPanel();
         }
         event.preventDefault();
         return;

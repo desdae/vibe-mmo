@@ -16282,6 +16282,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleTalentPanel,
       toggleDpsPanel,
       toggleQuestPanel: () => questUiTools && questUiTools.toggleQuestPanel && questUiTools.toggleQuestPanel(),
+      questUiTools,
       executeBoundAction,
       tryContextVendorInteraction,
       tryContextQuestNpcInteraction,
@@ -16475,6 +16476,13 @@ function installAutomationApi() {
         distance: Math.hypot(dx, dy)
       });
       return true;
+    },
+    toggleQuestPanel() {
+      if (questUiTools && typeof questUiTools.toggleQuestPanel === "function") {
+        questUiTools.toggleQuestPanel();
+        return true;
+      }
+      return false;
     },
     pickupNearestBag() {
       const self = getCurrentSelf();
