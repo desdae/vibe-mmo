@@ -2302,6 +2302,30 @@ body {
   font-size: 12px;
 }
 
+.quest-rewards,
+.dialogue-rewards {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 215, 0, 0.2);
+}
+
+.quest-rewards-title,
+.dialogue-rewards-title {
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffd700;
+  margin-bottom: 4px;
+}
+
+.quest-rewards-item,
+.dialogue-rewards-item {
+  font-size: 12px;
+  color: #d8d6b0;
+  padding: 1px 0;
+}
+
 .quest-objective {
   padding: 2px 0;
   color: #a0a0a0;
@@ -2395,6 +2419,10 @@ body {
 .dialogue-content {
   margin-bottom: 16px;
   line-height: 1.5;
+}
+
+.dialogue-text {
+  white-space: pre-wrap;
 }
 
 .dialogue-options {

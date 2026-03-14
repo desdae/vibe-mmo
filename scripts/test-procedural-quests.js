@@ -208,6 +208,17 @@ function main() {
   const questMenuNode = dialogue.nodes.find((node) => String(node.id) === "quest_menu");
   assert.ok(questMenuNode, "Expected a quest selection menu node");
   assert.strictEqual(questMenuNode.choices.length, 4, "Expected one dialogue choice per available quest");
+  const frontierOffer = repeatableOffers.find((quest) => quest.templateId === "frontier_cleanup_campaign");
+  const frontierDetailsNode = dialogue.nodes.find(
+    (node) => String(node.id) === `quest_${String(frontierOffer && frontierOffer.id || "")}_details`
+  );
+  assert.ok(frontierDetailsNode && frontierDetailsNode.rewards, "Expected offer dialogue details to expose rewards");
+  assert.strictEqual(frontierDetailsNode.rewards.exp, frontierOffer.rewards.exp, "Expected offer dialogue to include quest XP reward");
+  assert.deepStrictEqual(
+    frontierDetailsNode.rewards.items,
+    frontierOffer.rewards.items,
+    "Expected offer dialogue to include quest item rewards"
+  );
 
   const prefarmedPlayer = createPlayer({
     level: 6,
@@ -237,6 +248,7 @@ function main() {
   assert.strictEqual(acceptedCollect.success, true, "Expected the collect quest to be accepted");
   const collectProgress = questTools.getQuestProgress(prefarmedPlayer, collectQuest.id);
   assert.strictEqual(collectProgress.objectives[0].complete, true, "Prefarmed quest items should count immediately");
+  assert.strictEqual(collectProgress.rewards.exp, collectQuest.rewards.exp, "Expected active quest progress to include XP reward data");
   const collectComplete = questTools.completeQuest(prefarmedPlayer, collectQuest.id);
   assert.strictEqual(collectComplete.success, true, "Expected prefarmed collect quest to hand in successfully");
   assert.strictEqual(getInventoryItemCount(prefarmedPlayer, "boneFragment"), 12 - collectQuest.objectives[0].count, "Quest hand-in should consume collected items");

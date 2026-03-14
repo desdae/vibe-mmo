@@ -7250,6 +7250,7 @@ const sharedCreateQuestUiTools = globalThis.__vibemmoCreateQuestUiTools || null;
 let questUiTools = null;
 if (sharedCreateQuestUiTools) {
   questUiTools = sharedCreateQuestUiTools({
+    itemDefsById,
     sendJson: (msg) => sendJsonMessage(msg),
     abandonQuest: (questId) => {
       sendJsonMessage({ type: "abandon_quest", questId });

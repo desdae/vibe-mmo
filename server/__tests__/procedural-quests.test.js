@@ -152,9 +152,18 @@ describe("procedural quest generation", () => {
 
     const dialogue = dialogueTools.startDialogue("player-1", createPlayer(), "town_herald");
     const menuNode = dialogue.nodes.find((node) => node.id === "quest_menu");
+    const frontierQuest = questTools.getAvailableQuestsForPlayer(createPlayer()).find(
+      (quest) => quest.templateId === "frontier_cleanup_campaign"
+    );
+    const frontierDetailsNode = dialogue.nodes.find(
+      (node) => node.id === `quest_${String(frontierQuest && frontierQuest.id || "")}_details`
+    );
 
     expect(menuNode).toBeTruthy();
     expect(menuNode.choices).toHaveLength(4);
+    expect(frontierDetailsNode && frontierDetailsNode.rewards).toBeTruthy();
+    expect(frontierDetailsNode.rewards.exp).toBe(frontierQuest.rewards.exp);
+    expect(frontierDetailsNode.rewards.items).toEqual(frontierQuest.rewards.items);
   });
 
   test("prefarmed collect items are counted and consumed on hand-in", () => {
@@ -181,6 +190,7 @@ describe("procedural quest generation", () => {
     const accepted = questTools.acceptQuest(player, collectQuest.id);
     expect(accepted.success).toBe(true);
     expect(questTools.getQuestProgress(player, collectQuest.id).objectives[0].complete).toBe(true);
+    expect(questTools.getQuestProgress(player, collectQuest.id).rewards.exp).toBe(collectQuest.rewards.exp);
     expect(questTools.completeQuest(player, collectQuest.id).success).toBe(true);
     expect(getInventoryItemCount(player, "boneFragment")).toBe(12 - collectQuest.objectives[0].count);
   });

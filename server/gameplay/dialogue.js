@@ -2,6 +2,43 @@ function createDialogueTools(options = {}) {
   const questTools = options.questTools || null;
   const playerDialogueState = new Map();
 
+  function cloneQuestRewards(rewards) {
+    if (!rewards || typeof rewards !== "object") {
+      return null;
+    }
+    const exp = Math.max(0, Number(rewards.exp) || 0);
+    const items = Array.isArray(rewards.items)
+      ? rewards.items
+          .map((entry) => ({
+            itemId: String(entry && entry.itemId || "").trim(),
+            qty: Math.max(0, Number(entry && entry.qty) || 0)
+          }))
+          .filter((entry) => entry.itemId && entry.qty > 0)
+      : [];
+    if (exp <= 0 && items.length === 0) {
+      return null;
+    }
+    return { exp, items };
+  }
+
+  function attachQuestRewardsToNodes(nodes, quest) {
+    const rewards = cloneQuestRewards(quest && quest.rewards);
+    if (!rewards) {
+      return Array.isArray(nodes) ? nodes.map((node) => ({ ...node })) : [];
+    }
+    return (Array.isArray(nodes) ? nodes : []).map((node) => {
+      const entry = node && typeof node === "object" ? { ...node } : { text: String(node || "") };
+      if (entry.questComplete) {
+        return entry;
+      }
+      entry.rewards = {
+        exp: rewards.exp,
+        items: rewards.items.map((item) => ({ ...item }))
+      };
+      return entry;
+    });
+  }
+
   function getDialogueState(playerId) {
     return playerDialogueState.get(playerId) || null;
   }
@@ -39,6 +76,7 @@ function createDialogueTools(options = {}) {
         id: detailsId,
         text: String(quest && quest.description || "I have work for you."),
         speaker: npcName,
+        rewards: cloneQuestRewards(quest && quest.rewards),
         choices: [
           { text: "I'll take this one.", next: acceptId },
           { text: "Show me the other jobs.", next: "quest_menu" }
@@ -48,6 +86,7 @@ function createDialogueTools(options = {}) {
         id: acceptId,
         text: `Very well. ${String(quest && quest.title || "This task")} is yours.`,
         speaker: npcName,
+        rewards: cloneQuestRewards(quest && quest.rewards),
         questStart: true,
         questId
       });
@@ -88,7 +127,7 @@ function createDialogueTools(options = {}) {
     } else if (availableQuests.length === 1) {
       dialogueType = "offer";
       dialogueNodes = availableQuests[0] && availableQuests[0].dialogue && availableQuests[0].dialogue.offer
-        ? availableQuests[0].dialogue.offer
+        ? attachQuestRewardsToNodes(availableQuests[0].dialogue.offer, availableQuests[0])
         : [{ text: "I have a quest for you." }];
     } else {
       dialogueType = "noQuest";

@@ -595,6 +595,17 @@ function createQuestTools(options = {}) {
       questId,
       title: quest.title,
       description: quest.description,
+      rewards: quest.rewards
+        ? {
+            exp: Math.max(0, Number(quest.rewards.exp) || 0),
+            items: Array.isArray(quest.rewards.items)
+              ? quest.rewards.items.map((entry) => ({
+                  itemId: String(entry && entry.itemId || "").trim(),
+                  qty: Math.max(0, Number(entry && entry.qty) || 0)
+                })).filter((entry) => entry.itemId && entry.qty > 0)
+              : []
+          }
+        : null,
       objectives,
       allComplete: objectives.every((entry) => entry.complete)
     };

@@ -137,6 +137,20 @@ async function getDialogueChoiceTexts(page) {
   });
 }
 
+async function getDialoguePanelText(page) {
+  return page.evaluate(() => {
+    const panel = document.getElementById("dialogue-panel");
+    return panel ? String(panel.textContent || "") : "";
+  });
+}
+
+async function getQuestPanelText(page) {
+  return page.evaluate(() => {
+    const panel = document.getElementById("quest-panel");
+    return panel ? String(panel.textContent || "") : "";
+  });
+}
+
 async function getActiveQuestByTitle(page, title) {
   return page.evaluate((expectedTitle) => {
     const state = window.__vibemmoTest.getState();
@@ -378,6 +392,15 @@ async function run() {
       const panel = document.getElementById("quest-panel");
       return !!(panel && !panel.classList.contains("hidden") && panel.textContent.includes("First Steps"));
     });
+    await page.waitForFunction(() => {
+      const panel = document.getElementById("quest-panel");
+      return !!(
+        panel &&
+        !panel.classList.contains("hidden") &&
+        panel.textContent.includes("50 XP") &&
+        panel.textContent.includes("Small Health Potion")
+      );
+    });
     await page.keyboard.press("KeyQ");
     await page.waitForFunction(() => {
       const panel = document.getElementById("quest-panel");
@@ -430,12 +453,29 @@ async function run() {
       return !!(node && Array.isArray(node.choices) && node.choices.length >= 3);
     });
     const questChoiceTexts = await getDialogueChoiceTexts(page);
+    const frontierChoice = questChoiceTexts[questChoiceTexts.length - 1];
     const scoutingChoice =
       questChoiceTexts.find((label) => /scout|survey|check/i.test(label)) ||
       questChoiceTexts[0];
-    if (!scoutingChoice) {
+    if (!frontierChoice || !scoutingChoice) {
       throw new Error(`Expected at least one generated quest choice, got: ${JSON.stringify(questChoiceTexts)}`);
     }
+    await clickDialogueButton(page, frontierChoice);
+    await page.waitForFunction(() => {
+      const panel = document.getElementById("dialogue-panel");
+      return !!(
+        panel &&
+        panel.textContent.includes("Rewards") &&
+        panel.textContent.includes("Small Mana Potion") &&
+        panel.textContent.includes("XP")
+      );
+    });
+    await clickDialogueButton(page, "Show me the other jobs.");
+    await page.waitForFunction(() => {
+      const state = window.__vibemmoTest.getState();
+      const node = state.dialogue && state.dialogue.node;
+      return !!(node && Array.isArray(node.choices) && node.choices.length >= 3);
+    });
     await clickDialogueButton(page, scoutingChoice);
     await clickDialogueButton(page, "I'll take this one.");
     await clickDialogueButton(page, "Accept Quest");
@@ -449,6 +489,23 @@ async function run() {
     if (!generatedQuest || !generatedQuest.questId) {
       throw new Error(`Failed to find accepted generated scouting quest: ${JSON.stringify(generatedQuest)}`);
     }
+
+    await page.keyboard.press("KeyQ");
+    await page.waitForFunction((expectedTitle) => {
+      const panel = document.getElementById("quest-panel");
+      return !!(
+        panel &&
+        !panel.classList.contains("hidden") &&
+        panel.textContent.includes(expectedTitle) &&
+        panel.textContent.includes("Rewards") &&
+        panel.textContent.includes("XP")
+      );
+    }, generatedQuest.title);
+    await page.keyboard.press("KeyQ");
+    await page.waitForFunction(() => {
+      const panel = document.getElementById("quest-panel");
+      return !!(panel && panel.classList.contains("hidden"));
+    });
 
     await page.evaluate((questId) => window.__vibemmoTest.send({ type: "admin_complete_quest", questId }), generatedQuest.questId);
     await page.waitForFunction((questId) => {
@@ -487,7 +544,9 @@ async function run() {
       completedQuestIds: finalState.questState.completed,
       activeQuestCount: Array.isArray(finalState.questState.active) ? finalState.questState.active.length : 0,
       generatedQuestChoiceCount: questChoiceTexts.length,
-      generatedQuestTitle: generatedQuest.title
+      generatedQuestTitle: generatedQuest.title,
+      generatedQuestDialogueText: await getDialoguePanelText(page).catch(() => ""),
+      finalQuestPanelText: await getQuestPanelText(page).catch(() => "")
     }, null, 2));
   } catch (error) {
     const logs = server.getLogs ? server.getLogs() : { stdout: "", stderr: "" };

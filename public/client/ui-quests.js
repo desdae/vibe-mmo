@@ -3,6 +3,7 @@
 
   function createQuestUiTools(rawDeps) {
     const deps = rawDeps && typeof rawDeps === "object" ? rawDeps : {};
+    const itemDefsById = deps.itemDefsById && typeof deps.itemDefsById.get === "function" ? deps.itemDefsById : null;
 
     let questPanel = null;
     let questTrackerPanel = null;
@@ -76,6 +77,48 @@
         .join("");
     }
 
+    function getRewardItemName(itemId) {
+      const resolvedId = String(itemId || "").trim();
+      if (!resolvedId) {
+        return "";
+      }
+      const itemDef = itemDefsById ? itemDefsById.get(resolvedId) : null;
+      return String(itemDef && itemDef.name || resolvedId);
+    }
+
+    function getRewardLines(rewards) {
+      if (!rewards || typeof rewards !== "object") {
+        return [];
+      }
+      const lines = [];
+      const exp = Math.max(0, Number(rewards.exp) || 0);
+      if (exp > 0) {
+        lines.push(`${exp} XP`);
+      }
+      for (const item of Array.isArray(rewards.items) ? rewards.items : []) {
+        const itemId = String(item && item.itemId || "").trim();
+        const qty = Math.max(0, Number(item && item.qty) || 0);
+        if (!itemId || qty <= 0) {
+          continue;
+        }
+        lines.push(`${qty}x ${getRewardItemName(itemId)}`);
+      }
+      return lines;
+    }
+
+    function createRewardsHtml(rewards, className = "quest-rewards") {
+      const rewardLines = getRewardLines(rewards);
+      if (!rewardLines.length) {
+        return "";
+      }
+      return `
+        <div class="${className}">
+          <div class="${className}-title">Rewards</div>
+          ${rewardLines.map((line) => `<div class="${className}-item">${line}</div>`).join("")}
+        </div>
+      `;
+    }
+
     function createQuestElement(quest, status) {
       const div = document.createElement("div");
       div.className = `quest-item quest-${status}`;
@@ -95,6 +138,7 @@
         <div class="quest-title">${quest.title || quest.questId}</div>
         <div class="quest-description">${quest.description || ""}</div>
         <div class="quest-objectives">${objectivesHtml}</div>
+        ${createRewardsHtml(quest.rewards)}
         ${status === "active" ? '<button class="quest-abandon-btn">Abandon</button>' : ""}
       `;
 
@@ -216,7 +260,15 @@
         dialogueTitle.textContent = currentDialogue.npcName || "NPC";
       }
       if (dialogueContent) {
-        dialogueContent.textContent = node && node.text ? node.text : "";
+        dialogueContent.innerHTML = "";
+        const textEl = document.createElement("div");
+        textEl.className = "dialogue-text";
+        textEl.textContent = node && node.text ? node.text : "";
+        dialogueContent.appendChild(textEl);
+        const rewardsHtml = createRewardsHtml(node && node.rewards, "dialogue-rewards");
+        if (rewardsHtml) {
+          dialogueContent.insertAdjacentHTML("beforeend", rewardsHtml);
+        }
       }
       if (dialogueOptions) {
         dialogueOptions.innerHTML = "";
