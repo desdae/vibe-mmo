@@ -79,6 +79,8 @@ const { createPlayerFactory } = require("./server/gameplay/player-factory");
 const { createEquipmentTools } = require("./server/gameplay/equipment");
 const { createPlayerBuffTools } = require("./server/gameplay/player-buffs");
 const { createVendorTools } = require("./server/gameplay/vendor");
+const { createQuestTools } = require("./server/gameplay/quests");
+const { createDialogueTools } = require("./server/gameplay/dialogue");
 const { createNormalizeItemEntries } = require("./server/gameplay/drops");
 const { createCoreServices } = require("./server/runtime/core-services");
 const { createBotTickSystem } = require("./server/runtime/bot-tick");
@@ -476,6 +478,32 @@ const getVendorNpc = vendorTools.getVendorNpc;
 const isPlayerNearVendor = vendorTools.isPlayerNearVendor;
 const getInventoryEntrySellValue = vendorTools.getInventoryEntrySellValue;
 const sellInventoryItemToVendor = vendorTools.sellInventoryItemToVendor;
+
+// Quest system
+const questTools = createQuestTools({
+  townLayout: TOWN_LAYOUT,
+  sendJson,
+  sendSelfProgress,
+  addExp: (player, amount) => progressionTools.grantPlayerExp(player, amount),
+  addItemsToInventory
+});
+
+const dialogueTools = createDialogueTools({
+  questTools,
+  sendJson
+});
+
+// Export quest functions for use in message handlers
+const getNearbyQuestNpc = questTools.getNearbyQuestNpc;
+const getQuestProgress = questTools.getQuestProgress;
+const acceptQuest = questTools.acceptQuest;
+const completeQuest = questTools.completeQuest;
+const abandonQuest = questTools.abandonQuest;
+const getAvailableQuestsForPlayer = questTools.getAvailableQuestsForPlayer;
+const updateQuestObjective = questTools.updateQuestObjective;
+const checkQuestExploreObjective = questTools.checkQuestExploreObjective;
+const getPlayerQuestState = questTools.getPlayerQuestState;
+
 const playerFactory = createPlayerFactory({
   classConfigProvider: () => CLASS_CONFIG,
   allocatePlayerId,
@@ -498,6 +526,26 @@ const playerFactory = createPlayerFactory({
   players
 });
 const createPlayer = playerFactory.createPlayer;
+
+// Wrap sendSelfProgress to include quest state (must be after questTools is created)
+const originalSendSelfProgress = sendSelfProgress;
+const sendSelfProgressWithQuests = (player) => {
+  originalSendSelfProgress(player);
+  // Send quest state update
+  if (player && player.ws) {
+    const questState = questTools.getPlayerQuestState(player);
+    const activeQuests = Object.keys(questState.active).map(questId => {
+      const progress = questTools.getQuestProgress(player, questId);
+      return progress;
+    }).filter(Boolean);
+    
+    sendJson(player.ws, {
+      type: "quest_state_update",
+      active: activeQuests,
+      completed: questState.completed
+    });
+  }
+};
 
 const projectileSpawnTools = createProjectileSpawnTools({
   normalizeDirection,
@@ -743,7 +791,12 @@ const mobLifecycleTools = createMobLifecycleTools({
   minSpawnRadiusFromCenter: MIN_SPAWN_RADIUS_FROM_CENTER,
   unobservedDespawnMs: UNOBSERVED_DESPAWN_MS,
   getMobLevelForDistance,
-  applyScaledStatsToMob
+  applyScaledStatsToMob,
+  onMobKilled: (player, mob) => {
+    if (updateQuestObjective(player, "kill", mob.type, 1)) {
+      sendSelfProgressWithQuests(player);
+    }
+  }
 });
 const createMob = mobLifecycleTools.createMob;
 const initializeMobSpawners = mobLifecycleTools.initializeMobSpawners;
@@ -923,7 +976,12 @@ const playerCommandTools = createPlayerCommandTools({
   sendInventoryState,
   syncPlayerCopperFromInventory,
   sendJson,
-  notifyAbilityUsed
+  notifyAbilityUsed,
+  onItemsPickedUp: (player, itemId, qty) => {
+    if (updateQuestObjective(player, "collect", itemId, qty)) {
+      sendSelfProgressWithQuests(player);
+    }
+  }
 });
 const tryPickupLootBag = playerCommandTools.tryPickupLootBag;
 const usePlayerAbility = playerCommandTools.usePlayerAbility;
@@ -945,7 +1003,7 @@ const sendTalentUpdateWrapper = (player) => {
 const talentCommandTools = createTalentCommandTools({
   talentSystem: coreServices.talentSystem,
   sendJson,
-  sendSelfProgress,
+  sendSelfProgressWithQuests,
   sendTalentUpdate: sendTalentUpdateWrapper,
   recomputePlayerDerivedStats: equipmentTools.recomputePlayerDerivedStats
 });
@@ -1260,7 +1318,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     syncPlayerCopperFromInventory,
     sendInventoryState,
     sendEquipmentState,
-    sendSelfProgress,
+    sendSelfProgressWithQuests,
     updatePlayerViewport,
     clamp,
     normalizeDirection,
@@ -1282,7 +1340,17 @@ const runtimeBootstrap = createRuntimeBootstrap({
     consumeInventoryItem,
     addHealOverTimeEffect,
     addManaOverTimeEffect,
-    broadcastChatMessage
+    broadcastChatMessage,
+    // Quest system
+    questTools,
+    dialogueTools,
+    getQuestNpc: questTools.getQuestNpc,
+    isPlayerNearNpc: questTools.isPlayerNearNpc,
+    acceptQuest,
+    completeQuest,
+    abandonQuest,
+    updateQuestObjective,
+    getPlayerQuestState
   }),
   entityUpdateDeps: {
     getPendingHealAmount,

@@ -1892,6 +1892,58 @@ function getTownVendor() {
   return townClientState.layout && townClientState.layout.vendor ? townClientState.layout.vendor : null;
 }
 
+function getNearbyQuestNpc() {
+  const mobsVal = mobs;
+  if (!mobsVal) {
+    return null;
+  }
+  const self = getCurrentSelf();
+  if (!self) {
+    return null;
+  }
+  const range = 2;
+  return mobsVal.find((m) => m && m.npcType === "quest" && 
+    Math.abs((m.x || 0) - (self.x || 0)) <= range && 
+    Math.abs((m.y || 0) - (self.y || 0)) <= range);
+}
+
+function getHoveredQuestNpc(cameraX, cameraY) {
+  const mobsVal = mobs;
+  if (!mobsVal) {
+    return null;
+  }
+  const radius = 1.5;
+  const npc = mobsVal.find((m) => m && m.npcType === "quest");
+  if (!npc) {
+    return null;
+  }
+  const dx = (npc.x || 0) + 0.5 - cameraX;
+  const dy = (npc.y || 0) + 0.5 - cameraY;
+  if (dx * dx + dy * dy > radius * radius) {
+    return null;
+  }
+  return { npc, p: npc };
+}
+
+function tryContextQuestNpcInteraction() {
+  const self = getCurrentSelf();
+  if (!self) {
+    return false;
+  }
+  const cameraX = self.x + 0.5;
+  const cameraY = self.y + 0.5;
+  const hovered = getHoveredQuestNpc(cameraX, cameraY);
+  if (!hovered || !hovered.npc) {
+    return false;
+  }
+  // Send interaction request to server
+  sendJsonMessage({
+    type: "quest_interact",
+    npcId: hovered.npc.id
+  });
+  return true;
+}
+
 function isTownWallTileAt(tileX, tileY) {
   if (!townClientState.layout || !sharedIsTownWallTile) {
     return false;
@@ -7083,6 +7135,34 @@ const uiPanelTools = sharedCreateUiPanelTools
     })
   : null;
 
+// Quest UI Tools
+const sharedCreateQuestUiTools = globalThis.__vibemmoCreateQuestUiTools || null;
+let questUiTools = null;
+if (sharedCreateQuestUiTools) {
+  questUiTools = sharedCreateQuestUiTools({
+    sendJson: (msg) => sendJson(msg),
+    abandonQuest: (questId) => {
+      sendJson({ type: "abandon_quest", questId });
+    }
+  });
+  
+  // Initialize quest panels
+  questUiTools.initPanels({
+    questPanel: document.getElementById("quest-panel"),
+    questTrackerPanel: document.getElementById("quest-tracker-panel"),
+    dialoguePanel: document.getElementById("dialogue-panel"),
+    notificationPanel: document.getElementById("notification-panel")
+  });
+  
+  // Set up quest close button
+  const questCloseBtn = document.getElementById("quest-close-btn");
+  if (questCloseBtn) {
+    questCloseBtn.addEventListener("click", () => {
+      questUiTools.setQuestPanelVisible(false);
+    });
+  }
+}
+
 function isMobilePanelMode() {
   return isTouchJoystickEnabled();
 }
@@ -10791,6 +10871,30 @@ const serverMessageHandlers = {
       setStatus(String(msg.message));
     }
     updateVendorPanelUI();
+  },
+  // Quest message handlers
+  quest_dialogue: (msg) => {
+    if (!msg || !questUiTools) return;
+    questUiTools.showDialogue(msg);
+  },
+  quest_accepted: (msg) => {
+    if (!msg || !questUiTools) return;
+    questUiTools.handleQuestAccepted(msg);
+  },
+  quest_completed: (msg) => {
+    if (!msg || !questUiTools) return;
+    questUiTools.handleQuestCompleted(msg);
+  },
+  quest_abandoned: (msg) => {
+    if (!msg || !questUiTools) return;
+    questUiTools.handleQuestAbandoned(msg);
+  },
+  quest_state_update: (msg) => {
+    if (!msg || !questUiTools) return;
+    questUiTools.updateQuestState({
+      active: msg.active || [],
+      completed: msg.completed || []
+    });
   },
   admin_bot_list: (msg) => {
     adminBotState.bots = Array.isArray(msg && msg.bots) ? msg.bots.map((entry) => ({ ...entry })) : [];
@@ -16064,6 +16168,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleDpsPanel,
       executeBoundAction,
       tryContextVendorInteraction,
+      tryContextQuestNpcInteraction,
       tryContextLootPickup,
       sendMove,
       cancelAutoVendorInteraction: () => clearAutoVendorInteraction(true, true),

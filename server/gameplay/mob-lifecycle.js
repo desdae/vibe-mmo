@@ -30,6 +30,7 @@ function createMobLifecycleTools({
   unobservedDespawnMs,
   getMobLevelForDistance,
   applyScaledStatsToMob,
+  onMobKilled,
   logger = console
 }) {
   const spawnerIdsByCellKey = new Map();
@@ -434,6 +435,11 @@ function createMobLifecycleTools({
       const manaOnKill = Math.max(0, Math.floor(Number(killer.manaOnKill) || 0));
       if (manaOnKill > 0) {
         killer.mana = clamp(killer.mana + manaOnKill, 0, killer.maxMana);
+      }
+      
+      // Quest objective: kill mob
+      if (typeof onMobKilled === "function") {
+        onMobKilled(killer, mob);
       }
     }
   }

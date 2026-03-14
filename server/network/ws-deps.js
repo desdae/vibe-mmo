@@ -48,7 +48,17 @@ function createWsConnectionDeps({
   consumeInventoryItem,
   addHealOverTimeEffect,
   addManaOverTimeEffect,
-  broadcastChatMessage
+  broadcastChatMessage,
+  // Quest system
+  questTools,
+  dialogueTools,
+  getQuestNpc,
+  isPlayerNearNpc,
+  acceptQuest,
+  completeQuest,
+  abandonQuest,
+  updateQuestObjective,
+  getPlayerQuestState
 }) {
   return {
     sendJson,
@@ -106,7 +116,17 @@ function createWsConnectionDeps({
     inspectBot,
     destroyBot,
     setBotFollow,
-    clearBotFollow
+    clearBotFollow,
+    // Quest system
+    questTools,
+    dialogueTools,
+    getQuestNpc,
+    isPlayerNearNpc,
+    acceptQuest,
+    completeQuest,
+    abandonQuest,
+    updateQuestObjective,
+    getPlayerQuestState
   };
 }
 

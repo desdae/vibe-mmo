@@ -15,7 +15,8 @@ function createPlayerCommandTools({
   sendInventoryState,
   syncPlayerCopperFromInventory,
   sendJson,
-  notifyAbilityUsed
+  notifyAbilityUsed,
+  onItemsPickedUp
 }) {
   function tryPickupLootBag(player, targetX, targetY) {
     let pickedBag = null;
@@ -67,6 +68,13 @@ function createPlayerCommandTools({
       itemsGained: transfer.added,
       inventoryFull: transfer.leftover.length > 0
     });
+    
+    // Quest objective: collect items
+    if (typeof onItemsPickedUp === "function" && transfer.added.length > 0) {
+      for (const item of transfer.added) {
+        onItemsPickedUp(player, item.itemId, item.qty);
+      }
+    }
     return true;
   }
 

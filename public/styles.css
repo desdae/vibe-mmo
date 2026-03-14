@@ -2227,3 +2227,289 @@ body {
     font-size: 12px;
   }
 }
+
+/* Quest UI Styles */
+#quest-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 400px;
+  max-height: 500px;
+  background: #1a1a2e;
+  border: 2px solid #4a4a6a;
+  border-radius: 8px;
+  padding: 16px;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  z-index: 1000;
+  overflow-y: auto;
+}
+
+.quest-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #4a4a6a;
+}
+
+.quest-header h2 {
+  margin: 0;
+  font-size: 18px;
+  color: #ffd700;
+}
+
+#quest-close-btn {
+  background: transparent;
+  border: none;
+  color: #e0e0e0;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0 8px;
+}
+
+#quest-close-btn:hover {
+  color: #ff6b6b;
+}
+
+.quest-list {
+  margin-bottom: 16px;
+}
+
+.quest-item {
+  background: #252540;
+  border: 1px solid #3a3a5a;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.quest-title {
+  font-weight: bold;
+  color: #ffd700;
+  margin-bottom: 4px;
+}
+
+.quest-description {
+  font-size: 13px;
+  color: #b0b0b0;
+  margin-bottom: 8px;
+}
+
+.quest-objectives {
+  font-size: 12px;
+}
+
+.quest-objective {
+  padding: 2px 0;
+  color: #a0a0a0;
+}
+
+.quest-objective.complete {
+  color: #4cd137;
+  text-decoration: line-through;
+}
+
+.quest-abandon-btn {
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: #6c5ce7;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.quest-abandon-btn:hover {
+  background: #5b4cc4;
+}
+
+.quest-empty {
+  color: #808080;
+  font-style: italic;
+  text-align: center;
+  padding: 20px;
+}
+
+.completed-quests-section {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid #4a4a6a;
+}
+
+.completed-quests-section h3 {
+  font-size: 14px;
+  color: #a0a0a0;
+  margin-bottom: 8px;
+}
+
+.quest-completed-item {
+  color: #4cd137;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+/* Dialogue Panel */
+#dialogue-panel {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 450px;
+  background: #1a1a2e;
+  border: 2px solid #ffd700;
+  border-radius: 8px;
+  padding: 16px;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  z-index: 1000;
+}
+
+.dialogue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #4a4a6a;
+}
+
+.dialogue-title {
+  font-weight: bold;
+  color: #ffd700;
+  font-size: 16px;
+}
+
+.dialogue-close-btn {
+  background: transparent;
+  border: none;
+  color: #e0e0e0;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.dialogue-content {
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+
+.dialogue-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dialogue-option-btn {
+  padding: 8px 16px;
+  background: #4a4a6a;
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.dialogue-option-btn:hover {
+  background: #5a5a7a;
+}
+
+/* Quest Tracker Panel */
+#quest-tracker-panel {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  width: 200px;
+  z-index: 500;
+}
+
+.tracker-quest-item {
+  background: rgba(26, 26, 46, 0.9);
+  border: 1px solid #ffd700;
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.tracker-quest-title {
+  font-weight: bold;
+  color: #ffd700;
+  margin-bottom: 4px;
+}
+
+.tracker-objective {
+  color: #a0a0a0;
+  padding: 1px 0;
+}
+
+.tracker-objective.complete {
+  color: #4cd137;
+}
+
+/* Quest Notifications */
+#notification-panel {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.quest-notification {
+  background: #1a1a2e;
+  border: 2px solid #4a4a6a;
+  border-radius: 8px;
+  padding: 12px 20px;
+  color: #e0e0e0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  animation: slideIn 0.3s ease-out;
+  max-width: 300px;
+}
+
+.quest-notification-success {
+  border-color: #4cd137;
+}
+
+.quest-notification-title {
+  font-weight: bold;
+  color: #ffd700;
+  margin-bottom: 4px;
+}
+
+.quest-notification-message {
+  font-size: 13px;
+}
+
+.quest-notification.fade-out {
+  animation: fadeOut 0.5s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}

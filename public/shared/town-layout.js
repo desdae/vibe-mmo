@@ -60,7 +60,17 @@
         x: centerTileX,
         y: centerTileY,
         interactRange: config.vendorInteractRange
-      }
+      },
+      questGivers: [
+        {
+          id: "town_herald",
+          name: "Town Herald",
+          x: centerTileX,
+          y: centerTileY + 10,
+          interactRange: 2.5,
+          questGiver: true
+        }
+      ]
     };
   }
 

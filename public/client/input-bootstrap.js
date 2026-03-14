@@ -69,6 +69,14 @@
         return;
       }
 
+      if (event.code === "KeyQ" && !deps.gameUI.classList.contains("hidden")) {
+        if (questUiTools) {
+          questUiTools.toggleQuestPanel();
+        }
+        event.preventDefault();
+        return;
+      }
+
       if (event.code.startsWith("Digit")) {
         const slot = event.code.replace("Digit", "");
         if (slot >= "1" && slot <= "9" && !deps.gameUI.classList.contains("hidden")) {
@@ -148,6 +156,9 @@
       event.preventDefault();
       deps.updateMouseScreenPosition(event);
       if (deps.tryContextVendorInteraction()) {
+        return;
+      }
+      if (deps.tryContextQuestNpcInteraction()) {
         return;
       }
       if (deps.tryContextLootPickup()) {

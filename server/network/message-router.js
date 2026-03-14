@@ -608,6 +608,115 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  // Quest message handlers
+  if (msg.type === "quest_interact") {
+    const npcId = String(msg.npcId || "").trim();
+    if (!npcId) {
+      return { player };
+    }
+    
+    // Check if player is near the NPC
+    const npc = deps.getQuestNpc(npcId);
+    if (!npc || !deps.isPlayerNearNpc(player, npcId)) {
+      return { player };
+    }
+    
+    // Handle talk objective
+    const talkQuest = deps.questTools.getTalkQuestForNpc(player, npcId);
+    if (talkQuest && talkQuest.objective && talkQuest.objective.type === "talk") {
+      deps.updateQuestObjective(player, "talk", npcId, 1);
+      deps.sendSelfProgress(player);
+    }
+    
+    // Start dialogue
+    const dialogue = deps.dialogueTools.getDialogueForQuest(player, player, npcId);
+    if (dialogue) {
+      deps.sendJson(player.ws, {
+        type: "quest_dialogue",
+        ...dialogue
+      });
+    }
+    return { player };
+  }
+
+  if (msg.type === "talk_to_npc") {
+    const npcId = String(msg.npcId || "").trim();
+    if (!npcId) {
+      return { player };
+    }
+    
+    // Check if player is near the NPC
+    const npc = deps.getQuestNpc(npcId);
+    if (!npc || !deps.isPlayerNearNpc(player, npcId)) {
+      return { player };
+    }
+    
+    // Handle talk objective
+    const talkQuest = deps.questTools.getTalkQuestForNpc(player, npcId);
+    if (talkQuest && talkQuest.objective && talkQuest.objective.type === "talk") {
+      deps.updateQuestObjective(player, "talk", npcId, 1);
+      deps.sendSelfProgress(player);
+    }
+    
+    // Start dialogue
+    const dialogue = deps.dialogueTools.getDialogueForQuest(player, player, npcId);
+    if (dialogue) {
+      deps.sendJson(player.ws, {
+        type: "quest_dialogue",
+        ...dialogue
+      });
+    }
+    return { player };
+  }
+
+  if (msg.type === "quest_select_option") {
+    const nodeId = String(msg.nodeId || "").trim();
+    if (!nodeId) {
+      return { player };
+    }
+    
+    const result = deps.dialogueTools.selectDialogueOption(player.playerId, player, nodeId);
+    if (result.error) {
+      deps.sendJson(player.ws, {
+        type: "quest_dialogue_error",
+        message: result.error
+      });
+    } else if (result.questAccepted) {
+      deps.sendJson(player.ws, {
+        type: "quest_accepted",
+        questId: result.questId,
+        questTitle: result.questTitle
+      });
+      deps.sendSelfProgress(player);
+    } else if (result.questCompleted) {
+      deps.sendJson(player.ws, {
+        type: "quest_completed",
+        questId: result.questId,
+        questTitle: result.questTitle,
+        rewards: result.rewards
+      });
+      deps.sendSelfProgress(player);
+    }
+    return { player };
+  }
+
+  if (msg.type === "abandon_quest") {
+    const questId = String(msg.questId || "").trim();
+    if (!questId) {
+      return { player };
+    }
+    
+    const result = deps.abandonQuest(player, questId);
+    if (result.success) {
+      deps.sendSelfProgress(player);
+      deps.sendJson(player.ws, {
+        type: "quest_abandoned",
+        questId
+      });
+    }
+    return { player };
+  }
+
   return { player };
 }
 
