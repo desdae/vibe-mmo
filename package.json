@@ -10,6 +10,9 @@
     "benchmark:renderers": "node scripts/benchmark-renderers.js",
     "sync:pixi": "node scripts/sync-pixi-runtime.js",
     "start:prod": "node scripts/run-prod.js",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "test:equipment:affixes": "node scripts/test-equipment-affixes.js",
     "test:equipment:smoke": "node scripts/playwright-equipment-smoke.js",
     "test:talents:smoke": "node scripts/playwright-talent-smoke.js"
@@ -20,6 +23,14 @@
   },
   "devDependencies": {
     "esbuild": "^0.27.3",
+    "jest": "^30.3.0",
     "playwright": "^1.58.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "coverageDirectory": "coverage",
+    "collectCoverageFrom": [
+      "server/**/*.js"
+    ]
   }
 }
