@@ -29,6 +29,10 @@ function registerWsConnections(params = {}) {
 
     ws.on("close", () => {
       if (player) {
+        // Broadcast system message about player leaving
+        if (typeof deps.broadcastChatMessage === "function") {
+          deps.broadcastChatMessage({ name: "System", isAdmin: false }, `${player.name} has left the game.`);
+        }
         deps.players.delete(player.id);
       }
     });

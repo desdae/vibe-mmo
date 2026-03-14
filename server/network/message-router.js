@@ -55,6 +55,11 @@ function createJoinedPlayer(ws, msg, deps) {
   deps.sendEquipmentState(player);
   deps.sendSelfProgress(player);
 
+  // Broadcast system message about player joining
+  if (typeof deps.broadcastChatMessage === "function") {
+    deps.broadcastChatMessage({ name: "System", isAdmin: false }, `${player.name} has joined the game.`);
+  }
+
   return { player };
 }
 

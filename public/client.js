@@ -10814,6 +10814,38 @@ const serverMessageHandlers = {
   world_stats: (msg) => {
     debugState.totalMobCount = Math.max(0, Math.floor(Number(msg && msg.mobCount) || 0));
     updateDebugPanel();
+  },
+  chat_message: (msg) => {
+    if (!msg || !chatMessages) {
+      return;
+    }
+    const sender = String(msg.sender || "").trim();
+    const text = String(msg.text || "").trim();
+    if (!text) {
+      return;
+    }
+    const isAdmin = !!msg.isAdmin;
+    const messageEl = document.createElement("div");
+    messageEl.className = "chat-message";
+    if (isAdmin) {
+      messageEl.classList.add("admin");
+    }
+    if (sender) {
+      const senderEl = document.createElement("span");
+      senderEl.className = "chat-sender";
+      senderEl.textContent = sender + ": ";
+      messageEl.appendChild(senderEl);
+    }
+    const textEl = document.createElement("span");
+    textEl.className = "chat-text";
+    textEl.textContent = text;
+    messageEl.appendChild(textEl);
+    chatMessages.appendChild(messageEl);
+    // Limit chat history to last 100 messages to prevent performance issues
+    while (chatMessages.children.length > 100) {
+      chatMessages.removeChild(chatMessages.firstChild);
+    }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 };
 
@@ -16251,4 +16283,42 @@ installAutomationApi();
 
 if (inputBootstrapTools) {
   inputBootstrapTools.bind();
+}
+
+// Chat functionality
+function sendChatMessage() {
+  if (!chatInput || !socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const text = chatInput.value.trim();
+  if (!text) {
+    return;
+  }
+  sendJsonMessage({
+    type: "chat_message",
+    text: text
+  });
+  chatInput.value = "";
+}
+
+if (chatSendButton) {
+  chatSendButton.addEventListener("click", sendChatMessage);
+}
+
+if (chatInput) {
+  chatInput.addEventListener("keypress", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      sendChatMessage();
+    }
+  });
+  
+  // Prevent game input when typing in chat
+  chatInput.addEventListener("focus", () => {
+    if (typeof keys === "object") {
+      for (const key in keys) {
+        keys[key] = false;
+      }
+    }
+  });
 }
