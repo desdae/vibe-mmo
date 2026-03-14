@@ -10816,9 +10816,21 @@ const serverMessageHandlers = {
     updateDebugPanel();
   },
   chat_message: (msg) => {
-    if (!msg || !chatMessages) {
+    if (!msg) {
+      console.warn('[Chat] Received empty message');
       return;
     }
+    if (!chatMessages) {
+      console.warn('[Chat] chatMessages element not found');
+      return;
+    }
+    if (!chatPanel) {
+      console.warn('[Chat] chatPanel element not found');
+      return;
+    }
+    // Ensure chat panel is visible
+    chatPanel.style.display = 'flex';
+    
     const sender = String(msg.sender || "").trim();
     const text = String(msg.text || "").trim();
     if (!text) {
