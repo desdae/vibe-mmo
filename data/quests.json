@@ -9,7 +9,7 @@
       "npcCompleteId": "town_herald",
       "objectives": [
         { "type": "talk", "targetId": "starter_vendor", "description": "Speak with the Quartermaster" },
-        { "type": "kill", "mobId": "zombie", "count": 3, "description": "Kill 3 zombies" }
+        { "type": "kill", "mobId": "Zombie", "count": 3, "description": "Kill 3 zombies" }
       ],
       "rewards": { "exp": 50, "items": [{ "itemId": "healthPotion01", "qty": 2 }] },
       "dialogue": {
@@ -34,107 +34,10 @@
           { "id": "complete", "text": "Excellent work, adventurer! You've proven yourself capable. Here is your reward.", "speaker": "Town Herald", "questComplete": true }
         ]
       }
-    },
-    {
-      "id": "quest_wolf_pelt",
-      "title": "Wolf Pelt Collection",
-      "description": "Collect wolf pelts from the wolves roaming the eastern forest.",
-      "minLevel": 2,
-      "npcGiverId": "town_herald",
-      "npcCompleteId": "town_herald",
-      "objectives": [
-        { "type": "collect", "itemId": "wolfPelt", "count": 5, "description": "Collect 5 wolf pelts" }
-      ],
-      "rewards": { "exp": 100, "items": [{ "itemId": "manaPotion01", "qty": 2 }] },
-      "dialogue": {
-        "offer": [
-          { "text": "Back so soon? I could use more help.", "speaker": "Town Herald", "choices": [
-            { "text": "What do you need?", "next": "details" },
-            { "text": "Goodbye.", "next": "decline" }
-          ]},
-          { "id": "details", "text": "I need wolf pelts for the winter. The wolves are in the forest to the east. Bring me 5 pelts and I'll reward you.", "speaker": "Town Herald", "choices": [
-            { "text": "Consider it done!", "next": "accept" },
-            { "text": "Wolves? No thanks.", "next": "decline" }
-          ]},
-          { "id": "accept", "text": "Thank you! The wolves are in the eastern forest.", "speaker": "Town Herald", "questStart": true },
-          { "id": "decline", "text": "As you wish.", "speaker": "Town Herald" }
-        ],
-        "inProgress": [
-          { "text": "You still need more wolf pelts. They're in the eastern forest.", "speaker": "Town Herald" }
-        ],
-        "complete": [
-          { "text": "Perfect! These pelts will keep us warm. Here's your reward!", "speaker": "Town Herald", "questComplete": true }
-        ]
-      }
-    },
-    {
-      "id": "quest_exploration",
-      "title": "Explore the Ruins",
-      "description": "Visit the ancient ruins located in the northeastern part of the map.",
-      "minLevel": 1,
-      "npcGiverId": "town_herald",
-      "npcCompleteId": "town_herald",
-      "objectives": [
-        { "type": "explore", "x": 750, "y": 250, "radius": 15, "description": "Visit the ancient ruins" }
-      ],
-      "rewards": { "exp": 75 },
-      "dialogue": {
-        "offer": [
-          { "text": "There's something I need located. Are you brave enough?", "speaker": "Town Herald", "choices": [
-            { "text": "What is it?", "next": "details" },
-            { "text": "I'm not interested.", "next": "decline" }
-          ]},
-          { "id": "details", "text": "There are ancient ruins to the northeast. I need you to visit them and report back what you see.", "speaker": "Town Herald", "choices": [
-            { "text": "I'll go there!", "next": "accept" },
-            { "text": "Ancient ruins sound dangerous.", "next": "decline" }
-          ]},
-          { "id": "accept", "text": "Head northeast from town. The ruins are at coordinates (750, 250). Be careful!", "speaker": "Town Herald", "questStart": true },
-          { "id": "decline", "text": "Very well.", "speaker": "Town Herald" }
-        ],
-        "inProgress": [
-          { "text": "Have you visited the ruins yet? They're at (750, 250) in the northeast.", "speaker": "Town Herald" }
-        ],
-        "complete": [
-          { "text": "You found them! Thank you for exploring. Here's some XP for your trouble.", "speaker": "Town Herald", "questComplete": true }
-        ]
-      }
-    },
-    {
-      "id": "quest_talk_vendor",
-      "title": "Meet the Quartermaster",
-      "description": "Introduce yourself to the Town Quartermaster.",
-      "minLevel": 1,
-      "npcGiverId": "town_herald",
-      "npcCompleteId": "starter_vendor",
-      "objectives": [
-        { "type": "talk", "targetId": "starter_vendor", "description": "Speak with the Quartermaster" }
-      ],
-      "rewards": { "exp": 10 },
-      "dialogue": {
-        "offer": [
-          { "text": "Before you venture out, you should meet our Quartermaster. She has supplies you'll need.", "speaker": "Town Herald", "choices": [
-            { "text": "Where is she?", "next": "directions" },
-            { "text": "I'll find her myself.", "next": "accept" }
-          ]},
-          { "id": "directions", "text": "She's just south of me in town. You can't miss her!", "speaker": "Town Herald", "choices": [
-            { "text": "Thanks!", "next": "accept" }
-          ]},
-          { "id": "accept", "text": "She'll give you a warm welcome. Come back after you've spoken with her.", "speaker": "Town Herald", "questStart": true }
-        ],
-        "inProgress": [
-          { "text": "The Quartermaster is just south of me in town.", "speaker": "Town Herald" }
-        ],
-        "complete": [
-          { "text": "Wonderful! You're all set for your adventures. Good luck!", "speaker": "Town Quartermaster", "questComplete": true }
-        ]
-      }
     }
   ],
   "npcs": {
     "town_herald": { "name": "Town Herald", "x": 500, "y": 505, "interactRange": 2.5, "questGiver": true },
     "starter_vendor": { "name": "Town Quartermaster", "x": 500, "y": 495, "interactRange": 2.25, "questGiver": true }
-  },
-  "items": [
-    { "id": "wolfPelt", "name": "Wolf Pelt", "stackSize": 99, "description": "A thick fur pelt from a wolf.", "icon": "Procedurally generated wolf pelt" }
-  ]
+  }
 }

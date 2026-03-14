@@ -482,6 +482,9 @@ const sellInventoryItemToVendor = vendorTools.sellInventoryItemToVendor;
 // Quest system
 const questTools = createQuestTools({
   townLayout: TOWN_LAYOUT,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  mobConfigProvider: () => MOB_CONFIG,
   sendJson,
   sendSelfProgress,
   addExp: (player, amount) => grantPlayerExp(player, amount),

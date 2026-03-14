@@ -1,0 +1,104 @@
+{
+  "templates": [
+    {
+      "id": "town_hunt",
+      "npcGiverId": "town_herald",
+      "npcCompleteId": "town_herald",
+      "repeatable": true,
+      "minLevel": 1,
+      "objective": {
+        "type": "kill",
+        "countRange": [3, 6],
+        "targetSource": {
+          "kind": "spawnableMob",
+          "maxSpawnRange": 260
+        }
+      },
+      "rewards": {
+        "baseExp": 30,
+        "expPerTarget": 14,
+        "distanceExpFactor": 0.08
+      },
+      "text": {
+        "titleVariants": [
+          "Thin the {targetNamePlural}",
+          "Cull the {targetNamePlural}",
+          "Drive Back the {targetNamePlural}"
+        ],
+        "offerIntroVariants": [
+          "Reports keep coming in about {targetNamePlural} beyond the gates.",
+          "The roads are growing dangerous with so many {targetNamePlural} nearby.",
+          "Scouts have spotted {targetNamePlural} massing close to town."
+        ],
+        "offerDetailVariants": [
+          "Hunt down {count} {targetNamePlural} and make the approach to town safer.",
+          "Bring me proof that {count} {targetNamePlural} have been dealt with.",
+          "Take care of {count} {targetNamePlural} before they reach the walls."
+        ],
+        "acceptVariants": [
+          "Good. Return to me after you've slain {count} {targetNamePlural}.",
+          "Excellent. Deal with those {targetNamePlural} and report back when you're done.",
+          "That's what I needed to hear. Hunt them down, then return here."
+        ],
+        "inProgressVariants": [
+          "You still have {count} {targetNamePlural} to deal with.",
+          "The town won't rest easy until those {targetNamePlural} are gone.",
+          "Stay focused. Those {targetNamePlural} are still out there."
+        ],
+        "completeVariants": [
+          "Well done. The townsfolk will breathe easier with those {targetNamePlural} gone.",
+          "Excellent work. You've thinned their numbers considerably.",
+          "That's one less threat pressing against our walls."
+        ]
+      }
+    },
+    {
+      "id": "town_scout",
+      "npcGiverId": "town_herald",
+      "npcCompleteId": "town_herald",
+      "repeatable": true,
+      "minLevel": 1,
+      "objective": {
+        "type": "explore",
+        "distanceRange": [90, 220],
+        "radius": 18
+      },
+      "rewards": {
+        "baseExp": 45,
+        "distanceExpFactor": 0.16
+      },
+      "text": {
+        "titleVariants": [
+          "Scout the {regionName}",
+          "Survey the {regionName}",
+          "Check the {regionName}"
+        ],
+        "offerIntroVariants": [
+          "I need eyes on the {regionName}.",
+          "We've lost contact with a lookout near the {regionName}.",
+          "Something feels wrong out by the {regionName}."
+        ],
+        "offerDetailVariants": [
+          "Travel to the marked location at ({targetX}, {targetY}) and see what you find.",
+          "Head for ({targetX}, {targetY}) and report back once you've looked the area over.",
+          "Make your way to ({targetX}, {targetY}) and give the area a proper scout."
+        ],
+        "acceptVariants": [
+          "Stay sharp. Return to me after you've visited ({targetX}, {targetY}).",
+          "Good. Check the area and report back to me once you've been there.",
+          "Perfect. Scout the location and return with what you've learned."
+        ],
+        "inProgressVariants": [
+          "The {regionName} still needs to be checked.",
+          "You haven't reached the scouting point yet.",
+          "Travel to ({targetX}, {targetY}) before you report back."
+        ],
+        "completeVariants": [
+          "Good work. Fresh eyes out there are always valuable.",
+          "Excellent. That reconnaissance helps more than you know.",
+          "You've done the town a service by scouting that route."
+        ]
+      }
+    }
+  ]
+}
