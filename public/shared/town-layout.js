@@ -66,8 +66,8 @@
           id: "town_herald",
           name: "Town Herald",
           x: centerTileX,
-          y: centerTileY + 10,
-          interactRange: 2.5,
+          y: centerTileY + 3,
+          interactRange: 4.0,
           questGiver: true
         }
       ]
