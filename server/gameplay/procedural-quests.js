@@ -1,44 +1,45 @@
 const fs = require("fs");
 const path = require("path");
+const { createQuestContentRegistry } = require("./quest-content-registry");
 
 /*
 Data model
 
-Template:
+Quest template:
 {
   id,
   npcGiverId,
   npcCompleteId,
   repeatable,
   minLevel,
-  objective: {
-    type: "kill" | "explore",
-    countRange?,
-    distanceRange?,
-    radius?,
-    targetSource?
-  },
-  rewards: {
-    baseExp,
-    expPerTarget?,
-    distanceExpFactor?
-  },
-  text: {
-    titleVariants,
-    offerIntroVariants,
-    offerDetailVariants,
-    acceptVariants,
-    inProgressVariants,
-    completeVariants
-  }
+  objectives: [
+    {
+      type: "kill" | "collect" | "explore",
+      countRange?,
+      target: {
+        kind: "mobByTags" | "dropItemByTags" | "regionByTags",
+        tagsAll?,
+        tagsAny?,
+        tagsNone?,
+        itemTagsAll?,
+        itemTagsAny?,
+        itemTagsNone?,
+        sourceMobTagsAll?,
+        sourceMobTagsAny?,
+        sourceMobTagsNone?,
+        maxSpawnRange?
+      }
+    }
+  ],
+  rewards,
+  text
 }
 
-Generated quest definition:
+Generated quest instance:
 {
   id,
   templateId,
   generated: true,
-  repeatable,
   npcGiverId,
   npcCompleteId,
   title,
@@ -54,48 +55,44 @@ Module API:
 - getGeneratedQuestById(player, questId)
 - getAvailableQuestsForNpc(player, npcId)
 - markQuestAccepted(player, questId)
+- recordGeneratedCompletion(player, quest)
 */
 
 function createProceduralQuestTools(options = {}) {
-  const townLayout = options.townLayout || null;
-  const mapWidth = Math.max(64, Math.floor(Number(options.mapWidth) || 1000));
-  const mapHeight = Math.max(64, Math.floor(Number(options.mapHeight) || 1000));
-  const mobConfigProvider =
-    typeof options.mobConfigProvider === "function" ? options.mobConfigProvider : () => null;
   const templateDataPath = options.templateDataPath
     ? path.resolve(String(options.templateDataPath))
     : path.resolve(__dirname, "../../data/quest-templates.json");
+  const registry = createQuestContentRegistry({
+    townLayout: options.townLayout || null,
+    mapWidth: options.mapWidth,
+    mapHeight: options.mapHeight,
+    mobConfigProvider: typeof options.mobConfigProvider === "function" ? options.mobConfigProvider : () => null,
+    itemDefsProvider: typeof options.itemDefsProvider === "function" ? options.itemDefsProvider : () => null,
+    regionDataPath: options.regionDataPath
+  });
 
   let loadedTemplateData = null;
-
-  function loadTemplateData() {
-    if (loadedTemplateData) {
-      return loadedTemplateData;
-    }
-    try {
-      const raw = fs.readFileSync(templateDataPath, "utf8");
-      loadedTemplateData = JSON.parse(raw);
-    } catch (error) {
-      console.error("[procedural-quests] Failed to load quest templates:", error.message);
-      loadedTemplateData = { templates: [] };
-    }
-    return loadedTemplateData;
-  }
-
-  function getTemplateDefs() {
-    const data = loadTemplateData();
-    return Array.isArray(data.templates) ? data.templates : [];
-  }
 
   function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
   }
 
+  function normalizeText(value) {
+    return String(value || "").trim();
+  }
+
+  function normalizeQuestLookupId(value) {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "");
+  }
+
   function hashString(value) {
     const text = String(value || "");
     let hash = 2166136261;
-    for (let index = 0; index < text.length; index += 1) {
-      hash ^= text.charCodeAt(index);
+    for (let i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
       hash = Math.imul(hash, 16777619);
     }
     return hash >>> 0;
@@ -111,24 +108,6 @@ function createProceduralQuestTools(options = {}) {
     };
   }
 
-  function pickVariant(rng, variants, fallback) {
-    const list = Array.isArray(variants) ? variants.filter(Boolean) : [];
-    if (!list.length) {
-      return String(fallback || "");
-    }
-    const index = clamp(Math.floor(rng() * list.length), 0, list.length - 1);
-    return String(list[index] || fallback || "");
-  }
-
-  function interpolateText(text, tokens) {
-    return String(text || "").replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key) => {
-      if (!tokens || !Object.prototype.hasOwnProperty.call(tokens, key)) {
-        return "";
-      }
-      return String(tokens[key]);
-    });
-  }
-
   function slugify(value) {
     return String(value || "")
       .trim()
@@ -138,7 +117,7 @@ function createProceduralQuestTools(options = {}) {
   }
 
   function pluralizeName(value) {
-    const text = String(value || "").trim();
+    const text = normalizeText(value);
     if (!text) {
       return "targets";
     }
@@ -151,41 +130,72 @@ function createProceduralQuestTools(options = {}) {
     return `${text}s`;
   }
 
-  function toObjectiveKey(value) {
-    return String(value || "").trim().toLowerCase();
+  function formatList(values) {
+    const items = (Array.isArray(values) ? values : []).map((entry) => normalizeText(entry)).filter(Boolean);
+    if (items.length <= 1) {
+      return items[0] || "";
+    }
+    if (items.length === 2) {
+      return `${items[0]} and ${items[1]}`;
+    }
+    return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
   }
 
-  function getNpcPosition(npcId) {
-    const normalizedId = String(npcId || "").trim();
-    if (!normalizedId || !townLayout) {
-      return null;
+  function capitalizeFirst(value) {
+    const text = normalizeText(value);
+    if (!text) {
+      return "";
     }
-    if (townLayout.vendor && String(townLayout.vendor.id || "") === normalizedId) {
-      return {
-        x: Number(townLayout.vendor.x) || Math.floor(mapWidth * 0.5),
-        y: Number(townLayout.vendor.y) || Math.floor(mapHeight * 0.5)
-      };
+    return `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+  }
+
+  function pickVariant(rng, variants, fallback) {
+    const list = Array.isArray(variants) ? variants.map((entry) => normalizeText(entry)).filter(Boolean) : [];
+    if (!list.length) {
+      return normalizeText(fallback);
     }
-    if (Array.isArray(townLayout.questGivers)) {
-      const questGiver = townLayout.questGivers.find((entry) => String(entry && entry.id || "") === normalizedId);
-      if (questGiver) {
-        return {
-          x: Number(questGiver.x) || Math.floor(mapWidth * 0.5),
-          y: Number(questGiver.y) || Math.floor(mapHeight * 0.5)
-        };
+    const index = clamp(Math.floor(rng() * list.length), 0, list.length - 1);
+    return list[index] || normalizeText(fallback);
+  }
+
+  function interpolateText(text, tokens) {
+    return String(text || "").replace(/\{([a-zA-Z0-9_]+)\}/g, (_match, key) => {
+      if (!tokens || !Object.prototype.hasOwnProperty.call(tokens, key)) {
+        return "";
       }
+      return String(tokens[key]);
+    });
+  }
+
+  function loadTemplateData() {
+    if (loadedTemplateData) {
+      return loadedTemplateData;
     }
-    return {
-      x: Number(townLayout.centerTileX) || Math.floor(mapWidth * 0.5),
-      y: Number(townLayout.centerTileY) || Math.floor(mapHeight * 0.5)
-    };
+    try {
+      const raw = fs.readFileSync(templateDataPath, "utf8");
+      loadedTemplateData = JSON.parse(raw);
+    } catch (error) {
+      console.error("[procedural-quests] Failed to load quest templates:", error.message);
+      loadedTemplateData = { maxOffersPerNpc: 1, templates: [] };
+    }
+    return loadedTemplateData;
+  }
+
+  function getTemplateDefs() {
+    const data = loadTemplateData();
+    return Array.isArray(data.templates) ? data.templates : [];
+  }
+
+  function getMaxOffersPerNpc() {
+    const data = loadTemplateData();
+    return clamp(Math.floor(Number(data && data.maxOffersPerNpc) || 1), 1, 5);
   }
 
   function getPlayerGeneratedState(player) {
     if (!player) {
       return null;
     }
-    if (!player.questState) {
+    if (!player.questState || typeof player.questState !== "object") {
       player.questState = { active: {}, completed: [] };
     }
     if (!player.questState.generated || typeof player.questState.generated !== "object") {
@@ -209,326 +219,13 @@ function createProceduralQuestTools(options = {}) {
     return generated;
   }
 
-  function getMobCatalog() {
-    const mobConfig = mobConfigProvider();
-    if (!mobConfig || !Array.isArray(mobConfig.clusterDefs)) {
-      return [];
-    }
-    const byName = new Map();
-    for (const cluster of mobConfig.clusterDefs) {
-      const members = Array.isArray(cluster && cluster.members) ? cluster.members : [];
-      for (const mobDef of members) {
-        const name = String(mobDef && mobDef.name || "").trim();
-        if (!name) {
-          continue;
-        }
-        const existing = byName.get(name) || {
-          name,
-          objectiveKey: toObjectiveKey(name),
-          spawnRangeMin: Number(cluster.spawnRangeMin) || 0,
-          spawnRangeMax: Number(cluster.spawnRangeMax) || 0,
-          health: Number(mobDef.health) || 1,
-          damageMax: Number(mobDef.damageMax) || 1
-        };
-        existing.spawnRangeMin = Math.min(existing.spawnRangeMin, Number(cluster.spawnRangeMin) || existing.spawnRangeMin);
-        existing.spawnRangeMax = Math.max(existing.spawnRangeMax, Number(cluster.spawnRangeMax) || existing.spawnRangeMax);
-        existing.health = Math.max(existing.health, Number(mobDef.health) || existing.health);
-        existing.damageMax = Math.max(existing.damageMax, Number(mobDef.damageMax) || existing.damageMax);
-        byName.set(name, existing);
-      }
-    }
-    return Array.from(byName.values()).sort((left, right) => {
-      const leftMid = (left.spawnRangeMin + left.spawnRangeMax) * 0.5;
-      const rightMid = (right.spawnRangeMin + right.spawnRangeMax) * 0.5;
-      return leftMid - rightMid;
-    });
-  }
-
-  function buildDialogue(textConfig, tokens, questStart, questComplete) {
-    return [
-      {
-        id: "start",
-        text: interpolateText(textConfig.offerIntro, tokens),
-        speaker: "Town Herald",
-        choices: [
-          { text: "Tell me more", next: "details" },
-          { text: "I'll handle it.", next: "accept" },
-          { text: "Maybe later.", next: "decline" }
-        ]
-      },
-      {
-        id: "details",
-        text: interpolateText(textConfig.offerDetail, tokens),
-        speaker: "Town Herald",
-        choices: [
-          { text: "I'm on it.", next: "accept" },
-          { text: "Not right now.", next: "decline" }
-        ]
-      },
-      {
-        id: "accept",
-        text: interpolateText(textConfig.accept, tokens),
-        speaker: "Town Herald",
-        questStart: !!questStart
-      },
-      {
-        id: "decline",
-        text: "Very well. Return if you change your mind.",
-        speaker: "Town Herald"
-      }
-    ];
-  }
-
-  function buildKillQuestDefinition(player, npcId, template, serial) {
-    const objectiveConfig = template && template.objective && typeof template.objective === "object" ? template.objective : {};
-    const rewardConfig = template && template.rewards && typeof template.rewards === "object" ? template.rewards : {};
-    const textConfig = template && template.text && typeof template.text === "object" ? template.text : {};
-    const maxSpawnRange = Math.max(50, Number(objectiveConfig.targetSource && objectiveConfig.targetSource.maxSpawnRange) || 240);
-    const playerLevel = Math.max(1, Number(player && player.level) || 1);
-    const desiredDistance = clamp(80 + playerLevel * 24, 80, maxSpawnRange);
-    const candidates = getMobCatalog().filter((entry) => Number(entry.spawnRangeMin) <= maxSpawnRange);
-    if (!candidates.length) {
-      return null;
-    }
-    const ranked = candidates
-      .map((entry) => ({
-        entry,
-        score:
-          Math.abs(((Number(entry.spawnRangeMin) + Number(entry.spawnRangeMax)) * 0.5) - desiredDistance) +
-          Number(entry.health || 1) * 0.2 +
-          Number(entry.damageMax || 1) * 3
-      }))
-      .sort((left, right) => left.score - right.score)
-      .slice(0, 4);
-    if (!ranked.length) {
-      return null;
-    }
-    const rng = createSeededRng(`${player && player.id}:${npcId}:${template.id}:${serial}`);
-    const target = ranked[clamp(Math.floor(rng() * ranked.length), 0, ranked.length - 1)].entry;
-    const countRange = Array.isArray(objectiveConfig.countRange) ? objectiveConfig.countRange : [3, 5];
-    const minCount = Math.max(1, Math.floor(Number(countRange[0]) || 1));
-    const maxCount = Math.max(minCount, Math.floor(Number(countRange[1]) || minCount));
-    const count = clamp(minCount + Math.floor(rng() * (maxCount - minCount + 1)), minCount, maxCount);
-    const distanceMid = (Number(target.spawnRangeMin) + Number(target.spawnRangeMax)) * 0.5;
-    const expReward =
-      Math.max(
-        10,
-        Math.round(
-          (Number(rewardConfig.baseExp) || 0) +
-          count * (Number(rewardConfig.expPerTarget) || 0) +
-          distanceMid * (Number(rewardConfig.distanceExpFactor) || 0)
-        )
-      );
-    const targetNamePlural = pluralizeName(target.name);
-    const tokens = {
-      count,
-      targetName: target.name,
-      targetNamePlural
-    };
-    const questId = `proc_${slugify(npcId)}_${slugify(template.id)}_${serial}`;
-    return {
-      id: questId,
-      templateId: String(template.id || ""),
-      generated: true,
-      repeatable: template.repeatable !== false,
-      minLevel: template.minLevel || 1,
-      npcGiverId: String(template.npcGiverId || npcId),
-      npcCompleteId: String(template.npcCompleteId || npcId),
-      title: interpolateText(pickVariant(rng, textConfig.titleVariants, "Hunt {targetNamePlural}"), tokens),
-      description: interpolateText(
-        pickVariant(
-          rng,
-          textConfig.offerDetailVariants,
-          "Hunt down {count} {targetNamePlural} threatening the roads near town."
-        ),
-        tokens
-      ),
-      objectives: [
-        {
-          type: "kill",
-          mobId: target.name,
-          count,
-          description: `Kill ${count} ${String(targetNamePlural).toLowerCase()}`
-        }
-      ],
-      rewards: {
-        exp: expReward
-      },
-      dialogue: {
-        offer: buildDialogue(
-          {
-            offerIntro: pickVariant(rng, textConfig.offerIntroVariants, "I need help dealing with {targetNamePlural}."),
-            offerDetail: pickVariant(
-              rng,
-              textConfig.offerDetailVariants,
-              "Hunt down {count} {targetNamePlural} threatening the roads near town."
-            ),
-            accept: pickVariant(rng, textConfig.acceptVariants, "Return when the job is done.")
-          },
-          tokens,
-          true,
-          false
-        ),
-        inProgress: [
-          {
-            id: "in_progress",
-            text: interpolateText(
-              pickVariant(rng, textConfig.inProgressVariants, "You still have work to finish."),
-              tokens
-            ),
-            speaker: "Town Herald"
-          }
-        ],
-        complete: [
-          {
-            id: "complete",
-            text: interpolateText(
-              pickVariant(rng, textConfig.completeVariants, "You've done the town a service."),
-              tokens
-            ),
-            speaker: "Town Herald",
-            questComplete: true
-          }
-        ]
-      }
-    };
-  }
-
-  function buildExploreQuestDefinition(player, npcId, template, serial) {
-    const objectiveConfig = template && template.objective && typeof template.objective === "object" ? template.objective : {};
-    const rewardConfig = template && template.rewards && typeof template.rewards === "object" ? template.rewards : {};
-    const textConfig = template && template.text && typeof template.text === "object" ? template.text : {};
-    const anchor = getNpcPosition(npcId);
-    if (!anchor) {
-      return null;
-    }
-    const distanceRange = Array.isArray(objectiveConfig.distanceRange) ? objectiveConfig.distanceRange : [80, 200];
-    const minDistance = Math.max(40, Math.floor(Number(distanceRange[0]) || 80));
-    const maxDistance = Math.max(minDistance, Math.floor(Number(distanceRange[1]) || minDistance));
-    const radius = Math.max(6, Math.floor(Number(objectiveConfig.radius) || 16));
-    const serialSeed = `${player && player.id}:${npcId}:${template.id}:${serial}`;
-    const rng = createSeededRng(serialSeed);
-    const directions = [
-      { name: "northern approach", dx: 0, dy: -1 },
-      { name: "eastern road", dx: 1, dy: 0 },
-      { name: "southern outskirts", dx: 0, dy: 1 },
-      { name: "western path", dx: -1, dy: 0 },
-      { name: "northeastern rise", dx: 0.8, dy: -0.8 },
-      { name: "northwestern ridge", dx: -0.8, dy: -0.8 }
-    ];
-    const direction = directions[clamp(Math.floor(rng() * directions.length), 0, directions.length - 1)];
-    const distance = clamp(minDistance + Math.floor(rng() * (maxDistance - minDistance + 1)), minDistance, maxDistance);
-    const targetX = clamp(Math.round(anchor.x + direction.dx * distance), 12, mapWidth - 12);
-    const targetY = clamp(Math.round(anchor.y + direction.dy * distance), 12, mapHeight - 12);
-    const expReward = Math.max(
-      10,
-      Math.round((Number(rewardConfig.baseExp) || 0) + distance * (Number(rewardConfig.distanceExpFactor) || 0))
-    );
-    const tokens = {
-      regionName: direction.name,
-      targetX,
-      targetY
-    };
-    const questId = `proc_${slugify(npcId)}_${slugify(template.id)}_${serial}`;
-    return {
-      id: questId,
-      templateId: String(template.id || ""),
-      generated: true,
-      repeatable: template.repeatable !== false,
-      minLevel: template.minLevel || 1,
-      npcGiverId: String(template.npcGiverId || npcId),
-      npcCompleteId: String(template.npcCompleteId || npcId),
-      title: interpolateText(pickVariant(rng, textConfig.titleVariants, "Scout the {regionName}"), tokens),
-      description: interpolateText(
-        pickVariant(
-          rng,
-          textConfig.offerDetailVariants,
-          "Travel to ({targetX}, {targetY}) and survey the area."
-        ),
-        tokens
-      ),
-      objectives: [
-        {
-          type: "explore",
-          x: targetX,
-          y: targetY,
-          radius,
-          description: `Scout the marked location at (${targetX}, ${targetY})`
-        }
-      ],
-      rewards: {
-        exp: expReward
-      },
-      dialogue: {
-        offer: buildDialogue(
-          {
-            offerIntro: pickVariant(rng, textConfig.offerIntroVariants, "I need someone to scout the {regionName}."),
-            offerDetail: pickVariant(
-              rng,
-              textConfig.offerDetailVariants,
-              "Travel to ({targetX}, {targetY}) and survey the area."
-            ),
-            accept: pickVariant(rng, textConfig.acceptVariants, "Go there and return once the route is clear.")
-          },
-          tokens,
-          true,
-          false
-        ),
-        inProgress: [
-          {
-            id: "in_progress",
-            text: interpolateText(
-              pickVariant(rng, textConfig.inProgressVariants, "You still need to scout that location."),
-              tokens
-            ),
-            speaker: "Town Herald"
-          }
-        ],
-        complete: [
-          {
-            id: "complete",
-            text: interpolateText(
-              pickVariant(rng, textConfig.completeVariants, "Good work bringing back fresh reconnaissance."),
-              tokens
-            ),
-            speaker: "Town Herald",
-            questComplete: true
-          }
-        ]
-      }
-    };
-  }
-
-  function buildQuestDefinitionFromTemplate(player, npcId, template, serial) {
-    if (!template || String(template.npcGiverId || "") !== String(npcId || "")) {
-      return null;
-    }
-    const minLevel = Math.max(1, Number(template.minLevel) || 1);
-    const playerLevel = Math.max(1, Number(player && player.level) || 1);
-    if (playerLevel < minLevel) {
-      return null;
-    }
-    const objectiveType = String(template.objective && template.objective.type || "").trim().toLowerCase();
-    if (objectiveType === "kill") {
-      return buildKillQuestDefinition(player, npcId, template, serial);
-    }
-    if (objectiveType === "explore") {
-      return buildExploreQuestDefinition(player, npcId, template, serial);
-    }
-    return null;
-  }
-
   function getGeneratedQuestById(player, questId) {
     const generated = getPlayerGeneratedState(player);
     if (!generated) {
       return null;
     }
-    const id = String(questId || "").trim();
-    if (!id) {
-      return null;
-    }
-    const quest = generated.definitions[id];
-    return quest && typeof quest === "object" ? quest : null;
+    const normalizedQuestId = normalizeText(questId);
+    return normalizedQuestId ? generated.definitions[normalizedQuestId] || null : null;
   }
 
   function getOfferIdsForNpc(generatedState, npcId) {
@@ -538,37 +235,394 @@ function createProceduralQuestTools(options = {}) {
     return ids.filter((questId) => generatedState.definitions && generatedState.definitions[questId]);
   }
 
+  function getActiveTemplateIds(player) {
+    const active = player && player.questState && player.questState.active && typeof player.questState.active === "object"
+      ? Object.keys(player.questState.active)
+      : [];
+    const ids = new Set();
+    for (const questId of active) {
+      const quest = getGeneratedQuestById(player, questId);
+      if (quest && quest.templateId) {
+        ids.add(String(quest.templateId));
+      }
+    }
+    return ids;
+  }
+
+  function countTemplateCompletions(player, templateId) {
+    const generated = getPlayerGeneratedState(player);
+    if (!generated || !templateId) {
+      return 0;
+    }
+    return Math.max(0, Number(generated.completedTemplates[String(templateId)] || 0));
+  }
+
+  function calculateCount(rng, countRange, fallbackMin, fallbackMax) {
+    const range = Array.isArray(countRange) ? countRange : [fallbackMin, fallbackMax];
+    const minCount = Math.max(1, Math.floor(Number(range[0]) || fallbackMin));
+    const maxCount = Math.max(minCount, Math.floor(Number(range[1]) || fallbackMax || minCount));
+    return clamp(minCount + Math.floor(rng() * (maxCount - minCount + 1)), minCount, maxCount);
+  }
+
+  function chooseCandidate(rng, candidates, scorer) {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return null;
+    }
+    const ranked = candidates
+      .map((entry) => ({
+        entry,
+        score: typeof scorer === "function" ? Number(scorer(entry)) || 0 : 0
+      }))
+      .sort((left, right) => left.score - right.score)
+      .slice(0, Math.min(4, candidates.length));
+    const index = clamp(Math.floor(rng() * ranked.length), 0, ranked.length - 1);
+    return ranked[index] ? ranked[index].entry : null;
+  }
+
+  function buildObjectiveSelection(player, template, objectiveSpec, rng, usedSelections) {
+    const spec = objectiveSpec && typeof objectiveSpec === "object" ? objectiveSpec : {};
+    const type = normalizeText(spec.type).toLowerCase();
+    const target = spec.target && typeof spec.target === "object" ? spec.target : {};
+    const maxSpawnRange = Number.isFinite(Number(target.maxSpawnRange)) ? Number(target.maxSpawnRange) : null;
+
+    if (type === "kill") {
+      const playerLevel = Math.max(1, Number(player && player.level) || 1);
+      const desiredDistance = clamp(90 + playerLevel * 22, 70, maxSpawnRange || 260);
+      const candidates = registry.findMobs({
+        tagsAll: target.tagsAll,
+        tagsAny: target.tagsAny,
+        tagsNone: target.tagsNone,
+        maxSpawnRange
+      }).filter((entry) => !usedSelections.mobIds.has(entry.id));
+      const mob = chooseCandidate(rng, candidates, (entry) => {
+        const distanceMid = (Number(entry.spawnRangeMin) + Number(entry.spawnRangeMax)) * 0.5;
+        return Math.abs(distanceMid - desiredDistance) + Number(entry.health || 0) * 0.3;
+      });
+      if (!mob) {
+        return null;
+      }
+      usedSelections.mobIds.add(mob.id);
+      const count = calculateCount(rng, spec.countRange, 3, 6);
+      return {
+        objective: {
+          type: "kill",
+          mobId: mob.id,
+          count,
+          description: `Kill ${count} ${String(pluralizeName(mob.name)).toLowerCase()}`
+        },
+        tokens: {
+          targetName: mob.name,
+          targetNamePlural: pluralizeName(mob.name),
+          count,
+          distanceScore: Math.round((Number(mob.spawnRangeMin) + Number(mob.spawnRangeMax)) * 0.5)
+        },
+        summary: `kill ${count} ${String(pluralizeName(mob.name)).toLowerCase()}`,
+        rewardUnits: count,
+        rewardDistance: Math.round((Number(mob.spawnRangeMin) + Number(mob.spawnRangeMax)) * 0.5)
+      };
+    }
+
+    if (type === "collect") {
+      const candidates = registry.findDropItems({
+        itemTagsAll: target.itemTagsAll,
+        itemTagsAny: target.itemTagsAny,
+        itemTagsNone: target.itemTagsNone,
+        sourceMobTagsAll: target.sourceMobTagsAll,
+        sourceMobTagsAny: target.sourceMobTagsAny,
+        sourceMobTagsNone: target.sourceMobTagsNone,
+        maxSpawnRange
+      }).filter((entry) => !usedSelections.itemIds.has(entry.itemId));
+      const item = chooseCandidate(rng, candidates, (entry) => {
+        const source = Array.isArray(entry.sourceMobs) && entry.sourceMobs.length > 0 ? entry.sourceMobs[0] : null;
+        return source ? Number(source.spawnRangeMin) || 0 : 0;
+      });
+      if (!item) {
+        return null;
+      }
+      usedSelections.itemIds.add(item.itemId);
+      const primarySource = Array.isArray(item.sourceMobs) && item.sourceMobs.length > 0 ? item.sourceMobs[0] : null;
+      const count = calculateCount(rng, spec.countRange, 5, 8);
+      const itemPlural = pluralizeName(item.itemName);
+      const sourceNamePlural = primarySource ? pluralizeName(primarySource.mobName) : "creatures";
+      return {
+        objective: {
+          type: "collect",
+          itemId: item.itemId,
+          count,
+          description: `Gather ${count} ${String(itemPlural).toLowerCase()}`
+        },
+        tokens: {
+          itemName: item.itemName,
+          itemNamePlural: itemPlural,
+          sourceName: primarySource ? primarySource.mobName : "monsters",
+          sourceNamePlural,
+          count,
+          distanceScore: primarySource
+            ? Math.round((Number(primarySource.spawnRangeMin) + Number(primarySource.spawnRangeMax)) * 0.5)
+            : 0
+        },
+        summary: `gather ${count} ${String(itemPlural).toLowerCase()} from ${String(sourceNamePlural).toLowerCase()}`,
+        rewardUnits: count,
+        rewardDistance: primarySource
+          ? Math.round((Number(primarySource.spawnRangeMin) + Number(primarySource.spawnRangeMax)) * 0.5)
+          : 0
+      };
+    }
+
+    if (type === "explore") {
+      const candidates = registry.findRegions({
+        tagsAll: target.tagsAll,
+        tagsAny: target.tagsAny,
+        tagsNone: target.tagsNone
+      }).filter((entry) => !usedSelections.regionIds.has(entry.id));
+      const townAnchor = registry.getTownAnchor();
+      const region = chooseCandidate(rng, candidates, (entry) => {
+        return Math.hypot(Number(entry.x) - Number(townAnchor.x), Number(entry.y) - Number(townAnchor.y));
+      });
+      if (!region) {
+        return null;
+      }
+      usedSelections.regionIds.add(region.id);
+      return {
+        objective: {
+          type: "explore",
+          x: region.x,
+          y: region.y,
+          radius: Math.max(4, Number(region.radius) || 16),
+          description: `Scout ${region.name} at (${region.x}, ${region.y})`
+        },
+        tokens: {
+          regionName: region.name,
+          targetX: region.x,
+          targetY: region.y,
+          distanceScore: Math.round(Math.hypot(Number(region.x) - Number(townAnchor.x), Number(region.y) - Number(townAnchor.y)))
+        },
+        summary: `scout ${region.name} at (${region.x}, ${region.y})`,
+        rewardUnits: 1,
+        rewardDistance: Math.round(Math.hypot(Number(region.x) - Number(townAnchor.x), Number(region.y) - Number(townAnchor.y)))
+      };
+    }
+
+    return null;
+  }
+
+  function aggregateQuestRewards(template, selections) {
+    const rewards = template && template.rewards && typeof template.rewards === "object" ? template.rewards : {};
+    const totalUnits = selections.reduce((sum, entry) => sum + Math.max(0, Number(entry.rewardUnits) || 0), 0);
+    const maxDistance = selections.reduce((max, entry) => Math.max(max, Math.max(0, Number(entry.rewardDistance) || 0)), 0);
+    const exp = Math.max(
+      10,
+      Math.round(
+        (Number(rewards.baseExp) || 0) +
+        totalUnits * (Number(rewards.expPerTarget) || 0) +
+        maxDistance * (Number(rewards.distanceExpFactor) || 0)
+      )
+    );
+    return {
+      exp,
+      items: Array.isArray(rewards.items) ? rewards.items.map((entry) => ({ ...entry })) : []
+    };
+  }
+
+  function buildQuestTokens(template, selections) {
+    const tokens = {};
+    const summaries = selections.map((entry) => entry.summary).filter(Boolean);
+    tokens.objectiveSummary = summaries[0] || "";
+    tokens.objectiveSummaryCapitalized = capitalizeFirst(tokens.objectiveSummary);
+    tokens.objectiveList = formatList(summaries);
+    tokens.objectiveListCapitalized = capitalizeFirst(tokens.objectiveList);
+    selections.forEach((selection, index) => {
+      const prefix = index === 0 ? "primary" : index === 1 ? "secondary" : `objective${index + 1}`;
+      for (const [key, value] of Object.entries(selection.tokens || {})) {
+        const tokenKey = `${prefix}${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+        tokens[tokenKey] = value;
+        if (index === 0 && !tokens[key]) {
+          tokens[key] = value;
+        }
+      }
+    });
+    return tokens;
+  }
+
+  function buildOfferDialogue(quest, tokens, rng) {
+    const textConfig = quest && quest.textConfig && typeof quest.textConfig === "object" ? quest.textConfig : {};
+    const intro = interpolateText(
+      pickVariant(rng, textConfig.offerIntroVariants, "I have work for you."),
+      tokens
+    );
+    const detail = interpolateText(
+      pickVariant(rng, textConfig.offerDetailVariants, "I need you to {objectiveSummary}."),
+      tokens
+    );
+    const accept = interpolateText(
+      pickVariant(rng, textConfig.acceptVariants, "Return when the work is done."),
+      tokens
+    );
+    return [
+      {
+        id: "start",
+        text: intro,
+        speaker: "Town Herald",
+        choices: [
+          { text: "Tell me more", next: "details" },
+          { text: "I'll handle it.", next: "accept" },
+          { text: "Maybe later.", next: "decline" }
+        ]
+      },
+      {
+        id: "details",
+        text: detail,
+        speaker: "Town Herald",
+        choices: [
+          { text: "I'm in.", next: "accept" },
+          { text: "Not right now.", next: "decline" }
+        ]
+      },
+      {
+        id: "accept",
+        text: accept,
+        speaker: "Town Herald",
+        questStart: true,
+        questId: quest.id
+      },
+      {
+        id: "decline",
+        text: "Very well. Return if you change your mind.",
+        speaker: "Town Herald"
+      }
+    ];
+  }
+
+  function buildQuestDefinitionFromTemplate(player, npcId, template, serial) {
+    if (!template || normalizeText(template.npcGiverId) !== normalizeText(npcId)) {
+      return null;
+    }
+    const playerLevel = Math.max(1, Number(player && player.level) || 1);
+    if (playerLevel < Math.max(1, Number(template.minLevel) || 1)) {
+      return null;
+    }
+
+    const rng = createSeededRng(`${player && player.id}:${npcId}:${template.id}:${serial}`);
+    const usedSelections = {
+      mobIds: new Set(),
+      itemIds: new Set(),
+      regionIds: new Set()
+    };
+    const objectiveSpecs = Array.isArray(template.objectives) ? template.objectives : [];
+    const selections = [];
+    for (const objectiveSpec of objectiveSpecs) {
+      const selection = buildObjectiveSelection(player, template, objectiveSpec, rng, usedSelections);
+      if (!selection) {
+        return null;
+      }
+      selections.push(selection);
+    }
+    if (!selections.length) {
+      return null;
+    }
+
+    const tokens = buildQuestTokens(template, selections);
+    const title = interpolateText(
+      pickVariant(rng, template.text && template.text.titleVariants, "Field Assignment"),
+      tokens
+    );
+    const description = interpolateText(
+      pickVariant(rng, template.text && template.text.offerDetailVariants, "I need you to {objectiveSummary}."),
+      tokens
+    );
+    const questId = `proc_${slugify(npcId)}_${slugify(template.id)}_${serial}`;
+    const rewards = aggregateQuestRewards(template, selections);
+    const inProgressText = interpolateText(
+      pickVariant(rng, template.text && template.text.inProgressVariants, "You still need to {objectiveSummary}."),
+      tokens
+    );
+    const completeText = interpolateText(
+      pickVariant(rng, template.text && template.text.completeVariants, "Good work."),
+      tokens
+    );
+
+    const quest = {
+      id: questId,
+      templateId: String(template.id || ""),
+      generated: true,
+      repeatable: template.repeatable !== false,
+      minLevel: Math.max(1, Number(template.minLevel) || 1),
+      npcGiverId: String(template.npcGiverId || npcId),
+      npcCompleteId: String(template.npcCompleteId || npcId),
+      title,
+      description,
+      objectives: selections.map((entry) => ({ ...entry.objective })),
+      rewards,
+      textConfig: template.text || {},
+      dialogue: {
+        offer: [],
+        inProgress: [
+          {
+            id: "in_progress",
+            text: inProgressText,
+            speaker: "Town Herald"
+          }
+        ],
+        complete: [
+          {
+            id: "complete",
+            text: completeText,
+            speaker: "Town Herald",
+            questComplete: true,
+            questId
+          }
+        ]
+      }
+    };
+    quest.dialogue.offer = buildOfferDialogue(quest, tokens, rng);
+    return quest;
+  }
+
   function getAvailableQuestsForNpc(player, npcId) {
     const generated = getPlayerGeneratedState(player);
     if (!generated) {
       return [];
     }
-    const normalizedNpcId = String(npcId || "").trim();
+    const normalizedNpcId = normalizeText(npcId);
     if (!normalizedNpcId) {
       return [];
     }
-    const existingOfferIds = getOfferIdsForNpc(generated, normalizedNpcId);
-    if (existingOfferIds.length > 0) {
-      return existingOfferIds.map((questId) => generated.definitions[questId]).filter(Boolean);
+
+    const existingOffers = getOfferIdsForNpc(generated, normalizedNpcId)
+      .map((questId) => generated.definitions[questId])
+      .filter(Boolean);
+    const maxOffers = getMaxOffersPerNpc();
+    if (existingOffers.length >= maxOffers) {
+      return existingOffers.slice(0, maxOffers);
     }
-    const templates = getTemplateDefs().filter((entry) => String(entry && entry.npcGiverId || "") === normalizedNpcId);
+
+    const templates = getTemplateDefs().filter((entry) => normalizeText(entry && entry.npcGiverId) === normalizedNpcId);
     if (!templates.length) {
-      return [];
+      return existingOffers;
     }
-    const serial = generated.nextQuestSerial;
-    const startIndex = (serial - 1) % templates.length;
-    for (let offset = 0; offset < templates.length; offset += 1) {
-      const template = templates[(startIndex + offset) % templates.length];
-      const quest = buildQuestDefinitionFromTemplate(player, normalizedNpcId, template, serial);
+
+    const activeTemplateIds = getActiveTemplateIds(player);
+    const offeredTemplateIds = new Set(existingOffers.map((entry) => String(entry && entry.templateId || "")));
+    let serial = generated.nextQuestSerial;
+    let attempts = 0;
+    while (existingOffers.length < maxOffers && attempts < templates.length * 3) {
+      const template = templates[(serial - 1) % templates.length];
+      attempts += 1;
+      serial += 1;
+      if (!template || activeTemplateIds.has(String(template.id || "")) || offeredTemplateIds.has(String(template.id || ""))) {
+        continue;
+      }
+      const quest = buildQuestDefinitionFromTemplate(player, normalizedNpcId, template, serial - 1);
       if (!quest) {
         continue;
       }
+      existingOffers.push(quest);
+      offeredTemplateIds.add(String(quest.templateId || ""));
       generated.definitions[quest.id] = quest;
-      generated.offersByNpc[normalizedNpcId] = [quest.id];
-      generated.nextQuestSerial = serial + 1;
-      return [quest];
     }
-    return [];
+    generated.offersByNpc[normalizedNpcId] = existingOffers.map((entry) => entry.id);
+    generated.nextQuestSerial = serial;
+    return existingOffers;
   }
 
   function markQuestAccepted(player, questId) {
@@ -576,7 +630,7 @@ function createProceduralQuestTools(options = {}) {
     if (!generated) {
       return;
     }
-    const normalizedQuestId = String(questId || "").trim();
+    const normalizedQuestId = normalizeText(questId);
     if (!normalizedQuestId) {
       return;
     }
@@ -584,9 +638,9 @@ function createProceduralQuestTools(options = {}) {
       if (!Array.isArray(questIds)) {
         continue;
       }
-      const nextQuestIds = questIds.filter((entry) => String(entry || "") !== normalizedQuestId);
-      if (nextQuestIds.length > 0) {
-        generated.offersByNpc[npcId] = nextQuestIds;
+      const nextIds = questIds.filter((entry) => normalizeText(entry) !== normalizedQuestId);
+      if (nextIds.length > 0) {
+        generated.offersByNpc[npcId] = nextIds;
       } else {
         delete generated.offersByNpc[npcId];
       }
@@ -599,7 +653,7 @@ function createProceduralQuestTools(options = {}) {
       return;
     }
     const templateId = String(quest.templateId || "");
-    generated.completedTemplates[templateId] = (Math.max(0, Number(generated.completedTemplates[templateId]) || 0) + 1);
+    generated.completedTemplates[templateId] = countTemplateCompletions(player, templateId) + 1;
   }
 
   return {

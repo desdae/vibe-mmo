@@ -118,6 +118,7 @@ const APP_MODE = String(process.env.APP_MODE || process.env.NODE_ENV || "develop
 const IS_PROD_MODE = APP_MODE === "prod" || APP_MODE === "production";
 const MOB_CONFIG_PATH = path.join(__dirname, "data", "mobs.json");
 const ITEM_CONFIG_PATH = path.join(__dirname, "data", "items.json");
+const QUEST_REGION_CONFIG_PATH = path.join(__dirname, "data", "quest-regions.json");
 const GLOBAL_DROP_TABLE_PATH = path.join(__dirname, "data", "drop-tables.json");
 const SERVER_CONFIG_PATH = path.join(__dirname, "config", "server.json");
 const GAMEPLAY_CONFIG_PATH = path.join(__dirname, "config", "gameplay.json");
@@ -333,6 +334,7 @@ const createEmptyInventorySlots = coreServices.createEmptyInventorySlots;
 const addItemsToInventory = coreServices.addItemsToInventory;
 const mergeOrSwapInventorySlots = coreServices.mergeOrSwapInventorySlots;
 const consumeInventoryItem = coreServices.consumeInventoryItem;
+const getInventoryItemCount = coreServices.getInventoryItemCount;
 const syncPlayerCopperFromInventory = coreServices.syncPlayerCopperFromInventory;
 const expNeededForLevel = coreServices.expNeededForLevel;
 const grantPlayerExp = coreServices.grantPlayerExp;
@@ -485,10 +487,16 @@ const questTools = createQuestTools({
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
   mobConfigProvider: () => MOB_CONFIG,
+  itemDefsProvider: () => ITEM_CONFIG.itemDefs,
+  regionDataPath: QUEST_REGION_CONFIG_PATH,
   sendJson,
   sendSelfProgress,
+  getInventoryItemCount,
+  consumeInventoryItem,
   addExp: (player, amount) => grantPlayerExp(player, amount),
-  addItemsToInventory
+  addItemsToInventory,
+  sendInventoryState,
+  syncPlayerCopperFromInventory
 });
 
 const dialogueTools = createDialogueTools({

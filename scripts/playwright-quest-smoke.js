@@ -115,7 +115,53 @@ async function clickDialogueButton(page, name) {
   await button.click();
 }
 
+async function openQuestNpcDialogue(page, npc) {
+  await moveNearWorld(page, Number(npc.x) + 0.5, Number(npc.y) + 0.5, 0.95);
+  await page.evaluate((coords) => window.__vibemmoTest.dispatchContextMenuAtWorld(coords.x, coords.y), {
+    x: Number(npc.x) + 0.5,
+    y: Number(npc.y) + 0.5
+  });
+  await page.waitForFunction(() => {
+    const state = window.__vibemmoTest.getState();
+    return !!(state.dialogue && state.dialogue.visible);
+  });
+}
+
+async function getDialogueChoiceTexts(page) {
+  return page.evaluate(() => {
+    const state = window.__vibemmoTest.getState();
+    const node = state && state.dialogue ? state.dialogue.node : null;
+    return Array.isArray(node && node.choices)
+      ? node.choices.map((choice) => String(choice && choice.text || "")).filter(Boolean)
+      : [];
+  });
+}
+
+async function getActiveQuestByTitle(page, title) {
+  return page.evaluate((expectedTitle) => {
+    const state = window.__vibemmoTest.getState();
+    return Array.isArray(state.questState && state.questState.active)
+      ? state.questState.active.find((quest) => String(quest && quest.title || "") === expectedTitle) || null
+      : null;
+  }, title);
+}
+
 async function closeVendorPanelIfOpen(page) {
+  const dialogueVisible = await page.evaluate(() => {
+    const panel = document.getElementById("dialogue-panel");
+    return !!(panel && !panel.classList.contains("hidden"));
+  });
+  if (dialogueVisible) {
+    const leaveButton = page.getByRole("button", { name: "Leave", exact: true });
+    if (await leaveButton.isVisible().catch(() => false)) {
+      await leaveButton.click();
+      await page.waitForFunction(() => {
+        const panel = document.getElementById("dialogue-panel");
+        return !panel || panel.classList.contains("hidden");
+      });
+    }
+  }
+
   const closeButton = page.locator("#vendor-close");
   if (await closeButton.count()) {
     const hidden = await page.evaluate(() => {
@@ -365,7 +411,7 @@ async function run() {
       return !!(quest && Array.isArray(quest.objectives) && quest.objectives.every((objective) => objective.complete));
     });
 
-    await moveNearWorld(page, Number(vendor.x) + 0.5, Number(vendor.y) + 0.5, 0.9);
+    await moveNearWorld(page, Number(herald.x) + 0.5, Number(herald.y) + 0.5, 0.95);
     await page.evaluate((coords) => window.__vibemmoTest.dispatchContextMenuAtWorld(coords.x, coords.y), {
       x: Number(herald.x) + 0.5,
       y: Number(herald.y) + 0.5
@@ -377,6 +423,60 @@ async function run() {
     await clickDialogueButton(page, "Complete Quest");
     await ensureQuestCompleted(page, "quest_first_steps");
 
+    await openQuestNpcDialogue(page, herald);
+    await page.waitForFunction(() => {
+      const state = window.__vibemmoTest.getState();
+      const node = state.dialogue && state.dialogue.node;
+      return !!(node && Array.isArray(node.choices) && node.choices.length >= 3);
+    });
+    const questChoiceTexts = await getDialogueChoiceTexts(page);
+    const scoutingChoice =
+      questChoiceTexts.find((label) => /scout|survey|check/i.test(label)) ||
+      questChoiceTexts[0];
+    if (!scoutingChoice) {
+      throw new Error(`Expected at least one generated quest choice, got: ${JSON.stringify(questChoiceTexts)}`);
+    }
+    await clickDialogueButton(page, scoutingChoice);
+    await clickDialogueButton(page, "I'll take this one.");
+    await clickDialogueButton(page, "Accept Quest");
+
+    await page.waitForFunction((expectedTitle) => {
+      const state = window.__vibemmoTest.getState();
+      return Array.isArray(state.questState && state.questState.active) &&
+        state.questState.active.some((quest) => String(quest && quest.title || "") === expectedTitle);
+    }, scoutingChoice);
+    const generatedQuest = await getActiveQuestByTitle(page, scoutingChoice);
+    if (!generatedQuest || !generatedQuest.questId) {
+      throw new Error(`Failed to find accepted generated scouting quest: ${JSON.stringify(generatedQuest)}`);
+    }
+
+    await page.evaluate((questId) => window.__vibemmoTest.send({ type: "admin_complete_quest", questId }), generatedQuest.questId);
+    await page.waitForFunction((questId) => {
+      const state = window.__vibemmoTest.getState();
+      const quest = Array.isArray(state.questState && state.questState.active)
+        ? state.questState.active.find((entry) => String(entry && entry.questId || "") === questId)
+        : null;
+      return !!(quest && Array.isArray(quest.objectives) && quest.objectives.every((objective) => objective.complete));
+    }, generatedQuest.questId);
+
+    await openQuestNpcDialogue(page, herald);
+    await page.waitForFunction((questId) => {
+      const state = window.__vibemmoTest.getState();
+      return !!(
+        state.dialogue &&
+        state.dialogue.visible &&
+        state.dialogue.questId === questId &&
+        state.dialogue.node &&
+        state.dialogue.node.questComplete
+      );
+    }, generatedQuest.questId);
+    await clickDialogueButton(page, "Complete Quest");
+    await page.waitForFunction((questId) => {
+      const state = window.__vibemmoTest.getState();
+      return Array.isArray(state.questState && state.questState.active) &&
+        !state.questState.active.some((entry) => String(entry && entry.questId || "") === questId);
+    }, generatedQuest.questId);
+
     if (consoleErrors.length > 0) {
       throw new Error(`Browser console errors detected:\n${consoleErrors.join("\n")}`);
     }
@@ -385,7 +485,9 @@ async function run() {
     console.log(JSON.stringify({
       ok: true,
       completedQuestIds: finalState.questState.completed,
-      activeQuestCount: Array.isArray(finalState.questState.active) ? finalState.questState.active.length : 0
+      activeQuestCount: Array.isArray(finalState.questState.active) ? finalState.questState.active.length : 0,
+      generatedQuestChoiceCount: questChoiceTexts.length,
+      generatedQuestTitle: generatedQuest.title
     }, null, 2));
   } catch (error) {
     const logs = server.getLogs ? server.getLogs() : { stdout: "", stderr: "" };

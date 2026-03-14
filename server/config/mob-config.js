@@ -30,6 +30,9 @@ function loadMobConfigFromDisk(configPath, itemDefs, abilityDefs, mapSize, serve
     const dropRules = parseMobDropRules(mobEntry.drops, itemDefs);
     const renderStyle = parseMobRenderStyle(mobEntry.renderStyle);
     const combat = parseMobCombatConfig(mobEntry.combat, abilityDefs, damageMin, damageMax, combatDefaults);
+    const tags = Array.isArray(mobEntry.tags)
+      ? mobEntry.tags.map((tag) => String(tag || "").trim().toLowerCase()).filter(Boolean)
+      : [];
 
     mobDefs.set(name, {
       name,
@@ -39,6 +42,7 @@ function loadMobConfigFromDisk(configPath, itemDefs, abilityDefs, mapSize, serve
       baseSpeed,
       respawnMinMs,
       respawnMaxMs,
+      tags,
       dropRules,
       renderStyle,
       combat

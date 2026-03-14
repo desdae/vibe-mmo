@@ -1,32 +1,57 @@
 const path = require("path");
 const { createQuestTools } = require("../gameplay/quests");
 const { createProceduralQuestTools } = require("../gameplay/procedural-quests");
+const { createDialogueTools } = require("../gameplay/dialogue");
+
+function createMockItemDefs() {
+  return new Map([
+    ["healthPotion01", { id: "healthPotion01", name: "Small Health Potion", tags: ["potion"] }],
+    ["manaPotion01", { id: "manaPotion01", name: "Small Mana Potion", tags: ["potion"] }],
+    ["boneFragment", { id: "boneFragment", name: "Bone Fragment", tags: ["crafting", "bone", "quest"] }],
+    ["rottenFlesh", { id: "rottenFlesh", name: "Rotten Flesh", tags: ["crafting", "undead"] }],
+    ["orcTusk", { id: "orcTusk", name: "Orc Tusk", tags: ["crafting", "orc", "trophy"] }]
+  ]);
+}
 
 function createMockMobConfig() {
   const zombie = {
     name: "Zombie",
+    tags: ["undead", "starter", "melee", "zombie"],
     health: 20,
     damageMax: 2,
-    dropRules: [{ itemId: "healthPotion01", kind: "chance", chance: 0.1 }]
+    dropRules: [{ itemId: "rottenFlesh", kind: "chance", chance: 0.26 }]
   };
   const skeleton = {
     name: "Skeleton",
+    tags: ["undead", "starter", "melee", "skeleton", "bone"],
     health: 30,
     damageMax: 3,
-    dropRules: [{ itemId: "manaPotion01", kind: "chance", chance: 0.08 }]
+    dropRules: [{ itemId: "boneFragment", kind: "chance", chance: 0.24 }]
+  };
+  const skeletonArcher = {
+    name: "Skeleton Archer",
+    tags: ["undead", "starter", "ranged", "skeleton", "bone", "archer"],
+    health: 28,
+    damageMax: 2,
+    dropRules: [{ itemId: "boneFragment", kind: "chance", chance: 0.22 }]
+  };
+  const orc = {
+    name: "Orc Berserker",
+    tags: ["orc", "mid", "melee", "brute"],
+    health: 40,
+    damageMax: 7,
+    dropRules: [{ itemId: "orcTusk", kind: "chance", chance: 0.23 }]
   };
   return {
     mobDefs: new Map([
       [zombie.name, zombie],
-      [skeleton.name, skeleton]
+      [skeleton.name, skeleton],
+      [skeletonArcher.name, skeletonArcher],
+      [orc.name, orc]
     ]),
     clusterDefs: [
-      {
-        name: "Undead Horde",
-        members: [zombie, skeleton],
-        spawnRangeMin: 20,
-        spawnRangeMax: 180
-      }
+      { name: "Undead Horde", members: [zombie, skeleton, skeletonArcher], spawnRangeMin: 20, spawnRangeMax: 180 },
+      { name: "Berserker Patrol", members: [orc], spawnRangeMin: 40, spawnRangeMax: 220 }
     ]
   };
 }
@@ -35,123 +60,161 @@ function createTownLayout() {
   return {
     centerTileX: 500,
     centerTileY: 500,
-    vendor: {
-      id: "starter_vendor",
-      name: "Town Quartermaster",
-      x: 500,
-      y: 500,
-      interactRange: 2.25
-    },
-    questGivers: [
-      {
-        id: "town_herald",
-        name: "Town Herald",
-        x: 500,
-        y: 503,
-        interactRange: 4
-      }
-    ]
+    vendor: { id: "starter_vendor", name: "Town Quartermaster", x: 500, y: 500, interactRange: 2.25 },
+    questGivers: [{ id: "town_herald", name: "Town Herald", x: 500, y: 503, interactRange: 4 }]
   };
 }
 
 function createPlayer(overrides = {}) {
   return {
     id: "test-player",
-    level: 2,
+    level: 6,
     x: 500,
     y: 503,
-    questState: {
-      active: {},
-      completed: []
-    },
+    inventorySlots: Array.from({ length: 12 }, () => null),
+    questState: { active: {}, completed: ["quest_first_steps"] },
     ...overrides
   };
 }
 
-describe("procedural quests", () => {
+function getInventoryItemCount(player, itemId) {
+  return (Array.isArray(player && player.inventorySlots) ? player.inventorySlots : []).reduce((sum, slot) => {
+    if (!slot || String(slot.itemId || "") !== String(itemId || "")) {
+      return sum;
+    }
+    return sum + Math.max(0, Number(slot.qty) || 0);
+  }, 0);
+}
+
+function consumeInventoryItem(player, itemId, qty) {
+  let remaining = Math.max(0, Number(qty) || 0);
+  for (let index = 0; index < player.inventorySlots.length && remaining > 0; index += 1) {
+    const slot = player.inventorySlots[index];
+    if (!slot || String(slot.itemId || "") !== String(itemId || "")) {
+      continue;
+    }
+    const taken = Math.min(remaining, Math.max(0, Number(slot.qty) || 0));
+    slot.qty -= taken;
+    remaining -= taken;
+    if (slot.qty <= 0) {
+      player.inventorySlots[index] = null;
+    }
+  }
+  return remaining === 0;
+}
+
+describe("procedural quest generation", () => {
   const townLayout = createTownLayout();
   const mobConfig = createMockMobConfig();
+  const itemDefs = createMockItemDefs();
   const templateDataPath = path.resolve(__dirname, "../../data/quest-templates.json");
   const questDataPath = path.resolve(__dirname, "../../data/quests.json");
+  const regionDataPath = path.resolve(__dirname, "../../data/quest-regions.json");
 
-  test("generates a spawn-backed hunt quest for the Herald", () => {
-    const proceduralQuestTools = createProceduralQuestTools({
+  test("generates multiple tagged offers for the Herald", () => {
+    const tools = createProceduralQuestTools({
       townLayout,
       mapWidth: 1000,
       mapHeight: 1000,
       templateDataPath,
-      mobConfigProvider: () => mobConfig
+      regionDataPath,
+      mobConfigProvider: () => mobConfig,
+      itemDefsProvider: () => itemDefs
     });
-    const player = createPlayer();
 
-    const quests = proceduralQuestTools.getAvailableQuestsForNpc(player, "town_herald");
+    const quests = tools.getAvailableQuestsForNpc(createPlayer(), "town_herald");
 
-    expect(quests).toHaveLength(1);
-    expect(quests[0].generated).toBe(true);
-    expect(quests[0].templateId).toBe("town_hunt");
-    expect(quests[0].objectives[0].type).toBe("kill");
-    expect(["Zombie", "Skeleton"]).toContain(quests[0].objectives[0].mobId);
+    expect(quests.map((quest) => quest.templateId)).toEqual([
+      "starter_undead_hunt",
+      "starter_bone_collection",
+      "starter_scouting_run",
+      "frontier_cleanup_campaign"
+    ]);
   });
 
-  test("static tutorial quest remains available before procedural fallback", () => {
+  test("dialogue exposes a choice when multiple quests are available", () => {
     const questTools = createQuestTools({
       townLayout,
       mapWidth: 1000,
       mapHeight: 1000,
       questDataPath,
       templateDataPath,
+      regionDataPath,
       mobConfigProvider: () => mobConfig,
-      addItemsToInventory: () => ({ added: [], leftover: [] })
+      itemDefsProvider: () => itemDefs,
+      getInventoryItemCount,
+      consumeInventoryItem,
+      addItemsToInventory: () => ({ added: [], leftover: [] }),
+      sendInventoryState: () => {},
+      syncPlayerCopperFromInventory: () => false
     });
-    const player = createPlayer({ level: 1 });
+    const dialogueTools = createDialogueTools({ questTools });
 
-    const quests = questTools.getAvailableQuestsForPlayer(player);
+    const dialogue = dialogueTools.startDialogue("player-1", createPlayer(), "town_herald");
+    const menuNode = dialogue.nodes.find((node) => node.id === "quest_menu");
 
-    expect(quests).toHaveLength(1);
-    expect(quests[0].id).toBe("quest_first_steps");
+    expect(menuNode).toBeTruthy();
+    expect(menuNode.choices).toHaveLength(4);
   });
 
-  test("after the tutorial, accepts and completes a procedural hunt quest", () => {
+  test("prefarmed collect items are counted and consumed on hand-in", () => {
     const questTools = createQuestTools({
       townLayout,
       mapWidth: 1000,
       mapHeight: 1000,
       questDataPath,
       templateDataPath,
+      regionDataPath,
       mobConfigProvider: () => mobConfig,
-      addItemsToInventory: () => ({ added: [], leftover: [] })
+      itemDefsProvider: () => itemDefs,
+      getInventoryItemCount,
+      consumeInventoryItem,
+      addItemsToInventory: () => ({ added: [], leftover: [] }),
+      sendInventoryState: () => {},
+      syncPlayerCopperFromInventory: () => false
     });
     const player = createPlayer({
-      questState: {
-        active: {},
-        completed: ["quest_first_steps"]
-      }
+      inventorySlots: [{ itemId: "boneFragment", qty: 12 }, ...Array.from({ length: 11 }, () => null)]
     });
+    const collectQuest = questTools.getAvailableQuestsForPlayer(player).find((quest) => quest.templateId === "starter_bone_collection");
 
-    const available = questTools.getAvailableQuestsForPlayer(player);
-    expect(available).toHaveLength(1);
-    expect(available[0].generated).toBe(true);
-    expect(available[0].templateId).toBe("town_hunt");
+    const accepted = questTools.acceptQuest(player, collectQuest.id);
+    expect(accepted.success).toBe(true);
+    expect(questTools.getQuestProgress(player, collectQuest.id).objectives[0].complete).toBe(true);
+    expect(questTools.completeQuest(player, collectQuest.id).success).toBe(true);
+    expect(getInventoryItemCount(player, "boneFragment")).toBe(12 - collectQuest.objectives[0].count);
+  });
 
-    const acceptResult = questTools.acceptQuest(player, available[0].id);
-    expect(acceptResult.success).toBe(true);
+  test("multi-objective quests support kill plus collect combinations", () => {
+    const questTools = createQuestTools({
+      townLayout,
+      mapWidth: 1000,
+      mapHeight: 1000,
+      questDataPath,
+      templateDataPath,
+      regionDataPath,
+      mobConfigProvider: () => mobConfig,
+      itemDefsProvider: () => itemDefs,
+      getInventoryItemCount,
+      consumeInventoryItem,
+      addItemsToInventory: () => ({ added: [], leftover: [] }),
+      sendInventoryState: () => {},
+      syncPlayerCopperFromInventory: () => false
+    });
+    const player = createPlayer({
+      inventorySlots: [{ itemId: "boneFragment", qty: 20 }, ...Array.from({ length: 11 }, () => null)]
+    });
+    const campaign = questTools.getAvailableQuestsForPlayer(player).find((quest) => quest.templateId === "frontier_cleanup_campaign");
 
-    const objective = acceptResult.quest.objectives[0];
-    const progressBefore = questTools.getQuestProgress(player, acceptResult.quest.id);
-    expect(progressBefore.objectives[0].current).toBe(0);
+    const accepted = questTools.acceptQuest(player, campaign.id);
+    const zombieObjective = accepted.quest.objectives.find((objective) => objective.type === "kill" && objective.mobId === "Zombie");
+    const orcObjective = accepted.quest.objectives.find((objective) => objective.type === "kill" && objective.mobId === "Orc Berserker");
+    expect(questTools.getQuestProgress(player, campaign.id).objectives).toHaveLength(3);
+    questTools.updateQuestObjective(player, "kill", "zombie", zombieObjective.count);
+    questTools.updateQuestObjective(player, "kill", "orc berserker", orcObjective.count);
 
-    questTools.updateQuestObjective(player, "kill", String(objective.mobId).toLowerCase(), objective.count);
-    const progressAfter = questTools.getQuestProgress(player, acceptResult.quest.id);
-    expect(progressAfter.objectives[0].complete).toBe(true);
-    expect(questTools.canCompleteQuest(player, acceptResult.quest.id).canComplete).toBe(true);
-
-    const completeResult = questTools.completeQuest(player, acceptResult.quest.id);
-    expect(completeResult.success).toBe(true);
-    expect(player.questState.completed).toEqual(["quest_first_steps"]);
-
-    const nextAvailable = questTools.getAvailableQuestsForPlayer(player);
-    expect(nextAvailable).toHaveLength(1);
-    expect(nextAvailable[0].templateId).toBe("town_scout");
-    expect(nextAvailable[0].objectives[0].type).toBe("explore");
+    expect(questTools.canCompleteQuest(player, campaign.id).canComplete).toBe(true);
+    expect(questTools.completeQuest(player, campaign.id).success).toBe(true);
+    expect(getInventoryItemCount(player, "boneFragment")).toBe(0);
   });
 });

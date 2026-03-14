@@ -4,7 +4,8 @@
         "id": "copperCoin",
         "stackSize": 10000,
         "description": "A common currency used for trading and purchasing items.",
-        "icon": "Procedurally generated copper coin"
+        "icon": "Procedurally generated copper coin",
+        "tags": ["currency"]
     },
     {
         "name": "Small Health Potion",
@@ -12,6 +13,7 @@
         "stackSize": 99,
         "description": "Restores a small amount of health when consumed.",
         "icon": "Procedurally generated small red potion",
+        "tags": ["potion", "consumable", "healing"],
         "effect": {
             "type": "heal",
             "value": 20,
@@ -24,10 +26,51 @@
         "stackSize": 99,
         "description": "Restores a small amount of mana when consumed.",
         "icon": "Procedurally generated small blue potion",
+        "tags": ["potion", "consumable", "mana"],
         "effect": {
             "type": "mana",
             "value": 30,
             "duration": 5
         }
+    },
+    {
+        "name": "Bone Fragment",
+        "id": "boneFragment",
+        "stackSize": 99,
+        "description": "A splintered bone shard collected from undead remains. Useful for crafting and ritual work.",
+        "icon": "Procedurally generated pale bone fragment",
+        "tags": ["crafting", "bone", "undead", "quest"]
+    },
+    {
+        "name": "Rotten Flesh",
+        "id": "rottenFlesh",
+        "stackSize": 99,
+        "description": "A foul strip of decayed meat taken from a zombie corpse.",
+        "icon": "Procedurally generated rotten flesh",
+        "tags": ["crafting", "undead", "flesh", "quest"]
+    },
+    {
+        "name": "Spider Silk",
+        "id": "spiderSilk",
+        "stackSize": 99,
+        "description": "Sticky strands of spider silk that can be spun into useful thread.",
+        "icon": "Procedurally generated spider silk bundle",
+        "tags": ["crafting", "beast", "silk", "quest"]
+    },
+    {
+        "name": "Orc Tusk",
+        "id": "orcTusk",
+        "stackSize": 99,
+        "description": "A heavy tusk pried from an orc warrior. Trophy hunters and crafters both value it.",
+        "icon": "Procedurally generated orc tusk",
+        "tags": ["crafting", "orc", "trophy", "quest"]
+    },
+    {
+        "name": "Volatile Powder",
+        "id": "volatilePowder",
+        "stackSize": 99,
+        "description": "A gritty, unstable residue recovered from an explosive creature.",
+        "icon": "Procedurally generated volatile powder pouch",
+        "tags": ["crafting", "volatile", "monster", "quest"]
     }
 ]

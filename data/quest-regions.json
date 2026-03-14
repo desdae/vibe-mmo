@@ -1,0 +1,36 @@
+{
+  "regions": [
+    {
+      "id": "east_watch_road",
+      "name": "East Watch Road",
+      "x": 618,
+      "y": 500,
+      "radius": 18,
+      "tags": ["starter", "road", "scouting", "east"]
+    },
+    {
+      "id": "north_grave_approach",
+      "name": "North Grave Approach",
+      "x": 500,
+      "y": 386,
+      "radius": 20,
+      "tags": ["starter", "scouting", "north", "undead"]
+    },
+    {
+      "id": "south_supply_track",
+      "name": "South Supply Track",
+      "x": 500,
+      "y": 620,
+      "radius": 18,
+      "tags": ["starter", "road", "scouting", "south"]
+    },
+    {
+      "id": "orc_warpath",
+      "name": "Orc Warpath",
+      "x": 652,
+      "y": 566,
+      "radius": 22,
+      "tags": ["mid", "scouting", "east", "orc", "warpath"]
+    }
+  ]
+}

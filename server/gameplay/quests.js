@@ -10,10 +10,18 @@ function createQuestTools(options = {}) {
   const addExp = typeof options.addExp === "function" ? options.addExp : () => {};
   const getInventoryItemCount =
     typeof options.getInventoryItemCount === "function" ? options.getInventoryItemCount : () => 0;
+  const consumeInventoryItem =
+    typeof options.consumeInventoryItem === "function" ? options.consumeInventoryItem : () => false;
   const addItemsToInventory =
     typeof options.addItemsToInventory === "function" ? options.addItemsToInventory : () => ({ added: [], leftover: [] });
+  const sendInventoryState =
+    typeof options.sendInventoryState === "function" ? options.sendInventoryState : () => {};
+  const syncPlayerCopperFromInventory =
+    typeof options.syncPlayerCopperFromInventory === "function" ? options.syncPlayerCopperFromInventory : () => false;
   const mobConfigProvider =
     typeof options.mobConfigProvider === "function" ? options.mobConfigProvider : () => null;
+  const itemDefsProvider =
+    typeof options.itemDefsProvider === "function" ? options.itemDefsProvider : () => null;
   const questDataPath = options.questDataPath
     ? path.resolve(String(options.questDataPath))
     : path.resolve(__dirname, "../../data/quests.json");
@@ -24,6 +32,8 @@ function createQuestTools(options = {}) {
     mapWidth: options.mapWidth,
     mapHeight: options.mapHeight,
     mobConfigProvider,
+    itemDefsProvider,
+    regionDataPath: options.regionDataPath,
     templateDataPath: options.templateDataPath
   });
 
@@ -138,6 +148,20 @@ function createQuestTools(options = {}) {
       return `explore_${Number(obj.x) || 0}_${Number(obj.y) || 0}`;
     }
     return normalizeQuestLookupId(obj.targetId || obj.mobId || obj.itemId || obj.type || "");
+  }
+
+  function getObjectiveRequiredCount(obj) {
+    return Math.max(1, Number(obj && obj.count) || 1);
+  }
+
+  function getObjectiveLiveCurrent(player, activeQuest, obj) {
+    const key = getObjectiveProgressKey(obj);
+    const storedObjective = activeQuest && activeQuest.objectives ? activeQuest.objectives[key] : null;
+    const type = String(obj && obj.type || "").trim().toLowerCase();
+    if (type === "collect") {
+      return Math.min(getObjectiveRequiredCount(obj), Math.max(0, Number(getInventoryItemCount(player, obj.itemId)) || 0));
+    }
+    return Math.max(0, Number(storedObjective && storedObjective.current) || 0);
   }
 
   function isPlayerNearNpc(player, npcId) {
@@ -278,7 +302,7 @@ function createQuestTools(options = {}) {
       if (!key) {
         continue;
       }
-      const required = Math.max(1, Number(obj.count) || 1);
+      const required = getObjectiveRequiredCount(obj);
       let current = 0;
       const type = String(obj.type || "").trim().toLowerCase();
       if (type === "collect") {
@@ -344,11 +368,18 @@ function createQuestTools(options = {}) {
         if (!activeQuest || !activeQuest.objectives[key]) {
           continue;
         }
-        const required = Math.max(1, Number(obj.count) || 1);
-        activeQuest.objectives[key].current = Math.min(
-          required,
-          (activeQuest.objectives[key].current || 0) + amount
-        );
+        const required = getObjectiveRequiredCount(obj);
+        if (String(type || "").trim().toLowerCase() === "collect") {
+          activeQuest.objectives[key].current = Math.min(
+            required,
+            Math.max(0, Number(getInventoryItemCount(player, obj.itemId)) || 0)
+          );
+        } else {
+          activeQuest.objectives[key].current = Math.min(
+            required,
+            (activeQuest.objectives[key].current || 0) + amount
+          );
+        }
         updatedQuests.push(questId);
       }
     }
@@ -406,10 +437,26 @@ function createQuestTools(options = {}) {
       return { canComplete: false, reason: "Quest state not found" };
     }
 
+    const requiredCollectTotals = new Map();
     for (const obj of Array.isArray(quest.objectives) ? quest.objectives : []) {
-      const key = getObjectiveProgressKey(obj);
-      const required = Math.max(1, Number(obj.count) || 1);
-      const current = questState.objectives[key] ? (questState.objectives[key].current || 0) : 0;
+      if (String(obj && obj.type || "").trim().toLowerCase() !== "collect") {
+        continue;
+      }
+      const itemId = String(obj && obj.itemId || "").trim();
+      if (!itemId) {
+        continue;
+      }
+      requiredCollectTotals.set(itemId, (requiredCollectTotals.get(itemId) || 0) + getObjectiveRequiredCount(obj));
+    }
+    for (const [itemId, required] of requiredCollectTotals.entries()) {
+      if (Math.max(0, Number(getInventoryItemCount(player, itemId)) || 0) < required) {
+        return { canComplete: false, reason: "Objectives not complete" };
+      }
+    }
+
+    for (const obj of Array.isArray(quest.objectives) ? quest.objectives : []) {
+      const required = getObjectiveRequiredCount(obj);
+      const current = getObjectiveLiveCurrent(player, questState, obj);
       if (current < required) {
         return { canComplete: false, reason: "Objectives not complete" };
       }
@@ -427,6 +474,33 @@ function createQuestTools(options = {}) {
     const quest = getQuestById(questId, player);
     if (!quest) {
       return { success: false, reason: "Quest not found" };
+    }
+
+    const collectRequirements = new Map();
+    for (const obj of Array.isArray(quest.objectives) ? quest.objectives : []) {
+      if (String(obj && obj.type || "").trim().toLowerCase() !== "collect") {
+        continue;
+      }
+      const itemId = String(obj && obj.itemId || "").trim();
+      if (!itemId) {
+        continue;
+      }
+      collectRequirements.set(itemId, (collectRequirements.get(itemId) || 0) + getObjectiveRequiredCount(obj));
+    }
+    let inventoryChanged = false;
+    for (const [itemId, required] of collectRequirements.entries()) {
+      if (required <= 0) {
+        continue;
+      }
+      const consumed = consumeInventoryItem(player, itemId, required);
+      if (!consumed) {
+        return { success: false, reason: "Required items were missing during turn-in" };
+      }
+      inventoryChanged = true;
+    }
+    if (inventoryChanged) {
+      sendInventoryState(player);
+      syncPlayerCopperFromInventory(player, false);
     }
 
     const questState = ensurePlayerQuestState(player);
@@ -505,9 +579,8 @@ function createQuestTools(options = {}) {
     }
 
     const objectives = (Array.isArray(quest.objectives) ? quest.objectives : []).map((obj) => {
-      const key = getObjectiveProgressKey(obj);
-      const required = Math.max(1, Number(obj.count) || 1);
-      const current = activeQuest.objectives[key] ? (activeQuest.objectives[key].current || 0) : 0;
+      const required = getObjectiveRequiredCount(obj);
+      const current = getObjectiveLiveCurrent(player, activeQuest, obj);
       return {
         type: obj.type,
         targetId: obj.targetId || obj.mobId || obj.itemId || "",

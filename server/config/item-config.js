@@ -18,6 +18,9 @@ function loadItemConfigFromDisk(configPath) {
     const stackSize = clamp(Math.round(Number(entry?.stackSize) || 1), 1, 65535);
     const description = String(entry?.description || "").slice(0, 240);
     const icon = String(entry?.icon || "").slice(0, 120);
+    const tags = Array.isArray(entry?.tags)
+      ? entry.tags.map((tag) => String(tag || "").trim().toLowerCase()).filter(Boolean)
+      : [];
     const effect = entry && typeof entry.effect === "object" ? entry.effect : null;
     let normalizedEffect = null;
     if (effect && typeof effect.type === "string") {
@@ -42,6 +45,7 @@ function loadItemConfigFromDisk(configPath) {
       stackSize,
       description,
       icon,
+      tags,
       effect: normalizedEffect
     };
     itemDefs.set(id, def);

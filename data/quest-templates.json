@@ -1,19 +1,24 @@
 {
+  "maxOffersPerNpc": 4,
   "templates": [
     {
-      "id": "town_hunt",
+      "id": "starter_undead_hunt",
       "npcGiverId": "town_herald",
       "npcCompleteId": "town_herald",
       "repeatable": true,
       "minLevel": 1,
-      "objective": {
-        "type": "kill",
-        "countRange": [3, 6],
-        "targetSource": {
-          "kind": "spawnableMob",
-          "maxSpawnRange": 260
+      "objectives": [
+        {
+          "type": "kill",
+          "countRange": [4, 7],
+          "target": {
+            "kind": "mobByTags",
+            "tagsAll": ["starter", "undead"],
+            "tagsAny": ["zombie", "skeleton"],
+            "maxSpawnRange": 220
+          }
         }
-      },
+      ],
       "rewards": {
         "baseExp": 30,
         "expPerTarget": 14,
@@ -21,82 +26,219 @@
       },
       "text": {
         "titleVariants": [
-          "Thin the {targetNamePlural}",
-          "Cull the {targetNamePlural}",
-          "Drive Back the {targetNamePlural}"
+          "Thin the {primaryTargetNamePlural}",
+          "Cull the {primaryTargetNamePlural}",
+          "Drive Back the {primaryTargetNamePlural}"
         ],
         "offerIntroVariants": [
-          "Reports keep coming in about {targetNamePlural} beyond the gates.",
-          "The roads are growing dangerous with so many {targetNamePlural} nearby.",
-          "Scouts have spotted {targetNamePlural} massing close to town."
+          "The roads outside town are crawling with {primaryTargetNamePlural}.",
+          "We've had too many sightings of {primaryTargetNamePlural} near the gates.",
+          "Those {primaryTargetNamePlural} are getting too bold."
         ],
         "offerDetailVariants": [
-          "Hunt down {count} {targetNamePlural} and make the approach to town safer.",
-          "Bring me proof that {count} {targetNamePlural} have been dealt with.",
-          "Take care of {count} {targetNamePlural} before they reach the walls."
+          "I need you to {objectiveSummary}.",
+          "Take this assignment and {objectiveSummary}.",
+          "Head out and {objectiveSummary} before they reach the walls."
         ],
         "acceptVariants": [
-          "Good. Return to me after you've slain {count} {targetNamePlural}.",
-          "Excellent. Deal with those {targetNamePlural} and report back when you're done.",
-          "That's what I needed to hear. Hunt them down, then return here."
+          "Good. {objectiveSummaryCapitalized}, then report back to me.",
+          "Excellent. {objectiveSummaryCapitalized} and return for your reward.",
+          "That's settled. {objectiveSummaryCapitalized} before the townsfolk panic."
         ],
         "inProgressVariants": [
-          "You still have {count} {targetNamePlural} to deal with.",
-          "The town won't rest easy until those {targetNamePlural} are gone.",
-          "Stay focused. Those {targetNamePlural} are still out there."
+          "You still need to {objectiveSummary}.",
+          "The work isn't finished yet. {objectiveSummaryCapitalized}.",
+          "Stay focused and {objectiveSummary}."
         ],
         "completeVariants": [
-          "Well done. The townsfolk will breathe easier with those {targetNamePlural} gone.",
-          "Excellent work. You've thinned their numbers considerably.",
-          "That's one less threat pressing against our walls."
+          "Well done. Those {primaryTargetNamePlural} won't trouble the town for a while.",
+          "Excellent work. You've made the roads safer already.",
+          "The guards will be glad to hear the job is done."
         ]
       }
     },
     {
-      "id": "town_scout",
+      "id": "starter_bone_collection",
+      "npcGiverId": "town_herald",
+      "npcCompleteId": "town_herald",
+      "repeatable": true,
+      "minLevel": 2,
+      "objectives": [
+        {
+          "type": "collect",
+          "countRange": [6, 10],
+          "target": {
+            "kind": "dropItemByTags",
+            "itemTagsAll": ["bone"],
+            "sourceMobTagsAll": ["skeleton"],
+            "maxSpawnRange": 240
+          }
+        }
+      ],
+      "rewards": {
+        "baseExp": 38,
+        "expPerTarget": 12,
+        "distanceExpFactor": 0.06
+      },
+      "text": {
+        "titleVariants": [
+          "Gather {primaryItemNamePlural}",
+          "Collect {primaryItemNamePlural}",
+          "Recover {primaryItemNamePlural}"
+        ],
+        "offerIntroVariants": [
+          "Our crafters need fresh materials from the dead.",
+          "The apothecary has asked for supplies only the undead can provide.",
+          "There's useful salvage to be had from the skeletons outside town."
+        ],
+        "offerDetailVariants": [
+          "I need you to {objectiveSummary}.",
+          "Bring me what we need by doing the following: {objectiveSummary}.",
+          "See to it that you {objectiveSummary}."
+        ],
+        "acceptVariants": [
+          "Good. {objectiveSummaryCapitalized}. Prefarmed supplies will do nicely too.",
+          "Excellent. {objectiveSummaryCapitalized} and bring them straight back.",
+          "Perfect. {objectiveSummaryCapitalized}; the crafters are waiting."
+        ],
+        "inProgressVariants": [
+          "I still need those materials. {objectiveSummaryCapitalized}.",
+          "Come back when you've finished gathering everything.",
+          "We're still short on supplies. {objectiveSummaryCapitalized}."
+        ],
+        "completeVariants": [
+          "Exactly what we needed. These {primaryItemNamePlural} will not go to waste.",
+          "Perfect. The town's crafters will make good use of these materials.",
+          "Excellent haul. You've kept our stores supplied."
+        ]
+      }
+    },
+    {
+      "id": "starter_scouting_run",
       "npcGiverId": "town_herald",
       "npcCompleteId": "town_herald",
       "repeatable": true,
       "minLevel": 1,
-      "objective": {
-        "type": "explore",
-        "distanceRange": [90, 220],
-        "radius": 18
-      },
+      "objectives": [
+        {
+          "type": "explore",
+          "target": {
+            "kind": "regionByTags",
+            "tagsAll": ["starter", "scouting"]
+          }
+        }
+      ],
       "rewards": {
         "baseExp": 45,
-        "distanceExpFactor": 0.16
+        "distanceExpFactor": 0.14
       },
       "text": {
         "titleVariants": [
-          "Scout the {regionName}",
-          "Survey the {regionName}",
-          "Check the {regionName}"
+          "Scout the {primaryRegionName}",
+          "Survey the {primaryRegionName}",
+          "Check the {primaryRegionName}"
         ],
         "offerIntroVariants": [
-          "I need eyes on the {regionName}.",
-          "We've lost contact with a lookout near the {regionName}.",
-          "Something feels wrong out by the {regionName}."
+          "I need eyes on the approaches to town.",
+          "We can never have too much reconnaissance.",
+          "Someone needs to check the nearby routes."
         ],
         "offerDetailVariants": [
-          "Travel to the marked location at ({targetX}, {targetY}) and see what you find.",
-          "Head for ({targetX}, {targetY}) and report back once you've looked the area over.",
-          "Make your way to ({targetX}, {targetY}) and give the area a proper scout."
+          "Travel out and {objectiveSummary}.",
+          "Take a look at the route and {objectiveSummary}.",
+          "Head out from town and {objectiveSummary}."
         ],
         "acceptVariants": [
-          "Stay sharp. Return to me after you've visited ({targetX}, {targetY}).",
-          "Good. Check the area and report back to me once you've been there.",
-          "Perfect. Scout the location and return with what you've learned."
+          "Stay sharp. {objectiveSummaryCapitalized}, then report back.",
+          "Good. {objectiveSummaryCapitalized} and let me know what you see.",
+          "Fine. {objectiveSummaryCapitalized}; I want a fresh report."
         ],
         "inProgressVariants": [
-          "The {regionName} still needs to be checked.",
-          "You haven't reached the scouting point yet.",
-          "Travel to ({targetX}, {targetY}) before you report back."
+          "You still need to {objectiveSummary}.",
+          "The scouting report is still missing.",
+          "Return only after you've reached the marked area."
         ],
         "completeVariants": [
-          "Good work. Fresh eyes out there are always valuable.",
-          "Excellent. That reconnaissance helps more than you know.",
-          "You've done the town a service by scouting that route."
+          "Good work. Fresh scouting keeps everyone alive.",
+          "Excellent. Reliable reports are worth their weight in copper.",
+          "That information will help us plan our next move."
+        ]
+      }
+    },
+    {
+      "id": "frontier_cleanup_campaign",
+      "npcGiverId": "town_herald",
+      "npcCompleteId": "town_herald",
+      "repeatable": true,
+      "minLevel": 5,
+      "objectives": [
+        {
+          "type": "kill",
+          "countRange": [10, 10],
+          "target": {
+            "kind": "mobByTags",
+            "tagsAll": ["zombie"],
+            "maxSpawnRange": 220
+          }
+        },
+        {
+          "type": "kill",
+          "countRange": [6, 6],
+          "target": {
+            "kind": "mobByTags",
+            "tagsAll": ["orc"],
+            "maxSpawnRange": 240
+          }
+        },
+        {
+          "type": "collect",
+          "countRange": [20, 20],
+          "target": {
+            "kind": "dropItemByTags",
+            "itemTagsAll": ["bone"],
+            "sourceMobTagsAll": ["skeleton"],
+            "maxSpawnRange": 240
+          }
+        }
+      ],
+      "rewards": {
+        "baseExp": 70,
+        "expPerTarget": 10,
+        "distanceExpFactor": 0.08,
+        "items": [
+          { "itemId": "manaPotion01", "qty": 2 }
+        ]
+      },
+      "text": {
+        "titleVariants": [
+          "Secure the Frontier",
+          "Cleanse the Frontier",
+          "Push Back the Threats"
+        ],
+        "offerIntroVariants": [
+          "I have a larger campaign in mind if you're ready for real work.",
+          "The town needs more than a simple errand this time.",
+          "We need someone capable of handling a full field assignment."
+        ],
+        "offerDetailVariants": [
+          "This one is broader: {objectiveList}.",
+          "Your orders are simple, if not easy: {objectiveList}.",
+          "I need all of this done before I can call the roads secure: {objectiveList}."
+        ],
+        "acceptVariants": [
+          "Then let's begin. {objectiveListCapitalized}, and return only when the whole job is done.",
+          "Good. {objectiveListCapitalized}; that's the scale of work I expect from a seasoned adventurer.",
+          "Excellent. {objectiveListCapitalized}, and the town will remember it."
+        ],
+        "inProgressVariants": [
+          "You're not finished yet. {objectiveListCapitalized}.",
+          "This campaign is only half-done. {objectiveListCapitalized}.",
+          "Return to the field and finish the assignment: {objectiveList}."
+        ],
+        "completeVariants": [
+          "Outstanding work. That's the kind of effort that changes the whole frontier.",
+          "Excellent. You've cut down the threats and stocked our stores in one stroke.",
+          "Impressive. Few adventurers can manage a campaign that broad."
         ]
       }
     }

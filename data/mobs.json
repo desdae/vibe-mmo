@@ -2,11 +2,12 @@
   "mobs": [
     {
       "name": "Zombie",
+      "tags": ["undead", "starter", "melee", "humanoid", "zombie", "flesh"],
       "health": 20,
       "damage": [1, 2],
       "speed": 0.5,
       "respawnTime": [25, 50],
-      "drops": [{ "copperCoin": [0, 2], "healthPotion01": [0.05] }],
+      "drops": [{ "copperCoin": [0, 2], "healthPotion01": [0.05], "rottenFlesh": [0.26] }],
       "combat": {
         "behavior": "melee",
         "aggroRange": 6,
@@ -65,11 +66,12 @@
     },
     {
       "name": "Skeleton",
+      "tags": ["undead", "starter", "melee", "humanoid", "skeleton", "bone"],
       "health": 30,
       "damage": [2, 3],
       "speed": 0.8,
       "respawnTime": [20, 40],
-      "drops": [{ "copperCoin": [0, 3], "healthPotion01": [0.1] }],
+      "drops": [{ "copperCoin": [0, 3], "healthPotion01": [0.1], "boneFragment": [0.24] }],
       "combat": {
         "behavior": "melee",
         "aggroRange": 7,
@@ -133,11 +135,12 @@
     },
     {
       "name": "Skeleton Archer",
+      "tags": ["undead", "starter", "ranged", "humanoid", "skeleton", "bone", "archer"],
       "health": 28,
       "damage": [1, 2],
       "speed": 1,
       "respawnTime": [25, 45],
-      "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.14], "manaPotion01": [0.08] }],
+      "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.14], "manaPotion01": [0.08], "boneFragment": [0.22] }],
       "combat": {
         "behavior": "ranged",
         "aggroRange": 12,
@@ -215,11 +218,12 @@
     },
     {
       "name": "Creeper",
+      "tags": ["starter", "melee", "volatile", "construct"],
       "health": 20,
       "damage": [3, 5],
       "speed": 0.9,
       "respawnTime": [30, 60],
-      "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.2] }],
+      "drops": [{ "copperCoin": [0, 4], "healthPotion01": [0.2], "volatilePowder": [0.21] }],
       "combat": {
         "behavior": "melee",
         "aggroRange": 6.5,
@@ -264,10 +268,12 @@
     },
     {
       "name": "Spider",
+      "tags": ["starter", "melee", "beast", "arachnid", "silk"],
       "health": 16,
       "damage": [2, 3],
       "speed": 1,
       "respawnTime": [20, 40],
+      "drops": [{ "copperCoin": [0, 3], "spiderSilk": [0.24] }],
       "combat": {
         "behavior": "melee",
         "aggroRange": 6.5,
@@ -312,11 +318,12 @@
     },
     {
       "name": "Orc Berserker",
+      "tags": ["mid", "melee", "humanoid", "orc", "brute"],
       "health": 40,
       "damage": [5, 7],
       "speed": 2,
       "respawnTime": [40, 80],
-      "drops": [{ "copperCoin": [0, 5], "healthPotion01": [0.3] }],
+      "drops": [{ "copperCoin": [0, 5], "healthPotion01": [0.3], "orcTusk": [0.23] }],
       "combat": {
         "behavior": "melee",
         "aggroRange": 8,

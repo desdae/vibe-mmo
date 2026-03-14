@@ -55,6 +55,7 @@ function createCoreServices({
   const addItemsToInventory = inventoryTools.addItemsToInventory;
   const mergeOrSwapInventorySlots = inventoryTools.mergeOrSwapInventorySlots;
   const consumeInventoryItem = inventoryTools.consumeInventoryItem;
+  const getInventoryItemCount = inventoryTools.getInventoryItemCount;
   const syncPlayerCopperFromInventory = inventoryTools.syncPlayerCopperFromInventory;
 
   const talentConfig = talentConfigPath ? loadTalentConfigFromDisk(talentConfigPath) : {};
@@ -109,6 +110,7 @@ function createCoreServices({
     addItemsToInventory,
     mergeOrSwapInventorySlots,
     consumeInventoryItem,
+    getInventoryItemCount,
     syncPlayerCopperFromInventory,
     expNeededForLevel,
     grantPlayerExp,
