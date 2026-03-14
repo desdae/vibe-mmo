@@ -1318,7 +1318,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     syncPlayerCopperFromInventory,
     sendInventoryState,
     sendEquipmentState,
-    sendSelfProgressWithQuests,
+    sendSelfProgress,
     updatePlayerViewport,
     clamp,
     normalizeDirection,
