@@ -4,7 +4,9 @@ const area = require("./area");
 const beam = require("./beam");
 const chain = require("./chain");
 const summon = require("./summon");
+const selfBuff = require("./self-buff");
 const teleport = require("./teleport");
+const charge = require("./charge");
 
 const handlersByKind = new Map([
   ["meleeCone", melee],
@@ -13,7 +15,9 @@ const handlersByKind = new Map([
   ["beam", beam],
   ["chain", chain],
   ["summon", summon],
-  ["teleport", teleport]
+  ["selfBuff", selfBuff],
+  ["teleport", teleport],
+  ["charge", charge]
 ]);
 
 function getAbilityHandler(kind) {

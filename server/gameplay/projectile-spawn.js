@@ -58,12 +58,12 @@ function createProjectileSpawnTools(options = {}) {
     const damageMin = clamp(
       Math.floor((Number(template.damageMin) || 0) + (Number(template.damagePerLevelMin) || 0) * levelOffset),
       0,
-      255
+      65535
     );
     const damageMax = clamp(
       Math.ceil((Number(template.damageMax) || damageMin) + (Number(template.damagePerLevelMax) || 0) * levelOffset),
       damageMin,
-      255
+      65535
     );
     const dotDamageMin = Math.max(
       0,

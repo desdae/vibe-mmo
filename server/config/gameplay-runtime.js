@@ -4,7 +4,10 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
   map: {
     width: 1000,
     height: 1000,
-    visibilityRange: 20
+    visibilityRange: 20,
+    maxViewportWidth: 2560,
+    maxViewportHeight: 1440,
+    visibilityPaddingTiles: 2
   },
   town: {
     enabled: true,
@@ -30,7 +33,10 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
   clusterSpawning: {
     targetClusters: 16,
     clusterAreaSize: 10,
-    maxClustersPerArea: 2
+    maxClustersPerArea: 2,
+    minSpawnRadiusFromCenter: 20,
+    observedSpawnPadding: 10,
+    unobservedDespawnMs: 120000
   },
   mob: {
     wanderRadius: 10,
@@ -40,7 +46,14 @@ const DEFAULT_GAMEPLAY_CONFIG = Object.freeze({
     attackRange: 1.25,
     attackCooldownMs: 900,
     minSeparation: 0.85,
-    separationIterations: 2
+    separationIterations: 2,
+    baseLevel: 1,
+    levelStartDistance: 0,
+    levelDistance: 10,
+    levelDistanceStep: 10,
+    levelHealthMultiplier: 1.25,
+    levelDamageMultiplier: 1.15,
+    levelSpeedMultiplier: 1.03
   },
   loot: {
     bagPickupRange: 2.25,
@@ -65,12 +78,18 @@ function loadGameplayRuntimeConfig(gameplayConfigPath) {
     mapWidth: gameplayConfig.map.width,
     mapHeight: gameplayConfig.map.height,
     visibilityRange: gameplayConfig.map.visibilityRange,
+    maxViewportWidth: gameplayConfig.map.maxViewportWidth,
+    maxViewportHeight: gameplayConfig.map.maxViewportHeight,
+    visibilityPaddingTiles: gameplayConfig.map.visibilityPaddingTiles,
     townConfig: gameplayConfig.town,
     tickMs: gameplayConfig.tickMs,
     basePlayerSpeed: gameplayConfig.player.baseSpeed,
     targetMobClusters: gameplayConfig.clusterSpawning.targetClusters,
     clusterAreaSize: gameplayConfig.clusterSpawning.clusterAreaSize,
     maxClustersPerArea: gameplayConfig.clusterSpawning.maxClustersPerArea,
+    minSpawnRadiusFromCenter: gameplayConfig.clusterSpawning.minSpawnRadiusFromCenter,
+    observedSpawnPadding: gameplayConfig.clusterSpawning.observedSpawnPadding,
+    unobservedDespawnMs: gameplayConfig.clusterSpawning.unobservedDespawnMs,
     mobWanderRadius: gameplayConfig.mob.wanderRadius,
     mobProvokedLeashRadius: gameplayConfig.mob.provokedLeashRadius,
     mobProvokedChaseMs: gameplayConfig.mob.provokedChaseMs,
@@ -79,6 +98,13 @@ function loadGameplayRuntimeConfig(gameplayConfigPath) {
     mobAttackCooldownMs: gameplayConfig.mob.attackCooldownMs,
     mobMinSeparation: gameplayConfig.mob.minSeparation,
     mobSeparationIterations: gameplayConfig.mob.separationIterations,
+    mobBaseLevel: gameplayConfig.mob.baseLevel,
+    mobLevelStartDistance: gameplayConfig.mob.levelStartDistance,
+    mobLevelDistance: gameplayConfig.mob.levelDistance,
+    mobLevelDistanceStep: gameplayConfig.mob.levelDistanceStep,
+    mobLevelHealthMultiplier: gameplayConfig.mob.levelHealthMultiplier,
+    mobLevelDamageMultiplier: gameplayConfig.mob.levelDamageMultiplier,
+    mobLevelSpeedMultiplier: gameplayConfig.mob.levelSpeedMultiplier,
     playerMobMinSeparation: gameplayConfig.player.mobMinSeparation,
     playerMobSeparationIterations: gameplayConfig.player.mobSeparationIterations,
     baseExpToNext: gameplayConfig.player.baseExpToNext,

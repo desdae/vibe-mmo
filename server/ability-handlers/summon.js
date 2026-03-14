@@ -1,7 +1,12 @@
 const { getSummonCountForLevel } = require("../../public/shared/summon-layout");
 
 function executeSummonAbility({ player, abilityDef, abilityLevel, targetDx, targetDy, targetDistance, now, ctx }) {
-  const castRange = Math.max(0, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+  const castRange = Math.max(
+    0,
+    (typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel)) || 0
+  );
   const target = ctx.getAreaAbilityTargetPosition(player, castRange, targetDx, targetDy, targetDistance);
   const levelOffset = Math.max(0, Math.floor(Number(abilityLevel) || 1) - 1);
   const durationMs = Math.max(

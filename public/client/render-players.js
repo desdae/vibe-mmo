@@ -30,16 +30,22 @@
       return state;
     }
 
+    function getSelfPositiveEffectState(effectKey, frameNow) {
+      const effects = deps.selfPositiveEffects && typeof deps.selfPositiveEffects === "object" ? deps.selfPositiveEffects : null;
+      const state = effects ? effects[effectKey] : null;
+      if (!state) {
+        return null;
+      }
+      if ((Number(state.endsAt) || 0) <= frameNow) {
+        effects[effectKey] = null;
+        return null;
+      }
+      return state;
+    }
+
     function drawPlayer(player, cameraX, cameraY, isSelf) {
       const p = deps.worldToScreen(player.x + 0.5, player.y + 0.5, cameraX, cameraY);
-
-      if (player.classType === "warrior") {
-        drawWarriorPlayer(player, p, isSelf);
-      } else if (player.classType === "ranger") {
-        drawRangerPlayer(player, p, isSelf);
-      } else {
-        drawMagePlayer(player, p, isSelf);
-      }
+      drawClassHumanoidPlayer(player, p, isSelf);
 
       ctx.fillStyle = "#f5f7fa";
       ctx.font = "12px Segoe UI";
@@ -185,7 +191,61 @@
       ctx.restore();
     }
 
+    function drawPlayerBloodWrathEffect(player, cameraX, cameraY, isSelf, frameNow) {
+      const state = isSelf ? getSelfPositiveEffectState("bloodWrath", frameNow) : deps.remotePlayerBloodWraths.get(player.id);
+      if (!state) {
+        return;
+      }
+      if ((Number(state.endsAt) || 0) <= frameNow) {
+        if (!isSelf) {
+          deps.remotePlayerBloodWraths.delete(player.id);
+        }
+        return;
+      }
+
+      const p = deps.worldToScreen(player.x + 0.5, player.y + 0.5, cameraX, cameraY);
+      const phaseSeed = Number.isFinite(Number(player.id)) ? Number(player.id) : hashString(String(player && player.name || ""));
+      const pulse = 0.58 + Math.sin(frameNow * 0.012 + (phaseSeed % 17)) * 0.42;
+      const auraRadius = 13.5 + pulse * 1.8;
+      const swirlRadius = 8.5 + pulse * 1.4;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.22 + pulse * 0.14;
+      const grad = ctx.createRadialGradient(p.x, p.y + 1, 2, p.x, p.y + 1, auraRadius);
+      grad.addColorStop(0, "rgba(255, 216, 192, 0.12)");
+      grad.addColorStop(0.45, "rgba(232, 92, 76, 0.28)");
+      grad.addColorStop(1, "rgba(164, 27, 39, 0)");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y + 1, auraRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = "round";
+      ctx.strokeStyle = "rgba(255, 120, 104, 0.55)";
+      for (let i = 0; i < 3; i += 1) {
+        const start = frameNow * 0.006 + i * ((Math.PI * 2) / 3) + (phaseSeed % 11) * 0.09;
+        ctx.beginPath();
+        for (let step = 0; step <= 16; step += 1) {
+          const t = step / 16;
+          const angle = start + t * 1.85;
+          const radius = 4.5 + t * swirlRadius;
+          const x = p.x + Math.cos(angle) * radius;
+          const y = p.y + 2 + Math.sin(angle) * (radius * 0.48) - t * 5.5;
+          if (step === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     function drawPlayerEffectAnimations(player, cameraX, cameraY, isSelf, frameNow) {
+      drawPlayerBloodWrathEffect(player, cameraX, cameraY, isSelf, frameNow);
       drawPlayerSlowTint(player, cameraX, cameraY, isSelf, frameNow);
       drawPlayerBurnEffect(player, cameraX, cameraY, isSelf, frameNow);
       drawPlayerStunEffect(player, cameraX, cameraY, isSelf, frameNow);
@@ -264,6 +324,9 @@
     }
 
     function pruneWarriorAnimRuntime() {
+      if (deps.humanoidRenderTools && typeof deps.humanoidRenderTools.pruneHumanoidMotionRuntime === "function") {
+        deps.humanoidRenderTools.pruneHumanoidMotionRuntime();
+      }
       const now = performance.now();
       for (const [key, state] of deps.warriorAnimRuntime.entries()) {
         if (now - state.lastSeenAt > 3000) {
@@ -277,6 +340,110 @@
           }
         }
       }
+    }
+
+    function getPlayerCastVisualState(player, isSelf, frameNow = performance.now()) {
+      const castState = isSelf ? deps.abilityChannel : deps.remotePlayerCasts.get(player.id);
+      const cast = deps.getCastProgress(castState, frameNow);
+      if (!cast) {
+        return null;
+      }
+      return {
+        active: true,
+        ratio: cast.ratio,
+        abilityId: castState && castState.abilityId ? castState.abilityId : "",
+        isCharge: castState && castState.isCharge,
+        chargeStartX: castState && castState.chargeStartX,
+        chargeStartY: castState && castState.chargeStartY,
+        chargeTargetX: castState && castState.chargeTargetX,
+        chargeTargetY: castState && castState.chargeTargetY
+      };
+    }
+
+    function buildPlayerRenderStyle(player) {
+      const configured =
+        typeof deps.getClassRenderStyle === "function" ? deps.getClassRenderStyle(player.classType) : null;
+      if (configured && typeof configured === "object") {
+        return configured;
+      }
+      return {
+        rigType: "humanoid",
+        species: "human",
+        archetype: String(player.classType || "").trim().toLowerCase() || "adventurer",
+        defaults: {
+          head: player.classType === "mage" ? "wizard_hat" : player.classType === "ranger" ? "hood" : "helmet",
+          chest: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          shoulders: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          gloves: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          bracers: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          belt: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          pants: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          boots: player.classType === "mage" ? "robe" : player.classType === "ranger" ? "leather" : "plate",
+          mainHand: player.classType === "mage" ? "staff" : player.classType === "ranger" ? "bow" : "sword",
+          offHand: player.classType === "warrior" ? "shield" : "none"
+        }
+      };
+    }
+
+    function drawClassHumanoidPlayer(player, p, isSelf) {
+      if (!deps.humanoidRenderTools || typeof deps.humanoidRenderTools.drawHumanoid !== "function") {
+        if (player.classType === "warrior") {
+          drawWarriorPlayer(player, p, isSelf);
+        } else if (player.classType === "ranger") {
+          drawRangerPlayer(player, p, isSelf);
+        } else {
+          drawMagePlayer(player, p, isSelf);
+        }
+        return;
+      }
+      const attackState = player.classType === "warrior" ? getWarriorSwingState(player, isSelf) : null;
+      const castState = getPlayerCastVisualState(player, isSelf);
+      const equipmentSlots =
+        typeof deps.getPlayerVisualEquipment === "function" ? deps.getPlayerVisualEquipment(player, isSelf) : {};
+      let aimWorldX = NaN;
+      let aimWorldY = NaN;
+      let facingDx = NaN;
+      if (isSelf) {
+        if (
+          deps.isTouchJoystickEnabled &&
+          deps.isTouchJoystickEnabled() &&
+          deps.abilityChannel &&
+          deps.abilityChannel.active &&
+          Number.isFinite(Number(deps.abilityChannel.targetX)) &&
+          Number.isFinite(Number(deps.abilityChannel.targetY))
+        ) {
+          aimWorldX = Number(deps.abilityChannel.targetX);
+          aimWorldY = Number(deps.abilityChannel.targetY);
+        } else if (deps.isTouchJoystickEnabled && deps.isTouchJoystickEnabled()) {
+          const movementDir =
+            typeof deps.getCurrentMovementVector === "function" ? deps.getCurrentMovementVector() : null;
+          const movementDx = Number(movementDir && movementDir.dx);
+          if (Number.isFinite(movementDx) && Math.abs(movementDx) > 0.05) {
+            facingDx = movementDx;
+          }
+        } else if (deps.mouseState && typeof deps.screenToWorld === "function") {
+          const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : player;
+          const world = deps.screenToWorld(Number(deps.mouseState.sx) || 0, Number(deps.mouseState.sy) || 0, self);
+          if (world && Number.isFinite(world.x) && Number.isFinite(world.y)) {
+            aimWorldX = world.x;
+            aimWorldY = world.y;
+          }
+        }
+      }
+      deps.humanoidRenderTools.drawHumanoid({
+        entity: player,
+        entityKey: `${isSelf ? "self" : "player"}:${String(player.id ?? "0")}`,
+        p,
+        style: buildPlayerRenderStyle(player),
+        equipmentSlots,
+        useDefaultGearFallback: false,
+        attackState,
+        castState,
+        aimWorldX,
+        aimWorldY,
+        facingDx,
+        isSelf
+      });
     }
 
     function drawWarriorPlayer(player, p, isSelf) {
@@ -753,6 +920,8 @@
       drawPlayerSlowTint,
       drawPlayerBurnEffect,
       drawPlayerEffectAnimations,
+      getWarriorSwingState,
+      getPlayerCastVisualState,
       pruneWarriorAnimRuntime,
       drawWarriorPlayer,
       drawRangerPlayer,

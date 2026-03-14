@@ -37,8 +37,14 @@
         areaEffectRenderer: "fire_hydra",
         castPreviewRenderer: "fire_hydra"
       },
+      selfbuff: {
+        iconRenderer: "blood_wrath"
+      },
       teleport: {
         iconRenderer: "blink"
+      },
+      charge: {
+        iconRenderer: "charge"
       }
     },
     byId: {
@@ -151,8 +157,14 @@
       blink: {
         iconRenderer: "blink"
       },
+      bloodwrath: {
+        iconRenderer: "blood_wrath"
+      },
       warstomp: {
         iconRenderer: "warstomp"
+      },
+      charge: {
+        iconRenderer: "charge"
       },
       bonearrow: {
         iconRenderer: "melee_slash",

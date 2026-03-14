@@ -45,7 +45,13 @@ function createSpatialTools({ mapWidth, mapHeight, clamp, spawnMaxDistance = 10 
   }
 
   function inVisibilityRange(a, b, range) {
-    return Math.abs(a.x - b.x) <= range && Math.abs(a.y - b.y) <= range;
+    if (range && typeof range === "object") {
+      const rangeX = Math.max(0, Number(range.x ?? range.width ?? range.rangeX) || 0);
+      const rangeY = Math.max(0, Number(range.y ?? range.height ?? range.rangeY) || 0);
+      return Math.abs(a.x - b.x) <= rangeX && Math.abs(a.y - b.y) <= rangeY;
+    }
+    const scalar = Math.max(0, Number(range) || 0);
+    return Math.abs(a.x - b.x) <= scalar && Math.abs(a.y - b.y) <= scalar;
   }
 
   return {

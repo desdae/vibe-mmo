@@ -1,9 +1,9 @@
 {
-    "expMultiplier": 10.0,
+    "expMultiplier": 10,
     "mobHealthMultiplier": 1.0, 
     "mobDamageMultiplier": 1.0,
     "mobSpeedMultiplier": 1.0,
     "mobRespawnMultiplier": 1.0,
-    "dropchanceMultiplier": 10.0,
+    "dropchanceMultiplier": 10,
     "mobSpawnMultiplier": 1.0
 }

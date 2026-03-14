@@ -18,8 +18,11 @@ function createProjectileTickSystem({
   emitProjectilesFromEmitter,
   getNearestProjectileTarget,
   normalizeDirection,
-  steerDirectionTowards
+  steerDirectionTowards,
+  isProjectileBlockedAt
 }) {
+  const isBlockedPoint = typeof isProjectileBlockedAt === "function" ? isProjectileBlockedAt : () => false;
+
   function tickProjectiles() {
     const now = Date.now();
     const toDelete = [];
@@ -41,8 +44,13 @@ function createProjectileTickSystem({
           }
         }
       }
-      projectile.x += projectile.dx * projectile.speed * dt;
-      projectile.y += projectile.dy * projectile.speed * dt;
+      const nextX = projectile.x + projectile.dx * projectile.speed * dt;
+      const nextY = projectile.y + projectile.dy * projectile.speed * dt;
+      const worldBlocked = isBlockedPoint(nextX, nextY);
+      if (!worldBlocked) {
+        projectile.x = nextX;
+        projectile.y = nextY;
+      }
 
       const projectileTargetType =
         String(projectile.targetType || "").trim().toLowerCase() === "player" ? "player" : "mob";
@@ -83,8 +91,8 @@ function createProjectileTickSystem({
         const impactX = hitMob ? hitMob.x : hitPlayer.x;
         const impactY = hitMob ? hitMob.y : hitPlayer.y;
         queueProjectileHitEvent(impactX, impactY, projectile.abilityId);
-        const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
-        const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 255);
+        const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 65535);
+        const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 65535);
         const baseDamage = randomInt(damageMin, damageMax);
         const explosionRadius = Math.max(0, Number(projectile.explosionRadius) || 0);
         const minMultiplier = clamp(Number(projectile.explosionDamageMultiplier) || 0, 0, 1);
@@ -132,7 +140,7 @@ function createProjectileTickSystem({
           }
         }
       } else if (
-        (expired || outOfMap) &&
+        (expired || outOfMap || worldBlocked) &&
         (Number(projectile.explosionRadius) || 0) > 0 &&
         projectile.explodeOnExpire !== false
       ) {
@@ -140,8 +148,8 @@ function createProjectileTickSystem({
         emittedOnExpire = true;
         const explosionRadius = Math.max(0, Number(projectile.explosionRadius) || 0);
         const minMultiplier = clamp(Number(projectile.explosionDamageMultiplier) || 0, 0, 1);
-        const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 255);
-        const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 255);
+        const damageMin = clamp(Math.floor(Number(projectile.damageMin) || 0), 0, 65535);
+        const damageMax = clamp(Math.floor(Number(projectile.damageMax) || damageMin), damageMin, 65535);
         const baseDamage = randomInt(damageMin, damageMax);
         queueExplosionEvent(projectile.x, projectile.y, explosionRadius, projectile.abilityId);
         if (projectileTargetType === "player") {
@@ -177,11 +185,11 @@ function createProjectileTickSystem({
         }
       }
 
-      if ((expired || outOfMap) && !hitMob && !hitPlayer && !emittedOnExpire) {
+      if ((expired || outOfMap || worldBlocked) && !hitMob && !hitPlayer && !emittedOnExpire) {
         emitProjectilesFromEmitter(projectile, now, "onexpire");
       }
 
-      if (expired || outOfMap || hitMob || hitPlayer) {
+      if (expired || outOfMap || worldBlocked || hitMob || hitPlayer) {
         toDelete.push(projectile.id);
       }
     }

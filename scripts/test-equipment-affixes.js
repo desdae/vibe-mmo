@@ -138,6 +138,7 @@ function main() {
     basePlayerSpeed: 1,
     tickPlayerHealEffects: () => {},
     tickPlayerManaEffects: () => {},
+    tickPlayerBuffs: () => {},
     tickPlayerDotEffects: () => {},
     clearPlayerCast: () => {},
     playerHasMovementInput: () => false,

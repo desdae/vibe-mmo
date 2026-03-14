@@ -1,4 +1,5 @@
 const { computeSummonFormationPositions, getSummonCountForLevel } = require("../../public/shared/summon-layout");
+const { createEffectEngine } = require("./effects/effect-engine");
 
 function createAreaEffectTools(options = {}) {
   const clamp = typeof options.clamp === "function" ? options.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
@@ -17,6 +18,7 @@ function createAreaEffectTools(options = {}) {
     typeof options.spawnProjectileFromTemplate === "function" ? options.spawnProjectileFromTemplate : () => false;
   const mapWidth = Math.max(1, Number(options.mapWidth) || 1);
   const mapHeight = Math.max(1, Number(options.mapHeight) || 1);
+  const effectEngine = createEffectEngine({ clamp, randomInt });
 
   if (!(activeAreaEffects instanceof Map)) {
     throw new Error("createAreaEffectTools requires activeAreaEffects map");
@@ -65,8 +67,8 @@ function createAreaEffectTools(options = {}) {
       x: clamp(centerX, 0, mapWidth - 1),
       y: clamp(centerY, 0, mapHeight - 1),
       radius: Math.max(0.1, Number(radius) || 0.1),
-      damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
-      damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+      damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 65535),
+      damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 65535),
       damageMode: String(payload.damageMode || "overTime").trim().toLowerCase() || "overTime",
       dotDamageMin: Math.max(0, Number(payload.dotDamageMin) || 0),
       dotDamageMax: Math.max(0, Number(payload.dotDamageMax) || 0),
@@ -84,6 +86,30 @@ function createAreaEffectTools(options = {}) {
       nextTickAt: now,
       hitTargetIds: new Set()
     };
+
+    const statusEffectDefs = [];
+    if (effect.slowDurationMs > 0 && effect.slowMultiplier < 1) {
+      statusEffectDefs.push({
+        trigger: "onTick",
+        type: "slow",
+        multiplier: effect.slowMultiplier,
+        durationMs: effect.slowDurationMs
+      });
+    }
+    if (effect.dotDurationMs > 0 && effect.dotDamageMax > 0) {
+      statusEffectDefs.push({
+        trigger: "onDamage",
+        type: "dot",
+        school: effect.dotSchool,
+        damageMinPerSecond: effect.dotDamageMin,
+        damageMaxPerSecond: effect.dotDamageMax,
+        durationMs: effect.dotDurationMs
+      });
+    }
+    effect.statusEffects = statusEffectDefs.length
+      ? effectEngine.compile(statusEffectDefs, { defaultTrigger: "onTick" })
+      : null;
+
     activeAreaEffects.set(effect.id, effect);
     queueExplosionEvent(effect.x, effect.y, effect.radius, effect.abilityId);
     return effect;
@@ -127,8 +153,8 @@ function createAreaEffectTools(options = {}) {
       dy: normalizedDir.dy,
       length: beamLength,
       width: beamWidth,
-      damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 255),
-      damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 255),
+      damageMin: clamp(Math.floor(Number(damageMin) || 0), 0, 65535),
+      damageMax: clamp(Math.floor(Number(damageMax) || 0), 0, 65535),
       damageMode: String(payload.damageMode || "overTime").trim().toLowerCase() || "overTime",
       dotDamageMin: Math.max(0, Number(payload.dotDamageMin) || 0),
       dotDamageMax: Math.max(0, Number(payload.dotDamageMax) || 0),
@@ -141,6 +167,22 @@ function createAreaEffectTools(options = {}) {
       nextTickAt: now,
       hitTargetIds: new Set()
     };
+
+    const statusEffectDefs = [];
+    if (effect.dotDurationMs > 0 && effect.dotDamageMax > 0) {
+      statusEffectDefs.push({
+        trigger: "onDamage",
+        type: "dot",
+        school: effect.dotSchool,
+        damageMinPerSecond: effect.dotDamageMin,
+        damageMaxPerSecond: effect.dotDamageMax,
+        durationMs: effect.dotDurationMs
+      });
+    }
+    effect.statusEffects = statusEffectDefs.length
+      ? effectEngine.compile(statusEffectDefs, { defaultTrigger: "onDamage" })
+      : null;
+
     activeAreaEffects.set(effect.id, effect);
     return effect;
   }
@@ -235,6 +277,12 @@ function createAreaEffectTools(options = {}) {
   }
 
   function tickAreaEffects(now = Date.now()) {
+    const ops = {
+      applySlow: (target, multiplier, durationMs, appliedAt) => applySlowToMob(target, multiplier, durationMs, appliedAt),
+      applyDot: (target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt) =>
+        applyDotToMob(target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt)
+    };
+
     for (const [effectId, effect] of activeAreaEffects.entries()) {
       if (!effect || now >= Number(effect.endsAt) || Number(effect.durationMs) <= 0) {
         activeAreaEffects.delete(effectId);
@@ -260,16 +308,13 @@ function createAreaEffectTools(options = {}) {
               if (effect.damageMode === "instant" && effect.hitTargetIds) {
                 effect.hitTargetIds.add(String(mob.id));
               }
-              if (mob.alive && dealt > 0 && effect.dotDurationMs > 0 && effect.dotDamageMax > 0) {
-                applyDotToMob(
-                  mob,
-                  effect.ownerId || null,
-                  String(effect.dotSchool || "generic"),
-                  effect.dotDamageMin,
-                  effect.dotDamageMax,
-                  effect.dotDurationMs,
-                  now
-                );
+              if (mob.alive && dealt > 0 && effect.statusEffects) {
+                effectEngine.run(effect.statusEffects, "onDamage", {
+                  now,
+                  source: { id: effect.ownerId },
+                  target: mob,
+                  ops
+                });
               }
             }
           }
@@ -328,22 +373,25 @@ function createAreaEffectTools(options = {}) {
             if (dist > effect.radius) {
               continue;
             }
+            let dealt = 0;
             if (effect.damageMax > 0) {
-              const dealt = applyDamageToMob(mob, randomInt(effect.damageMin, effect.damageMax), effect.ownerId);
-              if (mob.alive && dealt > 0 && effect.dotDurationMs > 0 && effect.dotDamageMax > 0) {
-                applyDotToMob(
-                  mob,
-                  effect.ownerId || null,
-                  String(effect.dotSchool || "generic"),
-                  effect.dotDamageMin,
-                  effect.dotDamageMax,
-                  effect.dotDurationMs,
-                  now
-                );
+              dealt = applyDamageToMob(mob, randomInt(effect.damageMin, effect.damageMax), effect.ownerId);
+              if (mob.alive && dealt > 0 && effect.statusEffects) {
+                effectEngine.run(effect.statusEffects, "onDamage", {
+                  now,
+                  source: { id: effect.ownerId },
+                  target: mob,
+                  ops
+                });
               }
             }
-            if (mob.alive && effect.slowMultiplier < 1 && effect.slowDurationMs > 0) {
-              applySlowToMob(mob, effect.slowMultiplier, effect.slowDurationMs, now);
+            if (mob.alive && effect.statusEffects) {
+              effectEngine.run(effect.statusEffects, "onTick", {
+                now,
+                source: { id: effect.ownerId },
+                target: mob,
+                ops
+              });
             }
           }
         }

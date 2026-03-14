@@ -1,5 +1,6 @@
 const fs = require("fs");
 const { clamp, parseNumericRange } = require("../gameplay/number-utils");
+const { parseHumanoidRenderStyle } = require("../../public/shared/humanoid-style");
 
 function parseClassStartingItems(rawStartingItems, itemDefs, normalizeItemEntries) {
   const result = [];
@@ -23,6 +24,29 @@ function parseClassStartingItems(rawStartingItems, itemDefs, normalizeItemEntrie
     }
   }
   return normalizeItemEntries(result);
+}
+
+function parseClassStartingEquipment(rawStartingEquipment, itemDefs) {
+  const result = [];
+  for (const entry of Array.isArray(rawStartingEquipment) ? rawStartingEquipment : []) {
+    let itemId = "";
+    if (typeof entry === "string") {
+      itemId = String(entry || "").trim();
+    } else if (entry && typeof entry === "object") {
+      itemId = String(entry.itemId || "").trim();
+      if (!itemId) {
+        const keys = Object.keys(entry);
+        if (keys.length === 1) {
+          itemId = String(keys[0] || "").trim();
+        }
+      }
+    }
+    if (!itemId || !itemDefs.has(itemId)) {
+      continue;
+    }
+    result.push(itemId);
+  }
+  return result;
 }
 
 function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSpeed, normalizeItemEntries) {
@@ -57,6 +81,9 @@ function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSp
     const classSpeedRaw = Number(entry.speed);
     const movementSpeed = clamp(Number.isFinite(classSpeedRaw) ? classSpeedRaw : basePlayerSpeed, 0.1, 20);
     const startingItems = parseClassStartingItems(entry.startingItems, itemDefs, normalizeItemEntries);
+    const startingEquipment = parseClassStartingEquipment(entry.startingEquipment, itemDefs);
+    const talentTree = String(entry.talentTree || "").trim().toLowerCase() || null;
+    const talentPointsPerLevel = Math.max(1, Number(entry.talentPointsPerLevel) || 1);
     const def = {
       id,
       name: String(entry.name || id).slice(0, 48),
@@ -66,9 +93,13 @@ function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSp
       manaRegen,
       speed: movementSpeed,
       movementSpeed,
+      talentTree,
+      talentPointsPerLevel,
+      renderStyle: parseHumanoidRenderStyle(entry.renderStyle),
       abilities,
       abilityLevels,
-      startingItems
+      startingItems,
+      startingEquipment
     };
 
     classDefs.set(id, def);
@@ -80,6 +111,7 @@ function loadClassConfigFromDisk(configPath, abilityDefs, itemDefs, basePlayerSp
       baseMana: def.baseMana,
       manaRegen: def.manaRegen,
       speed: def.speed,
+      renderStyle: def.renderStyle ? JSON.parse(JSON.stringify(def.renderStyle)) : null,
       abilities: def.abilities.map((ability) => ({ ...ability }))
     });
   }

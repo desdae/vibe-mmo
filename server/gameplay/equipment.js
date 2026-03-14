@@ -64,6 +64,12 @@ function createEquipmentTools(options = {}) {
   const equipmentConfigProvider =
     typeof options.equipmentConfigProvider === "function" ? options.equipmentConfigProvider : () => null;
   const getServerConfig = typeof options.getServerConfig === "function" ? options.getServerConfig : () => ({});
+  const getTalentStats = typeof options.getTalentStats === "function" ? options.getTalentStats : () => ({});
+
+  const tools = {
+    // This is intentionally mutable; server.js wires the real talent buff stat provider after talentEffectTools exist.
+    getTalentBuffStats: typeof options.getTalentBuffStats === "function" ? options.getTalentBuffStats : () => ({})
+  };
   const allocateItemInstanceId =
     typeof options.allocateItemInstanceId === "function" ? options.allocateItemInstanceId : () => String(Date.now());
   const randomInt =
@@ -78,6 +84,28 @@ function createEquipmentTools(options = {}) {
     typeof options.getAbilityDamageRange === "function" ? options.getAbilityDamageRange : () => [0, 0];
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
+
+  function getTalentAbilityMods(player) {
+    const stats = typeof getTalentStats === "function" ? getTalentStats(player) : null;
+    const mods = stats && typeof stats === "object" ? stats.abilityMods : null;
+    return mods && typeof mods === "object" ? mods : null;
+  }
+
+  function getAbilityModNumber(mods, key, abilityId) {
+    if (!mods || typeof mods !== "object") {
+      return 0;
+    }
+    const bucket = mods[key] && typeof mods[key] === "object" ? mods[key] : null;
+    if (!bucket) {
+      return 0;
+    }
+    const id = String(abilityId || "").trim();
+    if (!id) {
+      return 0;
+    }
+    const value = Number(bucket[id]) || 0;
+    return Number.isFinite(value) ? value : 0;
+  }
 
   function getEquipmentConfig() {
     const config = equipmentConfigProvider();
@@ -202,7 +230,7 @@ function createEquipmentTools(options = {}) {
 
   function pickBaseItemForLevel(slotId, itemLevel) {
     const config = getEquipmentConfig();
-    const candidates = (Array.isArray(config?.baseItems) ? config.baseItems : []).filter((entry) => entry.slot === slotId);
+    const candidates = (Array.isArray(config?.baseItems) ? config.baseItems : []).filter((entry) => entry.slot === slotId && !entry.starterOnly);
     if (!candidates.length) {
       return null;
     }
@@ -260,6 +288,32 @@ function createEquipmentTools(options = {}) {
       parts.push(suffixText);
     }
     return parts.join(" ");
+  }
+
+  function createEquipmentEntryFromBaseItem(itemId, options = {}) {
+    const baseItem = getBaseItem(itemId);
+    if (!baseItem) {
+      return null;
+    }
+    const requestedLevel = Math.floor(Number(options.itemLevel) || baseItem.itemLevelRange[0] || 1);
+    const itemLevel = clamp(requestedLevel, baseItem.itemLevelRange[0], baseItem.itemLevelRange[1]);
+    const rarityId = String(options.rarity || "normal").trim() || "normal";
+    return {
+      itemId: baseItem.id,
+      qty: 1,
+      instanceId: String(allocateItemInstanceId()),
+      name: String(options.name || baseItem.name),
+      rarity: rarityId,
+      slot: baseItem.slot,
+      weaponClass: baseItem.weaponClass,
+      itemLevel,
+      isEquipment: true,
+      tags: Array.isArray(baseItem.tags) ? [...baseItem.tags] : [],
+      baseStats: { ...baseItem.baseStats },
+      affixes: [],
+      prefixes: [],
+      suffixes: []
+    };
   }
 
   function rollEquipmentItemAt(x, y) {
@@ -369,27 +423,33 @@ function createEquipmentTools(options = {}) {
     const baseArmor = Math.max(0, getEquippedBaseStatTotal(player, "armor"));
     const armorPercent = getEquippedStatTotal(player, "armor.percent");
     const baseBlockChance = Math.max(0, getEquippedBaseStatTotal(player, "blockChance"));
+    const talentStats = getTalentStats(player);
+    const talentBuffStats = typeof tools.getTalentBuffStats === "function" ? tools.getTalentBuffStats(player) : {};
     return {
-      maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat"),
-      maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent"),
-      maxManaFlat: getEquippedStatTotal(player, "maxMana.flat"),
-      maxManaPercent: getEquippedStatTotal(player, "maxMana.percent"),
-      healthRegenFlat: getEquippedStatTotal(player, "healthRegen.flat"),
-      healthRegenPercent: getEquippedStatTotal(player, "healthRegen.percent"),
-      manaRegenFlat: getEquippedStatTotal(player, "manaRegen.flat"),
-      manaRegenPercent: getEquippedStatTotal(player, "manaRegen.percent"),
-      moveSpeedPercent: getEquippedStatTotal(player, "moveSpeed.percent"),
-      critChancePercent: getEquippedStatTotal(player, "critChance.percent"),
-      critDamagePercent: getEquippedStatTotal(player, "critDamage.percent"),
-      lifeStealPercent: getEquippedStatTotal(player, "lifeSteal.percent"),
-      manaStealPercent: getEquippedStatTotal(player, "manaSteal.percent"),
-      lifeOnKillFlat: getEquippedStatTotal(player, "lifeOnKill.flat"),
-      manaOnKillFlat: getEquippedStatTotal(player, "manaOnKill.flat"),
-      thornsFlat: getEquippedStatTotal(player, "thorns.flat"),
-      attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent"),
-      castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent"),
-      armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))),
-      blockChance: clamp(baseBlockChance, 0, 0.75)
+      maxHealthFlat: getEquippedStatTotal(player, "maxHealth.flat") + (talentStats["maxHp.flat"] || 0),
+      maxHealthPercent: getEquippedStatTotal(player, "maxHealth.percent") + (talentStats["maxHp.percent"] || 0),
+      maxManaFlat: getEquippedStatTotal(player, "maxMana.flat") + (talentStats["maxMana.flat"] || 0),
+      maxManaPercent: getEquippedStatTotal(player, "maxMana.percent") + (talentStats["maxMana.percent"] || 0),
+      healthRegenFlat: getEquippedStatTotal(player, "healthRegen.flat") + (talentStats["healthRegen.flat"] || 0),
+      healthRegenPercent: getEquippedStatTotal(player, "healthRegen.percent") + (talentStats["healthRegen.percent"] || 0),
+      manaRegenFlat: getEquippedStatTotal(player, "manaRegen.flat") + (talentStats["manaRegen.flat"] || 0),
+      manaRegenPercent: getEquippedStatTotal(player, "manaRegen.percent") + (talentStats["manaRegen.percent"] || 0),
+      moveSpeedPercent: getEquippedStatTotal(player, "moveSpeed.percent") + (talentStats["moveSpeed.percent"] || 0),
+      critChancePercent: getEquippedStatTotal(player, "critChance.percent") + (talentStats["critChance.percent"] || 0),
+      critDamagePercent: getEquippedStatTotal(player, "critDamage.percent") + (talentStats["critDamage.percent"] || 0),
+      lifeStealPercent: getEquippedStatTotal(player, "lifeSteal.percent") + (talentStats["lifeSteal.percent"] || 0),
+      manaStealPercent: getEquippedStatTotal(player, "manaSteal.percent") + (talentStats["manaSteal.percent"] || 0),
+      lifeOnKillFlat: getEquippedStatTotal(player, "lifeOnKill.flat") + (talentStats["lifeOnKill.flat"] || 0),
+      manaOnKillFlat: getEquippedStatTotal(player, "manaOnKill.flat") + (talentStats["manaOnKill.flat"] || 0),
+      thornsFlat: getEquippedStatTotal(player, "thorns.flat") + (talentStats["thorns.flat"] || 0),
+      attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent") + (talentStats["attackSpeed.percent"] || 0) + (Number(player && player.buffAttackSpeedPercent) || 0),
+      castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent") + (talentStats["castSpeed.percent"] || 0) + (Number(player && player.buffCastSpeedPercent) || 0),
+      armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))) + Math.round(talentStats["armor.flat"] || 0),
+      blockChance: clamp(baseBlockChance, 0, 0.75),
+      meleeDamagePercent: getEquippedStatTotal(player, "meleeDamage.percent") + (talentStats["meleeDamage.percent"] || 0) + (talentBuffStats["meleeDamage.percent"] || 0) + (Number(player && player.buffMeleeDamagePercent) || 0),
+      spellPower: getEquippedStatTotal(player, "spellPower.flat") + (talentStats["spellPower.flat"] || 0),
+      damageReductionPercent: (talentStats["damageReduction.percent"] || 0) + (talentBuffStats["damageReduction.percent"] || 0),
+      conditionalDamageReductionPercent: (talentStats["conditionalDamageReductionPercent"] || 0) + (talentBuffStats["conditionalDamageReductionPercent"] || 0)
     };
   }
 
@@ -460,12 +520,21 @@ function createEquipmentTools(options = {}) {
   function getPlayerModifiedAbilityDamageRange(player, abilityDef, abilityLevel) {
     const baseRange = getAbilityDamageRange(abilityDef, abilityLevel);
     const school = inferAbilitySchool(abilityDef);
+    const tags = inferAbilityTags(abilityDef);
     let percentBonus = getEquippedStatTotal(player, "damage.global.percent");
+    percentBonus += Number(player && player.buffDamageGlobalPercent) || 0;
     if (school) {
       percentBonus += getEquippedStatTotal(player, `damageSchool.${school}.percent`);
     }
-    for (const tag of inferAbilityTags(abilityDef)) {
+    for (const tag of tags) {
       percentBonus += getEquippedStatTotal(player, `spellTag.${tag}.damagePercent`);
+    }
+    if (tags.includes("melee")) {
+      percentBonus += Math.max(0, Number(player && player.meleeDamageBonusPercent) || 0);
+    }
+    if (player && abilityDef) {
+      const mods = getTalentAbilityMods(player);
+      percentBonus += getAbilityModNumber(mods, "damageBonusPercent", abilityDef.id);
     }
     const flatMin = school ? getEquippedStatTotal(player, `damage.${school}.flatMin`) : 0;
     const flatMax = school ? getEquippedStatTotal(player, `damage.${school}.flatMax`) : 0;
@@ -476,11 +545,16 @@ function createEquipmentTools(options = {}) {
     const baseRange = getAbilityDotDamageRange(abilityDef, abilityLevel);
     const school = inferAbilitySchool(abilityDef, abilityDef && abilityDef.dotSchool);
     let percentBonus = getEquippedStatTotal(player, "damage.global.percent");
+    percentBonus += Number(player && player.buffDamageGlobalPercent) || 0;
     if (school) {
       percentBonus += getEquippedStatTotal(player, `damageSchool.${school}.percent`);
     }
     for (const tag of inferAbilityTags(abilityDef)) {
       percentBonus += getEquippedStatTotal(player, `spellTag.${tag}.damagePercent`);
+    }
+    if (player && abilityDef) {
+      const mods = getTalentAbilityMods(player);
+      percentBonus += getAbilityModNumber(mods, "damageBonusPercent", abilityDef.id);
     }
     return applyDamageBonusesToRange(baseRange, percentBonus, 0, 0);
   }
@@ -490,6 +564,22 @@ function createEquipmentTools(options = {}) {
       jumpCountBonus: getPlayerAbilityModifierTotal(player, abilityDef, "jumpCount"),
       jumpDamageReductionPercent: getPlayerAbilityModifierTotal(player, abilityDef, "jumpDamageReductionPercent")
     };
+  }
+
+  function getPlayerModifiedAbilityRangeForLevel(player, abilityDef, abilityLevel, getBaseRangeForLevel) {
+    const baseRange = Math.max(
+      0,
+      typeof getBaseRangeForLevel === "function" ? Number(getBaseRangeForLevel(abilityDef, abilityLevel)) || 0 : 0
+    );
+    if (!player || !abilityDef || baseRange <= 0) {
+      return baseRange;
+    }
+    const mods = getTalentAbilityMods(player);
+    const bonus = getAbilityModNumber(mods, "rangeBonus", abilityDef.id);
+    if (bonus === 0) {
+      return baseRange;
+    }
+    return Math.max(0, baseRange + bonus);
   }
 
   function recomputePlayerDerivedStats(player) {
@@ -511,7 +601,11 @@ function createEquipmentTools(options = {}) {
     );
     const nextHealthRegen = Math.max(
       0,
-      (Math.max(0, Number(player.baseHealthRegen) || 0) + derived.healthRegenFlat) * (1 + derived.healthRegenPercent / 100)
+      (
+        Math.max(0, Number(player.baseHealthRegen) || 0) +
+        derived.healthRegenFlat +
+        Math.max(0, Number(player.buffHealthRegenFlat) || 0)
+      ) * (1 + derived.healthRegenPercent / 100)
     );
     const nextManaRegen = Math.max(
       0,
@@ -540,6 +634,15 @@ function createEquipmentTools(options = {}) {
     player.thorns = Math.max(0, derived.thornsFlat);
     player.attackSpeedMultiplier = Math.max(0.1, 1 + derived.attackSpeedPercent / 100);
     player.castSpeedMultiplier = Math.max(0.1, 1 + derived.castSpeedPercent / 100);
+    player.meleeDamageBonusPercent = Math.max(0, derived.meleeDamagePercent);
+    player.spellPower = Math.max(0, derived.spellPower);
+
+    // Handle conditional talent effects (e.g., damage reduction when HP below 30%)
+    const hpPercent = player.hp / Math.max(1, player.maxHp);
+    player.damageReductionPercent = Math.max(0, derived.damageReductionPercent || 0);
+    if (hpPercent < 0.3 && derived.conditionalDamageReductionPercent) {
+      player.damageReductionPercent += derived.conditionalDamageReductionPercent;
+    }
   }
 
   function getPlayerModifiedAbilityCooldownMs(player, abilityDef, abilityLevel, getBaseCooldownMs) {
@@ -550,11 +653,21 @@ function createEquipmentTools(options = {}) {
     if (!player || !abilityDef || baseCooldownMs <= 0) {
       return baseCooldownMs;
     }
+    let modified = baseCooldownMs;
     const kind = String(abilityDef.kind || "").trim().toLowerCase();
     if (kind !== "meleecone") {
-      return baseCooldownMs;
+      modified = baseCooldownMs;
+    } else {
+      modified = Math.max(0, Math.round(baseCooldownMs / Math.max(0.1, Number(player.attackSpeedMultiplier) || 1)));
     }
-    return Math.max(0, Math.round(baseCooldownMs / Math.max(0.1, Number(player.attackSpeedMultiplier) || 1)));
+
+    const mods = getTalentAbilityMods(player);
+    const reductionMs = getAbilityModNumber(mods, "cooldownReductionMs", abilityDef.id);
+    if (reductionMs > 0) {
+      modified = Math.max(0, modified - Math.round(reductionMs));
+    }
+
+    return modified;
   }
 
   function getPlayerModifiedAbilityCastMs(player, abilityDef) {
@@ -641,23 +754,26 @@ function createEquipmentTools(options = {}) {
     return true;
   }
 
-  return {
+  return Object.assign(tools, {
     cloneItemEntry,
     createEmptyEquipmentSlots,
+    createEquipmentEntryFromBaseItem,
     isEquipmentItemId,
     isEquipmentEntry,
+    rollEquipmentItemAt,
     rollEquipmentDropsAt,
     getEquippedBaseStatTotal,
     getEquippedStatTotal,
     getPlayerModifiedAbilityDamageRange,
     getPlayerModifiedAbilityDotDamageRange,
     getPlayerModifiedAbilityChainStats,
+    getPlayerModifiedAbilityRangeForLevel,
     getPlayerModifiedAbilityCooldownMs,
     getPlayerModifiedAbilityCastMs,
     recomputePlayerDerivedStats,
     equipInventoryItem,
     unequipEquipmentItem
-  };
+  });
 }
 
 module.exports = {

@@ -11,22 +11,35 @@ function createConfigOrchestrator({
     if (!mob || !mobDef) {
       return false;
     }
-    const wasAlive = !!mob.alive;
-    const oldMaxHp = Math.max(1, Math.floor(Number(mob.maxHp) || 1));
-    const oldHp = Math.max(0, Number(mob.hp) || 0);
-    const hpRatio = oldMaxHp > 0 ? constants.clamp(oldHp / oldMaxHp, 0, 1) : 1;
+    const distanceFromCenter = Number(mob.distanceFromCenter) || Math.hypot(
+      (Number(mob.x) || constants.mapWidth * 0.5) - constants.mapWidth * 0.5,
+      (Number(mob.y) || constants.mapHeight * 0.5) - constants.mapHeight * 0.5
+    );
+    const level =
+      Number(mob.level) > 0
+        ? Math.floor(Number(mob.level))
+        : typeof runtime.getMobLevelForDistance === "function"
+          ? runtime.getMobLevelForDistance(distanceFromCenter)
+          : 1;
 
-    mob.maxHp = constants.clamp(Math.floor(Number(mobDef.health) || 1), 1, 255);
-    if (wasAlive) {
-      const scaledHp = Math.round(hpRatio * mob.maxHp);
-      mob.hp = constants.clamp(scaledHp, 1, mob.maxHp);
+    if (typeof runtime.applyScaledStatsToMob === "function") {
+      runtime.applyScaledStatsToMob(mob, mobDef, level, { keepHpRatio: true });
     } else {
-      mob.hp = 0;
+      const wasAlive = !!mob.alive;
+      const oldMaxHp = Math.max(1, Math.floor(Number(mob.maxHp) || 1));
+      const oldHp = Math.max(0, Number(mob.hp) || 0);
+      const hpRatio = oldMaxHp > 0 ? constants.clamp(oldHp / oldMaxHp, 0, 1) : 1;
+      mob.maxHp = constants.clamp(Math.floor(Number(mobDef.health) || 1), 1, 65535);
+      mob.hp = wasAlive ? constants.clamp(Math.round(hpRatio * mob.maxHp), 1, mob.maxHp) : 0;
+      mob.baseSpeed = constants.clamp(Number(mobDef.baseSpeed) || 0.5, 0.05, 1000);
+      mob.damageMin = constants.clamp(Math.floor(Number(mobDef.damageMin) || 0), 0, 65535);
+      mob.damageMax = constants.clamp(
+        Math.floor(Number(mobDef.damageMax) || mob.damageMin),
+        mob.damageMin,
+        65535
+      );
     }
 
-    mob.baseSpeed = constants.clamp(Number(mobDef.baseSpeed) || 0.5, 0.05, 20);
-    mob.damageMin = constants.clamp(Math.floor(Number(mobDef.damageMin) || 0), 0, 255);
-    mob.damageMax = constants.clamp(Math.floor(Number(mobDef.damageMax) || mob.damageMin), mob.damageMin, 255);
     mob.respawnMinMs = Math.max(1000, Math.floor(Number(mobDef.respawnMinMs) || 1000));
     mob.respawnMaxMs = Math.max(mob.respawnMinMs, Math.floor(Number(mobDef.respawnMaxMs) || mob.respawnMinMs));
     mob.dropRules = Array.isArray(mobDef.dropRules) ? mobDef.dropRules.map((entry) => ({ ...entry })) : [];

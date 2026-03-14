@@ -34,10 +34,12 @@ const {
   MOB_EFFECT_FLAG_SLOW,
   MOB_EFFECT_FLAG_REMOVE,
   MOB_EFFECT_FLAG_BURN,
+  MOB_EFFECT_FLAG_BLOOD_WRATH,
   CAST_EVENT_KIND_PLAYER,
   CAST_EVENT_KIND_MOB,
   CAST_EVENT_KIND_SELF,
   CAST_EVENT_FLAG_ACTIVE,
+  CAST_EVENT_FLAG_CHARGE,
   AREA_EFFECT_OP_UPSERT,
   AREA_EFFECT_OP_REMOVE,
   AREA_EFFECT_KIND_AREA,
@@ -155,6 +157,7 @@ function encodeMobMetaPacket(mobsMeta) {
 
   for (const meta of mobsMeta) {
     const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
+    const level = clamp(Math.floor(Number(meta && meta.level) || 1), 1, 65535);
     const nameBytesRaw = Buffer.from(String((meta && meta.name) || "Mob"), "utf8");
     const nameBytes = nameBytesRaw.length > 255 ? nameBytesRaw.subarray(0, 255) : nameBytesRaw;
 
@@ -169,10 +172,11 @@ function encodeMobMetaPacket(mobsMeta) {
     const styleBytesRaw = Buffer.from(styleString, "utf8");
     const styleBytes = styleBytesRaw.length > 65535 ? styleBytesRaw.subarray(0, 65535) : styleBytesRaw;
 
-    const recordHeader = Buffer.alloc(4);
+    const recordHeader = Buffer.alloc(6);
     recordHeader.writeUInt8(id, 0);
     recordHeader.writeUInt8(nameBytes.length, 1);
-    recordHeader.writeUInt16LE(styleBytes.length, 2);
+    recordHeader.writeUInt16LE(level, 2);
+    recordHeader.writeUInt16LE(styleBytes.length, 4);
     parts.push(recordHeader);
     if (nameBytes.length) {
       parts.push(nameBytes);
@@ -215,18 +219,33 @@ function encodePlayerMetaPacket(playersMeta) {
     const id = clamp(Math.floor(Number(meta && meta.id) || 0), 0, 255);
     const nameBytesRaw = Buffer.from(String((meta && meta.name) || `P${id}`), "utf8");
     const classBytesRaw = Buffer.from(String((meta && meta.classType) || ""), "utf8");
+    let appearanceJson = "";
+    if (meta && meta.appearance && typeof meta.appearance === "object") {
+      try {
+        appearanceJson = JSON.stringify(meta.appearance);
+      } catch (_error) {
+        appearanceJson = "";
+      }
+    }
+    const appearanceBytesRaw = Buffer.from(appearanceJson, "utf8");
     const nameBytes = nameBytesRaw.length > 255 ? nameBytesRaw.subarray(0, 255) : nameBytesRaw;
     const classBytes = classBytesRaw.length > 255 ? classBytesRaw.subarray(0, 255) : classBytesRaw;
-    const recordHeader = Buffer.alloc(3);
+    const appearanceBytes =
+      appearanceBytesRaw.length > 65535 ? appearanceBytesRaw.subarray(0, 65535) : appearanceBytesRaw;
+    const recordHeader = Buffer.alloc(5);
     recordHeader.writeUInt8(id, 0);
     recordHeader.writeUInt8(nameBytes.length, 1);
     recordHeader.writeUInt8(classBytes.length, 2);
+    recordHeader.writeUInt16LE(appearanceBytes.length, 3);
     parts.push(recordHeader);
     if (nameBytes.length) {
       parts.push(nameBytes);
     }
     if (classBytes.length) {
       parts.push(classBytes);
+    }
+    if (appearanceBytes.length) {
+      parts.push(appearanceBytes);
     }
   }
 
@@ -287,13 +306,24 @@ function encodePlayerSwingPacket(events) {
 }
 
 function getCastRecordSize(record) {
-  return record && record.active ? 11 : 3;
+  const isCharge = record && record.isCharge;
+  if (!record || !record.active) {
+    return 3;
+  }
+  return isCharge ? 19 : 11;
 }
 
 function writeCastRecord(buffer, offset, record, kind) {
+  const isCharge = record && record.isCharge;
+  let flags = record && record.active ? CAST_EVENT_FLAG_ACTIVE : 0;
+  if (isCharge) {
+    flags |= CAST_EVENT_FLAG_CHARGE;
+  }
+
   buffer.writeUInt8(clamp(kind, 0, 255), offset);
   buffer.writeUInt8(clamp(Math.floor(Number(record && record.id) || 0), 0, 255), offset + 1);
-  buffer.writeUInt8(record && record.active ? CAST_EVENT_FLAG_ACTIVE : 0, offset + 2);
+  buffer.writeUInt8(flags, offset + 2);
+
   if (!(record && record.active)) {
     return offset + 3;
   }
@@ -301,6 +331,16 @@ function writeCastRecord(buffer, offset, record, kind) {
   buffer.writeUInt32LE(hashString32(String(record.abilityId || "").trim().toLowerCase()), offset + 3);
   buffer.writeUInt16LE(clamp(Math.floor(Number(record.durationMs) || 0), 1, 65535), offset + 7);
   buffer.writeUInt16LE(clamp(Math.floor(Number(record.elapsedMs) || 0), 0, 65535), offset + 9);
+
+  if (isCharge) {
+    // Add charge-specific data: startX, startY, targetX, targetY (each 2 bytes quantized)
+    buffer.writeUInt16LE(quantizePos(record.chargeStartX || 0), offset + 11);
+    buffer.writeUInt16LE(quantizePos(record.chargeStartY || 0), offset + 13);
+    buffer.writeUInt16LE(quantizePos(record.chargeTargetX || 0), offset + 15);
+    buffer.writeUInt16LE(quantizePos(record.chargeTargetY || 0), offset + 17);
+    return offset + 19;
+  }
+
   return offset + 11;
 }
 
@@ -351,6 +391,9 @@ function getEffectPayloadFlags(effect) {
   if ((Number(effect && effect.burningMs) || 0) > 0) {
     flags |= MOB_EFFECT_FLAG_BURN;
   }
+  if ((Number(effect && effect.bloodWrathMs) || 0) > 0) {
+    flags |= MOB_EFFECT_FLAG_BLOOD_WRATH;
+  }
   return flags;
 }
 
@@ -364,6 +407,9 @@ function getEffectPayloadSize(flags) {
   }
   if (flags & MOB_EFFECT_FLAG_BURN) {
     size += 4;
+  }
+  if (flags & MOB_EFFECT_FLAG_BLOOD_WRATH) {
+    size += 2;
   }
   return size;
 }
@@ -391,6 +437,11 @@ function writeEffectPayload(buffer, offset, flags, effect) {
     buffer.writeUInt16LE(burningMs, offset);
     buffer.writeUInt16LE(burnDurationMs, offset + 2);
     offset += 4;
+  }
+  if (flags & MOB_EFFECT_FLAG_BLOOD_WRATH) {
+    const bloodWrathMs = clamp(Math.floor(Number(effect.bloodWrathMs) || 0), 1, 65535);
+    buffer.writeUInt16LE(bloodWrathMs, offset);
+    offset += 2;
   }
   return offset;
 }
@@ -518,19 +569,19 @@ function encodeDamageEventPacket(events) {
   header.writeUInt8(DAMAGE_EVENT_PROTO_VERSION, 1);
   header.writeUInt16LE(events.length, 2);
 
-  const recordSize = 6;
+  const recordSize = 7;
   const body = Buffer.alloc(events.length * recordSize);
   let offset = 0;
   for (const event of events) {
     const xQ = quantizePos(Number(event && event.x));
     const yQ = quantizePos(Number(event && event.y));
-    const amount = clamp(Math.floor(Number(event && event.amount) || 0), 0, 255);
+    const amount = clamp(Math.floor(Number(event && event.amount) || 0), 0, 65535);
     const flags = encodeDamageEventFlags(event && event.targetType, event && event.fromSelf);
 
     body.writeUInt16LE(xQ, offset);
     body.writeUInt16LE(yQ, offset + 2);
-    body.writeUInt8(amount, offset + 4);
-    body.writeUInt8(flags, offset + 5);
+    body.writeUInt16LE(amount, offset + 4);
+    body.writeUInt8(flags, offset + 6);
     offset += recordSize;
   }
 

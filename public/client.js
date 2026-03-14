@@ -3,6 +3,13 @@ const joinForm = document.getElementById("join-form");
 const gameUI = document.getElementById("game-ui");
 const statusEl = document.getElementById("status");
 const canvas = document.getElementById("game");
+const mobileJoystick = document.getElementById("mobile-joystick");
+const mobileJoystickBase = document.getElementById("mobile-joystick-base");
+const mobileJoystickKnob = document.getElementById("mobile-joystick-knob");
+const chatPanel = document.getElementById("chat-panel");
+const chatMessages = document.getElementById("chat-messages");
+const chatInput = document.getElementById("chat-input");
+const chatSendButton = document.getElementById("chat-send");
 const ctx = canvas.getContext("2d");
 const hudName = document.getElementById("hud-name");
 const hudClass = document.getElementById("hud-class");
@@ -10,6 +17,7 @@ const hudPos = document.getElementById("hud-pos");
 const classTypeSelect = document.getElementById("classType");
 const actionUi = document.getElementById("action-ui");
 const resourceBars = document.getElementById("resource-bars");
+const buffIcons = document.getElementById("buff-icons");
 const debuffIcons = document.getElementById("debuff-icons");
 const hpPredictFill = document.getElementById("hp-predict-fill");
 const hpFill = document.getElementById("hp-fill");
@@ -21,6 +29,19 @@ const expFill = document.getElementById("exp-fill");
 const expText = document.getElementById("exp-text");
 const spellbookPanel = document.getElementById("spellbook-panel");
 const spellbookGrid = document.getElementById("spellbook-grid");
+const spellbookSummary = (() => {
+  if (!spellbookPanel || !spellbookGrid) {
+    return null;
+  }
+  const summary = document.createElement("div");
+  summary.id = "spellbook-summary";
+  spellbookPanel.insertBefore(summary, spellbookGrid);
+  return summary;
+})();
+const talentPanel = document.getElementById("talent-panel");
+const talentTreeContainer = document.getElementById("talent-tree-container");
+const talentPointsDisplay = document.getElementById("talent-points-display");
+const talentPointsAvailableEl = document.getElementById("talent-points-available");
 const actionBar = document.getElementById("action-bar");
 const inventoryPanel = document.getElementById("inventory-panel");
 const inventoryGrid = document.getElementById("inventory-grid");
@@ -33,10 +54,19 @@ const equipmentPanel = document.getElementById("equipment-panel");
 const equipmentGrid = document.getElementById("equipment-grid");
 const debugPanel = document.getElementById("debug-panel");
 const debugNet = document.getElementById("debug-net");
+const debugRendererSelect = document.getElementById("debug-renderer-select");
+const debugRendererApplyButton = document.getElementById("debug-renderer-apply");
 const debugAdminControls = document.getElementById("debug-admin-controls");
 const debugBotClassSelect = document.getElementById("debug-bot-class");
 const debugCreateBotButton = document.getElementById("debug-create-bot");
 const debugToggleBotListButton = document.getElementById("debug-toggle-bot-list");
+const debugToggleGearLabButton = document.getElementById("debug-toggle-gear-lab");
+const debugGearPanel = document.getElementById("debug-gear-panel");
+const debugGearPreviewLayout = document.getElementById("debug-gear-preview-layout");
+const debugGearPreviewCanvas = document.getElementById("debug-gear-preview-canvas");
+const debugGearControls = document.getElementById("debug-gear-controls");
+const debugGearRerollAffixesButton = document.getElementById("debug-gear-reroll-affixes");
+const debugGearCloseButton = document.getElementById("debug-gear-close");
 const botListPanel = document.getElementById("bot-list-panel");
 const botListEntries = document.getElementById("bot-list-entries");
 const botInspectDetails = document.getElementById("bot-inspect-details");
@@ -44,17 +74,118 @@ const botContextMenu = document.getElementById("bot-context-menu");
 const dpsPanel = document.getElementById("dps-panel");
 const dpsTabs = document.getElementById("dps-tabs");
 const dpsValue = document.getElementById("dps-value");
+const mobileUiElements = (() => {
+  const utilityBar = document.createElement("div");
+  utilityBar.id = "mobile-utility-bar";
+
+  const lootButton = document.createElement("button");
+  lootButton.id = "mobile-loot-button";
+  lootButton.type = "button";
+  lootButton.className = "mobile-utility-button hidden";
+  lootButton.textContent = "Loot";
+
+  const editButton = document.createElement("button");
+  editButton.id = "mobile-action-edit-button";
+  editButton.type = "button";
+  editButton.className = "mobile-utility-button";
+  editButton.textContent = "Edit";
+
+  const vendorButton = document.createElement("button");
+  vendorButton.id = "mobile-vendor-button";
+  vendorButton.type = "button";
+  vendorButton.className = "mobile-utility-button hidden";
+  vendorButton.textContent = "Sell";
+
+  const skillsButton = document.createElement("button");
+  skillsButton.id = "mobile-skills-button";
+  skillsButton.type = "button";
+  skillsButton.className = "mobile-utility-button";
+  skillsButton.textContent = "Skills";
+
+  const bagButton = document.createElement("button");
+  bagButton.id = "mobile-bag-button";
+  bagButton.type = "button";
+  bagButton.className = "mobile-utility-button";
+  bagButton.textContent = "Bag";
+
+  utilityBar.appendChild(lootButton);
+  utilityBar.appendChild(editButton);
+  utilityBar.appendChild(vendorButton);
+  utilityBar.appendChild(skillsButton);
+  utilityBar.appendChild(bagButton);
+  if (actionUi) {
+    actionUi.insertBefore(utilityBar, actionUi.firstChild);
+  }
+
+  const panelTabs = document.createElement("div");
+  panelTabs.id = "mobile-panel-tabs";
+  panelTabs.className = "hidden";
+
+  const inventoryTabButton = document.createElement("button");
+  inventoryTabButton.type = "button";
+  inventoryTabButton.className = "mobile-panel-tab";
+  inventoryTabButton.dataset.tab = "inventory";
+  inventoryTabButton.textContent = "Inventory";
+
+  const equipmentTabButton = document.createElement("button");
+  equipmentTabButton.type = "button";
+  equipmentTabButton.className = "mobile-panel-tab";
+  equipmentTabButton.dataset.tab = "equipment";
+  equipmentTabButton.textContent = "Character";
+
+  const spellbookTabButton = document.createElement("button");
+  spellbookTabButton.type = "button";
+  spellbookTabButton.className = "mobile-panel-tab";
+  spellbookTabButton.dataset.tab = "spellbook";
+  spellbookTabButton.textContent = "Skills";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "mobile-panel-close";
+  closeButton.textContent = "Close";
+
+  panelTabs.appendChild(inventoryTabButton);
+  panelTabs.appendChild(equipmentTabButton);
+  panelTabs.appendChild(spellbookTabButton);
+  panelTabs.appendChild(closeButton);
+
+  return {
+    utilityBar,
+    lootButton,
+    editButton,
+    vendorButton,
+    skillsButton,
+    bagButton,
+    panelTabs,
+    inventoryTabButton,
+    equipmentTabButton,
+    spellbookTabButton,
+    closeButton
+  };
+})();
+const mobileUtilityBar = mobileUiElements.utilityBar;
+const mobileLootButton = mobileUiElements.lootButton;
+const mobileActionEditButton = mobileUiElements.editButton;
+const mobileVendorButton = mobileUiElements.vendorButton;
+const mobileSkillsButton = mobileUiElements.skillsButton;
+const mobileBagButton = mobileUiElements.bagButton;
+const mobilePanelTabs = mobileUiElements.panelTabs;
+const mobileInventoryTabButton = mobileUiElements.inventoryTabButton;
+const mobileEquipmentTabButton = mobileUiElements.equipmentTabButton;
+const mobileSpellbookTabButton = mobileUiElements.spellbookTabButton;
+const mobilePanelCloseButton = mobileUiElements.closeButton;
 
 const TILE_SIZE = 32;
+const MOBILE_PORTRAIT_TARGET_VIEW_TILES_X = 19;
 const INTERPOLATION_DELAY_MS = 100;
 const MAX_SNAPSHOTS = 120;
 const TRAFFIC_WINDOW_MS = 10000;
 const MOB_RENDER_RADIUS = 12;
 const MOB_SPRITE_SIZE = 36;
 const DAMAGE_FLOAT_DURATION_MS = 850;
-const INVENTORY_SLOT_SIZE_PX = 50;
-const INVENTORY_SLOT_GAP_PX = 6;
-const INVENTORY_PANEL_PADDING_PX = 10;
+const INVENTORY_SLOT_SIZE_PX = 42;
+const INVENTORY_SLOT_GAP_PX = 4;
+const INVENTORY_PANEL_PADDING_PX = 8;
 const INVENTORY_PANEL_BORDER_PX = 1;
 const sharedAbilityNormalization = globalThis.VibeAbilityNormalization || null;
 const sharedCreateAbilityNormalizationTools =
@@ -130,6 +261,11 @@ const sharedParseMobRenderStyle =
   sharedMobRenderStyle && typeof sharedMobRenderStyle.parseMobRenderStyle === "function"
     ? sharedMobRenderStyle.parseMobRenderStyle
     : null;
+const sharedHumanoidStyle = globalThis.VibeHumanoidStyle || null;
+const sharedParseHumanoidRenderStyle =
+  sharedHumanoidStyle && typeof sharedHumanoidStyle.parseHumanoidRenderStyle === "function"
+    ? sharedHumanoidStyle.parseHumanoidRenderStyle
+    : null;
 const sharedNumberUtils = globalThis.VibeNumberUtils || null;
 const sharedClamp =
   sharedNumberUtils && typeof sharedNumberUtils.clamp === "function" ? sharedNumberUtils.clamp : null;
@@ -145,19 +281,19 @@ const sharedCreateParticleSystemTools =
     : null;
 const protocol = globalThis.VibeProtocol || {
   ENTITY_PROTO_TYPE: 1,
-  ENTITY_PROTO_VERSION: 7,
+  ENTITY_PROTO_VERSION: 8,
   MOB_EFFECT_PROTO_TYPE: 2,
   MOB_EFFECT_PROTO_VERSION: 1,
   AREA_EFFECT_PROTO_TYPE: 3,
   AREA_EFFECT_PROTO_VERSION: 2,
   MOB_META_PROTO_TYPE: 4,
-  MOB_META_PROTO_VERSION: 1,
+  MOB_META_PROTO_VERSION: 2,
   PROJECTILE_META_PROTO_TYPE: 5,
   PROJECTILE_META_PROTO_VERSION: 3,
   DAMAGE_EVENT_PROTO_TYPE: 6,
-  DAMAGE_EVENT_PROTO_VERSION: 1,
+  DAMAGE_EVENT_PROTO_VERSION: 2,
   PLAYER_META_PROTO_TYPE: 7,
-  PLAYER_META_PROTO_VERSION: 1,
+  PLAYER_META_PROTO_VERSION: 2,
   LOOTBAG_META_PROTO_TYPE: 8,
   LOOTBAG_META_PROTO_VERSION: 1,
   PLAYER_SWING_PROTO_TYPE: 9,
@@ -165,7 +301,7 @@ const protocol = globalThis.VibeProtocol || {
   CAST_EVENT_PROTO_TYPE: 10,
   CAST_EVENT_PROTO_VERSION: 1,
   PLAYER_EFFECT_PROTO_TYPE: 11,
-  PLAYER_EFFECT_PROTO_VERSION: 1,
+  PLAYER_EFFECT_PROTO_VERSION: 2,
   MOB_BITE_PROTO_TYPE: 12,
   MOB_BITE_PROTO_VERSION: 1,
   EXPLOSION_EVENT_PROTO_TYPE: 13,
@@ -184,6 +320,7 @@ const protocol = globalThis.VibeProtocol || {
   MOB_EFFECT_FLAG_SLOW: 1 << 1,
   MOB_EFFECT_FLAG_REMOVE: 1 << 2,
   MOB_EFFECT_FLAG_BURN: 1 << 3,
+  MOB_EFFECT_FLAG_BLOOD_WRATH: 1 << 4,
   AREA_EFFECT_OP_UPSERT: 1,
   AREA_EFFECT_OP_REMOVE: 2,
   AREA_EFFECT_KIND_AREA: 0,
@@ -246,6 +383,7 @@ const {
   MOB_EFFECT_FLAG_SLOW,
   MOB_EFFECT_FLAG_REMOVE,
   MOB_EFFECT_FLAG_BURN,
+  MOB_EFFECT_FLAG_BLOOD_WRATH,
   AREA_EFFECT_OP_UPSERT,
   AREA_EFFECT_OP_REMOVE,
   AREA_EFFECT_KIND_AREA,
@@ -308,6 +446,8 @@ const vfxIdState = {
 const gameState = {
   map: { width: 1000, height: 1000 },
   visibilityRange: 20,
+  visibilityRangeX: 20,
+  visibilityRangeY: 20,
   self: null,
   players: [],
   projectiles: [],
@@ -392,7 +532,8 @@ const abilityChannel = {
   targetY: 0,
   lastRetargetSentAt: 0,
   lastSentTargetX: NaN,
-  lastSentTargetY: NaN
+  lastSentTargetY: NaN,
+  trackPointer: false
 };
 const mouseState = {
   leftDown: false,
@@ -433,6 +574,8 @@ const ambientParticleEmitters = new Map();
 const actionSlotEls = new Map();
 const actionBindings = new Map();
 let actionBindingsClassType = null;
+let suppressActionBarClickUntil = 0;
+let actionBarTouchListenersBound = false;
 const classDefsById = new Map();
 const abilityDefsById = new Map();
 const abilityIdsByHash = new Map();
@@ -456,7 +599,12 @@ const inventoryState = {
 };
 const equipmentConfigState = {
   itemSlots: [],
-  itemRarities: {}
+  itemRarities: {},
+  debugBaseItems: [],
+  debugPrefixes: [],
+  debugSuffixes: [],
+  debugRarities: [],
+  maxItemLevel: 1
 };
 const equipmentState = {
   slots: {}
@@ -470,22 +618,55 @@ const DEFAULT_ITEM_RARITY_COLORS = Object.freeze({
   mythic: "#ff5fc8",
   divine: "#fff1b5"
 });
+const DEFAULT_DEBUG_RARITY_RULES = Object.freeze({
+  normal: Object.freeze({ prefixMin: 0, prefixMax: 0, suffixMin: 0, suffixMax: 0 }),
+  magic: Object.freeze({ prefixMin: 0, prefixMax: 1, suffixMin: 1, suffixMax: 1 }),
+  rare: Object.freeze({ prefixMin: 1, prefixMax: 2, suffixMin: 1, suffixMax: 2 }),
+  epic: Object.freeze({ prefixMin: 2, prefixMax: 3, suffixMin: 2, suffixMax: 3 }),
+  legendary: Object.freeze({ prefixMin: 3, prefixMax: 4, suffixMin: 3, suffixMax: 4 }),
+  mythic: Object.freeze({ prefixMin: 4, prefixMax: 5, suffixMin: 4, suffixMax: 5 }),
+  divine: Object.freeze({ prefixMin: 5, prefixMax: 6, suffixMin: 5, suffixMax: 6 })
+});
+const DEBUG_GEAR_FALLBACK_PREFIXES = Object.freeze([
+  { id: "debug_savage", name: "Savage", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "gloves", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damage.global.percent", rollMin: 3, rollMax: 12 }] },
+  { id: "debug_emberforged", name: "Emberforged", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.fire.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_frozen", name: "Frozen", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "head", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.frost.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_stormbound", name: "Stormbound", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "ring", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.lightning.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_arcane", name: "Arcane", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "head", "chest", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.arcane.percent", rollMin: 4, rollMax: 16 }] },
+  { id: "debug_guarded", name: "Guarded", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "bracers", "gloves", "pants", "boots", "belt", "offHand"], requiredItemTagsAny: [], modifiers: [{ stat: "armor.percent", rollMin: 4, rollMax: 18 }] },
+  { id: "debug_vigorous", name: "Vigorous", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "pants", "boots", "belt", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "maxHealth.flat", rollMin: 8, rollMax: 40 }] },
+  { id: "debug_mystic", name: "Mystic", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "pants", "boots", "belt", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "maxMana.flat", rollMin: 8, rollMax: 40 }] },
+  { id: "debug_swift", name: "Swift", minItemLevel: 1, allowedSlots: ["boots", "belt", "ring", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "moveSpeed.percent", rollMin: 2, rollMax: 10 }] },
+  { id: "debug_precise", name: "Precise", minItemLevel: 1, allowedSlots: ["mainHand", "gloves", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "critChance.percent", rollMin: 2, rollMax: 9 }] }
+]);
+const DEBUG_GEAR_FALLBACK_SUFFIXES = Object.freeze([
+  { id: "debug_of_mending", name: "of Mending", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "gloves", "bracers", "pants", "boots", "belt", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "healthRegen.flat", rollMin: 1, rollMax: 6 }] },
+  { id: "debug_of_insight", name: "of Insight", minItemLevel: 1, allowedSlots: ["head", "chest", "ring", "necklace", "trinket", "mainHand", "offHand"], requiredItemTagsAny: [], modifiers: [{ stat: "manaRegen.flat", rollMin: 1, rollMax: 6 }] },
+  { id: "debug_of_striking", name: "of Striking", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "gloves", "ring"], requiredItemTagsAny: [], modifiers: [{ stat: "damage.global.percent", rollMin: 2, rollMax: 10 }] },
+  { id: "debug_of_flames", name: "of Flames", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.fire.percent", rollMin: 3, rollMax: 14 }] },
+  { id: "debug_of_the_glacier", name: "of the Glacier", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.frost.percent", rollMin: 3, rollMax: 14 }] },
+  { id: "debug_of_storms", name: "of Storms", minItemLevel: 1, allowedSlots: ["mainHand", "offHand", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "damageSchool.lightning.percent", rollMin: 3, rollMax: 14 }] },
+  { id: "debug_of_the_fox", name: "of the Fox", minItemLevel: 1, allowedSlots: ["boots", "belt", "pants", "gloves", "ring"], requiredItemTagsAny: [], modifiers: [{ stat: "moveSpeed.percent", rollMin: 2, rollMax: 8 }] },
+  { id: "debug_of_the_barricade", name: "of the Barricade", minItemLevel: 1, allowedSlots: ["head", "chest", "shoulders", "bracers", "gloves", "pants", "boots", "belt", "offHand"], requiredItemTagsAny: [], modifiers: [{ stat: "blockChance.percent", rollMin: 1, rollMax: 6 }] },
+  { id: "debug_of_echoes", name: "of Echoes", minItemLevel: 1, allowedSlots: ["mainHand", "ring", "necklace", "trinket"], requiredItemTagsAny: [], modifiers: [{ stat: "castSpeed.percent", rollMin: 2, rollMax: 10 }] },
+  { id: "debug_of_haste", name: "of Haste", minItemLevel: 1, allowedSlots: ["mainHand", "gloves", "ring", "necklace"], requiredItemTagsAny: [], modifiers: [{ stat: "attackSpeed.percent", rollMin: 2, rollMax: 10 }] }
+]);
 const EQUIPMENT_SLOT_LAYOUT = Object.freeze({
-  head: { x: 50, y: 6, label: "Helm" },
-  shoulders: { x: 10, y: 16, label: "Shoulder" },
-  necklace: { x: 90, y: 16, label: "Amulet" },
-  chest: { x: 50, y: 34, label: "Chest" },
-  gloves: { x: 10, y: 38, label: "Gloves" },
-  bracers: { x: 90, y: 38, label: "Bracer" },
-  belt: { x: 50, y: 52, label: "Belt", kind: "belt" },
-  ring1: { x: 10, y: 57, label: "Ring 1" },
-  ring2: { x: 90, y: 57, label: "Ring 2" },
-  mainHand: { x: 10, y: 76, label: "Main Hand" },
-  offHand: { x: 90, y: 76, label: "Off Hand" },
-  pants: { x: 50, y: 73, label: "Pants" },
-  trinket1: { x: 10, y: 92, label: "Trinket 1" },
-  trinket2: { x: 90, y: 92, label: "Trinket 2" },
-  boots: { x: 50, y: 92, label: "Boots" }
+  head: { x: 50, y: 4, label: "Helm" },
+  shoulders: { x: 15, y: 12, label: "Shoulder" },
+  necklace: { x: 85, y: 12, label: "Amulet" },
+  chest: { x: 50, y: 26, label: "Chest" },
+  gloves: { x: 15, y: 30, label: "Gloves" },
+  bracers: { x: 85, y: 30, label: "Bracer" },
+  belt: { x: 50, y: 42, label: "Belt", kind: "belt" },
+  ring1: { x: 15, y: 46, label: "Ring 1" },
+  ring2: { x: 85, y: 46, label: "Ring 2" },
+  mainHand: { x: 15, y: 62, label: "Main Hand" },
+  offHand: { x: 85, y: 62, label: "Off Hand" },
+  pants: { x: 50, y: 58, label: "Pants" },
+  trinket1: { x: 15, y: 76, label: "Trinket 1" },
+  trinket2: { x: 85, y: 76, label: "Trinket 2" },
+  boots: { x: 50, y: 76, label: "Boots" }
 });
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
@@ -499,7 +680,8 @@ const debugState = {
   downEvents: [],
   upBytesWindow: 0,
   downBytesWindow: 0,
-  frameSamples: []
+  frameSamples: [],
+  totalMobCount: 0
 };
 const dpsState = {
   enabled: false,
@@ -522,14 +704,57 @@ const vendorInteractionState = {
   nextAttemptAt: 0,
   panelOpen: false
 };
+const touchJoystickState = {
+  active: false,
+  touchId: null,
+  originX: 0,
+  originY: 0,
+  currentX: 0,
+  currentY: 0,
+  vectorDx: 0,
+  vectorDy: 0,
+  radiusPx: 68,
+  deadzonePx: 10
+};
+const mobileAbilityAimState = {
+  active: false,
+  touchId: null,
+  slotId: "",
+  abilityId: "",
+  aimOriginClientX: 0,
+  aimOriginClientY: 0,
+  currentClientX: 0,
+  currentClientY: 0,
+  startClientX: 0,
+  startClientY: 0,
+  targetX: 0,
+  targetY: 0,
+  snappedTargetId: null,
+  snappedTargetKind: "",
+  radiusPx: 128,
+  deadzonePx: 14,
+  lastCastDirection: null,
+  pivotClientX: 0,
+  pivotClientY: 0
+};
+const debugGearState = {
+  visible: false,
+  slotStates: {},
+  previewClassType: "warrior"
+};
 const selfNegativeEffects = {
   stun: null,
   slow: null,
   burn: null
 };
+const selfPositiveEffects = {
+  bloodWrath: null
+};
+let selfPositiveBuffs = [];
 const remotePlayerStuns = new Map();
 const remotePlayerSlows = new Map();
 const remotePlayerBurns = new Map();
+const remotePlayerBloodWraths = new Map();
 const entityRuntime = {
   self: null,
   players: new Map(),
@@ -551,6 +776,37 @@ const lootPickupState = {
   x: 0,
   y: 0,
   nextAttemptAt: 0
+};
+const mobilePanelState = {
+  open: false,
+  activeTab: "inventory",
+  tooltipHideTimer: 0,
+  lootHoldTimer: 0,
+  lootHoldTriggered: false,
+  suppressLootClickUntil: 0,
+  suppressItemTapUntil: 0,
+  suppressAbilityTapUntil: 0
+};
+const mobileActionBarEditState = {
+  active: false,
+  selectedSlotId: "",
+  pendingAbilityId: ""
+};
+const mobileActionTouchState = {
+  active: false,
+  slotId: "",
+  touchId: null,
+  bindingKind: "",
+  bindingId: "",
+  editMode: false,
+  aimCapable: false,
+  startClientX: 0,
+  startClientY: 0,
+  currentClientX: 0,
+  currentClientY: 0,
+  holdTimerId: 0,
+  holdTriggered: false,
+  moveCanceled: false
 };
 const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
   maxParticles: 10,
@@ -701,6 +957,101 @@ function normalizeMobRenderStyle(rawStyle) {
   return Object.keys(style).length > 0 ? style : null;
 }
 
+function normalizeHumanoidRenderStyle(rawStyle) {
+  if (sharedParseHumanoidRenderStyle) {
+    return sharedParseHumanoidRenderStyle(rawStyle);
+  }
+  if (!rawStyle || typeof rawStyle !== "object") {
+    return null;
+  }
+
+  const style = {};
+  const stringFields = ["rigType", "species", "archetype", "spriteType", "attackVisual"];
+  for (const field of stringFields) {
+    const value = String(rawStyle[field] || "").trim().toLowerCase();
+    if (value) {
+      style[field] = value.slice(0, 32);
+    }
+  }
+
+  const numericFields = [
+    ["sizeScale", 0.5, 3],
+    ["walkCycleSpeed", 0.1, 10],
+    ["idleCycleSpeed", 0, 10],
+    ["moveThreshold", 0, 2],
+    ["attackAnimSpeed", 0.1, 4]
+  ];
+  for (const [field, min, max] of numericFields) {
+    const n = Number(rawStyle[field]);
+    if (Number.isFinite(n)) {
+      style[field] = clamp(n, min, max);
+    }
+  }
+
+  const defaults = {};
+  const rawDefaults = rawStyle.defaults && typeof rawStyle.defaults === "object" ? rawStyle.defaults : null;
+  if (rawDefaults) {
+    for (const key of ["head", "chest", "shoulders", "gloves", "bracers", "belt", "pants", "boots", "mainHand", "offHand"]) {
+      const value = String(rawDefaults[key] || "").trim().toLowerCase();
+      if (value) {
+        defaults[key] = value.slice(0, 32);
+      }
+    }
+  }
+  if (Object.keys(defaults).length) {
+    style.defaults = defaults;
+  }
+
+  const rawPalette = rawStyle.palette && typeof rawStyle.palette === "object" ? rawStyle.palette : null;
+  if (rawPalette) {
+    const palette = {};
+    for (const [rawKey, rawValue] of Object.entries(rawPalette)) {
+      const key = String(rawKey || "").trim().slice(0, 48);
+      const color = sanitizeCssColor(rawValue);
+      if (!key || !color) {
+        continue;
+      }
+      palette[key] = color;
+    }
+    if (Object.keys(palette).length) {
+      style.palette = palette;
+    }
+  }
+
+  return Object.keys(style).length ? style : null;
+}
+
+function getClassRenderStyle(classType) {
+  const classDef = classDefsById.get(String(classType || "").trim());
+  return classDef && classDef.renderStyle && typeof classDef.renderStyle === "object" ? classDef.renderStyle : null;
+}
+
+function getPlayerVisualEquipment(player, isSelf) {
+  if (isSelf) {
+    return equipmentState.slots && typeof equipmentState.slots === "object" ? equipmentState.slots : {};
+  }
+  const meta = entityRuntime.playerMeta.get(Number(player && player.id));
+  if (meta && meta.appearance && typeof meta.appearance === "object") {
+    return meta.appearance;
+  }
+  return player && player.appearance && typeof player.appearance === "object" ? player.appearance : {};
+}
+
+const sharedClientRenderHumanoids = globalThis.VibeClientRenderHumanoids || null;
+const sharedCreateHumanoidRenderTools =
+  sharedClientRenderHumanoids && typeof sharedClientRenderHumanoids.createHumanoidRenderTools === "function"
+    ? sharedClientRenderHumanoids.createHumanoidRenderTools
+    : null;
+const humanoidRenderTools = sharedCreateHumanoidRenderTools
+  ? sharedCreateHumanoidRenderTools({
+      ctx,
+      clamp,
+      lerp,
+      hashString,
+      sanitizeCssColor
+    })
+  : null;
+
 const sharedClientRenderMobs = globalThis.VibeClientRenderMobs || null;
 const sharedCreateMobRenderTools =
   sharedClientRenderMobs && typeof sharedClientRenderMobs.createMobRenderTools === "function"
@@ -722,7 +1073,11 @@ const mobRenderTools = sharedCreateMobRenderTools
       getSpiderWalkSprite,
       getOrcWalkSprite,
       getSkeletonWalkSprite,
-      getSkeletonArcherWalkSprite
+      getSkeletonArcherWalkSprite,
+      humanoidRenderTools,
+      remoteMobCasts,
+      getCastProgress,
+      getCurrentSelf
     })
   : null;
 const sharedClientRenderPlayers = globalThis.VibeClientRenderPlayers || null;
@@ -741,13 +1096,23 @@ const playerRenderTools = sharedCreatePlayerRenderTools
       remotePlayerCasts,
       getCastProgress,
       selfNegativeEffects,
+      selfPositiveEffects,
       remotePlayerStuns,
       remotePlayerSlows,
       remotePlayerBurns,
+      remotePlayerBloodWraths,
       swordSwing,
       remotePlayerSwings,
       warriorAnimRuntime,
-      rangerAnimRuntime
+      rangerAnimRuntime,
+      humanoidRenderTools,
+      getClassRenderStyle,
+      getPlayerVisualEquipment,
+      mouseState,
+      screenToWorld,
+      getCurrentSelf,
+      getCurrentMovementVector,
+      isTouchJoystickEnabled
     })
   : null;
 const sharedClientRenderProjectiles = globalThis.VibeClientRenderProjectiles || null;
@@ -868,10 +1233,30 @@ function updateAdminDebugControls() {
   }
   if (!isAdmin) {
     setBotListVisible(false);
+    setDebugGearVisible(false);
   }
   if (debugToggleBotListButton) {
     debugToggleBotListButton.classList.toggle("hidden", !isAdmin);
   }
+  if (debugToggleGearLabButton) {
+    debugToggleGearLabButton.classList.toggle("hidden", !isAdmin);
+  }
+}
+
+function updateRendererDebugControls() {
+  if (!debugRendererSelect) {
+    return;
+  }
+  const mode = rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas";
+  debugRendererSelect.value = mode === "pixi" ? "pixi" : "canvas";
+}
+
+function applyRendererModeFromDebugControls() {
+  if (!debugRendererSelect || !rendererBootstrap) {
+    return;
+  }
+  rendererBootstrap.setRendererMode(debugRendererSelect.value);
+  updateRendererDebugControls();
 }
 
 function handleCreateBotPlayer() {
@@ -1303,6 +1688,7 @@ const uiActionTools = sharedCreateUiActionTools
       abilityChannel,
       mouseState,
       getPrimaryClassAbilityId,
+      getDefaultClassAbilityIds,
       getCurrentSelf,
       screenToWorld,
       sendUseItem,
@@ -1311,7 +1697,8 @@ const uiActionTools = sharedCreateUiActionTools
       getActionDefById,
       getAbilityEffectiveCooldownMsForSelf,
       getCastProgress,
-      resetAbilityChanneling
+      resetAbilityChanneling,
+      isTouchJoystickEnabled
     })
   : null;
 
@@ -1372,6 +1759,8 @@ function getAbilityAudioState(abilityId, eventType, createIfMissing = true) {
       gainNode: null,
       status: "idle",
       playing: false,
+      wantChannelPlayback: false,
+      pendingChannelStart: false,
       lastPlayedAt: 0,
       missingAt: 0,
       loadPromise: null
@@ -1630,6 +2019,10 @@ function getAbilityAudioUrlCandidates(abilityId, eventType) {
     return filterAvailableSoundUrls(candidates);
   }
   candidates = [getAbilityAudioUrl(id, eventName)];
+  if (eventName === "channel") {
+    // Cast-time abilities can reuse cast audio when a dedicated channel loop is absent.
+    candidates.push(getAbilityAudioUrl(id, "cast"));
+  }
   if (eventName === "hit") {
     // Some instant abilities only provide cast audio; allow hit->cast fallback.
     candidates.push(getAbilityAudioUrl(id, "cast"));
@@ -1876,28 +2269,37 @@ function ensureAbilityAudioClip(abilityId, eventType) {
 
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const candidates = getAbilityAudioUrlCandidates(normalizedAbilityId, eventType);
-  const audioUrl = candidates.length ? candidates[0] : "";
-  if (!isSoundUrlAvailable(audioUrl)) {
+  if (!candidates.length) {
     state.status = "missing";
+    state.url = "";
     state.playing = false;
+    state.missingAt = performance.now();
     return state;
   }
-  state.url = audioUrl;
+  state.url = "";
   state.status = "loading";
   state.playing = false;
-  state.loadPromise = loadSpatialAudioBuffer(audioUrl)
-    .then((buffer) => {
+  state.loadPromise = (async () => {
+    for (const audioUrl of candidates) {
+      if (!isSoundUrlAvailable(audioUrl)) {
+        continue;
+      }
+      const buffer = await loadSpatialAudioBuffer(audioUrl);
       if (buffer) {
+        state.url = audioUrl;
         state.status = "ready";
         state.missingAt = 0;
         return buffer;
       }
-      state.status = "missing";
-      state.playing = false;
-      state.missingAt = performance.now();
-      return null;
-    })
+    }
+    state.url = "";
+    state.status = "missing";
+    state.playing = false;
+    state.missingAt = performance.now();
+    return null;
+  })()
     .catch(() => {
+      state.url = "";
       state.status = "missing";
       state.playing = false;
       state.missingAt = performance.now();
@@ -2000,7 +2402,13 @@ function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const state = ensureAbilityAudioClip(normalizedAbilityId, eventType);
   if (!state || state.status === "missing" || !state.url) {
+    if (eventType === "channel" && state) {
+      state.wantChannelPlayback = true;
+    }
     return;
+  }
+  if (eventType === "channel") {
+    state.wantChannelPlayback = true;
   }
 
   const minIntervalMs = getAbilityAudioMinIntervalMs(eventType);
@@ -2017,6 +2425,17 @@ function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
   const record = getSpatialAudioBufferRecord(state.url, false);
   const buffer = record && record.buffer;
   if (!buffer) {
+    if (eventType === "channel" && state.loadPromise && !state.pendingChannelStart) {
+      state.pendingChannelStart = true;
+      state.loadPromise.finally(() => {
+        state.pendingChannelStart = false;
+        const refreshed = getAbilityAudioState(normalizedAbilityId, "channel", false);
+        if (!refreshed || !refreshed.wantChannelPlayback || refreshed.playing || refreshed.status !== "ready") {
+          return;
+        }
+        playAbilityAudioEvent(normalizedAbilityId, "channel", performance.now());
+      });
+    }
     return;
   }
   const baseGain = getAbilityAudioBaseGain(eventType);
@@ -2069,7 +2488,11 @@ function playAbilityAudioEvent(abilityId, eventType, now = performance.now()) {
 function stopAbilityChannelAudio(abilityId) {
   const normalizedAbilityId = toAbilityAudioId(abilityId);
   const state = getAbilityAudioState(normalizedAbilityId, "channel", false);
-  if (!state || !state.source) {
+  if (!state) {
+    return;
+  }
+  state.wantChannelPlayback = false;
+  if (!state.source) {
     return;
   }
   try {
@@ -2116,6 +2539,7 @@ const abilityRuntimeTools = sharedCreateAbilityRuntimeTools
       sendCastTargetUpdate,
       getAbilityEffectiveCooldownMsForSelf,
       getAbilityEffectiveRangeForSelf,
+      resolveAbilityUseTarget,
       mouseState,
       screenToWorld,
       playAbilityAudioEvent,
@@ -2219,6 +2643,10 @@ function humanizeKey(key) {
       .replace(/[_-]+/g, " ")
       .trim()
   );
+}
+
+function toLowerWord(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function escapeHtml(value) {
@@ -2535,12 +2963,22 @@ function buildAbilityTooltip(abilityId) {
   const totalDamageRange = sharedGetAbilityDamageRange
     ? sharedGetAbilityDamageRange(ability, level)
     : [Math.max(0, Number(ability.damageMin) || 0), Math.max(0, Number(ability.damageMax) || 0)];
-  const totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
-  const totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
+  let totalDamageMin = Math.max(0, Number(totalDamageRange[0]) || 0);
+  let totalDamageMax = Math.max(totalDamageMin, Number(totalDamageRange[1]) || 0);
+  let tooltipDamagePercentBonus = 0;
+  if (String(kind).toLowerCase() === "meleecone") {
+    tooltipDamagePercentBonus += getActiveSelfBuffStatTotal("meleeDamagePercent");
+  }
+  tooltipDamagePercentBonus += getAbilityTalentModNumber(self, ability.id, "damageBonusPercent");
+  if (tooltipDamagePercentBonus !== 0 && totalDamageMax > 0) {
+    const damageScale = Math.max(0, 1 + tooltipDamagePercentBonus / 100);
+    totalDamageMin = Math.max(0, Math.floor(totalDamageMin * damageScale));
+    totalDamageMax = Math.max(totalDamageMin, Math.ceil(totalDamageMax * damageScale));
+  }
   const durationMs = Math.max(0, Number(ability.durationMs) || 0);
   const durationPerLevelMs = Math.max(0, Number(ability.durationPerLevelMs) || 0);
   const totalDurationMs = durationMs + durationPerLevelMs * Math.max(0, level - 1);
-  const stunDurationMs = Math.max(0, Number(ability.stunDurationMs) || 0);
+  const stunDurationMs = getAbilityEffectiveStunDurationMsForSelf(ability.id, self);
   const slowDurationMs = Math.max(0, Number(ability.slowDurationMs) || 0);
   const rawSlowMultiplier = Number(ability.slowMultiplier);
   const slowMultiplier = Number.isFinite(rawSlowMultiplier)
@@ -2828,8 +3266,81 @@ function buildItemTooltipHtml(itemInput, qty = null) {
   return blocks.join("");
 }
 
+function buildAbilityTooltipHtml(abilityId, extraLines = []) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  const action = getActionDefById(resolvedAbilityId);
+  const titleText = action.name || resolvedAbilityId || "Ability";
+  const rawLines = String(buildAbilityTooltip(resolvedAbilityId) || "")
+    .split("\n")
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
+  const title = rawLines.length ? rawLines.shift() : titleText;
+  const description = rawLines.length && action.description && rawLines[0] === String(action.description || "").trim() ? rawLines.shift() : "";
+  const iconUrl = resolvedAbilityId && action.id !== "none" ? getActionIconUrl(resolvedAbilityId) : "";
+  const blocks = [
+    `<div class="tooltip-title-row">` +
+      (iconUrl ? `<span class="tooltip-inline-icon" style="background-image:url('${escapeHtml(iconUrl)}')"></span>` : "") +
+      `<span class="tooltip-title">${escapeHtml(title || titleText)}</span>` +
+    `</div>`
+  ];
+
+  if (description) {
+    blocks.push(`<div class="tooltip-line">${escapeHtml(description)}</div>`);
+  }
+  for (const line of rawLines) {
+    blocks.push(`<div class="tooltip-line">${escapeHtml(line)}</div>`);
+  }
+
+  const hints = (Array.isArray(extraLines) ? extraLines : [])
+    .map((line) => String(line || "").trim())
+    .filter(Boolean);
+  if (hints.length) {
+    blocks.push(`<div class="tooltip-section-label">Tip</div>`);
+    for (const line of hints) {
+      blocks.push(`<div class="tooltip-line">${escapeHtml(line)}</div>`);
+    }
+  }
+
+  return blocks.join("");
+}
+
+function showTooltipHtml(html, event, options = {}) {
+  if (!hoverTooltipEl) {
+    return;
+  }
+  const mobileTooltipClass = String(options.mobileTooltipClass || "").trim();
+  const mobileTooltipAnchor = String(options.mobileTooltipAnchor || "").trim();
+  const tooltipHtml = String(html || "");
+  hoverTooltipEl.innerHTML = mobileTooltipClass
+    ? `<button type="button" class="tooltip-close-button" aria-label="Close tooltip">Close</button><div class="tooltip-content">${tooltipHtml}</div>`
+    : tooltipHtml;
+  hoverTooltipEl.classList.remove("mobile-item-tooltip", "mobile-ability-tooltip", "hidden");
+  if (mobileTooltipClass) {
+    hoverTooltipEl.classList.add(mobileTooltipClass);
+  }
+  if (mobileTooltipAnchor) {
+    hoverTooltipEl.dataset.mobileTooltipAnchor = mobileTooltipAnchor;
+  } else {
+    delete hoverTooltipEl.dataset.mobileTooltipAnchor;
+  }
+  positionHoverTooltip(Number(event && event.clientX) || 0, Number(event && event.clientY) || 0);
+}
+
 function positionHoverTooltip(clientX, clientY) {
   if (!hoverTooltipEl || hoverTooltipEl.classList.contains("hidden")) {
+    return;
+  }
+  if (hoverTooltipEl.classList.contains("mobile-item-tooltip") || hoverTooltipEl.classList.contains("mobile-ability-tooltip")) {
+    const anchorKey = String(hoverTooltipEl.dataset.mobileTooltipAnchor || "panel").trim().toLowerCase();
+    const anchorEl = anchorKey === "action" ? actionUi : getMobilePanelElement(mobilePanelState.activeTab);
+    const anchorRect = anchorEl ? anchorEl.getBoundingClientRect() : null;
+    const tooltipWidth = hoverTooltipEl.offsetWidth || 0;
+    const tooltipHeight = hoverTooltipEl.offsetHeight || 0;
+    const left = Math.round(Math.max(10, (window.innerWidth - tooltipWidth) * 0.5));
+    const preferredTop = anchorRect ? anchorRect.top - tooltipHeight - 12 : 12;
+    const top = Math.round(Math.max(10, preferredTop));
+    hoverTooltipEl.style.left = `${left}px`;
+    hoverTooltipEl.style.top = `${top}px`;
     return;
   }
   const margin = 14;
@@ -2850,12 +3361,17 @@ function positionHoverTooltip(clientX, clientY) {
 }
 
 function showItemTooltip(itemInput, event, qty = null) {
-  if (!hoverTooltipEl) {
-    return;
-  }
-  hoverTooltipEl.innerHTML = buildItemTooltipHtml(itemInput, qty);
-  hoverTooltipEl.classList.remove("hidden");
-  positionHoverTooltip(event.clientX, event.clientY);
+  showTooltipHtml(buildItemTooltipHtml(itemInput, qty), event, {
+    mobileTooltipClass: isMobilePanelMode() ? "mobile-item-tooltip" : "",
+    mobileTooltipAnchor: event && typeof event.mobileTooltipAnchor === "string" ? event.mobileTooltipAnchor : isMobilePanelMode() ? "panel" : ""
+  });
+}
+
+function showAbilityTooltip(abilityId, event, extraLines = [], mobileAnchor = "") {
+  showTooltipHtml(buildAbilityTooltipHtml(abilityId, extraLines), event, {
+    mobileTooltipClass: mobileAnchor ? "mobile-ability-tooltip" : "",
+    mobileTooltipAnchor: mobileAnchor
+  });
 }
 
 function hideHoverTooltip() {
@@ -2863,7 +3379,62 @@ function hideHoverTooltip() {
     return;
   }
   hoverTooltipEl.classList.add("hidden");
+  hoverTooltipEl.classList.remove("mobile-item-tooltip");
+  hoverTooltipEl.classList.remove("mobile-ability-tooltip");
+  delete hoverTooltipEl.dataset.mobileTooltipAnchor;
   hoverTooltipEl.innerHTML = "";
+}
+
+function isMobileTooltipVisible() {
+  return (
+    !!hoverTooltipEl &&
+    !hoverTooltipEl.classList.contains("hidden") &&
+    (hoverTooltipEl.classList.contains("mobile-item-tooltip") || hoverTooltipEl.classList.contains("mobile-ability-tooltip"))
+  );
+}
+
+function dismissMobileTooltip(event) {
+  hideHoverTooltip();
+  clearMobileTooltipHideTimer();
+  mobilePanelState.suppressItemTapUntil = performance.now() + 220;
+  mobilePanelState.suppressAbilityTapUntil = performance.now() + 220;
+  suppressActionBarClickUntil = performance.now() + 220;
+  if (event) {
+    if (typeof event.preventDefault === "function" && event.cancelable) {
+      event.preventDefault();
+    }
+    if (typeof event.stopPropagation === "function") {
+      event.stopPropagation();
+    }
+    if (typeof event.stopImmediatePropagation === "function") {
+      event.stopImmediatePropagation();
+    }
+  }
+}
+
+function handleMobileTooltipDismissCapture(event) {
+  if (!isTouchJoystickEnabled() || !isMobileTooltipVisible()) {
+    return;
+  }
+  const target = event && event.target;
+  if (target && hoverTooltipEl && hoverTooltipEl.contains(target)) {
+    return;
+  }
+  dismissMobileTooltip(event);
+}
+
+if (hoverTooltipEl) {
+  const handleTooltipCloseButtonPress = (event) => {
+    const closeButton = event.target && typeof event.target.closest === "function"
+      ? event.target.closest(".tooltip-close-button")
+      : null;
+    if (!closeButton) {
+      return;
+    }
+    dismissMobileTooltip(event);
+  };
+  hoverTooltipEl.addEventListener("click", handleTooltipCloseButtonPress);
+  hoverTooltipEl.addEventListener("touchend", handleTooltipCloseButtonPress, { passive: false });
 }
 
 function bindItemTooltip(node, itemInput, qty = null) {
@@ -3000,11 +3571,62 @@ function getPrimaryClassAbilityId(classType) {
   return abilityId && abilityDefsById.has(abilityId) ? abilityId : "none";
 }
 
+function getDefaultClassAbilityIds(classType) {
+  const classDef = classDefsById.get(String(classType || ""));
+  if (!classDef || !Array.isArray(classDef.abilities)) {
+    return [];
+  }
+  const abilityIds = [];
+  for (const entry of classDef.abilities) {
+    const abilityId = String(entry && entry.id || "").trim();
+    const startingLevel = Math.max(1, Math.floor(Number(entry && entry.level) || 1));
+    if (!abilityId || !abilityDefsById.has(abilityId) || startingLevel !== 1) {
+      continue;
+    }
+    abilityIds.push(abilityId);
+  }
+  return abilityIds;
+}
+
 function getDefaultClassId() {
   if (classDefsById.size) {
     return classDefsById.keys().next().value;
   }
   return "warrior";
+}
+
+function clearSelfPositiveBuffs() {
+  selfPositiveBuffs = [];
+  if (buffIcons) {
+    buffIcons.innerHTML = "";
+    buffIcons.classList.add("hidden");
+  }
+}
+
+function applySelfPositiveBuffs(msg) {
+  const now = performance.now();
+  const nextBuffs = [];
+  for (const buff of Array.isArray(msg && msg.buffs) ? msg.buffs : []) {
+    if (!buff || typeof buff !== "object") {
+      continue;
+    }
+    const remainingMs = Math.max(0, Number(buff.remainingMs) || 0);
+    if (remainingMs <= 0) {
+      continue;
+    }
+    const durationMs = Math.max(1, Number(buff.durationMs) || remainingMs);
+    nextBuffs.push({
+      id: String(buff.id || ""),
+      name: String(buff.name || "Buff"),
+      label: String(buff.label || "").trim().slice(0, 3).toUpperCase(),
+      color: String(buff.color || "").trim(),
+      stats: buff.stats && typeof buff.stats === "object" ? { ...buff.stats } : {},
+      startedAt: now - Math.max(0, durationMs - remainingMs),
+      endsAt: now + remainingMs,
+      durationMs
+    });
+  }
+  selfPositiveBuffs = nextBuffs;
 }
 
 function clearSelfNegativeEffects() {
@@ -3015,6 +3637,68 @@ function clearSelfNegativeEffects() {
     debuffIcons.innerHTML = "";
     debuffIcons.classList.add("hidden");
   }
+}
+
+function updatePositiveBuffIcons(now = performance.now()) {
+  if (!buffIcons) {
+    return;
+  }
+  const entries = [];
+  for (const buff of selfPositiveBuffs) {
+    const remainingMs = Math.max(0, Number(buff.endsAt) - now);
+    if (remainingMs <= 0) {
+      continue;
+    }
+    const durationMs = Math.max(1, Number(buff.durationMs) || remainingMs);
+    entries.push({
+      id: String(buff.id || ""),
+      label: String(buff.label || "").trim().slice(0, 3).toUpperCase(),
+      color: String(buff.color || "") || "rgba(131, 221, 143, 0.94)",
+      ratio: clamp(remainingMs / durationMs, 0, 1),
+      title: `${String(buff.name || "Buff")} (${(remainingMs / 1000).toFixed(1)}s)`
+    });
+  }
+
+  selfPositiveBuffs = selfPositiveBuffs.filter((buff) => Math.max(0, Number(buff.endsAt) - now) > 0);
+  if (!entries.length) {
+    buffIcons.innerHTML = "";
+    buffIcons.classList.add("hidden");
+    return;
+  }
+
+  buffIcons.classList.remove("hidden");
+  buffIcons.innerHTML = "";
+  for (const entry of entries) {
+    const node = document.createElement("div");
+    node.className = "buff-icon";
+    node.title = entry.title;
+    const ring = document.createElement("div");
+    ring.className = "buff-ring";
+    ring.style.setProperty("--ratio", entry.ratio.toFixed(4));
+    ring.style.setProperty("--ring-color", entry.color);
+    const core = document.createElement("div");
+    core.className = "buff-core";
+    core.textContent = entry.label || "BF";
+    node.appendChild(ring);
+    node.appendChild(core);
+    buffIcons.appendChild(node);
+  }
+}
+
+function getActiveSelfBuffStatTotal(statKey) {
+  const target = String(statKey || "").trim();
+  if (!target) {
+    return 0;
+  }
+  let total = 0;
+  for (const buff of selfPositiveBuffs) {
+    const stats = buff && buff.stats && typeof buff.stats === "object" ? buff.stats : null;
+    if (!stats) {
+      continue;
+    }
+    total += Number(stats[target]) || 0;
+  }
+  return total;
 }
 
 function setSelfNegativeEffectState(key, remainingMs, durationMs, now, extra = {}) {
@@ -3039,6 +3723,8 @@ function applyPlayerEffects(msg) {
     multiplierQ: Math.max(1, Math.floor(Number(msg && msg.slowMultiplierQ) || 1000))
   });
   setSelfNegativeEffectState("burn", msg && msg.burningMs, msg && msg.burnDurationMs, now);
+  const bloodWrathMs = Math.max(0, Number(msg && msg.bloodWrathMs) || 0);
+  selfPositiveEffects.bloodWrath = bloodWrathMs > 0 ? { endsAt: now + bloodWrathMs } : null;
 }
 
 function applyNearbyPlayerEffects(msg) {
@@ -3054,6 +3740,7 @@ function applyNearbyPlayerEffects(msg) {
     const stunnedMs = Math.max(0, Number(effect.stunnedMs) || 0);
     const slowedMs = Math.max(0, Number(effect.slowedMs) || 0);
     const burningMs = Math.max(0, Number(effect.burningMs) || 0);
+    const bloodWrathMs = Math.max(0, Number(effect.bloodWrathMs) || 0);
     const slowMultiplierQ = Math.max(1, Math.floor(Number(effect.slowMultiplierQ) || 1000));
 
     if (stunnedMs > 0) {
@@ -3073,6 +3760,11 @@ function applyNearbyPlayerEffects(msg) {
       remotePlayerBurns.set(id, { endsAt: now + burningMs });
     } else {
       remotePlayerBurns.delete(id);
+    }
+    if (bloodWrathMs > 0) {
+      remotePlayerBloodWraths.set(id, { endsAt: now + bloodWrathMs });
+    } else {
+      remotePlayerBloodWraths.delete(id);
     }
   }
 }
@@ -3172,6 +3864,7 @@ function updateResourceBars(self) {
     hpText.textContent = "";
     manaText.textContent = "";
     expText.textContent = "";
+    clearSelfPositiveBuffs();
     clearSelfNegativeEffects();
     return;
   }
@@ -3207,6 +3900,7 @@ function updateResourceBars(self) {
   const expRatio = clamp(exp / expToNext, 0, 1);
   expFill.style.transform = `scaleX(${expRatio})`;
   expText.textContent = `EXP ${Math.floor(exp)}/${Math.floor(expToNext)} (Lv ${Math.max(1, Math.floor(Number(self.level) || 1))})`;
+  updatePositiveBuffIcons(performance.now());
   updateNegativeEffectIcons(performance.now());
 }
 
@@ -3223,17 +3917,63 @@ function getSelfAbilityLevel(self, abilityId, fallbackLevel = 1) {
   return level;
 }
 
+function getSelfTalentAbilityMods(self) {
+  const tree = self && self.talentTree && typeof self.talentTree === "object" ? self.talentTree : null;
+  const mods = tree && tree.abilityMods && typeof tree.abilityMods === "object" ? tree.abilityMods : null;
+  return mods && typeof mods === "object" ? mods : null;
+}
+
+function getAbilityTalentModNumber(self, abilityId, bucketKey) {
+  const mods = getSelfTalentAbilityMods(self);
+  const bucket = mods && mods[bucketKey] && typeof mods[bucketKey] === "object" ? mods[bucketKey] : null;
+  if (!bucket) {
+    return 0;
+  }
+  const id = String(abilityId || "").trim();
+  if (!id) {
+    return 0;
+  }
+  const value = Number(bucket[id]) || 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getAbilityEffectiveStunDurationMsForSelf(abilityId, self) {
+  const ability = abilityDefsById.get(String(abilityId || ""));
+  const base = Math.max(0, Number(ability && ability.stunDurationMs) || 0);
+  if (!ability) {
+    return base;
+  }
+  const bonus = getAbilityTalentModNumber(self, ability.id, "stunDurationBonusMs");
+  if (bonus === 0) {
+    return base;
+  }
+  return Math.max(0, base + bonus);
+}
+
 function getAbilityEffectiveRangeForSelf(abilityId, self) {
   const ability = abilityDefsById.get(String(abilityId || ""));
   if (!ability) {
     return Math.max(0, Number(getActionDefById(abilityId).range) || 0);
   }
   const level = getSelfAbilityLevel(self, ability.id, 1);
-  if (sharedGetAbilityRangeForLevel) {
-    return Math.max(0, Number(sharedGetAbilityRangeForLevel(ability, level)) || 0);
+  const baseRange = sharedGetAbilityRangeForLevel
+    ? Math.max(0, Number(sharedGetAbilityRangeForLevel(ability, level)) || 0)
+    : (() => {
+        const levelOffset = Math.max(0, level - 1);
+        return Math.max(
+          0,
+          Math.max(0, Number(ability.range) || 0) + Math.max(0, Number(ability.rangePerLevel) || 0) * levelOffset
+        );
+      })();
+
+  if (baseRange <= 0) {
+    return baseRange;
   }
-  const levelOffset = Math.max(0, level - 1);
-  return Math.max(0, Math.max(0, Number(ability.range) || 0) + Math.max(0, Number(ability.rangePerLevel) || 0) * levelOffset);
+  const bonus = getAbilityTalentModNumber(self, ability.id, "rangeBonus");
+  if (bonus === 0) {
+    return baseRange;
+  }
+  return Math.max(0, baseRange + bonus);
 }
 
 function getAbilityEffectiveCooldownMsForSelf(abilityId, self) {
@@ -3246,11 +3986,18 @@ function getAbilityEffectiveCooldownMsForSelf(abilityId, self) {
     return baseCooldownMs;
   }
   const level = getSelfAbilityLevel(self, ability.id, 1);
-  if (sharedGetAbilityCooldownMsForLevel) {
-    return Math.max(0, Number(sharedGetAbilityCooldownMsForLevel(ability, level)) || 0);
+  const baseForLevel = sharedGetAbilityCooldownMsForLevel
+    ? Math.max(0, Number(sharedGetAbilityCooldownMsForLevel(ability, level)) || 0)
+    : (() => {
+        const levelOffset = Math.max(0, level - 1);
+        return Math.max(0, baseCooldownMs - Math.max(0, Number(ability.cooldownReductionPerLevel) || 0) * 1000 * levelOffset);
+      })();
+
+  const reductionMs = getAbilityTalentModNumber(self, ability.id, "cooldownReductionMs");
+  if (reductionMs === 0) {
+    return baseForLevel;
   }
-  const levelOffset = Math.max(0, level - 1);
-  return Math.max(0, baseCooldownMs - Math.max(0, Number(ability.cooldownReductionPerLevel) || 0) * 1000 * levelOffset);
+  return Math.max(0, baseForLevel - reductionMs);
 }
 
 function parseAbilityLevelsPayload(rawLevels) {
@@ -3300,13 +4047,342 @@ function buildSpellbookSignature(self) {
     const fallbackLevel = Math.max(1, Math.floor(Number(entry.level) || 1));
     parts.push(`${abilityId}:${getSelfAbilityLevel(self, abilityId, fallbackLevel)}`);
   }
+  if (isTouchJoystickEnabled()) {
+    parts.push(
+      `bar:${Array.from({ length: 9 }, (_value, index) => actionBindings.get(String(index + 1)) || makeActionBinding("none")).join(",")}`
+    );
+    parts.push(`edit:${mobileActionBarEditState.active ? 1 : 0}:${mobileActionBarEditState.selectedSlotId || ""}`);
+    parts.push(`pending:${mobileActionBarEditState.pendingAbilityId || ""}`);
+  }
   return parts.join("|");
+}
+
+function clearMobilePendingAbilityPlacement() {
+  mobileActionBarEditState.pendingAbilityId = "";
+}
+
+function getMobilePendingAbilityPlacementId() {
+  const abilityId = String(mobileActionBarEditState.pendingAbilityId || "").trim();
+  return abilityDefsById.has(abilityId) ? abilityId : "";
+}
+
+function getBoundActionSlotsForAbility(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return [];
+  }
+  const slots = [];
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    const binding = parseActionBinding(actionBindings.get(String(slotId)) || makeActionBinding("none"));
+    if (binding.kind === "action" && binding.id === resolvedAbilityId) {
+      slots.push(String(slotId));
+    }
+  }
+  return slots;
+}
+
+function getFirstFreeMobileActionSlotId() {
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    const binding = parseActionBinding(actionBindings.get(String(slotId)) || makeActionBinding("none"));
+    if (binding.kind === "action" && binding.id === "none") {
+      return String(slotId);
+    }
+  }
+  return "";
+}
+
+function formatActionSlotList(slotIds) {
+  const labels = slotIds.map((slotId) => getActionSlotLabel(slotId)).filter(Boolean);
+  return labels.join(", ");
+}
+
+function bindAbilityToPreferredActionSlot(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return false;
+  }
+  const desiredBinding = makeActionBinding(resolvedAbilityId);
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    if ((actionBindings.get(String(slotId)) || makeActionBinding("none")) === desiredBinding) {
+      return true;
+    }
+  }
+  for (let slotId = 1; slotId <= 9; slotId += 1) {
+    const binding = parseActionBinding(actionBindings.get(String(slotId)) || makeActionBinding("none"));
+    if (binding.kind === "action" && binding.id === "none") {
+      actionBindings.set(String(slotId), desiredBinding);
+      updateActionBarUI(getCurrentSelf());
+      return true;
+    }
+  }
+  setStatus("No free action slot.");
+  return false;
+}
+
+function isMobileEditableActionSlot(slotId) {
+  const resolvedSlotId = String(slotId || "").trim();
+  return /^[1-9]$/.test(resolvedSlotId);
+}
+
+function getActionSlotLabel(slotId) {
+  return ACTION_SLOT_LABELS[String(slotId || "")] || String(slotId || "");
+}
+
+function clearMobileActionBarSelection() {
+  mobileActionBarEditState.selectedSlotId = "";
+}
+
+function getMobileActionBarSelectedSlotId() {
+  return isMobileEditableActionSlot(mobileActionBarEditState.selectedSlotId)
+    ? mobileActionBarEditState.selectedSlotId
+    : "";
+}
+
+function isUsableItemDef(itemDef) {
+  return !!(itemDef && itemDef.effect && itemDef.effect.type);
+}
+
+function bindActionBindingToSlot(slotId, binding) {
+  const resolvedSlotId = String(slotId || "").trim();
+  if (!isMobileEditableActionSlot(resolvedSlotId) || !binding) {
+    return false;
+  }
+  actionBindings.set(resolvedSlotId, String(binding));
+  updateActionBarUI(getCurrentSelf());
+  return true;
+}
+
+function bindAbilityToActionSlot(slotId, abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  const resolvedSlotId = String(slotId || "").trim();
+  if (!resolvedAbilityId || !abilityDefsById.has(resolvedAbilityId) || !isMobileEditableActionSlot(resolvedSlotId)) {
+    return false;
+  }
+  const desiredBinding = makeActionBinding(resolvedAbilityId);
+  const existingSlots = getBoundActionSlotsForAbility(resolvedAbilityId);
+  if (existingSlots.includes(resolvedSlotId)) {
+    return true;
+  }
+  const targetBinding = actionBindings.get(resolvedSlotId) || makeActionBinding("none");
+  const sourceSlotId = existingSlots[0] || "";
+  if (sourceSlotId) {
+    actionBindings.set(sourceSlotId, targetBinding);
+  }
+  actionBindings.set(resolvedSlotId, desiredBinding);
+  updateActionBarUI(getCurrentSelf());
+  return true;
+}
+
+function bindItemToActionSlot(slotId, itemId) {
+  const resolvedItemId = String(itemId || "").trim();
+  const itemDef = itemDefsById.get(resolvedItemId);
+  if (!resolvedItemId || !isUsableItemDef(itemDef)) {
+    return false;
+  }
+  return bindActionBindingToSlot(slotId, makeItemBinding(resolvedItemId));
+}
+
+function swapActionBarBindings(slotA, slotB) {
+  const leftSlotId = String(slotA || "").trim();
+  const rightSlotId = String(slotB || "").trim();
+  if (!isMobileEditableActionSlot(leftSlotId) || !isMobileEditableActionSlot(rightSlotId) || leftSlotId === rightSlotId) {
+    return false;
+  }
+  const leftBinding = actionBindings.get(leftSlotId) || makeActionBinding("none");
+  const rightBinding = actionBindings.get(rightSlotId) || makeActionBinding("none");
+  actionBindings.set(leftSlotId, rightBinding);
+  actionBindings.set(rightSlotId, leftBinding);
+  updateActionBarUI(getCurrentSelf());
+  return true;
+}
+
+function buildMobileSpellbookHintLines(currentLevel = 1, abilityId = "") {
+  const lines = [`Current Level: ${Math.max(1, Math.floor(Number(currentLevel) || 1))}`];
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  if (pendingAbilityId) {
+    lines.push(`Tap a slot on the action bar to place ${getAbilityDisplayName(pendingAbilityId)}.`);
+    lines.push("Tap Done to cancel placement.");
+    return lines;
+  }
+  if (mobileActionBarEditState.active && selectedSlotId) {
+    lines.push(`Selected Slot: ${getActionSlotLabel(selectedSlotId)}`);
+    lines.push("Use Add to place this spell on the selected slot.");
+    return lines;
+  }
+  const boundSlots = getBoundActionSlotsForAbility(abilityId);
+  if (boundSlots.length) {
+    lines.push(`On Action Bar: ${formatActionSlotList(boundSlots)}`);
+  } else {
+    lines.push("Use Add to place this spell on the action bar.");
+  }
+  lines.push("Tap the icon to inspect. Use +1 to spend a skill point.");
+  return lines;
+}
+
+function getMobileSpellbookAddButtonState(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  const boundSlots = getBoundActionSlotsForAbility(resolvedAbilityId);
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  if (pendingAbilityId === resolvedAbilityId) {
+    return { label: "Pick Slot", detail: "Tap a slot on the bar", active: true };
+  }
+  if (mobileActionBarEditState.active && selectedSlotId) {
+    return { label: `Place ${getActionSlotLabel(selectedSlotId)}`, detail: "Uses the selected slot", active: true };
+  }
+  if (boundSlots.length) {
+    return {
+      label: "On Bar",
+      detail: `Slot ${formatActionSlotList(boundSlots)}`,
+      active: false
+    };
+  }
+  const freeSlotId = getFirstFreeMobileActionSlotId();
+  if (freeSlotId) {
+    return {
+      label: `Add ${getActionSlotLabel(freeSlotId)}`,
+      detail: "First free slot",
+      active: true
+    };
+  }
+  return {
+    label: "Pick Slot",
+    detail: "Opens Edit mode",
+    active: true
+  };
+}
+
+function handleMobileSpellbookBindAction(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId || !abilityDefsById.has(resolvedAbilityId)) {
+    return false;
+  }
+  const abilityName = abilityDefsById.get(resolvedAbilityId)?.name || resolvedAbilityId;
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+
+  if (mobileActionBarEditState.active && selectedSlotId) {
+    clearMobilePendingAbilityPlacement();
+    if (!bindAbilityToActionSlot(selectedSlotId, resolvedAbilityId)) {
+      return false;
+    }
+    setStatus(`${abilityName} placed on slot ${getActionSlotLabel(selectedSlotId)}.`);
+    return true;
+  }
+
+  if (pendingAbilityId === resolvedAbilityId) {
+    setStatus(`Tap an action slot to place ${abilityName}.`);
+    return true;
+  }
+
+  const boundSlots = getBoundActionSlotsForAbility(resolvedAbilityId);
+  if (boundSlots.length) {
+    setStatus(`${abilityName} is already on slot ${formatActionSlotList(boundSlots)}. Use Edit to move it.`);
+    return true;
+  }
+
+  const freeSlotId = getFirstFreeMobileActionSlotId();
+  if (freeSlotId) {
+    bindAbilityToActionSlot(freeSlotId, resolvedAbilityId);
+    setStatus(`${abilityName} added to slot ${getActionSlotLabel(freeSlotId)}.`);
+    return true;
+  }
+
+  setMobileActionBarEditMode(true);
+  clearMobileActionBarSelection();
+  mobileActionBarEditState.pendingAbilityId = resolvedAbilityId;
+  updateActionBarUI(getCurrentSelf());
+  setStatus(`Tap an action slot to place ${abilityName}.`);
+  return true;
+}
+
+function handleMobileSpellbookAbilityTap(abilityId, currentLevel = 1) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return false;
+  }
+  showMobileAbilityTooltip(resolvedAbilityId, "panel", 0, 0, buildMobileSpellbookHintLines(currentLevel, resolvedAbilityId));
+  return true;
+}
+
+function handleMobileSpellbookAbilityLevelUp(abilityId) {
+  const resolvedAbilityId = String(abilityId || "").trim();
+  if (!resolvedAbilityId) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  const skillPoints = Math.max(0, Math.floor(Number(self && self.skillPoints) || 0));
+  if (skillPoints <= 0) {
+    setStatus("No skill points available.");
+    return false;
+  }
+  sendJsonMessage({
+    type: "level_up_ability",
+    abilityId: resolvedAbilityId
+  });
+  const abilityName = abilityDefsById.get(resolvedAbilityId)?.name || resolvedAbilityId;
+  setStatus(`Spent 1 skill point on ${abilityName}.`);
+  return true;
+}
+
+function updateSpellbookSummary(self) {
+  if (!spellbookSummary) {
+    return;
+  }
+  if (!self || !isTouchJoystickEnabled()) {
+    spellbookSummary.classList.add("hidden");
+    spellbookSummary.innerHTML = "";
+    return;
+  }
+  const skillPoints = Math.max(0, Math.floor(Number(self.skillPoints) || 0));
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  let subtitle = "Tap a spell icon for details. Use Add to place it on the bar.";
+  if (pendingAbilityId) {
+    subtitle = `Tap a slot on the action bar to place ${getAbilityDisplayName(pendingAbilityId)}.`;
+  } else if (mobileActionBarEditState.active && selectedSlotId) {
+    subtitle = `Slot ${getActionSlotLabel(selectedSlotId)} selected. Tap Add on a spell to place it there.`;
+  } else if (mobileActionBarEditState.active) {
+    subtitle = "Edit mode is on. Tap a slot to select it, or tap Add on a spell to choose a slot.";
+  }
+  spellbookSummary.classList.remove("hidden");
+  spellbookSummary.innerHTML =
+    `<div class="spellbook-summary-main">` +
+      `<div class="spellbook-summary-points">${skillPoints} Skill Point${skillPoints === 1 ? "" : "s"}</div>` +
+      `<div class="spellbook-summary-subtitle">${escapeHtml(subtitle)}</div>` +
+    `</div>` +
+    `<div class="spellbook-summary-actions">` +
+      `<button type="button" class="spellbook-summary-button${mobileActionBarEditState.active ? " active" : ""}" data-action="toggle-edit">` +
+        `${mobileActionBarEditState.active ? "Done" : "Edit Bar"}` +
+      `</button>` +
+      (pendingAbilityId
+        ? `<button type="button" class="spellbook-summary-button" data-action="cancel-pending">Cancel</button>`
+        : "") +
+    `</div>`;
+  const toggleButton = spellbookSummary.querySelector('[data-action="toggle-edit"]');
+  if (toggleButton) {
+    toggleButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      toggleMobileActionBarEditMode();
+    });
+  }
+  const cancelButton = spellbookSummary.querySelector('[data-action="cancel-pending"]');
+  if (cancelButton) {
+    cancelButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      clearMobilePendingAbilityPlacement();
+      updateActionBarUI(getCurrentSelf());
+      setStatus("Spell placement canceled.");
+    });
+  }
 }
 
 function updateSpellbookUI(self) {
   if (!spellbookGrid || !spellbookPanel) {
     return;
   }
+  updateSpellbookSummary(self);
   if (!self) {
     spellbookGrid.innerHTML = "";
     spellbookState.signature = "";
@@ -3324,6 +4400,7 @@ function updateSpellbookUI(self) {
   const classDef = classDefsById.get(String(self.classType || ""));
   const abilities = Array.isArray(classDef?.abilities) ? classDef.abilities : [];
   const skillPoints = Math.max(0, Math.floor(Number(self.skillPoints) || 0));
+  const mobileLayout = isTouchJoystickEnabled();
 
   for (const entry of abilities) {
     const abilityId = String(entry?.id || "").trim();
@@ -3333,15 +4410,28 @@ function updateSpellbookUI(self) {
     const fallbackLevel = Math.max(1, Math.floor(Number(entry?.level) || 1));
     const currentLevel = getSelfAbilityLevel(self, abilityId, fallbackLevel);
     const canLevelUp = skillPoints > 0;
+    const addButtonState = getMobileSpellbookAddButtonState(abilityId);
+    const boundSlots = getBoundActionSlotsForAbility(abilityId);
 
     const cell = document.createElement("div");
     cell.className = "spellbook-cell";
+    if (mobileLayout && boundSlots.length) {
+      cell.classList.add("bound-on-bar");
+    }
 
     const node = document.createElement("div");
     node.className = "spellbook-entry";
     node.style.backgroundImage = `url(${getActionIconUrl(abilityId)})`;
-    node.title = `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nDrag to action slot.`;
-    node.draggable = true;
+    node.title = mobileLayout
+      ? `${buildAbilityTooltip(abilityId)}\n${buildMobileSpellbookHintLines(currentLevel, abilityId).join("\n")}`
+      : `${buildAbilityTooltip(abilityId)}\nCurrent Level: ${currentLevel}\nDrag to action slot.`;
+    node.draggable = !mobileLayout;
+    bindMobileAbilitySlotPreview(node, abilityId, () => {
+      handleMobileSpellbookAbilityTap(abilityId, currentLevel);
+    }, {
+      anchor: "panel",
+      hintLines: () => buildMobileSpellbookHintLines(currentLevel, abilityId)
+    });
     node.addEventListener("dragstart", (event) => {
       dragState.source = "spellbook";
       dragState.actionBinding = makeActionBinding(abilityId);
@@ -3357,34 +4447,238 @@ function updateSpellbookUI(self) {
     cell.appendChild(node);
 
     const controls = document.createElement("div");
-    controls.className = "spellbook-controls";
+    controls.className = `spellbook-controls${mobileLayout ? " mobile-layout" : ""}`;
+    const metaRow = document.createElement("div");
+    metaRow.className = "spellbook-meta";
+
     const levelLabel = document.createElement("div");
     levelLabel.className = "spellbook-level";
     levelLabel.textContent = `Lv ${currentLevel}`;
-    controls.appendChild(levelLabel);
+    metaRow.appendChild(levelLabel);
+
+    if (mobileLayout) {
+      const bindStatus = document.createElement("div");
+      bindStatus.className = "spellbook-bind-status";
+      bindStatus.textContent = boundSlots.length ? `Bar ${formatActionSlotList(boundSlots)}` : "Not on bar";
+      metaRow.appendChild(bindStatus);
+    }
+
+    controls.appendChild(metaRow);
+
+    const actionRow = document.createElement("div");
+    actionRow.className = "spellbook-actions";
+
+    if (mobileLayout) {
+      const addButton = document.createElement("button");
+      addButton.type = "button";
+      addButton.className = `spellbook-action-button${addButtonState.active ? "" : " inactive"}`;
+      addButton.textContent = addButtonState.label;
+      addButton.title = addButtonState.detail || addButtonState.label;
+      addButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        handleMobileSpellbookBindAction(abilityId);
+      });
+      actionRow.appendChild(addButton);
+    }
 
     const plusButton = document.createElement("button");
     plusButton.type = "button";
     plusButton.className = "spellbook-plus";
-    plusButton.textContent = "+";
+    plusButton.textContent = mobileLayout ? "+1" : "+";
     plusButton.disabled = !canLevelUp;
     plusButton.title = canLevelUp
       ? `Spend 1 skill point to level ${abilityId}.`
       : "No skill points available.";
-    plusButton.addEventListener("click", () => {
-      if (!canLevelUp) {
-        return;
-      }
-      sendJsonMessage({
-        type: "level_up_ability",
-        abilityId
-      });
+    plusButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      handleMobileSpellbookAbilityLevelUp(abilityId);
     });
-    controls.appendChild(plusButton);
+    actionRow.appendChild(plusButton);
+
+    controls.appendChild(actionRow);
 
     cell.appendChild(controls);
     spellbookGrid.appendChild(cell);
   }
+}
+
+let talentTreeState = {
+  signature: "",
+  availablePoints: 0
+};
+
+function buildTalentTreeSignature(self) {
+  if (!self) return "";
+  return `${self.classType}:${self.level}:${self.talentPoints}:${JSON.stringify(self.talents || {})}`;
+}
+
+function getTalentIconChar(iconType) {
+  const iconMap = {
+    health_boost: "❤",
+    armor_up: "🛡",
+    melee_damage: "⚔",
+    charge: "💨",
+    warstomp: "💥",
+    blood_wrath: "🩸",
+    defense_stance: "🏰",
+    mortal_strike: "💀",
+    berserker: "😤",
+    avatar: "👑",
+    spell_power: "✨",
+    frost: "❄",
+    fire: "🔥",
+    mana: "💧",
+    ice_barrier: "🧊",
+    combustion: "🔥",
+    presence_of_mind: "🧠",
+    deep_freeze: "🥶",
+    living_bomb: "💣",
+    arcane_power: "⭐",
+    precision: "🎯",
+    attack_speed: "⚡",
+    hunters_mark: "🏹",
+    eagle_eye: "🦅",
+    poison_arrow: "☠",
+    explosive_arrow: "💥",
+    camouflage: "🌿",
+    aimed_shot: "🎯",
+    beast_mastery: "🐾",
+    barrage: "🌧"
+  };
+  return iconMap[iconType] || "★";
+}
+
+function spendTalentPoint(talentId) {
+  console.log('[talent] spendTalentPoint called:', talentId);
+  console.log('[talent] Socket state:', socket ? socket.readyState : 'no socket');
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    console.log('[talent] Socket not ready, aborting');
+    return;
+  }
+  const message = JSON.stringify({
+    type: "spend_talent_point",
+    talentId: String(talentId || "").trim()
+  });
+  console.log('[talent] Sending:', message);
+  socket.send(message);
+}
+
+function handleTalentUpdate(msg) {
+  console.log('[talent] handleTalentUpdate received:', msg);
+  if (!msg || !msg.talentTree) {
+    console.log('[talent] No talentTree in message');
+    return;
+  }
+  const self = getCurrentSelf();
+  if (!self) {
+    console.log('[talent] No self found');
+    return;
+  }
+
+  // Store the fresh talent tree data
+  self.talentTree = msg.talentTree;
+  self.talentPoints = msg.talentTree.availablePoints || 0;
+  if (selfStatic) {
+    selfStatic.talentTree = msg.talentTree;
+    selfStatic.talentPoints = self.talentPoints;
+  }
+  console.log('[talent] Updated talent points:', self.talentPoints);
+
+  if (talentPanel && !talentPanel.classList.contains("hidden")) {
+    console.log('[talent] Re-rendering talent tree');
+    // Pass the fresh talent tree data directly to render
+    renderTalentTreeWithData(self, msg.talentTree);
+  }
+  if (talentPointsAvailableEl) {
+    talentPointsAvailableEl.textContent = String(self.talentPoints || 0);
+  }
+}
+
+function renderTalentTreeWithData(self, talentTreeData) {
+  if (!talentTreeContainer || !talentPointsAvailableEl || !talentTreeData) {
+    return;
+  }
+
+  talentPointsAvailableEl.textContent = String(talentTreeData.availablePoints || 0);
+  talentTreeContainer.innerHTML = "";
+
+  const talents = Array.isArray(talentTreeData.talents) ? talentTreeData.talents : [];
+  const availablePoints = talentTreeData.availablePoints || 0;
+
+  for (const talent of talents) {
+    const node = document.createElement("div");
+    // Use the canUpgrade from server data directly
+    const canUpgrade = talent.canUpgrade === true;
+    const isMaxRank = talent.currentRank >= talent.maxRank;
+    const isLocked = !talent.prerequisitesMet;
+
+    console.log('[talent] Rendering talent:', talent.name, 'canUpgrade:', canUpgrade, 'isLocked:', isLocked);
+
+    node.className = "talent-node";
+    if (isMaxRank) {
+      node.classList.add("max-rank");
+    } else if (isLocked) {
+      node.classList.add("locked");
+    } else if (canUpgrade) {
+      node.classList.add("available");
+    }
+
+    // Format description with actual values
+    let formattedDesc = talent.description || "";
+    const effects = Array.isArray(talent.effects) ? talent.effects : [];
+    for (const effect of effects) {
+      if (effect.value !== undefined) {
+        formattedDesc = formattedDesc.replace(/{value}/g, String(effect.value * talent.currentRank || effect.value));
+      }
+      if (effect.onSpellHit) {
+        formattedDesc = formattedDesc.replace(/{chance}/g, String(effect.onSpellHit.chance * talent.currentRank || effect.onSpellHit.chance));
+        formattedDesc = formattedDesc.replace(/{duration}/g, String(effect.onSpellHit.duration || 1));
+      }
+      if (effect.conditionalStat && effect.conditionalStat.condition === "hpBelow30Percent") {
+        formattedDesc = formattedDesc.replace(/{value}/g, String(effect.conditionalStat.value * talent.currentRank || effect.conditionalStat.value));
+      }
+    }
+    // Replace any remaining placeholders with base values
+    formattedDesc = formattedDesc.replace(/{value}/g, "X");
+    formattedDesc = formattedDesc.replace(/{chance}/g, "X");
+    formattedDesc = formattedDesc.replace(/{duration}/g, "X");
+
+    node.title = `${talent.name} (Rank ${talent.currentRank}/${talent.maxRank})\n${formattedDesc}${isLocked ? '\n[Locked - Complete prerequisites]' : ''}${canUpgrade ? '\n[Click to upgrade]' : ''}${isMaxRank ? '\n[Max Rank]' : ''}`;
+
+    const icon = document.createElement("div");
+    icon.className = "talent-icon";
+    icon.textContent = getTalentIconChar(talent.icon);
+    node.appendChild(icon);
+
+    const rank = document.createElement("div");
+    rank.className = "talent-rank";
+    rank.textContent = `${talent.currentRank}/${talent.maxRank}`;
+    node.appendChild(rank);
+
+    if (canUpgrade) {
+      node.addEventListener("click", () => {
+        console.log('[talent] Node clicked:', talent.id);
+        spendTalentPoint(talent.id);
+      });
+    }
+
+    talentTreeContainer.appendChild(node);
+  }
+}
+
+function renderTalentTree(self) {
+  if (!self || !self.talentTree) {
+    if (talentTreeContainer) {
+      talentTreeContainer.innerHTML = '<div style="color: #888; text-align: center; padding: 20px;">No talent tree available</div>';
+    }
+    if (talentPointsAvailableEl) {
+      talentPointsAvailableEl.textContent = "0";
+    }
+    return;
+  }
+  renderTalentTreeWithData(self, self.talentTree);
 }
 
 function createIconUrl(cacheKey, drawFn) {
@@ -3403,6 +4697,139 @@ function createIconUrl(cacheKey, drawFn) {
   const url = iconCanvas.toDataURL("image/png");
   iconUrlCache.set(cacheKey, url);
   return url;
+}
+
+function inferPreviewArchetypeForItem(itemData) {
+  const presentation = getItemPresentationData(itemData);
+  const slotFamily = getEquipmentSlotFamily(presentation.slot);
+  const tags = new Set(Array.isArray(itemData && itemData.tags) ? itemData.tags.map((value) => String(value || "").trim().toLowerCase()) : []);
+  const nameText = String(itemData && (itemData.name || itemData.itemId) || "").toLowerCase();
+  const weaponClass = String(presentation.weaponClass || "").toLowerCase();
+
+  if (weaponClass === "bow" || tags.has("bow") || tags.has("projectile") || slotFamily === "trinket" && nameText.includes("hawk")) {
+    return "ranger";
+  }
+  if (
+    weaponClass === "staff" ||
+    weaponClass === "wand" ||
+    weaponClass === "orb" ||
+    tags.has("caster") ||
+    nameText.includes("arcane") ||
+    nameText.includes("oracle") ||
+    nameText.includes("wizard")
+  ) {
+    return "mage";
+  }
+  if (
+    weaponClass === "sword" ||
+    weaponClass === "axe" ||
+    weaponClass === "shield" ||
+    nameText.includes("plate") ||
+    nameText.includes("guardian") ||
+    nameText.includes("warden") ||
+    nameText.includes("iron")
+  ) {
+    return "warrior";
+  }
+  if (slotFamily === "head" && (nameText.includes("hood") || nameText.includes("hat"))) {
+    return nameText.includes("hat") ? "mage" : "ranger";
+  }
+  return "warrior";
+}
+
+function buildDebugPreviewStyle(itemData) {
+  const archetype = inferPreviewArchetypeForItem(itemData);
+  const configured = getClassRenderStyle(archetype);
+  if (configured && typeof configured === "object") {
+    return {
+      ...configured,
+      sizeScale: Math.min(1.24, Math.max(1.08, Number(configured.sizeScale) || 1))
+    };
+  }
+  return {
+    rigType: "humanoid",
+    species: "human",
+    archetype,
+    sizeScale: 1.18,
+    defaults: {
+      head: archetype === "mage" ? "wizard_hat" : archetype === "ranger" ? "hood" : "helmet",
+      chest: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      shoulders: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      gloves: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      bracers: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      belt: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      pants: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      boots: archetype === "mage" ? "robe" : archetype === "ranger" ? "leather" : "plate",
+      mainHand: archetype === "mage" ? "staff" : archetype === "ranger" ? "bow" : "sword",
+      offHand: archetype === "warrior" ? "shield" : "none"
+    }
+  };
+}
+
+function buildDebugPreviewEquipmentSlots(itemData) {
+  const slotFamily = getEquipmentSlotFamily(getEquipmentSlotIdForItem(itemData));
+  const slots = {};
+  if (slotFamily === "ring") {
+    slots.ring1 = itemData;
+  } else if (slotFamily === "trinket") {
+    slots.trinket1 = itemData;
+  } else if (slotFamily) {
+    slots[slotFamily] = itemData;
+  }
+  return slots;
+}
+
+function getDebugGearPreviewUrl(itemData) {
+  const presentation = getItemPresentationData(itemData);
+  const key = [
+    "debug_preview",
+    presentation.itemId,
+    String(itemData && itemData.name || ""),
+    presentation.slot,
+    presentation.weaponClass,
+    presentation.rarity,
+    presentation.affixThemes.join(",")
+  ].join(":");
+  return createIconUrl(key, (iconCtx, size) => {
+    const previousTools = humanoidRenderTools;
+    const previewTools = sharedCreateHumanoidRenderTools
+      ? sharedCreateHumanoidRenderTools({
+          ctx: iconCtx,
+          clamp,
+          lerp,
+          hashString,
+          sanitizeCssColor
+        })
+      : null;
+    const renderTools = previewTools || previousTools;
+    if (!renderTools || typeof renderTools.drawHumanoid !== "function") {
+      drawItemIcon(itemData, iconCtx, size);
+      return;
+    }
+
+    iconCtx.clearRect(0, 0, size, size);
+    iconCtx.fillStyle = "rgba(0, 0, 0, 0)";
+    iconCtx.fillRect(0, 0, size, size);
+    const p = { x: size * 0.5, y: size * 0.66 };
+    const previewEntity = {
+      id: `preview:${key}`,
+      x: 0,
+      y: 0
+    };
+    const previewStyle = buildDebugPreviewStyle(itemData);
+    renderTools.drawHumanoid({
+      entity: previewEntity,
+      entityKey: `preview:${key}`,
+      p,
+      style: previewStyle,
+      equipmentSlots: buildDebugPreviewEquipmentSlots(itemData),
+      attackState: null,
+      castState: null,
+      aimWorldX: 1,
+      aimWorldY: 0,
+      isSelf: false
+    });
+  });
 }
 
 function drawMeleeSlashActionIcon(iconCtx, size) {
@@ -3990,6 +5417,51 @@ function drawWarstompActionIcon(iconCtx, size) {
   }
 }
 
+function drawChargeActionIcon(iconCtx, size) {
+  const mid = size / 2;
+
+  // Speed lines background
+  iconCtx.strokeStyle = "rgba(255, 200, 100, 0.4)";
+  iconCtx.lineWidth = 2;
+  iconCtx.lineCap = "round";
+  for (let i = 0; i < 4; i++) {
+    const yOffset = (i - 1.5) * 6;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 8, mid + yOffset);
+    iconCtx.lineTo(mid - 2, mid + yOffset);
+    iconCtx.stroke();
+  }
+
+  // Main charge arrow
+  iconCtx.strokeStyle = "#ffd774";
+  iconCtx.lineWidth = 4;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 12, mid);
+  iconCtx.lineTo(mid + 8, mid);
+  iconCtx.stroke();
+
+  // Arrow head
+  iconCtx.fillStyle = "#fff0a4";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid + 10, mid);
+  iconCtx.lineTo(mid + 2, mid - 5);
+  iconCtx.lineTo(mid + 2, mid + 5);
+  iconCtx.closePath();
+  iconCtx.fill();
+
+  // Impact burst at tip
+  iconCtx.strokeStyle = "rgba(255, 215, 116, 0.7)";
+  iconCtx.lineWidth = 1.5;
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI * 2 * i) / 6;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid + 8 + Math.cos(angle) * 3, mid + Math.sin(angle) * 3);
+    iconCtx.lineTo(mid + 12 + Math.cos(angle) * 6, mid + Math.sin(angle) * 6);
+    iconCtx.stroke();
+  }
+}
+
 function drawPickupBagActionIcon(iconCtx, size) {
   const mid = size / 2;
   iconCtx.fillStyle = "#8e6335";
@@ -4001,6 +5473,46 @@ function drawPickupBagActionIcon(iconCtx, size) {
   iconCtx.moveTo(mid - 4, mid - 8);
   iconCtx.lineTo(mid + 4, mid - 8);
   iconCtx.stroke();
+}
+
+function drawBloodWrathActionIcon(iconCtx, size) {
+  const mid = size / 2;
+  const glow = iconCtx.createRadialGradient(mid, mid, 4, mid, mid, size * 0.55);
+  glow.addColorStop(0, "rgba(255, 158, 126, 0.36)");
+  glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  iconCtx.fillStyle = glow;
+  iconCtx.fillRect(0, 0, size, size);
+
+  iconCtx.strokeStyle = "#1f0e12";
+  iconCtx.lineWidth = 3;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 8, mid + 10);
+  iconCtx.lineTo(mid + 5, mid - 10);
+  iconCtx.stroke();
+
+  iconCtx.strokeStyle = "#ffe6db";
+  iconCtx.lineWidth = 1.25;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 7.2, mid + 9.2);
+  iconCtx.lineTo(mid + 4.1, mid - 8.8);
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "#d13d3d";
+  iconCtx.strokeStyle = "#2b0f14";
+  iconCtx.lineWidth = 2;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid + 8, mid - 9);
+  iconCtx.bezierCurveTo(mid + 14, mid - 4.5, mid + 14.5, mid + 4, mid + 8, mid + 11.5);
+  iconCtx.bezierCurveTo(mid + 1.5, mid + 4, mid + 2, mid - 4.5, mid + 8, mid - 9);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+
+  iconCtx.fillStyle = "rgba(255, 214, 198, 0.88)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 6.4, mid - 2.8, 1.5, 0, Math.PI * 2);
+  iconCtx.fill();
 }
 
 function drawUnknownActionIcon(iconCtx, size) {
@@ -4033,7 +5545,9 @@ const ABILITY_ICON_RENDERERS = Object.freeze({
   blink: drawBlinkActionIcon,
   fireball: drawFireballActionIcon,
   fire_hydra: drawFireHydraActionIcon,
+  blood_wrath: drawBloodWrathActionIcon,
   warstomp: drawWarstompActionIcon,
+  charge: drawChargeActionIcon,
   pickup_bag: drawPickupBagActionIcon
 });
 
@@ -4144,6 +5658,400 @@ function drawPotionIcon(iconCtx, size, liquidColor) {
   iconCtx.stroke();
   iconCtx.fillStyle = "#dce6f3";
   iconCtx.fillRect(mid - 4.5, mid - 13, 9, 5);
+}
+
+function resolveHeadArmorIconStyle(itemInput, presentation) {
+  const text = `${String(presentation?.itemId || "")} ${String(itemInput?.name || "")}`.toLowerCase();
+  const tags = new Set(Array.isArray(itemInput?.tags) ? itemInput.tags.map((value) => String(value || "").toLowerCase()) : []);
+  if (text.includes("hood") || text.includes("cowl")) {
+    return "hood";
+  }
+  if (text.includes("cap") || text.includes("coif") || text.includes("skullcap")) {
+    return "cap";
+  }
+  if (text.includes("hat") || text.includes("oracle") || text.includes("wizard") || text.includes("sorcer") || text.includes("magus")) {
+    return "wizard_hat";
+  }
+  if (text.includes("crown") || text.includes("circlet") || text.includes("diadem") || text.includes("tiara")) {
+    return "crown";
+  }
+  if (text.includes("horn") || text.includes("antler") || text.includes("viking")) {
+    return "horned_helmet";
+  }
+  if (text.includes("mask") || text.includes("visor") || text.includes("faceguard") || text.includes("barbute") || text.includes("sallet")) {
+    return "mask_helmet";
+  }
+  if (
+    text.includes("greathelm") ||
+    text.includes("great helm") ||
+    text.includes("full helm") ||
+    text.includes("plate helm") ||
+    (
+      (text.includes("helm") || text.includes("helmet")) &&
+      (
+        text.includes("plate") ||
+        text.includes("iron") ||
+        text.includes("steel") ||
+        text.includes("knight") ||
+        text.includes("guardian") ||
+        text.includes("warden") ||
+        text.includes("recruit")
+      )
+    )
+  ) {
+    return "greathelm";
+  }
+  if (text.includes("helm") || text.includes("helmet")) {
+    return "helmet";
+  }
+  if (tags.has("light") || tags.has("medium")) {
+    return text.includes("cap") ? "cap" : "hood";
+  }
+  return "helmet";
+}
+
+function drawHeadArmorIcon(iconCtx, size, itemInput, presentation, accentPalette) {
+  const mid = size / 2;
+  const style = resolveHeadArmorIconStyle(itemInput, presentation);
+  const seed = hashString(`${String(presentation?.itemId || "")}|${String(itemInput?.name || "")}`);
+  const variant = Math.abs(seed % 5);
+  const variantMinor = Math.abs((seed >>> 3) % 7);
+  const primary = hexToRgba(accentPalette.primary, 0.9);
+  const secondary = hexToRgba(accentPalette.secondary, 0.96);
+  const bright = hexToRgba(accentPalette.secondary, 0.78);
+  const dark = "rgba(25, 20, 23, 0.94)";
+  const shadow = "rgba(12, 15, 20, 0.84)";
+  const fillAndStroke = () => {
+    iconCtx.fill();
+    iconCtx.stroke();
+  };
+  const drawGem = (x, y, radius, color = secondary) => {
+    iconCtx.fillStyle = color;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x, y - radius);
+    iconCtx.lineTo(x + radius * 0.9, y);
+    iconCtx.lineTo(x, y + radius);
+    iconCtx.lineTo(x - radius * 0.9, y);
+    iconCtx.closePath();
+    iconCtx.fill();
+  };
+  const drawPlume = (x, y, sign = 1, height = 8) => {
+    iconCtx.fillStyle = bright;
+    iconCtx.strokeStyle = dark;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(x, y);
+    iconCtx.quadraticCurveTo(x + 3 * sign, y - height * 0.45, x + 1.4 * sign, y - height);
+    iconCtx.quadraticCurveTo(x + 0.4 * sign, y - height * 1.18, x - 1.1 * sign, y - height * 0.5);
+    iconCtx.closePath();
+    fillAndStroke();
+  };
+
+  iconCtx.lineCap = "round";
+  iconCtx.lineJoin = "round";
+  iconCtx.strokeStyle = dark;
+  iconCtx.lineWidth = 1.8;
+
+  if (style === "wizard_hat") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.ellipse(mid, mid + 5, 13 + variant * 0.6, 4.6 + (variantMinor % 3) * 0.35, -0.12, 0, Math.PI * 2);
+    fillAndStroke();
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.5, mid + 4.5);
+    iconCtx.quadraticCurveTo(mid - 1.5, mid - 8.5 - variant * 0.8, mid + (variant % 2 === 0 ? 2.5 : -1.5), mid - 15.5 - variant * 1.2);
+    iconCtx.quadraticCurveTo(mid + 6.8 + variant * 0.4, mid - 9.5 - variant * 0.5, mid + 9.8, mid + 2.8);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.5, mid + 1.2);
+    iconCtx.lineTo(mid + 7.8, mid + 1.2);
+    iconCtx.stroke();
+    if (variantMinor % 2 === 0) {
+      drawGem(mid + 4.8, mid, 2);
+    } else {
+      drawPlume(mid + 7.5, mid - 1.5, 1, 7 + variant);
+    }
+    return;
+  }
+
+  if (style === "hood") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 12, mid + 6);
+    iconCtx.quadraticCurveTo(mid - 2.2, mid - 15 - variant, mid, mid - 17 - variant);
+    iconCtx.quadraticCurveTo(mid + 3.5, mid - 15.5, mid + 12, mid + 5.5);
+    iconCtx.lineTo(mid + 9.2, mid + 13);
+    iconCtx.quadraticCurveTo(mid + 1.8, mid + 16.4, mid - 10, mid + 13.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6.4, mid + 4);
+    iconCtx.quadraticCurveTo(mid, mid - 7.8 - (variantMinor % 2), mid + 6, mid + 3.4);
+    iconCtx.lineTo(mid + 4.1, mid + 10);
+    iconCtx.quadraticCurveTo(mid, mid + 11.5, mid - 4.8, mid + 10.1);
+    iconCtx.closePath();
+    iconCtx.fill();
+    if (variantMinor % 2 === 0) {
+      drawGem(mid, mid + 12.4, 1.8, secondary);
+    }
+    return;
+  }
+
+  if (style === "cap") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11.2, mid + 7.5);
+    iconCtx.quadraticCurveTo(mid - 10.4, mid - 8.8, mid - 1.5, mid - 13.2);
+    iconCtx.quadraticCurveTo(mid + 7.5, mid - 12.6, mid + 11.6, mid - 0.5);
+    iconCtx.lineTo(mid + 9.6, mid + 9.4);
+    iconCtx.lineTo(mid + 6.4, mid + 13.4);
+    iconCtx.lineTo(mid - 6.8, mid + 13.2);
+    iconCtx.lineTo(mid - 9.8, mid + 9.6);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.6, mid - 0.6);
+    iconCtx.quadraticCurveTo(mid, mid - 5.8, mid + 7.6, mid - 0.8);
+    iconCtx.stroke();
+    if (variantMinor % 2 === 0) {
+      iconCtx.fillStyle = dark;
+      iconCtx.beginPath();
+      iconCtx.arc(mid - 5.1, mid - 2.3, 2.2, 0, Math.PI * 2);
+      iconCtx.arc(mid + 5.1, mid - 2.3, 2.2, 0, Math.PI * 2);
+      iconCtx.fill();
+      iconCtx.strokeStyle = secondary;
+      iconCtx.lineWidth = 0.9;
+      iconCtx.beginPath();
+      iconCtx.arc(mid - 5.1, mid - 2.3, 1.2, 0, Math.PI * 2);
+      iconCtx.arc(mid + 5.1, mid - 2.3, 1.2, 0, Math.PI * 2);
+      iconCtx.stroke();
+    }
+    return;
+  }
+
+  if (style === "crown") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11, mid + 7);
+    iconCtx.lineTo(mid - 8.6, mid - 1.6);
+    iconCtx.lineTo(mid - 4.2, mid + 2.2);
+    iconCtx.lineTo(mid, mid - 7.6);
+    iconCtx.lineTo(mid + 4.2, mid + 2.2);
+    iconCtx.lineTo(mid + 8.6, mid - 1.6);
+    iconCtx.lineTo(mid + 11, mid + 7);
+    iconCtx.lineTo(mid + 8.5, mid + 12.2);
+    iconCtx.lineTo(mid - 8.5, mid + 12.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 8, mid + 9.1);
+    iconCtx.lineTo(mid + 8, mid + 9.1);
+    iconCtx.stroke();
+    drawGem(mid, mid - 1.6, 2.1);
+    drawGem(mid - 5.1, mid + 0.8, 1.4, bright);
+    drawGem(mid + 5.1, mid + 0.8, 1.4, bright);
+    return;
+  }
+
+  if (style === "greathelm" || style === "mask_helmet" || style === "horned_helmet") {
+    iconCtx.fillStyle = primary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 12.5, mid + 5.2);
+    iconCtx.quadraticCurveTo(mid - 11, mid - 12.6, mid - 1.8, mid - 16.2);
+    iconCtx.quadraticCurveTo(mid + 2.4, mid - 17, mid + 12.4, mid + 4);
+    iconCtx.lineTo(mid + 10.2, mid + 14);
+    iconCtx.lineTo(mid - 10.4, mid + 14);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    if (style === "mask_helmet") {
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 5.2, mid + 1.2);
+      iconCtx.lineTo(mid - 1.4, mid - 5.8);
+      iconCtx.lineTo(mid + 1.4, mid - 5.8);
+      iconCtx.lineTo(mid + 5.2, mid + 1.2);
+      iconCtx.lineTo(mid + 3.3, mid + 9.8);
+      iconCtx.lineTo(mid - 3.3, mid + 9.8);
+      iconCtx.closePath();
+      iconCtx.fill();
+      iconCtx.strokeStyle = secondary;
+      iconCtx.lineWidth = 0.9;
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 4.6, mid + 5.4);
+      iconCtx.lineTo(mid + 4.6, mid + 5.4);
+      iconCtx.stroke();
+      drawGem(mid, mid - 10.5, 1.4, bright);
+    } else {
+      iconCtx.fillRect(mid - 5.1, mid + 1.8, 10.2, 1.7);
+      if (variantMinor % 2 === 0) {
+        iconCtx.fillRect(mid - 1.2, mid - 5.2, 2.4, 8.6);
+      } else {
+        iconCtx.fillRect(mid - 4.5, mid + 5.2, 9, 1.4);
+      }
+      if (style === "greathelm") {
+        iconCtx.strokeStyle = secondary;
+        iconCtx.lineWidth = 1;
+        iconCtx.beginPath();
+        iconCtx.moveTo(mid - 7, mid - 11.2);
+        iconCtx.lineTo(mid + 7, mid - 11.2);
+        iconCtx.stroke();
+        if (variantMinor % 2 === 0) {
+          drawPlume(mid, mid - 14.2, variant % 2 === 0 ? 1 : -1, 8.5);
+        }
+      }
+    }
+    if (style === "horned_helmet") {
+      iconCtx.fillStyle = bright;
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid - 7.8, mid - 6.8);
+      iconCtx.quadraticCurveTo(mid - 16.4, mid - 10.6, mid - 13.9, mid - 1.5);
+      iconCtx.quadraticCurveTo(mid - 10.2, mid - 4.8, mid - 7.2, mid - 1.6);
+      iconCtx.closePath();
+      fillAndStroke();
+      iconCtx.beginPath();
+      iconCtx.moveTo(mid + 7.8, mid - 6.8);
+      iconCtx.quadraticCurveTo(mid + 16.4, mid - 10.6, mid + 13.9, mid - 1.5);
+      iconCtx.quadraticCurveTo(mid + 10.2, mid - 4.8, mid + 7.2, mid - 1.6);
+      iconCtx.closePath();
+      fillAndStroke();
+    }
+    return;
+  }
+
+  const family = variant % 5;
+  iconCtx.fillStyle = primary;
+  if (family === 0) {
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 1.5, 11.8, Math.PI, Math.PI * 2);
+    iconCtx.lineTo(mid + 10.8, mid + 4.2);
+    iconCtx.lineTo(mid + 7, mid + 10.8);
+    iconCtx.lineTo(mid - 7, mid + 10.8);
+    iconCtx.lineTo(mid - 10.8, mid + 4.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.fillRect(mid - 5, mid + 2.4, 10, 1.6);
+    iconCtx.fillRect(mid - 1, mid - 5.1, 2, 9.8);
+  } else if (family === 1) {
+    iconCtx.beginPath();
+    iconCtx.arc(mid, mid - 1.4, 11.2, Math.PI, Math.PI * 2);
+    iconCtx.lineTo(mid + 10.4, mid + 4.6);
+    iconCtx.lineTo(mid + 6.2, mid + 11.6);
+    iconCtx.lineTo(mid - 6.2, mid + 11.6);
+    iconCtx.lineTo(mid - 10.4, mid + 4.6);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.5, mid + 2);
+    iconCtx.lineTo(mid - 1.9, mid - 5.2);
+    iconCtx.lineTo(mid + 1.7, mid - 5.2);
+    iconCtx.lineTo(mid + 5.7, mid + 2);
+    iconCtx.lineTo(mid + 3.1, mid + 9.4);
+    iconCtx.lineTo(mid - 3.1, mid + 9.4);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.fillStyle = secondary;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10.1, mid - 4.2);
+    iconCtx.lineTo(mid - 14, mid - 8.6);
+    iconCtx.lineTo(mid - 10.6, mid - 1.2);
+    iconCtx.closePath();
+    iconCtx.moveTo(mid + 10.1, mid - 4.2);
+    iconCtx.lineTo(mid + 14, mid - 8.6);
+    iconCtx.lineTo(mid + 10.6, mid - 1.2);
+    iconCtx.closePath();
+    iconCtx.fill();
+  } else if (family === 2) {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 9.8, mid + 4.6);
+    iconCtx.quadraticCurveTo(mid - 8.5, mid - 9.6, mid, mid - 16.2);
+    iconCtx.quadraticCurveTo(mid + 8.5, mid - 9.6, mid + 9.8, mid + 4.6);
+    iconCtx.lineTo(mid + 7.2, mid + 11.2);
+    iconCtx.lineTo(mid - 7.2, mid + 11.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6.2, mid - 0.8);
+    iconCtx.lineTo(mid, mid - 10.8);
+    iconCtx.lineTo(mid + 6.2, mid - 0.8);
+    iconCtx.stroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.1, mid + 2.2);
+    iconCtx.lineTo(mid, mid - 3.4);
+    iconCtx.lineTo(mid + 5.1, mid + 2.2);
+    iconCtx.lineTo(mid + 3.2, mid + 9.8);
+    iconCtx.lineTo(mid - 3.2, mid + 9.8);
+    iconCtx.closePath();
+    iconCtx.fill();
+    drawPlume(mid, mid - 13.8, variantMinor % 2 === 0 ? 1 : -1, 7.8);
+  } else if (family === 3) {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 10.8, mid + 4.6);
+    iconCtx.quadraticCurveTo(mid - 8.8, mid - 10.2, mid - 2.2, mid - 15.2);
+    iconCtx.quadraticCurveTo(mid + 2.8, mid - 16.4, mid + 10.8, mid + 4);
+    iconCtx.lineTo(mid + 7.2, mid + 13);
+    iconCtx.lineTo(mid - 6.8, mid + 13);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 4.1, mid + 1.6);
+    iconCtx.lineTo(mid - 1.1, mid - 5.2);
+    iconCtx.lineTo(mid + 1.5, mid - 5.2);
+    iconCtx.lineTo(mid + 4.7, mid + 1.6);
+    iconCtx.lineTo(mid + 2.6, mid + 9.4);
+    iconCtx.lineTo(mid - 2.8, mid + 9.4);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 0.9;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7.2, mid + 5.4);
+    iconCtx.lineTo(mid + 7, mid + 5.4);
+    iconCtx.stroke();
+  } else {
+    iconCtx.beginPath();
+    iconCtx.arc(mid - 0.8, mid - 2, 11.2, Math.PI * 0.98, Math.PI * 1.98);
+    iconCtx.lineTo(mid + 11.2, mid + 5.1);
+    iconCtx.lineTo(mid + 8.6, mid + 12.2);
+    iconCtx.lineTo(mid - 5.4, mid + 13.4);
+    iconCtx.lineTo(mid - 11.2, mid + 6.2);
+    iconCtx.closePath();
+    fillAndStroke();
+    iconCtx.fillStyle = shadow;
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 5.4, mid + 2.5);
+    iconCtx.quadraticCurveTo(mid - 1.5, mid - 5.8, mid + 5.1, mid - 2.2);
+    iconCtx.lineTo(mid + 5.2, mid + 4.2);
+    iconCtx.lineTo(mid - 3.2, mid + 9.6);
+    iconCtx.closePath();
+    iconCtx.fill();
+    iconCtx.strokeStyle = secondary;
+    iconCtx.lineWidth = 0.9;
+    for (let i = 0; i < 3; i += 1) {
+      const x = mid - 4 + i * 3.4;
+      iconCtx.beginPath();
+      iconCtx.moveTo(x, mid + 12.2);
+      iconCtx.lineTo(x, mid + 16);
+      iconCtx.stroke();
+    }
+  }
+
+  if (variantMinor % 3 === 1 && family !== 1) {
+    drawGem(mid, mid - 12, 1.5, bright);
+  }
 }
 
 function drawArmorSlotIcon(iconCtx, size, slot, accentPalette) {
@@ -4445,7 +6353,9 @@ function drawItemIcon(itemInput, iconCtx, size) {
 
   if (presentation.itemDef && presentation.itemDef.isEquipment) {
     const slotFamily = getEquipmentSlotFamily(presentation.slot);
-    if (["head", "chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots"].includes(slotFamily)) {
+    if (slotFamily === "head") {
+      drawHeadArmorIcon(iconCtx, size, itemInput, presentation, accentPalette);
+    } else if (["chest", "shoulders", "bracers", "gloves", "pants", "belt", "boots"].includes(slotFamily)) {
       drawArmorSlotIcon(iconCtx, size, slotFamily, accentPalette);
     } else if (["ring", "necklace", "trinket"].includes(slotFamily)) {
       drawJewelrySlotIcon(iconCtx, size, slotFamily, accentPalette);
@@ -4565,21 +6475,70 @@ function equipInventoryItemAtIndex(index) {
   return true;
 }
 
+function handleMobileInventorySlotTap(index) {
+  const slotData = inventoryState.slots[index];
+  if (!slotData || !slotData.itemId) {
+    return false;
+  }
+  if (mobileActionBarEditState.active) {
+    const selectedSlotId = getMobileActionBarSelectedSlotId();
+    if (!selectedSlotId) {
+      setStatus("Tap an action slot, then tap a spell or usable item.");
+      return false;
+    }
+    if (!bindItemToActionSlot(selectedSlotId, slotData.itemId)) {
+      setStatus("Only usable items like potions can be placed on the action bar.");
+      return false;
+    }
+    const itemName = slotData.name || itemDefsById.get(slotData.itemId)?.name || slotData.itemId;
+    setStatus(`${itemName} placed on slot ${getActionSlotLabel(selectedSlotId)}.`);
+    return true;
+  }
+  if (!trySellInventoryItemAtIndex(index)) {
+    return equipInventoryItemAtIndex(index);
+  }
+  return true;
+}
+
+function handleMobileEquipmentSlotTap(slotId) {
+  if (mobileActionBarEditState.active) {
+    setStatus("Edit mode only changes action bar slots.");
+    return false;
+  }
+  sendJsonMessage({
+    type: "unequip_item",
+    slot: String(slotId || "")
+  });
+  return true;
+}
+
 function updateInventoryUI() {
   if (!inventoryGrid || !inventoryPanel) {
     return;
   }
   hideHoverTooltip();
 
+  const mobileLayout = isTouchJoystickEnabled();
+  const mobileGapPx = inventoryState.cols >= 8 ? 5 : 6;
+  const mobileAvailableWidth = Math.max(
+    180,
+    window.innerWidth - 16 - INVENTORY_PANEL_PADDING_PX * 2 - INVENTORY_PANEL_BORDER_PX * 2
+  );
+  const mobileSlotSizePx = Math.floor(
+    (mobileAvailableWidth - Math.max(0, inventoryState.cols - 1) * mobileGapPx) / Math.max(1, inventoryState.cols)
+  );
+  const slotSizePx = mobileLayout ? clamp(mobileSlotSizePx, 32, 56) : INVENTORY_SLOT_SIZE_PX;
+  const slotGapPx = mobileLayout ? mobileGapPx : INVENTORY_SLOT_GAP_PX;
   ensureInventorySlotsLength();
   const gridWidth =
-    inventoryState.cols * INVENTORY_SLOT_SIZE_PX + Math.max(0, inventoryState.cols - 1) * INVENTORY_SLOT_GAP_PX;
+    inventoryState.cols * slotSizePx + Math.max(0, inventoryState.cols - 1) * slotGapPx;
   const requiredPanelWidth = gridWidth + INVENTORY_PANEL_PADDING_PX * 2 + INVENTORY_PANEL_BORDER_PX * 2;
   const maxPanelWidth = Math.max(180, window.innerWidth - 24);
   const panelWidth = Math.min(requiredPanelWidth, maxPanelWidth);
-  inventoryPanel.style.width = `${panelWidth}px`;
-  inventoryPanel.style.overflowX = requiredPanelWidth > panelWidth ? "auto" : "visible";
-  inventoryGrid.style.gridTemplateColumns = `repeat(${inventoryState.cols}, ${INVENTORY_SLOT_SIZE_PX}px)`;
+  inventoryPanel.style.width = mobileLayout ? "" : `${panelWidth}px`;
+  inventoryPanel.style.overflowX = mobileLayout ? "hidden" : requiredPanelWidth > panelWidth ? "auto" : "visible";
+  inventoryGrid.style.gridTemplateColumns = `repeat(${inventoryState.cols}, ${slotSizePx}px)`;
+  inventoryGrid.style.gap = `${slotGapPx}px`;
   inventoryGrid.innerHTML = "";
 
   for (let i = 0; i < inventoryState.slots.length; i += 1) {
@@ -4587,6 +6546,8 @@ function updateInventoryUI() {
     const slotEl = document.createElement("div");
     slotEl.className = "inventory-slot";
     slotEl.dataset.index = String(i);
+    slotEl.style.width = `${slotSizePx}px`;
+    slotEl.style.height = `${slotSizePx}px`;
     slotEl.addEventListener("dragover", (event) => {
       if (dragState.inventoryFrom === null && !dragState.equipmentSlot) {
         return;
@@ -4626,15 +6587,25 @@ function updateInventoryUI() {
 
     if (slotData && slotData.itemId) {
       slotEl.classList.add("has-item");
-      slotEl.draggable = true;
+      slotEl.draggable = !mobileLayout;
       bindItemTooltip(slotEl, slotData);
       applyItemRarityChrome(slotEl, slotData);
       slotEl.addEventListener("contextmenu", (event) => {
         event.preventDefault();
+        if (isTouchJoystickEnabled()) {
+          mobilePanelState.suppressItemTapUntil = performance.now() + 900;
+          return;
+        }
         if (!trySellInventoryItemAtIndex(i)) {
           equipInventoryItemAtIndex(i);
         }
       });
+      bindMobileItemSlotInteraction(
+        slotEl,
+        slotData,
+        () => handleMobileInventorySlotTap(i),
+        slotData.qty
+      );
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "inventory";
         dragState.inventoryFrom = i;
@@ -4668,6 +6639,7 @@ function updateEquipmentUI() {
     return;
   }
   hideHoverTooltip();
+  const mobileLayout = isTouchJoystickEnabled();
   const slotIds = Array.isArray(equipmentConfigState.itemSlots) ? equipmentConfigState.itemSlots : [];
   equipmentGrid.innerHTML = "";
   const shellEl = document.createElement("div");
@@ -4759,9 +6731,12 @@ function updateEquipmentUI() {
     const slotData = equipmentState.slots[slotId] || null;
     if (slotData && slotData.itemId) {
       slotEl.classList.add("has-item");
-      slotEl.draggable = true;
+      slotEl.draggable = !mobileLayout;
       bindItemTooltip(slotEl, slotData);
       applyItemRarityChrome(slotEl, slotData);
+      bindMobileItemSlotInteraction(slotEl, slotData, () => {
+        handleMobileEquipmentSlotTap(slotId);
+      });
       slotEl.addEventListener("dragstart", (event) => {
         dragState.source = "equipment";
         dragState.inventoryFrom = null;
@@ -4812,6 +6787,7 @@ function setVendorPanelVisible(visible) {
   if (!visible) {
     clearAutoVendorInteraction(false, false);
   }
+  updateMobileUtilityBar(getCurrentSelf());
 }
 
 function sendSellInventoryItem(inventoryIndex) {
@@ -4840,6 +6816,29 @@ function trySellInventoryItemAtIndex(index) {
     return false;
   }
   return sendSellInventoryItem(index);
+}
+
+function countSellableInventoryItems() {
+  let count = 0;
+  for (let index = 0; index < inventoryState.slots.length; index += 1) {
+    const slotData = inventoryState.slots[index];
+    if (!slotData || !slotData.itemId || !slotData.isEquipment) {
+      continue;
+    }
+    if (getItemCopperValueClient(slotData) <= 0) {
+      continue;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function handleMobileVendorSellTap(index) {
+  if (!sendSellInventoryItem(index)) {
+    setStatus("Unable to sell that item right now.");
+    return false;
+  }
+  return true;
 }
 
 function createVendorItemEntry(slotData, index) {
@@ -4875,6 +6874,9 @@ function createVendorItemEntry(slotData, index) {
   entry.appendChild(meta);
   entry.appendChild(valueEl);
   bindItemTooltip(entry, slotData);
+  if (isTouchJoystickEnabled()) {
+    bindMobileItemSlotInteraction(entry, slotData, () => handleMobileVendorSellTap(index), slotData.qty);
+  }
   entry.addEventListener("contextmenu", (event) => {
     event.preventDefault();
     sendSellInventoryItem(index);
@@ -4888,9 +6890,13 @@ function updateVendorPanelUI() {
   }
   const vendor = getTownVendor();
   vendorTitle.textContent = vendor ? vendor.name || "Quartermaster" : "Quartermaster";
-  vendorSubtitle.textContent = canInteractWithVendor()
-    ? "Right-click gear to sell it for copper."
-    : "Right-click the vendor in town to open this panel. Move closer to sell.";
+  vendorSubtitle.textContent = isTouchJoystickEnabled()
+    ? (canInteractWithVendor()
+        ? "Tap gear to sell it for copper. Long press to inspect."
+        : "Move closer to the quartermaster to sell gear.")
+    : (canInteractWithVendor()
+        ? "Right-click gear to sell it for copper."
+        : "Right-click the vendor in town to open this panel. Move closer to sell.");
   vendorItemList.innerHTML = "";
   const sellable = [];
   for (let index = 0; index < inventoryState.slots.length; index += 1) {
@@ -4947,6 +6953,29 @@ function startAutoVendorInteraction(vendor) {
   setAutoMoveTarget(vendorInteractionState.x + 0.5, vendorInteractionState.y + 0.5, 0.8);
   sendMove();
   return true;
+}
+
+function handleMobileVendorButtonPress() {
+  const self = getCurrentSelf();
+  const vendor = getTownVendor();
+  if (!self || !vendor) {
+    return false;
+  }
+  resumeSpatialAudioContext();
+  if (vendorInteractionState.panelOpen) {
+    setVendorPanelVisible(false);
+    setStatus("Quartermaster closed.");
+    return true;
+  }
+  if (canInteractWithVendor(self)) {
+    clearAutoVendorInteraction(false, true);
+    setVendorPanelVisible(true);
+    updateVendorPanelUI();
+    setStatus("Quartermaster opened.");
+    return true;
+  }
+  setStatus("Move closer to the quartermaster.");
+  return false;
 }
 
 function getHoveredVendor(cameraX, cameraY) {
@@ -5054,21 +7083,509 @@ const uiPanelTools = sharedCreateUiPanelTools
     })
   : null;
 
-function setInventoryVisible(visible) {
+function isMobilePanelMode() {
+  return isTouchJoystickEnabled();
+}
+
+function getMobilePanelElement(tabId) {
+  const resolvedTab = String(tabId || "").trim().toLowerCase();
+  if (resolvedTab === "equipment" || resolvedTab === "character") {
+    return equipmentPanel;
+  }
+  if (resolvedTab === "spellbook" || resolvedTab === "skills") {
+    return spellbookPanel;
+  }
+  return inventoryPanel;
+}
+
+function getLootBagsWithinPickupRange(self = null) {
+  const actor = self || getCurrentSelf();
+  if (!actor) {
+    return [];
+  }
+  const bags = (lastRenderState && Array.isArray(lastRenderState.lootBags) ? lastRenderState.lootBags : null) || gameState.lootBags;
+  const reachable = [];
+  for (const bag of Array.isArray(bags) ? bags : []) {
+    if (!bag) {
+      continue;
+    }
+    const distance = Math.hypot(Number(bag.x) + 0.5 - Number(actor.x), Number(bag.y) + 0.5 - Number(actor.y));
+    if (!Number.isFinite(distance) || distance > lootClientConfig.bagPickupRange) {
+      continue;
+    }
+    reachable.push({
+      bag,
+      distance
+    });
+  }
+  reachable.sort((left, right) => left.distance - right.distance);
+  return reachable;
+}
+
+function pickupNearestLootBagInRange() {
+  const reachable = getLootBagsWithinPickupRange();
+  if (!reachable.length) {
+    return false;
+  }
+  clearAutoLootPickup(false);
+  const nearest = reachable[0].bag;
+  return sendPickupBag(Number(nearest.x) || 0, Number(nearest.y) || 0);
+}
+
+function pickupAllLootBagsInRange() {
+  const reachable = getLootBagsWithinPickupRange();
+  if (!reachable.length) {
+    return false;
+  }
+  clearAutoLootPickup(false);
+  let pickedAny = false;
+  for (const entry of reachable) {
+    const bag = entry && entry.bag;
+    if (!bag) {
+      continue;
+    }
+    pickedAny = sendPickupBag(Number(bag.x) || 0, Number(bag.y) || 0) || pickedAny;
+  }
+  return pickedAny;
+}
+
+function clearMobileTooltipHideTimer() {
+  if (!mobilePanelState.tooltipHideTimer) {
+    return;
+  }
+  window.clearTimeout(mobilePanelState.tooltipHideTimer);
+  mobilePanelState.tooltipHideTimer = 0;
+}
+
+function showMobileItemTooltip(itemInput, clientX, clientY, qty = null) {
+  showItemTooltip(
+    itemInput,
+    {
+      clientX: Number(clientX) || 0,
+      clientY: Number(clientY) || 0,
+      mobileTooltipAnchor: "panel"
+    },
+    qty
+  );
+  clearMobileTooltipHideTimer();
+  mobilePanelState.suppressItemTapUntil = performance.now() + 900;
+}
+
+function showMobileAbilityTooltip(abilityId, anchor, clientX, clientY, extraLines = []) {
+  showAbilityTooltip(
+    abilityId,
+    {
+      clientX: Number(clientX) || 0,
+      clientY: Number(clientY) || 0
+    },
+    extraLines,
+    anchor
+  );
+  clearMobileTooltipHideTimer();
+  mobilePanelState.suppressAbilityTapUntil = performance.now() + 900;
+}
+
+function bindMobileItemSlotInteraction(node, itemInput, onTap, qty = null) {
+  if (!node || !itemInput) {
+    return;
+  }
+
+  let holdTimer = 0;
+  let holdTriggered = false;
+  let startClientX = 0;
+  let startClientY = 0;
+  let tapCanceled = false;
+
+  function clearHoldTimer() {
+    if (!holdTimer) {
+      return;
+    }
+    window.clearTimeout(holdTimer);
+    holdTimer = 0;
+  }
+
+  node.addEventListener("click", (event) => {
+    if (!isTouchJoystickEnabled()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (performance.now() < (Number(mobilePanelState.suppressItemTapUntil) || 0)) {
+      return;
+    }
+  });
+  node.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      holdTriggered = false;
+      tapCanceled = false;
+      startClientX = Number(touch.clientX) || 0;
+      startClientY = Number(touch.clientY) || 0;
+      clearHoldTimer();
+      holdTimer = window.setTimeout(() => {
+        holdTimer = 0;
+        holdTriggered = true;
+        showMobileItemTooltip(itemInput, startClientX, startClientY, qty);
+      }, 420);
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      if (Math.hypot((Number(touch.clientX) || 0) - startClientX, (Number(touch.clientY) || 0) - startClientY) > 14) {
+        tapCanceled = true;
+        clearHoldTimer();
+      }
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchcancel",
+    () => {
+      clearHoldTimer();
+      holdTriggered = false;
+      tapCanceled = false;
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchend",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      clearHoldTimer();
+      event.preventDefault();
+      event.stopPropagation();
+      if (holdTriggered || tapCanceled) {
+        mobilePanelState.suppressItemTapUntil = performance.now() + 900;
+        holdTriggered = false;
+        tapCanceled = false;
+        return;
+      }
+      hideHoverTooltip();
+      if (typeof onTap === "function") {
+        onTap();
+      }
+    },
+    { passive: false }
+  );
+}
+
+function bindMobileAbilitySlotPreview(node, abilityId, onTap, options = {}) {
+  if (!node || !abilityId) {
+    return;
+  }
+
+  const anchor = String(options.anchor || "panel").trim().toLowerCase() || "panel";
+  const resolveHintLines = () => {
+    if (typeof options.hintLines === "function") {
+      const dynamicLines = options.hintLines();
+      return Array.isArray(dynamicLines) ? dynamicLines : [];
+    }
+    return Array.isArray(options.hintLines) ? options.hintLines : [];
+  };
+  let holdTimer = 0;
+  let holdTriggered = false;
+  let startClientX = 0;
+  let startClientY = 0;
+  let tapCanceled = false;
+
+  function clearHoldTimer() {
+    if (!holdTimer) {
+      return;
+    }
+    window.clearTimeout(holdTimer);
+    holdTimer = 0;
+  }
+
+  node.addEventListener("click", (event) => {
+    if (!isTouchJoystickEnabled()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (performance.now() < (Number(mobilePanelState.suppressAbilityTapUntil) || 0)) {
+      return;
+    }
+    if (typeof onTap === "function") {
+      onTap();
+    }
+  });
+  node.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      hideHoverTooltip();
+      holdTriggered = false;
+      tapCanceled = false;
+      startClientX = Number(touch.clientX) || 0;
+      startClientY = Number(touch.clientY) || 0;
+      clearHoldTimer();
+      holdTimer = window.setTimeout(() => {
+        holdTimer = 0;
+        holdTriggered = true;
+        showMobileAbilityTooltip(abilityId, anchor, startClientX, startClientY, resolveHintLines());
+      }, 420);
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchmove",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+      if (!touch) {
+        return;
+      }
+      if (Math.hypot((Number(touch.clientX) || 0) - startClientX, (Number(touch.clientY) || 0) - startClientY) > 14) {
+        tapCanceled = true;
+        clearHoldTimer();
+      }
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchcancel",
+    () => {
+      clearHoldTimer();
+      holdTriggered = false;
+      tapCanceled = false;
+    },
+    { passive: true }
+  );
+  node.addEventListener(
+    "touchend",
+    (event) => {
+      if (!isTouchJoystickEnabled()) {
+        return;
+      }
+      clearHoldTimer();
+      event.preventDefault();
+      event.stopPropagation();
+      if (holdTriggered || tapCanceled) {
+        mobilePanelState.suppressAbilityTapUntil = performance.now() + 900;
+        holdTriggered = false;
+        tapCanceled = false;
+        return;
+      }
+      hideHoverTooltip();
+      mobilePanelState.suppressAbilityTapUntil = performance.now() + 360;
+      if (typeof onTap === "function") {
+        onTap();
+      }
+    },
+    { passive: false }
+  );
+}
+
+function clearMobileActionTouchHoldTimer() {
+  if (!mobileActionTouchState.holdTimerId) {
+    return;
+  }
+  window.clearTimeout(mobileActionTouchState.holdTimerId);
+  mobileActionTouchState.holdTimerId = 0;
+}
+
+function resetMobileActionTouchState() {
+  clearMobileActionTouchHoldTimer();
+  mobileActionTouchState.active = false;
+  mobileActionTouchState.slotId = "";
+  mobileActionTouchState.touchId = null;
+  mobileActionTouchState.bindingKind = "";
+  mobileActionTouchState.bindingId = "";
+  mobileActionTouchState.editMode = false;
+  mobileActionTouchState.aimCapable = false;
+  mobileActionTouchState.startClientX = 0;
+  mobileActionTouchState.startClientY = 0;
+  mobileActionTouchState.currentClientX = 0;
+  mobileActionTouchState.currentClientY = 0;
+  mobileActionTouchState.holdTriggered = false;
+  mobileActionTouchState.moveCanceled = false;
+}
+
+function beginMobileActionSlotTouch(slotId, touchId, clientX, clientY) {
+  if (!isTouchJoystickEnabled() || mobileAbilityAimState.active || mobileActionTouchState.active) {
+    return false;
+  }
+  if (mobileActionBarEditState.active && !isMobileEditableActionSlot(slotId)) {
+    return false;
+  }
+  const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+  if (!mobileActionBarEditState.active && binding.kind === "action" && binding.id === "none") {
+    return false;
+  }
+  const actionDef = binding.kind === "action" ? getActionDefById(binding.id) : null;
+  resetMobileActionTouchState();
+  hideHoverTooltip();
+  mobileActionTouchState.active = true;
+  mobileActionTouchState.slotId = String(slotId || "");
+  mobileActionTouchState.touchId = touchId;
+  mobileActionTouchState.bindingKind = binding.kind;
+  mobileActionTouchState.bindingId = String(binding.id || "");
+  mobileActionTouchState.editMode = mobileActionBarEditState.active;
+  mobileActionTouchState.aimCapable =
+    !mobileActionTouchState.editMode && binding.kind === "action" && supportsMobileAbilityAim(binding.id, actionDef);
+  mobileActionTouchState.startClientX = Number(clientX) || 0;
+  mobileActionTouchState.startClientY = Number(clientY) || 0;
+  mobileActionTouchState.currentClientX = mobileActionTouchState.startClientX;
+  mobileActionTouchState.currentClientY = mobileActionTouchState.startClientY;
+  mobileActionTouchState.holdTimerId = window.setTimeout(() => {
+    mobileActionTouchState.holdTimerId = 0;
+    if (!mobileActionTouchState.active || mobileActionTouchState.touchId !== touchId) {
+      return;
+    }
+    mobileActionTouchState.holdTriggered = true;
+    if (mobileActionTouchState.bindingKind === "action") {
+      const tips = mobileActionTouchState.editMode
+        ? [
+            getMobileActionBarSelectedSlotId() === mobileActionTouchState.slotId
+              ? "Tap again to deselect this slot."
+              : "Tap to select this slot.",
+            getMobileActionBarSelectedSlotId()
+              ? "Tap another slot to swap, or tap a spell or potion to replace it."
+              : "After selecting a slot, tap another slot, a spell, or a potion.",
+            "Long press to inspect."
+          ]
+        : mobileActionTouchState.aimCapable
+          ? ["Drag from the button to aim, release to cast.", "Tap to quick-cast.", "Long press to inspect."]
+          : ["Tap to use.", "Long press to inspect."];
+      showMobileAbilityTooltip(mobileActionTouchState.bindingId, "action", clientX, clientY, tips);
+    } else if (mobileActionTouchState.bindingKind === "item") {
+      showItemTooltip(
+        mobileActionTouchState.bindingId,
+        {
+          clientX: Number(clientX) || 0,
+          clientY: Number(clientY) || 0,
+          mobileTooltipAnchor: "action"
+        }
+      );
+      mobilePanelState.suppressItemTapUntil = performance.now() + 900;
+    }
+  }, 430);
+  return true;
+}
+
+function handleMobileActionSlotTouchMove(event) {
+  if (!mobileActionTouchState.active || mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileActionTouchState.touchId) {
+      continue;
+    }
+    mobileActionTouchState.currentClientX = Number(touch.clientX) || 0;
+    mobileActionTouchState.currentClientY = Number(touch.clientY) || 0;
+    const movedFarEnough =
+      Math.hypot(
+        mobileActionTouchState.currentClientX - mobileActionTouchState.startClientX,
+        mobileActionTouchState.currentClientY - mobileActionTouchState.startClientY
+      ) > 14;
+    if (!movedFarEnough) {
+      return;
+    }
+    clearMobileActionTouchHoldTimer();
+    if (mobileActionTouchState.aimCapable && !mobileActionTouchState.holdTriggered) {
+      const slotId = mobileActionTouchState.slotId;
+      const touchId = mobileActionTouchState.touchId;
+      const startX = mobileActionTouchState.startClientX;
+      const startY = mobileActionTouchState.startClientY;
+      const currentX = mobileActionTouchState.currentClientX;
+      const currentY = mobileActionTouchState.currentClientY;
+      resetMobileActionTouchState();
+      if (beginMobileAbilityAim(slotId, touchId, startX, startY)) {
+        updateMobileAbilityAim(currentX, currentY);
+        event.preventDefault();
+        return;
+      }
+    }
+    mobileActionTouchState.moveCanceled = true;
+    event.preventDefault();
+    return;
+  }
+}
+
+function handleMobileActionSlotTouchEnd(event) {
+  if (!mobileActionTouchState.active || mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileActionTouchState.touchId) {
+      continue;
+    }
+    clearMobileActionTouchHoldTimer();
+    suppressActionBarClickUntil = performance.now() + 420;
+    const slotId = mobileActionTouchState.slotId;
+    const holdTriggered = mobileActionTouchState.holdTriggered;
+    const moveCanceled = mobileActionTouchState.moveCanceled;
+    const editMode = mobileActionTouchState.editMode;
+    const aimCapable = mobileActionTouchState.aimCapable;
+    const startX = mobileActionTouchState.startClientX;
+    const startY = mobileActionTouchState.startClientY;
+    resetMobileActionTouchState();
+    if (holdTriggered || moveCanceled || event.type === "touchcancel") {
+      event.preventDefault();
+      return;
+    }
+    hideHoverTooltip();
+    if (aimCapable && quickCastMobileAbility(slotId)) {
+      event.preventDefault();
+      return;
+    }
+    if (editMode) {
+      handleMobileActionBarEditSlotTap(slotId);
+      event.preventDefault();
+      return;
+    }
+    resumeSpatialAudioContext();
+    executeBoundAction(slotId);
+    event.preventDefault();
+    return;
+  }
+}
+
+function setDesktopInventoryVisible(visible) {
   if (!uiPanelTools) {
     return;
   }
   uiPanelTools.setInventoryVisible(visible);
 }
 
-function toggleInventoryPanel() {
+function setDesktopSpellbookVisible(visible) {
   if (!uiPanelTools) {
     return;
   }
-  uiPanelTools.toggleInventoryPanel();
+  uiPanelTools.setSpellbookVisible(visible);
 }
 
-function setEquipmentVisible(visible) {
+function setDesktopEquipmentVisible(visible) {
   if (!equipmentPanel) {
     return;
   }
@@ -5078,7 +7595,253 @@ function setEquipmentVisible(visible) {
   }
 }
 
+function updateMobilePanelTabs() {
+  if (!gameUI) {
+    return;
+  }
+  if (!isMobilePanelMode() || !mobilePanelState.open) {
+    mobilePanelTabs.classList.add("hidden");
+    gameUI.classList.remove("mobile-panels-open");
+    return;
+  }
+
+  const activePanel = getMobilePanelElement(mobilePanelState.activeTab);
+  if (!activePanel) {
+    mobilePanelTabs.classList.add("hidden");
+    gameUI.classList.remove("mobile-panels-open");
+    return;
+  }
+
+  if (mobilePanelTabs.parentElement !== activePanel) {
+    activePanel.prepend(mobilePanelTabs);
+  }
+  mobilePanelTabs.classList.remove("hidden");
+  mobileInventoryTabButton.classList.toggle("active", mobilePanelState.activeTab === "inventory");
+  mobileEquipmentTabButton.classList.toggle("active", mobilePanelState.activeTab === "equipment");
+  mobileSpellbookTabButton.classList.toggle("active", mobilePanelState.activeTab === "spellbook");
+  gameUI.classList.add("mobile-panels-open");
+}
+
+function setMobilePanelTab(tabId, visible = true) {
+  if (!isMobilePanelMode()) {
+    return false;
+  }
+  const nextTab = String(tabId || "inventory").trim().toLowerCase();
+  const normalizedTab = nextTab === "equipment" || nextTab === "spellbook" ? nextTab : "inventory";
+
+  if (!visible) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === normalizedTab) {
+      mobilePanelState.open = false;
+    }
+    inventoryPanel.classList.add("hidden");
+    equipmentPanel.classList.add("hidden");
+    spellbookPanel.classList.add("hidden");
+    hideHoverTooltip();
+    clearMobileTooltipHideTimer();
+    updateMobilePanelTabs();
+    updateMobileUtilityBar(getCurrentSelf());
+    return true;
+  }
+
+  mobilePanelState.open = true;
+  mobilePanelState.activeTab = normalizedTab;
+  inventoryPanel.classList.toggle("hidden", normalizedTab !== "inventory");
+  equipmentPanel.classList.toggle("hidden", normalizedTab !== "equipment");
+  spellbookPanel.classList.toggle("hidden", normalizedTab !== "spellbook");
+
+  if (normalizedTab === "inventory") {
+    updateInventoryUI();
+  } else if (normalizedTab === "equipment") {
+    updateEquipmentUI();
+  } else {
+    updateSpellbookUI(getCurrentSelf());
+  }
+
+  updateMobilePanelTabs();
+  updateMobileUtilityBar(getCurrentSelf());
+  return true;
+}
+
+function closeMobilePanels() {
+  if (!isMobilePanelMode()) {
+    return;
+  }
+  setMobilePanelTab(mobilePanelState.activeTab, false);
+}
+
+function handleMobileActionBarEditSlotTap(slotId) {
+  const resolvedSlotId = String(slotId || "").trim();
+  if (!isMobileEditableActionSlot(resolvedSlotId)) {
+    return false;
+  }
+  const pendingAbilityId = getMobilePendingAbilityPlacementId();
+  if (pendingAbilityId) {
+    const abilityName = abilityDefsById.get(pendingAbilityId)?.name || pendingAbilityId;
+    clearMobilePendingAbilityPlacement();
+    mobileActionBarEditState.selectedSlotId = resolvedSlotId;
+    bindAbilityToActionSlot(resolvedSlotId, pendingAbilityId);
+    setStatus(`${abilityName} placed on slot ${getActionSlotLabel(resolvedSlotId)}.`);
+    return true;
+  }
+  const selectedSlotId = getMobileActionBarSelectedSlotId();
+  if (!selectedSlotId) {
+    mobileActionBarEditState.selectedSlotId = resolvedSlotId;
+    updateActionBarUI(getCurrentSelf());
+    setStatus(
+      `Slot ${getActionSlotLabel(resolvedSlotId)} selected. Tap another slot to swap, or tap a spell or potion to place it there.`
+    );
+    return true;
+  }
+  if (selectedSlotId === resolvedSlotId) {
+    clearMobileActionBarSelection();
+    updateActionBarUI(getCurrentSelf());
+    setStatus(`Slot ${getActionSlotLabel(resolvedSlotId)} deselected.`);
+    return true;
+  }
+  if (!swapActionBarBindings(selectedSlotId, resolvedSlotId)) {
+    return false;
+  }
+  mobileActionBarEditState.selectedSlotId = resolvedSlotId;
+  updateActionBarUI(getCurrentSelf());
+  setStatus(
+    `Swapped slots ${getActionSlotLabel(selectedSlotId)} and ${getActionSlotLabel(resolvedSlotId)}. Slot ${getActionSlotLabel(resolvedSlotId)} remains selected.`
+  );
+  return true;
+}
+
+function setMobileActionBarEditMode(active) {
+  const nextActive = !!active && isTouchJoystickEnabled();
+  if (mobileActionBarEditState.active === nextActive) {
+    if (!nextActive && mobileActionBarEditState.selectedSlotId) {
+      clearMobileActionBarSelection();
+      updateActionBarUI(getCurrentSelf());
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return nextActive;
+  }
+  mobileActionBarEditState.active = nextActive;
+  if (!nextActive) {
+    clearMobileActionBarSelection();
+    clearMobilePendingAbilityPlacement();
+  }
+  hideHoverTooltip();
+  clearMobileTooltipHideTimer();
+  clearMobileActionTouchHoldTimer();
+  resetMobileActionTouchState();
+  resetMobileAbilityAim();
+  updateActionBarUI(getCurrentSelf());
+  updateMobileUtilityBar(getCurrentSelf());
+  if (nextActive) {
+    setStatus("Edit mode active. Tap a slot, then tap another slot, a spell, or a potion.");
+  } else {
+    setStatus("Edit mode closed.");
+  }
+  return nextActive;
+}
+
+function toggleMobileActionBarEditMode() {
+  return setMobileActionBarEditMode(!mobileActionBarEditState.active);
+}
+
+function updateMobileUtilityBar(self = null) {
+  if (!mobileUtilityBar || !mobileLootButton || !mobileActionEditButton || !mobileVendorButton || !mobileSkillsButton || !mobileBagButton) {
+    return;
+  }
+
+  const mobileActive = isMobilePanelMode() && !!self;
+  mobileUtilityBar.classList.toggle("hidden", !mobileActive);
+  if (!mobileActive) {
+    mobileActionBarEditState.active = false;
+    clearMobileActionBarSelection();
+    clearMobilePendingAbilityPlacement();
+    mobileActionEditButton.classList.remove("active");
+    mobileActionEditButton.textContent = "Edit";
+    mobileVendorButton.classList.remove("active", "attention");
+    mobileVendorButton.classList.add("hidden");
+    mobileVendorButton.textContent = "Sell";
+    mobileSkillsButton.classList.remove("active", "attention");
+    mobileSkillsButton.textContent = "Skills";
+    mobileBagButton.classList.remove("active");
+  }
+  if (!mobileActive) {
+    return;
+  }
+
+  const reachableLoot = getLootBagsWithinPickupRange(self);
+  const lootCount = reachableLoot.length;
+  const skillPoints = Math.max(0, Math.floor(Number(self && self.skillPoints) || 0));
+  const vendor = getTownVendor();
+  const hasVendor = !!vendor;
+  const sellableCount = countSellableInventoryItems();
+  const canSellNow = hasVendor && canInteractWithVendor(self);
+  const showVendorButton = vendorInteractionState.panelOpen || canSellNow;
+  mobileLootButton.classList.toggle("hidden", lootCount <= 0);
+  mobileLootButton.textContent = lootCount > 1 ? `Loot x${lootCount}` : "Loot";
+  mobileActionEditButton.classList.toggle("active", mobileActionBarEditState.active);
+  mobileActionEditButton.textContent = mobileActionBarEditState.active ? "Done" : "Edit";
+  mobileVendorButton.classList.toggle("hidden", !showVendorButton);
+  mobileVendorButton.classList.toggle("active", vendorInteractionState.panelOpen);
+  mobileVendorButton.classList.toggle(
+    "attention",
+    showVendorButton && sellableCount > 0 && !vendorInteractionState.panelOpen
+  );
+  mobileVendorButton.textContent = vendorInteractionState.panelOpen
+    ? "Close Sell"
+    : (sellableCount > 0 ? `Sell ${sellableCount}` : "Sell");
+  mobileSkillsButton.classList.toggle("active", mobilePanelState.open && mobilePanelState.activeTab === "spellbook");
+  mobileSkillsButton.classList.toggle("attention", skillPoints > 0 && !(mobilePanelState.open && mobilePanelState.activeTab === "spellbook"));
+  mobileSkillsButton.textContent = skillPoints > 0 ? `Skills ${skillPoints}` : "Skills";
+  mobileBagButton.classList.toggle("active", mobilePanelState.open);
+}
+
+function setInventoryVisible(visible) {
+  if (isMobilePanelMode()) {
+    setMobilePanelTab("inventory", visible);
+    return;
+  }
+  if (!uiPanelTools) {
+    return;
+  }
+  setDesktopInventoryVisible(visible);
+}
+
+function toggleInventoryPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "inventory") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("inventory", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
+  if (!uiPanelTools) {
+    return;
+  }
+  setDesktopInventoryVisible(inventoryPanel.classList.contains("hidden"));
+}
+
+function setEquipmentVisible(visible) {
+  if (isMobilePanelMode()) {
+    setMobilePanelTab("equipment", visible);
+    return;
+  }
+  if (!equipmentPanel) {
+    return;
+  }
+  setDesktopEquipmentVisible(visible);
+}
+
 function toggleEquipmentPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "equipment") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("equipment", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
   if (!equipmentPanel) {
     return;
   }
@@ -5086,17 +7849,171 @@ function toggleEquipmentPanel() {
 }
 
 function setSpellbookVisible(visible) {
+  if (isMobilePanelMode()) {
+    setMobilePanelTab("spellbook", visible);
+    return;
+  }
   if (!uiPanelTools) {
     return;
   }
-  uiPanelTools.setSpellbookVisible(visible);
+  setDesktopSpellbookVisible(visible);
 }
 
 function toggleSpellbookPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "spellbook") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("spellbook", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
   if (!uiPanelTools) {
     return;
   }
-  uiPanelTools.toggleSpellbookPanel();
+  setDesktopSpellbookVisible(spellbookPanel.classList.contains("hidden"));
+}
+
+function toggleTalentPanel() {
+  if (isMobilePanelMode()) {
+    if (mobilePanelState.open && mobilePanelState.activeTab === "talents") {
+      closeMobilePanels();
+    } else {
+      setMobilePanelTab("talents", true);
+    }
+    updateMobileUtilityBar(getCurrentSelf());
+    return;
+  }
+  if (!uiPanelTools) {
+    return;
+  }
+  const wasHidden = talentPanel.classList.contains("hidden");
+  setDesktopTalentVisible(wasHidden);
+
+  // Request fresh talent tree data from server when opening
+  if (wasHidden && socket && socket.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({
+      type: "get_talent_tree"
+    }));
+  }
+}
+
+function setDesktopTalentVisible(visible) {
+  if (!talentPanel || !uiPanelTools) {
+    return;
+  }
+  talentPanel.classList.toggle("hidden", !visible);
+  if (visible) {
+    renderTalentTree(getCurrentSelf());
+  }
+}
+
+if (mobileBagButton) {
+  mobileBagButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    resumeSpatialAudioContext();
+    toggleInventoryPanel();
+  });
+}
+
+if (mobileActionEditButton) {
+  mobileActionEditButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    resumeSpatialAudioContext();
+    toggleMobileActionBarEditMode();
+  });
+}
+
+if (mobileVendorButton) {
+  mobileVendorButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    handleMobileVendorButtonPress();
+  });
+}
+
+if (mobileSkillsButton) {
+  mobileSkillsButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    resumeSpatialAudioContext();
+    toggleSpellbookPanel();
+  });
+}
+
+if (mobileLootButton) {
+  mobileLootButton.addEventListener(
+    "touchstart",
+    (event) => {
+      if (!isMobilePanelMode()) {
+        return;
+      }
+      resumeSpatialAudioContext();
+      mobilePanelState.lootHoldTriggered = false;
+      if (mobilePanelState.lootHoldTimer) {
+        window.clearTimeout(mobilePanelState.lootHoldTimer);
+      }
+      mobilePanelState.lootHoldTimer = window.setTimeout(() => {
+        mobilePanelState.lootHoldTimer = 0;
+        mobilePanelState.lootHoldTriggered = pickupAllLootBagsInRange();
+        mobilePanelState.suppressLootClickUntil = performance.now() + 420;
+      }, 420);
+      event.preventDefault();
+    },
+    { passive: false }
+  );
+  mobileLootButton.addEventListener(
+    "touchend",
+    (event) => {
+      if (!isMobilePanelMode()) {
+        return;
+      }
+      if (mobilePanelState.lootHoldTimer) {
+        window.clearTimeout(mobilePanelState.lootHoldTimer);
+        mobilePanelState.lootHoldTimer = 0;
+      }
+      if (!mobilePanelState.lootHoldTriggered) {
+        pickupNearestLootBagInRange();
+        mobilePanelState.suppressLootClickUntil = performance.now() + 420;
+      }
+      mobilePanelState.lootHoldTriggered = false;
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    { passive: false }
+  );
+  mobileLootButton.addEventListener(
+    "touchcancel",
+    () => {
+      if (mobilePanelState.lootHoldTimer) {
+        window.clearTimeout(mobilePanelState.lootHoldTimer);
+        mobilePanelState.lootHoldTimer = 0;
+      }
+      mobilePanelState.lootHoldTriggered = false;
+    },
+    { passive: true }
+  );
+  mobileLootButton.addEventListener("click", (event) => {
+    if (performance.now() < (Number(mobilePanelState.suppressLootClickUntil) || 0)) {
+      event.preventDefault();
+      return;
+    }
+    resumeSpatialAudioContext();
+    event.preventDefault();
+    pickupNearestLootBagInRange();
+  });
+}
+
+if (mobileInventoryTabButton) {
+  mobileInventoryTabButton.addEventListener("click", () => setMobilePanelTab("inventory", true));
+}
+if (mobileEquipmentTabButton) {
+  mobileEquipmentTabButton.addEventListener("click", () => setMobilePanelTab("equipment", true));
+}
+if (mobileSpellbookTabButton) {
+  mobileSpellbookTabButton.addEventListener("click", () => setMobilePanelTab("spellbook", true));
+}
+if (mobilePanelCloseButton) {
+  mobilePanelCloseButton.addEventListener("click", () => closeMobilePanels());
 }
 
 function ensureActionBarInitialized() {
@@ -5148,6 +8065,7 @@ function ensureActionBarInitialized() {
     slot.addEventListener("drop", (event) => {
       event.preventDefault();
       slot.classList.remove("drag-hover");
+      suppressActionBarClickUntil = performance.now() + 180;
       if (dragState.actionBinding) {
         const fromSlot = dragState.fromActionSlot;
         if (dragState.source === "action_slot" && fromSlot) {
@@ -5192,8 +8110,41 @@ function ensureActionBarInitialized() {
       event.dataTransfer.effectAllowed = "move";
     });
     slot.addEventListener("dragend", () => {
+      suppressActionBarClickUntil = performance.now() + 120;
       clearDragState();
     });
+    slot.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (performance.now() < suppressActionBarClickUntil) {
+        return;
+      }
+      if (isTouchJoystickEnabled() && mobileActionBarEditState.active && isMobileEditableActionSlot(slotId)) {
+        handleMobileActionBarEditSlotTap(slotId);
+        return;
+      }
+      resumeSpatialAudioContext();
+      executeBoundAction(slotId);
+    });
+    slot.addEventListener(
+      "touchstart",
+      (event) => {
+        if (!isTouchJoystickEnabled() || mobileAbilityAimState.active) {
+          return;
+        }
+        const touch = event.changedTouches && event.changedTouches.length ? event.changedTouches[0] : null;
+        if (!touch) {
+          return;
+        }
+        resumeSpatialAudioContext();
+        if (!beginMobileActionSlotTouch(slotId, touch.identifier, touch.clientX, touch.clientY)) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      },
+      { passive: false }
+    );
 
     actionBar.appendChild(slot);
 
@@ -5204,6 +8155,7 @@ function ensureActionBarInitialized() {
       name
     });
   }
+  ensureActionBarTouchListenersBound();
 }
 
 function applyDefaultActionBindings(classType) {
@@ -5235,8 +8187,11 @@ function updateActionBarUI(self) {
   }
   if (!self) {
     actionUi.classList.add("hidden");
+    actionBar.classList.remove("mobile-edit-mode");
     updateResourceBars(null);
     updateSpellbookUI(null);
+    updateMobileUtilityBar(null);
+    updateMobilePanelTabs();
     return;
   }
 
@@ -5244,7 +8199,12 @@ function updateActionBarUI(self) {
   ensureActionBindingsForClass(self.classType);
   updateSpellbookUI(self);
   updateResourceBars(self);
+  updateMobileUtilityBar(self);
+  updateMobilePanelTabs();
   const now = performance.now();
+  const mobileEditMode = isTouchJoystickEnabled() && mobileActionBarEditState.active;
+
+  actionBar.classList.toggle("mobile-edit-mode", mobileEditMode);
 
   for (const slotId of ACTION_SLOT_ORDER) {
     const slot = actionSlotEls.get(slotId);
@@ -5258,8 +8218,14 @@ function updateActionBarUI(self) {
     slot.name.textContent = display.name;
     slot.root.classList.toggle("empty", !display.bound);
     slot.root.classList.toggle("bound", display.bound);
+    slot.root.classList.toggle("aiming", mobileAbilityAimState.active && mobileAbilityAimState.slotId === slotId);
+    slot.root.classList.toggle("edit-mode", mobileEditMode && isMobileEditableActionSlot(slotId));
+    slot.root.classList.toggle(
+      "edit-selected",
+      mobileEditMode && isMobileEditableActionSlot(slotId) && mobileActionBarEditState.selectedSlotId === slotId
+    );
     slot.root.title = display.tooltip || display.name;
-    slot.root.draggable = display.bound;
+    slot.root.draggable = display.bound && !isTouchJoystickEnabled();
 
     const visual = getActionVisualState(binding, self, now);
     slot.progress.className = `slot-progress ${visual.type}`;
@@ -5395,20 +8361,38 @@ function initializeDpsPanel() {
 }
 
 function initializeDebugAdminControls() {
+  if (debugRendererApplyButton) {
+    debugRendererApplyButton.addEventListener("click", applyRendererModeFromDebugControls);
+  }
+  if (debugRendererSelect) {
+    debugRendererSelect.addEventListener("change", applyRendererModeFromDebugControls);
+  }
   if (debugCreateBotButton) {
     debugCreateBotButton.addEventListener("click", handleCreateBotPlayer);
   }
   if (debugToggleBotListButton) {
     debugToggleBotListButton.addEventListener("click", toggleBotListPanel);
   }
+  if (debugToggleGearLabButton) {
+    debugToggleGearLabButton.addEventListener("click", handleToggleDebugGearLab);
+  }
+  if (debugGearCloseButton) {
+    debugGearCloseButton.addEventListener("click", () => setDebugGearVisible(false));
+  }
+  if (debugGearRerollAffixesButton) {
+    debugGearRerollAffixesButton.addEventListener("click", rerollAllDebugGearAffixes);
+  }
   document.addEventListener("click", (event) => {
     if (!botContextMenu || botContextMenu.classList.contains("hidden")) {
-      return;
+      if (debugGearPanel && debugGearState.visible && event.target && debugGearPanel.contains(event.target)) {
+        return;
+      }
+    } else {
+      if (event.target && botContextMenu.contains(event.target)) {
+        return;
+      }
+      hideBotContextMenu();
     }
-    if (event.target && botContextMenu.contains(event.target)) {
-      return;
-    }
-    hideBotContextMenu();
   });
   document.addEventListener("contextmenu", (event) => {
     if (!botContextMenu || botContextMenu.classList.contains("hidden")) {
@@ -5419,6 +8403,9 @@ function initializeDebugAdminControls() {
     }
     hideBotContextMenu();
   });
+  window.addEventListener("touchstart", handleMobileTooltipDismissCapture, { capture: true, passive: false });
+  window.addEventListener("mousedown", handleMobileTooltipDismissCapture, true);
+  updateRendererDebugControls();
   updateAdminDebugControls();
 }
 
@@ -5430,6 +8417,508 @@ function sendJsonMessage(payload) {
   addTrafficEvent("up", byteLengthOfWsData(serialized));
   socket.send(serialized);
   return true;
+}
+
+function isTouchJoystickEnabled() {
+  return !!(
+    ("ontouchstart" in window) ||
+    (navigator && Number(navigator.maxTouchPoints) > 0) ||
+    (window.matchMedia && window.matchMedia("(pointer: coarse)").matches)
+  );
+}
+
+function updateTouchJoystickVisuals() {
+  if (!mobileJoystick || !mobileJoystickBase || !mobileJoystickKnob) {
+    return;
+  }
+  if (!touchJoystickState.active) {
+    mobileJoystick.classList.add("hidden");
+    return;
+  }
+
+  const originX = Number(touchJoystickState.originX) || 0;
+  const originY = Number(touchJoystickState.originY) || 0;
+  const currentX = Number(touchJoystickState.currentX) || originX;
+  const currentY = Number(touchJoystickState.currentY) || originY;
+
+  mobileJoystick.classList.remove("hidden");
+  mobileJoystickBase.style.transform = `translate(${originX}px, ${originY}px)`;
+  mobileJoystickKnob.style.transform = `translate(${currentX}px, ${currentY}px)`;
+}
+
+function beginTouchJoystick(touchId, screenX, screenY) {
+  clearAutoMoveTarget();
+  touchJoystickState.active = true;
+  touchJoystickState.touchId = touchId;
+  touchJoystickState.originX = Number(screenX) || 0;
+  touchJoystickState.originY = Number(screenY) || 0;
+  touchJoystickState.currentX = touchJoystickState.originX;
+  touchJoystickState.currentY = touchJoystickState.originY;
+  touchJoystickState.vectorDx = 0;
+  touchJoystickState.vectorDy = 0;
+  updateTouchJoystickVisuals();
+}
+
+function updateTouchJoystick(screenX, screenY) {
+  if (!touchJoystickState.active) {
+    return;
+  }
+  const rawDx = (Number(screenX) || 0) - touchJoystickState.originX;
+  const rawDy = (Number(screenY) || 0) - touchJoystickState.originY;
+  const rawLen = Math.hypot(rawDx, rawDy);
+  const radius = Math.max(1, Number(touchJoystickState.radiusPx) || 1);
+  const clampedLen = Math.min(radius, rawLen);
+  const unitDx = rawLen > 0.0001 ? rawDx / rawLen : 0;
+  const unitDy = rawLen > 0.0001 ? rawDy / rawLen : 0;
+
+  touchJoystickState.currentX = touchJoystickState.originX + unitDx * clampedLen;
+  touchJoystickState.currentY = touchJoystickState.originY + unitDy * clampedLen;
+  if (rawLen > Math.max(0, Number(touchJoystickState.deadzonePx) || 0)) {
+    touchJoystickState.vectorDx = unitDx;
+    touchJoystickState.vectorDy = unitDy;
+  } else {
+    touchJoystickState.vectorDx = 0;
+    touchJoystickState.vectorDy = 0;
+  }
+  updateTouchJoystickVisuals();
+}
+
+function resetTouchJoystick() {
+  const changed =
+    touchJoystickState.active ||
+    Math.abs(Number(touchJoystickState.vectorDx) || 0) > 0.0001 ||
+    Math.abs(Number(touchJoystickState.vectorDy) || 0) > 0.0001;
+  touchJoystickState.active = false;
+  touchJoystickState.touchId = null;
+  touchJoystickState.originX = 0;
+  touchJoystickState.originY = 0;
+  touchJoystickState.currentX = 0;
+  touchJoystickState.currentY = 0;
+  touchJoystickState.vectorDx = 0;
+  touchJoystickState.vectorDy = 0;
+  updateTouchJoystickVisuals();
+  return changed;
+}
+
+function endTouchJoystick() {
+  return resetTouchJoystick();
+}
+
+function getMobileAbilityAimRadiusPx() {
+  const viewportMin = Math.min(window.innerWidth || 0, window.innerHeight || 0);
+  return clamp(viewportMin * 0.23, 104, 164);
+}
+
+function getMobileAbilityAimCanvasPoint(clientX, clientY) {
+  if (!canvas) {
+    return null;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
+  const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
+  return {
+    x: clamp(((Number(clientX) || 0) - rect.left) * scaleX, 0, canvas.width),
+    y: clamp(((Number(clientY) || 0) - rect.top) * scaleY, 0, canvas.height)
+  };
+}
+
+function getActionSlotClientCenter(slotId, fallbackClientX = 0, fallbackClientY = 0) {
+  const slot = actionSlotEls.get(String(slotId || ""));
+  const root = slot && slot.root ? slot.root : null;
+  if (!root || typeof root.getBoundingClientRect !== "function") {
+    return {
+      x: Number(fallbackClientX) || 0,
+      y: Number(fallbackClientY) || 0
+    };
+  }
+  const rect = root.getBoundingClientRect();
+  return {
+    x: rect.left + rect.width * 0.5,
+    y: rect.top + rect.height * 0.5
+  };
+}
+
+function getMobileAbilityAimFallbackDirection(self) {
+  const touchMoveDir = normalizeDirection(touchJoystickState.vectorDx, touchJoystickState.vectorDy);
+  if (touchMoveDir) {
+    return touchMoveDir;
+  }
+  const facingDir = normalizeDirection(self && self.lastDirection && self.lastDirection.dx, self && self.lastDirection && self.lastDirection.dy);
+  if (facingDir) {
+    return facingDir;
+  }
+  return { dx: 0, dy: 1 };
+}
+
+function usesVariableMobileAimDistance(actionId, actionDef) {
+  const kind = String(actionDef && actionDef.kind || "").trim().toLowerCase();
+  return actionId === "pickup_bag" || kind === "area" || kind === "summon" || kind === "teleport";
+}
+
+function supportsMobileAbilityAim(actionId, actionDef) {
+  const resolvedActionId = String(actionId || "").trim();
+  const kind = String(actionDef && actionDef.kind || "").trim().toLowerCase();
+  const range = Math.max(0, Number(actionDef && actionDef.range) || 0);
+  if (!resolvedActionId || resolvedActionId === "none") {
+    return false;
+  }
+  if (kind === "meleecone") {
+    return false;
+  }
+  if (kind === "selfbuff") {
+    return false;
+  }
+  if (kind === "area" && range <= 0.001) {
+    return false;
+  }
+  return range > 0.001;
+}
+
+function getMobileAimFallbackDistance(actionId, actionDef, range) {
+  const resolvedRange = Math.max(0, Number(range) || 0);
+  if (resolvedRange <= 0) {
+    return 0;
+  }
+  if (usesVariableMobileAimDistance(actionId, actionDef)) {
+    return clamp(resolvedRange * 0.68, Math.min(1.25, resolvedRange), resolvedRange);
+  }
+  return resolvedRange;
+}
+
+function getMobileAbilityAimDirectionFromDrag(self, dragDx, dragDy, deadzonePx) {
+  const len = Math.hypot(Number(dragDx) || 0, Number(dragDy) || 0);
+  if (len > Math.max(0, Number(deadzonePx) || 0)) {
+    return normalizeDirection(dragDx, dragDy);
+  }
+  return getMobileAbilityAimFallbackDirection(self);
+}
+
+function getMobileAbilityAimDistanceFromDrag(actionId, actionDef, range, dragLen, radiusPx, deadzonePx) {
+  const resolvedRange = Math.max(0, Number(range) || 0);
+  if (resolvedRange <= 0) {
+    return 0;
+  }
+  const fallbackDistance = getMobileAimFallbackDistance(actionId, actionDef, resolvedRange);
+  if (!usesVariableMobileAimDistance(actionId, actionDef)) {
+    return resolvedRange;
+  }
+  const maxRadius = Math.max(1, Number(radiusPx) || 1);
+  const deadzone = Math.max(0, Number(deadzonePx) || 0);
+  if (dragLen <= deadzone) {
+    return fallbackDistance;
+  }
+  const strength = clamp((dragLen - deadzone) / Math.max(1, maxRadius - deadzone), 0, 1);
+  return lerp(Math.min(fallbackDistance, resolvedRange), resolvedRange, strength);
+}
+
+function findMobileAimSnapTarget(self, actionId, actionDef, direction, range) {
+  const kind = String(actionDef && actionDef.kind || "").trim().toLowerCase();
+  if (!self || !direction || !["projectile", "beam", "chain", "meleecone"].includes(kind)) {
+    return null;
+  }
+  const maxRange = Math.max(0.75, Number(range) || 0);
+  const fullAbilityDef = findAbilityDefById(actionId);
+  const maxAngleRad =
+    kind === "meleecone"
+      ? clamp((((Number(fullAbilityDef && fullAbilityDef.coneAngleDeg) || 120) * Math.PI) / 180) * 0.45, 0.26, Math.PI * 0.72)
+      : kind === "chain"
+        ? 0.54
+        : kind === "beam"
+          ? 0.34
+          : 0.3;
+  const minDot = Math.cos(maxAngleRad);
+  const beamWidth = Math.max(0.35, Number(fullAbilityDef && fullAbilityDef.beamWidth) || 0.5);
+  let best = null;
+  let bestScore = -Infinity;
+
+  for (const mob of Array.isArray(gameState.mobs) ? gameState.mobs : []) {
+    if (!mob || Number(mob.hp) <= 0) {
+      continue;
+    }
+    const dx = Number(mob.x) - Number(self.x);
+    const dy = Number(mob.y) - Number(self.y);
+    const dist = Math.hypot(dx, dy);
+    if (!Number.isFinite(dist) || dist <= 0.0001 || dist > maxRange + 0.85) {
+      continue;
+    }
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const dot = dirX * direction.dx + dirY * direction.dy;
+    if (dot < minDot) {
+      continue;
+    }
+    const lateralDistance = Math.abs(dx * direction.dy - dy * direction.dx);
+    if ((kind === "beam" || kind === "chain") && lateralDistance > beamWidth + 0.45) {
+      continue;
+    }
+    const score = dot * 4.2 - dist / Math.max(1, maxRange) - lateralDistance * 0.12;
+    if (score <= bestScore) {
+      continue;
+    }
+    bestScore = score;
+    best = {
+      id: mob.id,
+      kind: "mob",
+      x: Number(mob.x) || 0,
+      y: Number(mob.y) || 0
+    };
+  }
+
+  return best;
+}
+
+function updateMobileAbilityAimTarget() {
+  if (!mobileAbilityAimState.active) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    return false;
+  }
+  const actionId = String(mobileAbilityAimState.abilityId || "");
+  const actionDef = getActionDefById(actionId);
+  const range = Math.max(0, getAbilityEffectiveRangeForSelf(actionId, self));
+  const pivotX = Number(mobileAbilityAimState.pivotClientX) || 0;
+  const pivotY = Number(mobileAbilityAimState.pivotClientY) || 0;
+  const dragDx = Number(mobileAbilityAimState.currentClientX) - pivotX;
+  const dragDy = Number(mobileAbilityAimState.currentClientY) - pivotY;
+  const dragLen = Math.hypot(dragDx, dragDy);
+  const deadzonePx = Math.max(0, Number(mobileAbilityAimState.deadzonePx) || 0);
+  const radiusPx = Math.max(1, Number(mobileAbilityAimState.radiusPx) || 1);
+  const direction = getMobileAbilityAimDirectionFromDrag(self, dragDx, dragDy, deadzonePx);
+  if (!direction) {
+    return false;
+  }
+  const distance = getMobileAbilityAimDistanceFromDrag(actionId, actionDef, range, dragLen, radiusPx, deadzonePx);
+  const snapTarget = findMobileAimSnapTarget(self, actionId, actionDef, direction, range);
+
+  mobileAbilityAimState.snappedTargetId = snapTarget ? snapTarget.id : null;
+  mobileAbilityAimState.snappedTargetKind = snapTarget ? snapTarget.kind : "";
+  if (snapTarget) {
+    mobileAbilityAimState.targetX = snapTarget.x;
+    mobileAbilityAimState.targetY = snapTarget.y;
+    return true;
+  }
+
+  mobileAbilityAimState.targetX = Number(self.x) + direction.dx * distance;
+  mobileAbilityAimState.targetY = Number(self.y) + direction.dy * distance;
+  return true;
+}
+
+function resetMobileAbilityAim() {
+  const changed = mobileAbilityAimState.active;
+  mobileAbilityAimState.active = false;
+  mobileAbilityAimState.touchId = null;
+  mobileAbilityAimState.slotId = "";
+  mobileAbilityAimState.abilityId = "";
+  mobileAbilityAimState.aimOriginClientX = 0;
+  mobileAbilityAimState.aimOriginClientY = 0;
+  mobileAbilityAimState.currentClientX = 0;
+  mobileAbilityAimState.currentClientY = 0;
+  mobileAbilityAimState.startClientX = 0;
+  mobileAbilityAimState.startClientY = 0;
+  mobileAbilityAimState.targetX = 0;
+  mobileAbilityAimState.targetY = 0;
+  mobileAbilityAimState.snappedTargetId = null;
+  mobileAbilityAimState.snappedTargetKind = "";
+  mobileAbilityAimState.pivotClientX = 0;
+  mobileAbilityAimState.pivotClientY = 0;
+  if (changed) {
+    updateActionBarUI(getCurrentSelf());
+  }
+  return changed;
+}
+
+function beginMobileAbilityAim(slotId, touchId, clientX, clientY) {
+  if (!isTouchJoystickEnabled() || mobileAbilityAimState.active || abilityChannel.active) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    return false;
+  }
+  const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+  if (binding.kind !== "action") {
+    return false;
+  }
+  const actionId = String(binding.id || "").trim();
+  const actionDef = getActionDefById(actionId);
+  if (!supportsMobileAbilityAim(actionId, actionDef)) {
+    return false;
+  }
+  const now = performance.now();
+  if (!hasEnoughManaForAbility(self, actionId) || !canUseAbilityNow(actionId, now, self)) {
+    return false;
+  }
+
+  if (touchJoystickState.active) {
+    endTouchJoystick();
+    sendMove();
+  }
+
+  const radiusPx = getMobileAbilityAimRadiusPx();
+  const aimOrigin = getActionSlotClientCenter(slotId, clientX, clientY);
+  const characterScreenX = canvas.width / 2;
+  const characterScreenY = canvas.height / 2;
+  const pivotX = (characterScreenX + aimOrigin.x) / 2;
+  const pivotY = (characterScreenY + aimOrigin.y) / 2;
+  mobileAbilityAimState.active = true;
+  mobileAbilityAimState.touchId = touchId;
+  mobileAbilityAimState.slotId = String(slotId || "");
+  mobileAbilityAimState.abilityId = actionId;
+  mobileAbilityAimState.aimOriginClientX = Number(aimOrigin.x) || 0;
+  mobileAbilityAimState.aimOriginClientY = Number(aimOrigin.y) || 0;
+  mobileAbilityAimState.pivotClientX = pivotX;
+  mobileAbilityAimState.pivotClientY = pivotY;
+  mobileAbilityAimState.startClientX = Number(clientX) || 0;
+  mobileAbilityAimState.startClientY = Number(clientY) || 0;
+  mobileAbilityAimState.currentClientX = mobileAbilityAimState.startClientX;
+  mobileAbilityAimState.currentClientY = mobileAbilityAimState.startClientY;
+  mobileAbilityAimState.radiusPx = radiusPx;
+  mobileAbilityAimState.deadzonePx = Math.round(radiusPx * 0.14);
+  suppressActionBarClickUntil = now + 360;
+  updateMobileAbilityAimTarget();
+  updateActionBarUI(self);
+  return true;
+}
+
+function updateMobileAbilityAim(clientX, clientY) {
+  if (!mobileAbilityAimState.active) {
+    return false;
+  }
+  mobileAbilityAimState.currentClientX = Number(clientX) || 0;
+  mobileAbilityAimState.currentClientY = Number(clientY) || 0;
+  return updateMobileAbilityAimTarget();
+}
+
+function commitMobileAbilityAim() {
+  if (!mobileAbilityAimState.active) {
+    return false;
+  }
+  const slotId = String(mobileAbilityAimState.slotId || "");
+  const targetX = Number(mobileAbilityAimState.targetX);
+  const targetY = Number(mobileAbilityAimState.targetY);
+  const didCast =
+    slotId &&
+    Number.isFinite(targetX) &&
+    Number.isFinite(targetY)
+      ? executeBoundActionAt(slotId, targetX, targetY, { trackPointer: false })
+      : false;
+  if (didCast) {
+    const self = getCurrentSelf();
+    if (self) {
+      const direction = {
+        dx: (Number(targetX) || 0) - (Number(self.x) || 0),
+        dy: (Number(targetY) || 0) - (Number(self.y) || 0)
+      };
+      const len = Math.hypot(direction.dx, direction.dy);
+      if (len > 0.001) {
+        direction.dx /= len;
+        direction.dy /= len;
+        mobileAbilityAimState.lastCastDirection = direction;
+      }
+    }
+  }
+  suppressActionBarClickUntil = performance.now() + 360;
+  resetMobileAbilityAim();
+  return didCast;
+}
+
+function quickCastMobileAbility(slotId) {
+  if (!isTouchJoystickEnabled() || mobileAbilityAimState.active || abilityChannel.active) {
+    return false;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    return false;
+  }
+  const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+  if (binding.kind !== "action") {
+    return false;
+  }
+  const actionId = String(binding.id || "").trim();
+  const actionDef = getActionDefById(actionId);
+  if (!supportsMobileAbilityAim(actionId, actionDef)) {
+    return false;
+  }
+  const now = performance.now();
+  if (!hasEnoughManaForAbility(self, actionId) || !canUseAbilityNow(actionId, now, self)) {
+    return false;
+  }
+  const range = Math.max(0, getAbilityEffectiveRangeForSelf(actionId, self));
+  if (range <= 0.001) {
+    return false;
+  }
+  const direction = mobileAbilityAimState.lastCastDirection || getMobileAbilityAimFallbackDirection(self);
+  if (!direction) {
+    return false;
+  }
+  const targetX = Number(self.x) + direction.dx * range;
+  const targetY = Number(self.y) + direction.dy * range;
+  const didCast = executeBoundActionAt(slotId, targetX, targetY, { trackPointer: false });
+  if (didCast) {
+    mobileAbilityAimState.lastCastDirection = direction;
+  }
+  suppressActionBarClickUntil = performance.now() + 360;
+  return didCast;
+}
+
+function handleMobileAbilityAimTouchMove(event) {
+  if (!mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileAbilityAimState.touchId) {
+      continue;
+    }
+    updateMobileAbilityAim(touch.clientX, touch.clientY);
+    event.preventDefault();
+    return;
+  }
+}
+
+function handleMobileAbilityAimTouchEnd(event) {
+  if (!mobileAbilityAimState.active) {
+    return;
+  }
+  const touches = event.changedTouches || [];
+  for (let index = 0; index < touches.length; index += 1) {
+    const touch = touches[index];
+    if (touch.identifier !== mobileAbilityAimState.touchId) {
+      continue;
+    }
+    updateMobileAbilityAim(touch.clientX, touch.clientY);
+    if (event.type === "touchcancel") {
+      resetMobileAbilityAim();
+    } else {
+      commitMobileAbilityAim();
+    }
+    event.preventDefault();
+    return;
+  }
+}
+
+function ensureActionBarTouchListenersBound() {
+  if (actionBarTouchListenersBound) {
+    return;
+  }
+  actionBarTouchListenersBound = true;
+  window.addEventListener("touchmove", handleMobileActionSlotTouchMove, { passive: false });
+  window.addEventListener("touchend", handleMobileActionSlotTouchEnd, { passive: false });
+  window.addEventListener("touchcancel", handleMobileActionSlotTouchEnd, { passive: false });
+  window.addEventListener("touchmove", handleMobileAbilityAimTouchMove, { passive: false });
+  window.addEventListener("touchend", handleMobileAbilityAimTouchEnd, { passive: false });
+  window.addEventListener("touchcancel", handleMobileAbilityAimTouchEnd, { passive: false });
+}
+
+function sendViewportToServer() {
+  return sendJsonMessage({
+    type: "viewport",
+    viewportWidth: Math.max(1, Math.floor(Number(canvas.width) || 0)),
+    viewportHeight: Math.max(1, Math.floor(Number(canvas.height) || 0))
+  });
 }
 
 function triggerRemotePlayerSwing(playerId, dx, dy) {
@@ -5492,6 +8981,8 @@ function pushSnapshot(msg) {
 }
 
 function clearEntityRuntime() {
+  resetTouchJoystick();
+  resetMobileAbilityAim();
   entityRuntime.self = null;
   entityRuntime.players.clear();
   entityRuntime.mobMeta.clear();
@@ -5503,10 +8994,13 @@ function clearEntityRuntime() {
   entityRuntime.playerMeta.clear();
   remoteMobCasts.clear();
   stopAllSpatialLoops();
+  clearSelfPositiveBuffs();
   clearSelfNegativeEffects();
+  selfPositiveEffects.bloodWrath = null;
   remotePlayerStuns.clear();
   remotePlayerSlows.clear();
   remotePlayerBurns.clear();
+  remotePlayerBloodWraths.clear();
 }
 
 function syncEntityArraysToGameState() {
@@ -5692,13 +9186,15 @@ function applyPlayerMeta(metaPlayers) {
     }
     entityRuntime.playerMeta.set(meta.id, {
       name: String(meta.name || `P${meta.id}`),
-      classType: String(meta.classType || getDefaultClassId())
+      classType: String(meta.classType || getDefaultClassId()),
+      appearance: meta.appearance && typeof meta.appearance === "object" ? meta.appearance : null
     });
 
     const existing = entityRuntime.players.get(meta.id);
     if (existing) {
       existing.name = String(meta.name || existing.name || `P${meta.id}`);
       existing.classType = String(meta.classType || existing.classType || getDefaultClassId());
+      existing.appearance = meta.appearance && typeof meta.appearance === "object" ? meta.appearance : existing.appearance || null;
       entityRuntime.players.set(meta.id, existing);
     }
   }
@@ -5713,12 +9209,14 @@ function applyMobMeta(metaMobs) {
       continue;
     }
     const name = String(meta.name || `Mob ${meta.id}`).slice(0, 32);
+    const level = Math.max(1, Math.floor(Number(meta.level) || 1));
     const renderStyle = normalizeMobRenderStyle(meta.renderStyle);
-    entityRuntime.mobMeta.set(meta.id, { name, renderStyle });
+    entityRuntime.mobMeta.set(meta.id, { name, level, renderStyle });
 
     const existing = entityRuntime.mobs.get(meta.id);
     if (existing) {
       existing.name = name;
+      existing.level = level;
       existing.renderStyle = renderStyle;
       entityRuntime.mobs.set(meta.id, existing);
     }
@@ -5922,6 +9420,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
       baseMana: Math.max(0, Math.floor(Number(classDef.baseMana) || 0)),
       manaRegen: Math.max(0, Number(classDef.manaRegen) || 0),
       movementSpeed: Math.max(0.1, Number(classDef.speed ?? classDef.movementSpeed) || 0.1),
+      renderStyle: normalizeHumanoidRenderStyle(classDef.renderStyle),
       abilities: abilitiesList
     });
     classOptions.push({
@@ -6040,14 +9539,736 @@ function applyEquipmentConfig(equipment) {
     : [];
   const itemRarities =
     equipment && equipment.itemRarities && typeof equipment.itemRarities === "object" ? equipment.itemRarities : {};
+  const debugBaseItems = Array.isArray(equipment && equipment.debugBaseItems) ? equipment.debugBaseItems : [];
+  const debugPrefixes = Array.isArray(equipment && equipment.debugPrefixes) ? equipment.debugPrefixes : [];
+  const debugSuffixes = Array.isArray(equipment && equipment.debugSuffixes) ? equipment.debugSuffixes : [];
+  const debugRarities = Array.isArray(equipment && equipment.debugRarities) ? equipment.debugRarities : [];
   equipmentConfigState.itemSlots = slotIds;
   equipmentConfigState.itemRarities = itemRarities;
+  equipmentConfigState.debugBaseItems = debugBaseItems;
+  equipmentConfigState.debugPrefixes = debugPrefixes;
+  equipmentConfigState.debugSuffixes = debugSuffixes;
+  equipmentConfigState.debugRarities = debugRarities;
+  equipmentConfigState.maxItemLevel = Math.max(1, Math.floor(Number(equipment && equipment.maxItemLevel) || 1));
   const nextSlots = {};
   for (const slotId of slotIds) {
     nextSlots[slotId] = equipmentState.slots[slotId] || null;
   }
   equipmentState.slots = nextSlots;
   updateEquipmentUI();
+  if (debugGearState.visible) {
+    rerollDebugGearLab();
+  }
+}
+
+function randomDebugInt(min, max) {
+  const low = Math.floor(Math.min(Number(min) || 0, Number(max) || 0));
+  const high = Math.floor(Math.max(Number(min) || 0, Number(max) || 0));
+  return low + Math.floor(Math.random() * (high - low + 1));
+}
+
+function pickRandomEntry(list) {
+  const entries = Array.isArray(list) ? list.filter(Boolean) : [];
+  if (!entries.length) {
+    return null;
+  }
+  return entries[randomDebugInt(0, entries.length - 1)] || null;
+}
+
+function rollDebugModifierValue(modifier) {
+  if (!modifier || typeof modifier !== "object") {
+    return 0;
+  }
+  const min = Number(modifier.rollMin);
+  const max = Number(modifier.rollMax);
+  const low = Math.min(Number.isFinite(min) ? min : 0, Number.isFinite(max) ? max : Number.isFinite(min) ? min : 0);
+  const high = Math.max(Number.isFinite(min) ? min : 0, Number.isFinite(max) ? max : Number.isFinite(min) ? min : 0);
+  const areIntegers = Math.abs(low - Math.round(low)) < 0.001 && Math.abs(high - Math.round(high)) < 0.001;
+  if (areIntegers) {
+    return randomDebugInt(Math.round(low), Math.round(high));
+  }
+  return Math.round((low + Math.random() * (high - low)) * 100) / 100;
+}
+
+function filterDebugAffixPool(pool, baseItem, itemLevel) {
+  const tags = new Set(Array.isArray(baseItem && baseItem.tags) ? baseItem.tags.map((value) => String(value || "").trim()) : []);
+  const slotId = String(baseItem && baseItem.slot || "").trim();
+  return (Array.isArray(pool) ? pool : []).filter((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+    if (itemLevel < Math.max(1, Math.floor(Number(entry.minItemLevel) || 1))) {
+      return false;
+    }
+    const allowedSlots = Array.isArray(entry.allowedSlots) ? entry.allowedSlots.map((value) => String(value || "").trim()).filter(Boolean) : [];
+    if (allowedSlots.length && !allowedSlots.includes(slotId)) {
+      return false;
+    }
+    const requiredTags = Array.isArray(entry.requiredItemTagsAny)
+      ? entry.requiredItemTagsAny.map((value) => String(value || "").trim()).filter(Boolean)
+      : [];
+    if (requiredTags.length) {
+      let matched = false;
+      for (const tag of requiredTags) {
+        if (tags.has(tag)) {
+          matched = true;
+          break;
+        }
+      }
+      if (!matched) {
+        return false;
+      }
+    }
+    return true;
+  });
+}
+
+function pickUniqueRandomEntries(pool, count) {
+  const available = Array.isArray(pool) ? pool.slice() : [];
+  const results = [];
+  let remaining = Math.max(0, Math.floor(Number(count) || 0));
+  while (remaining > 0 && available.length > 0) {
+    const index = randomDebugInt(0, available.length - 1);
+    results.push(available[index]);
+    available.splice(index, 1);
+    remaining -= 1;
+  }
+  return results;
+}
+
+function buildDebugAffixInstances(entries, kind) {
+  return (Array.isArray(entries) ? entries : []).map((affix) => ({
+    id: String(affix.id || ""),
+    name: String(affix.name || affix.id || ""),
+    kind,
+    modifiers: (Array.isArray(affix.modifiers) ? affix.modifiers : [])
+      .map((modifier) => ({
+        stat: String(modifier.stat || ""),
+        value: rollDebugModifierValue(modifier)
+      }))
+      .filter((modifier) => modifier.stat && Number.isFinite(modifier.value) && modifier.value !== 0)
+  }));
+}
+
+function buildDebugEquipmentDisplayName(baseItem, prefixes, suffixes) {
+  const prefixText = (Array.isArray(prefixes) ? prefixes : []).map((entry) => entry.name).filter(Boolean).join(" ");
+  const suffixText = (Array.isArray(suffixes) ? suffixes : []).map((entry) => entry.name).filter(Boolean).join(" ");
+  const parts = [];
+  if (prefixText) {
+    parts.push(prefixText);
+  }
+  parts.push(String(baseItem && baseItem.name || "Item"));
+  if (suffixText) {
+    parts.push(suffixText);
+  }
+  return parts.join(" ");
+}
+
+function pickDebugBaseItemForLevel(slotId, itemLevel) {
+  const candidates = getDebugBaseItemPool().filter(
+    (entry) => String(entry && entry.slot || "").trim() === String(slotId || "").trim()
+  );
+  if (!candidates.length) {
+    return null;
+  }
+  const exact = candidates.filter((entry) => {
+    const range = Array.isArray(entry.itemLevelRange) ? entry.itemLevelRange : [1, 1];
+    const minLevel = Math.max(1, Math.floor(Number(range[0]) || 1));
+    const maxLevel = Math.max(minLevel, Math.floor(Number(range[1]) || minLevel));
+    return itemLevel >= minLevel && itemLevel <= maxLevel;
+  });
+  if (exact.length) {
+    return pickRandomEntry(exact);
+  }
+  let best = candidates[0];
+  let bestDistance = Infinity;
+  for (const entry of candidates) {
+    const range = Array.isArray(entry.itemLevelRange) ? entry.itemLevelRange : [1, 1];
+    const minLevel = Math.max(1, Math.floor(Number(range[0]) || 1));
+    const maxLevel = Math.max(minLevel, Math.floor(Number(range[1]) || minLevel));
+    const mid = (minLevel + maxLevel) * 0.5;
+    const distance = Math.abs(mid - itemLevel);
+    if (distance < bestDistance) {
+      best = entry;
+      bestDistance = distance;
+    }
+  }
+  return best || null;
+}
+
+function getDebugBaseItemPool() {
+  const configured = Array.isArray(equipmentConfigState.debugBaseItems) ? equipmentConfigState.debugBaseItems.filter(Boolean) : [];
+  if (configured.length) {
+    return configured;
+  }
+  const derived = [];
+  for (const itemDef of itemDefsById.values()) {
+    if (!itemDef || !itemDef.isEquipment) {
+      continue;
+    }
+    derived.push({
+      id: String(itemDef.id || ""),
+      name: String(itemDef.name || itemDef.id || ""),
+      slot: String(itemDef.slot || "").trim(),
+      weaponClass: String(itemDef.weaponClass || "").trim(),
+      itemLevelRange: Array.isArray(itemDef.itemLevelRange) ? [...itemDef.itemLevelRange] : [1, 1],
+      tags: Array.isArray(itemDef.tags) ? [...itemDef.tags] : [],
+      baseStats: itemDef.baseStats && typeof itemDef.baseStats === "object" ? { ...itemDef.baseStats } : {}
+    });
+  }
+  return derived;
+}
+
+function getDebugMaxItemLevel() {
+  const configured = Math.max(1, Math.floor(Number(equipmentConfigState.maxItemLevel) || 1));
+  const baseItems = getDebugBaseItemPool();
+  let derivedMax = 1;
+  for (const entry of baseItems) {
+    const range = Array.isArray(entry && entry.itemLevelRange) ? entry.itemLevelRange : [1, 1];
+    const maxLevel = Math.max(1, Math.floor(Number(range[1]) || Number(range[0]) || 1));
+    if (maxLevel > derivedMax) {
+      derivedMax = maxLevel;
+    }
+  }
+  return Math.max(configured, derivedMax, 50);
+}
+
+function getDebugRarityPool() {
+  const configured = Array.isArray(equipmentConfigState.debugRarities) ? equipmentConfigState.debugRarities.filter(Boolean) : [];
+  const merged = new Map();
+  for (const entry of configured) {
+    const id = String(entry && entry.id || "").trim().toLowerCase();
+    if (!id) {
+      continue;
+    }
+    merged.set(id, {
+      id,
+      prefixMin: Math.max(0, Math.floor(Number(entry.prefixMin) || 0)),
+      prefixMax: Math.max(0, Math.floor(Number(entry.prefixMax) || 0)),
+      suffixMin: Math.max(0, Math.floor(Number(entry.suffixMin) || 0)),
+      suffixMax: Math.max(0, Math.floor(Number(entry.suffixMax) || 0)),
+      color: entry && entry.color ? String(entry.color) : ""
+    });
+  }
+  const itemRarities = equipmentConfigState.itemRarities && typeof equipmentConfigState.itemRarities === "object"
+    ? equipmentConfigState.itemRarities
+    : {};
+  for (const rarityId of Object.keys(itemRarities)) {
+    const id = String(rarityId || "").trim().toLowerCase();
+    if (!id) {
+      continue;
+    }
+    const existing = merged.get(id);
+    const fallbackRule = DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal;
+    merged.set(id, {
+      id,
+      prefixMin: existing ? existing.prefixMin : fallbackRule.prefixMin,
+      prefixMax: existing ? existing.prefixMax : fallbackRule.prefixMax,
+      suffixMin: existing ? existing.suffixMin : fallbackRule.suffixMin,
+      suffixMax: existing ? existing.suffixMax : fallbackRule.suffixMax,
+      color:
+        (itemRarities[rarityId] && itemRarities[rarityId].color ? String(itemRarities[rarityId].color) : "") ||
+        (existing && existing.color) ||
+        ""
+    });
+  }
+  for (const rarityId of Object.keys(DEFAULT_ITEM_RARITY_COLORS)) {
+    const id = String(rarityId || "").trim().toLowerCase();
+    if (!id || merged.has(id)) {
+      continue;
+    }
+    merged.set(id, {
+      id,
+      prefixMin: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).prefixMin,
+      prefixMax: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).prefixMax,
+      suffixMin: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).suffixMin,
+      suffixMax: (DEFAULT_DEBUG_RARITY_RULES[id] || DEFAULT_DEBUG_RARITY_RULES.normal).suffixMax,
+      color: DEFAULT_ITEM_RARITY_COLORS[id] || ""
+    });
+  }
+  const order = ["normal", "magic", "rare", "epic", "legendary", "mythic", "divine"];
+  return Array.from(merged.values()).sort((a, b) => {
+    const indexA = order.indexOf(a.id);
+    const indexB = order.indexOf(b.id);
+    if (indexA >= 0 && indexB >= 0) {
+      return indexA - indexB;
+    }
+    if (indexA >= 0) {
+      return -1;
+    }
+    if (indexB >= 0) {
+      return 1;
+    }
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function getDebugPrefixPool() {
+  const configured = Array.isArray(equipmentConfigState.debugPrefixes) ? equipmentConfigState.debugPrefixes.filter(Boolean) : [];
+  return configured.length ? configured : DEBUG_GEAR_FALLBACK_PREFIXES;
+}
+
+function getDebugSuffixPool() {
+  const configured = Array.isArray(equipmentConfigState.debugSuffixes) ? equipmentConfigState.debugSuffixes.filter(Boolean) : [];
+  return configured.length ? configured : DEBUG_GEAR_FALLBACK_SUFFIXES;
+}
+
+function rollDebugEquipmentItem(forcedRarityId = "") {
+  const debugBaseItems = getDebugBaseItemPool();
+  const debugRarities = getDebugRarityPool();
+  const debugPrefixes = getDebugPrefixPool();
+  const debugSuffixes = getDebugSuffixPool();
+  const slotFamilies = Array.from(
+    new Set(debugBaseItems.map((entry) => String(entry.slot || "").trim()).filter(Boolean))
+  );
+  const baseSlot = pickRandomEntry(slotFamilies);
+  if (!baseSlot) {
+    return null;
+  }
+  const maxItemLevel = getDebugMaxItemLevel();
+  const itemLevel = randomDebugInt(1, maxItemLevel);
+  const baseItem = pickDebugBaseItemForLevel(baseSlot, itemLevel);
+  const rarity =
+    forcedRarityId
+      ? debugRarities.find((entry) => String(entry && entry.id || "").trim().toLowerCase() === String(forcedRarityId).trim().toLowerCase()) || null
+      : pickRandomEntry(debugRarities);
+  if (!baseItem || !rarity) {
+    return null;
+  }
+  const prefixPool = filterDebugAffixPool(debugPrefixes, baseItem, itemLevel);
+  const suffixPool = filterDebugAffixPool(debugSuffixes, baseItem, itemLevel);
+  const prefixCount = randomDebugInt(Number(rarity.prefixMin) || 0, Number(rarity.prefixMax) || 0);
+  const suffixCount = randomDebugInt(Number(rarity.suffixMin) || 0, Number(rarity.suffixMax) || 0);
+  const prefixes = buildDebugAffixInstances(pickUniqueRandomEntries(prefixPool, prefixCount), "prefix");
+  const suffixes = buildDebugAffixInstances(pickUniqueRandomEntries(suffixPool, suffixCount), "suffix");
+  const affixes = [...prefixes, ...suffixes];
+  return {
+    itemId: String(baseItem.id || ""),
+    qty: 1,
+    instanceId: `debug-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: buildDebugEquipmentDisplayName(baseItem, prefixes, suffixes),
+    rarity: String(rarity.id || "normal"),
+    slot: String(baseItem.slot || ""),
+    weaponClass: String(baseItem.weaponClass || ""),
+    itemLevel,
+    isEquipment: true,
+    tags: Array.isArray(baseItem.tags) ? [...baseItem.tags] : [],
+    baseStats: baseItem.baseStats && typeof baseItem.baseStats === "object" ? { ...baseItem.baseStats } : {},
+    affixes,
+    prefixes,
+    suffixes
+  };
+}
+
+function getDebugGearSlotIds() {
+  return Array.isArray(equipmentConfigState.itemSlots) ? equipmentConfigState.itemSlots.slice() : [];
+}
+
+function getDebugGearEquipmentSlots() {
+  const slots = {};
+  for (const slotId of getDebugGearSlotIds()) {
+    slots[slotId] = debugGearState.slotStates[slotId] && debugGearState.slotStates[slotId].itemData
+      ? debugGearState.slotStates[slotId].itemData
+      : null;
+  }
+  return slots;
+}
+
+function getDebugRarityIndex(rarityId) {
+  const pool = getDebugRarityPool();
+  const normalized = String(rarityId || "").trim().toLowerCase();
+  const index = pool.findIndex((entry) => String(entry && entry.id || "").trim().toLowerCase() === normalized);
+  return index >= 0 ? index : 0;
+}
+
+function getDebugRarityByIndex(index) {
+  const pool = getDebugRarityPool();
+  if (!pool.length) {
+    return { id: "normal", prefixMin: 0, prefixMax: 0, suffixMin: 0, suffixMax: 0 };
+  }
+  const safeIndex = clamp(Math.floor(Number(index) || 0), 0, pool.length - 1);
+  return pool[safeIndex] || pool[0];
+}
+
+function buildDebugEquipmentItemFromBase(baseItem, itemLevel, rarityId) {
+  const rarityPool = getDebugRarityPool();
+  const debugPrefixes = getDebugPrefixPool();
+  const debugSuffixes = getDebugSuffixPool();
+  const rarity =
+    rarityPool.find((entry) => String(entry && entry.id || "").trim().toLowerCase() === String(rarityId || "").trim().toLowerCase()) ||
+    rarityPool[0] ||
+    { id: "normal", prefixMin: 0, prefixMax: 0, suffixMin: 0, suffixMax: 0 };
+  const prefixPool = filterDebugAffixPool(debugPrefixes, baseItem, itemLevel);
+  const suffixPool = filterDebugAffixPool(debugSuffixes, baseItem, itemLevel);
+  const prefixCount = randomDebugInt(Number(rarity.prefixMin) || 0, Number(rarity.prefixMax) || 0);
+  const suffixCount = randomDebugInt(Number(rarity.suffixMin) || 0, Number(rarity.suffixMax) || 0);
+  const prefixes = buildDebugAffixInstances(pickUniqueRandomEntries(prefixPool, prefixCount), "prefix");
+  const suffixes = buildDebugAffixInstances(pickUniqueRandomEntries(suffixPool, suffixCount), "suffix");
+  const affixes = [...prefixes, ...suffixes];
+  return {
+    itemId: String(baseItem.id || ""),
+    qty: 1,
+    instanceId: `debug-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: buildDebugEquipmentDisplayName(baseItem, prefixes, suffixes),
+    rarity: String(rarity.id || "normal"),
+    slot: String(baseItem.slot || ""),
+    weaponClass: String(baseItem.weaponClass || ""),
+    itemLevel,
+    isEquipment: true,
+    tags: Array.isArray(baseItem.tags) ? [...baseItem.tags] : [],
+    baseStats: baseItem.baseStats && typeof baseItem.baseStats === "object" ? { ...baseItem.baseStats } : {},
+    affixes,
+    prefixes,
+    suffixes
+  };
+}
+
+function rollDebugEquipmentItemForSlot(slotId, itemLevel, rarityId, preferredBaseItemId = "") {
+  const slotFamily = getEquipmentSlotFamily(slotId);
+  const basePool = getDebugBaseItemPool();
+  let baseItem = null;
+  if (preferredBaseItemId) {
+    baseItem =
+      basePool.find(
+        (entry) =>
+          String(entry && entry.id || "").trim() === String(preferredBaseItemId || "").trim() &&
+          String(entry && entry.slot || "").trim() === String(slotFamily || "").trim()
+      ) || null;
+  }
+  if (!baseItem) {
+    baseItem = pickDebugBaseItemForLevel(slotFamily, itemLevel);
+  }
+  if (!baseItem) {
+    return null;
+  }
+  return buildDebugEquipmentItemFromBase(baseItem, itemLevel, rarityId);
+}
+
+function getDebugItemAffixSignature(itemData) {
+  if (!itemData || typeof itemData !== "object") {
+    return "";
+  }
+  const affixes = Array.isArray(itemData.affixes) ? itemData.affixes : [];
+  return JSON.stringify(
+    affixes.map((affix) => ({
+      id: String(affix && affix.id || ""),
+      modifiers: (Array.isArray(affix && affix.modifiers) ? affix.modifiers : []).map((modifier) => ({
+        stat: String(modifier && modifier.stat || ""),
+        value: Number(modifier && modifier.value) || 0
+      }))
+    }))
+  );
+}
+
+function inferDebugGearPreviewClassType() {
+  const slots = getDebugGearEquipmentSlots();
+  const mainHand = slots.mainHand || null;
+  const offHand = slots.offHand || null;
+  const chest = slots.chest || null;
+  const head = slots.head || null;
+  const mainWeapon = toLowerWord(mainHand && mainHand.weaponClass);
+  const combinedText = [head && head.name, chest && chest.name, mainHand && mainHand.name, offHand && offHand.name]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  if (
+    mainWeapon === "bow" ||
+    combinedText.includes("hood") ||
+    combinedText.includes("leather")
+  ) {
+    return "ranger";
+  }
+  if (
+    mainWeapon === "staff" ||
+    mainWeapon === "wand" ||
+    mainWeapon === "orb" ||
+    combinedText.includes("wizard") ||
+    combinedText.includes("robe") ||
+    combinedText.includes("arcane")
+  ) {
+    return "mage";
+  }
+  if (
+    mainWeapon === "sword" ||
+    mainWeapon === "axe" ||
+    (offHand && Array.isArray(offHand.tags) && offHand.tags.some((tag) => String(tag || "").toLowerCase() === "shield")) ||
+    combinedText.includes("plate") ||
+    combinedText.includes("helm")
+  ) {
+    return "warrior";
+  }
+  return String(selfStatic && selfStatic.classType || "warrior").trim().toLowerCase() || "warrior";
+}
+
+function rerollDebugGearSlot(slotId, options = {}) {
+  const current =
+    debugGearState.slotStates[slotId] && typeof debugGearState.slotStates[slotId] === "object"
+      ? debugGearState.slotStates[slotId]
+      : null;
+  const maxItemLevel = getDebugMaxItemLevel();
+  const itemLevel = clamp(
+    Math.floor(Number(options.itemLevel !== undefined ? options.itemLevel : current && current.itemLevel) || 1),
+    1,
+    maxItemLevel
+  );
+  const rarityId = String(options.rarityId || (current && current.rarityId) || "normal");
+  const preferredBaseItemId =
+    options.keepBaseItem && current && current.itemData && current.itemData.itemId
+      ? current.itemData.itemId
+      : "";
+  let itemData = rollDebugEquipmentItemForSlot(slotId, itemLevel, rarityId, preferredBaseItemId);
+  if (options.forceAffixChange && current && current.itemData && String(rarityId).toLowerCase() !== "normal") {
+    const previousSignature = getDebugItemAffixSignature(current.itemData);
+    let attempt = 0;
+    while (attempt < 6 && itemData && getDebugItemAffixSignature(itemData) === previousSignature) {
+      itemData = rollDebugEquipmentItemForSlot(slotId, itemLevel, rarityId, preferredBaseItemId);
+      attempt += 1;
+    }
+  }
+  debugGearState.slotStates[slotId] = {
+    itemLevel,
+    rarityId,
+    itemData
+  };
+}
+
+function rerollAllDebugGearAffixes() {
+  for (const slotId of getDebugGearSlotIds()) {
+    rerollDebugGearSlot(slotId, { keepBaseItem: true, forceAffixChange: true });
+  }
+  renderDebugGearLab();
+}
+
+function drawDebugGearPreviewCharacter() {
+  if (!debugGearPreviewCanvas) {
+    return;
+  }
+  const previewCtx = debugGearPreviewCanvas.getContext("2d");
+  if (!previewCtx) {
+    return;
+  }
+  previewCtx.clearRect(0, 0, debugGearPreviewCanvas.width, debugGearPreviewCanvas.height);
+  if (!sharedCreateHumanoidRenderTools && !humanoidRenderTools) {
+    return;
+  }
+  const previewTools = sharedCreateHumanoidRenderTools
+    ? sharedCreateHumanoidRenderTools({
+        ctx: previewCtx,
+        clamp,
+        lerp,
+        hashString,
+        sanitizeCssColor
+      })
+    : humanoidRenderTools;
+  if (!previewTools || typeof previewTools.drawHumanoid !== "function") {
+    return;
+  }
+  debugGearState.previewClassType = inferDebugGearPreviewClassType();
+  const style =
+    getClassRenderStyle(debugGearState.previewClassType) || {
+      rigType: "humanoid",
+      species: "human",
+      archetype: debugGearState.previewClassType
+    };
+  previewTools.drawHumanoid({
+    entity: { id: "debug-gear-preview", x: 0, y: 0 },
+    entityKey: "debug-gear-preview",
+    p: { x: debugGearPreviewCanvas.width * 0.5, y: debugGearPreviewCanvas.height * 0.56 },
+    style: {
+      ...style,
+      sizeScale: clamp(Number(style.sizeScale) || 1, 0.7, 1.18)
+    },
+    equipmentSlots: getDebugGearEquipmentSlots(),
+    attackState: null,
+    castState: null,
+    aimWorldX: 1,
+    aimWorldY: 0,
+    useDefaultGearFallback: false,
+    isSelf: false
+  });
+}
+
+function renderDebugGearPreviewSlots() {
+  if (!debugGearPreviewLayout) {
+    return;
+  }
+  for (const anchor of Array.from(debugGearPreviewLayout.querySelectorAll(".debug-gear-anchor"))) {
+    anchor.remove();
+  }
+  for (const slotId of getDebugGearSlotIds()) {
+    const slotLayout = EQUIPMENT_SLOT_LAYOUT[slotId] || { x: 50, y: 50, label: humanizeKey(slotId) };
+    const anchor = document.createElement("div");
+    const horizontalRole = slotLayout.x < 35 ? "left-anchor" : slotLayout.x > 65 ? "right-anchor" : "center-anchor";
+    anchor.className = `debug-gear-anchor ${horizontalRole}${slotLayout.kind === "belt" ? " belt-anchor" : ""}`;
+    anchor.style.left = `${slotLayout.x}%`;
+    anchor.style.top = `${slotLayout.y}%`;
+
+    const slotEl = document.createElement("div");
+    slotEl.className = `inventory-slot debug-gear-slot${slotLayout.kind === "belt" ? " belt-slot" : ""}`;
+    const slotState = debugGearState.slotStates[slotId] || null;
+    const itemData = slotState && slotState.itemData ? slotState.itemData : null;
+    if (itemData && itemData.itemId) {
+      slotEl.classList.add("has-item");
+      applyItemRarityChrome(slotEl, itemData);
+      bindItemTooltip(slotEl, itemData);
+      const iconEl = document.createElement("div");
+      iconEl.className = "inv-icon";
+      iconEl.style.backgroundImage = `url(${getItemIconUrl(itemData)})`;
+      slotEl.appendChild(iconEl);
+    }
+
+    const labelEl = document.createElement("div");
+    labelEl.className = "debug-gear-slot-label";
+    labelEl.textContent = slotLayout.label || humanizeKey(slotId);
+
+    anchor.appendChild(slotEl);
+    anchor.appendChild(labelEl);
+    debugGearPreviewLayout.appendChild(anchor);
+  }
+}
+
+function renderDebugGearControls() {
+  if (!debugGearControls) {
+    return;
+  }
+  debugGearControls.innerHTML = "";
+  const rarityPool = getDebugRarityPool();
+  const maxItemLevel = getDebugMaxItemLevel();
+  for (const slotId of getDebugGearSlotIds()) {
+    const slotState = debugGearState.slotStates[slotId] || null;
+    const itemData = slotState && slotState.itemData ? slotState.itemData : null;
+    const rowEl = document.createElement("div");
+    rowEl.className = "debug-gear-control-row";
+
+    const labelWrap = document.createElement("div");
+    const labelEl = document.createElement("div");
+    labelEl.className = "debug-gear-control-label";
+    labelEl.textContent = (EQUIPMENT_SLOT_LAYOUT[slotId] && EQUIPMENT_SLOT_LAYOUT[slotId].label) || humanizeKey(slotId);
+    const metaEl = document.createElement("div");
+    metaEl.className = "debug-gear-control-meta";
+    metaEl.textContent = itemData && itemData.name ? itemData.name : "No item";
+    labelWrap.appendChild(labelEl);
+    labelWrap.appendChild(metaEl);
+
+    const fieldsEl = document.createElement("div");
+    fieldsEl.className = "debug-gear-control-fields";
+
+    const levelField = document.createElement("div");
+    levelField.className = "debug-gear-control-field";
+    const levelLabel = document.createElement("div");
+    levelLabel.className = "debug-gear-control-field-label";
+    levelLabel.textContent = "iLvl";
+    const levelInput = document.createElement("input");
+    levelInput.type = "range";
+    levelInput.min = "1";
+    levelInput.max = String(maxItemLevel);
+    levelInput.step = "1";
+    levelInput.value = String(slotState && slotState.itemLevel ? slotState.itemLevel : 1);
+    const levelValue = document.createElement("div");
+    levelValue.className = "debug-gear-control-field-value";
+    levelValue.textContent = String(levelInput.value);
+    const applyLevelChange = () => {
+      const currentSlotState = debugGearState.slotStates[slotId] || null;
+      levelValue.textContent = String(levelInput.value);
+      rerollDebugGearSlot(slotId, {
+        itemLevel: Number(levelInput.value),
+        rarityId: currentSlotState && currentSlotState.rarityId ? currentSlotState.rarityId : "normal"
+      });
+      refreshDebugGearLabPreviewOnly();
+      const updatedState = debugGearState.slotStates[slotId] || null;
+      metaEl.textContent = updatedState && updatedState.itemData && updatedState.itemData.name ? updatedState.itemData.name : "No item";
+    };
+    levelInput.addEventListener("input", applyLevelChange);
+    levelInput.addEventListener("change", () => renderDebugGearControls());
+    levelField.appendChild(levelLabel);
+    levelField.appendChild(levelInput);
+    levelField.appendChild(levelValue);
+
+    const rarityField = document.createElement("div");
+    rarityField.className = "debug-gear-control-field";
+    const rarityLabel = document.createElement("div");
+    rarityLabel.className = "debug-gear-control-field-label";
+    rarityLabel.textContent = "Rarity";
+    const rarityInput = document.createElement("input");
+    rarityInput.type = "range";
+    rarityInput.min = "0";
+    rarityInput.max = String(Math.max(0, rarityPool.length - 1));
+    rarityInput.step = "1";
+    rarityInput.value = String(getDebugRarityIndex(slotState && slotState.rarityId ? slotState.rarityId : "normal"));
+    const rarityValue = document.createElement("div");
+    rarityValue.className = "debug-gear-control-field-value";
+    rarityValue.textContent = humanizeKey(getDebugRarityByIndex(rarityInput.value).id);
+    const applyRarityChange = () => {
+      const currentSlotState = debugGearState.slotStates[slotId] || null;
+      const rarity = getDebugRarityByIndex(rarityInput.value);
+      rarityValue.textContent = humanizeKey(rarity.id);
+      rerollDebugGearSlot(slotId, {
+        itemLevel: currentSlotState && currentSlotState.itemLevel ? currentSlotState.itemLevel : 1,
+        rarityId: rarity.id,
+        keepBaseItem: true
+      });
+      refreshDebugGearLabPreviewOnly();
+      const updatedState = debugGearState.slotStates[slotId] || null;
+      metaEl.textContent = updatedState && updatedState.itemData && updatedState.itemData.name ? updatedState.itemData.name : "No item";
+    };
+    rarityInput.addEventListener("input", applyRarityChange);
+    rarityInput.addEventListener("change", () => renderDebugGearControls());
+    rarityField.appendChild(rarityLabel);
+    rarityField.appendChild(rarityInput);
+    rarityField.appendChild(rarityValue);
+
+    fieldsEl.appendChild(levelField);
+    fieldsEl.appendChild(rarityField);
+    rowEl.appendChild(labelWrap);
+    rowEl.appendChild(fieldsEl);
+    debugGearControls.appendChild(rowEl);
+  }
+}
+
+function renderDebugGearLab() {
+  hideHoverTooltip();
+  drawDebugGearPreviewCharacter();
+  renderDebugGearPreviewSlots();
+  renderDebugGearControls();
+}
+
+function refreshDebugGearLabPreviewOnly() {
+  hideHoverTooltip();
+  drawDebugGearPreviewCharacter();
+  renderDebugGearPreviewSlots();
+}
+
+function rerollDebugGearLab() {
+  debugGearState.slotStates = {};
+  const maxItemLevel = getDebugMaxItemLevel();
+  const rarityPool = getDebugRarityPool();
+  for (const slotId of getDebugGearSlotIds()) {
+    const itemLevel = randomDebugInt(1, maxItemLevel);
+    const rarity = pickRandomEntry(rarityPool) || { id: "normal" };
+    rerollDebugGearSlot(slotId, {
+      itemLevel,
+      rarityId: rarity.id
+    });
+  }
+  renderDebugGearLab();
+}
+
+function setDebugGearVisible(visible) {
+  debugGearState.visible = !!visible;
+  if (debugGearPanel) {
+    debugGearPanel.classList.toggle("hidden", !debugGearState.visible);
+  }
+  if (!debugGearState.visible) {
+    hideHoverTooltip();
+  }
+}
+
+function handleToggleDebugGearLab() {
+  if (!selfStatic || !selfStatic.isAdmin) {
+    return;
+  }
+  rerollDebugGearLab();
+  setDebugGearVisible(true);
 }
 
 function applyInventoryState(msg) {
@@ -6127,6 +10348,7 @@ const networkPacketParsers = sharedCreateNetworkPacketParsers
       MOB_EFFECT_FLAG_SLOW,
       MOB_EFFECT_FLAG_REMOVE,
       MOB_EFFECT_FLAG_BURN,
+      MOB_EFFECT_FLAG_BLOOD_WRATH,
       AREA_EFFECT_OP_UPSERT,
       AREA_EFFECT_OP_REMOVE,
       AREA_EFFECT_KIND_BEAM,
@@ -6158,6 +10380,7 @@ const networkPacketParsers = sharedCreateNetworkPacketParsers
       remotePlayerStuns,
       remotePlayerSlows,
       remotePlayerBurns,
+      remotePlayerBloodWraths,
       remoteMobCasts,
       remoteMobStuns,
       remoteMobSlows,
@@ -6262,6 +10485,8 @@ function getInterpolatedState() {
 }
 
 function resetClientSessionState() {
+  resetTouchJoystick();
+  resetMobileAbilityAim();
   gameState.self = null;
   gameState.players = [];
   gameState.projectiles = [];
@@ -6273,6 +10498,9 @@ function resetClientSessionState() {
   setInventoryVisible(false);
   setEquipmentVisible(false);
   setSpellbookVisible(false);
+  clearSelfPositiveBuffs();
+  clearSelfNegativeEffects();
+  selfPositiveEffects.bloodWrath = null;
   updateInventoryUI();
   updateEquipmentUI();
   remotePlayerSwings.clear();
@@ -6280,6 +10508,7 @@ function resetClientSessionState() {
   remotePlayerStuns.clear();
   remotePlayerSlows.clear();
   remotePlayerBurns.clear();
+  remotePlayerBloodWraths.clear();
   remoteMobCasts.clear();
   remoteMobBites.clear();
   remoteMobStuns.clear();
@@ -6307,6 +10536,7 @@ function resetClientSessionState() {
   adminBotState.lastListRequestAt = 0;
   setBotListVisible(false);
   debugState.frameSamples.length = 0;
+  debugState.totalMobCount = 0;
   dpsState.samples.length = 0;
   setDpsVisible(false);
   spellbookState.signature = "";
@@ -6345,6 +10575,7 @@ function handleServerSelfProgress(msg) {
   const exp = Number(msg.exp);
   const expToNext = Number(msg.expToNext);
   const skillPoints = Number(msg.skillPoints);
+  const talentPoints = Number(msg.talentPoints);
   const abilityLevels = parseAbilityLevelsPayload(msg.abilityLevels);
   if (Number.isFinite(copper) && copper >= 0) {
     entityRuntime.self.copper = copper;
@@ -6360,6 +10591,12 @@ function handleServerSelfProgress(msg) {
   }
   if (Number.isFinite(skillPoints) && skillPoints >= 0) {
     entityRuntime.self.skillPoints = Math.floor(skillPoints);
+  }
+  if (Number.isFinite(talentPoints) && talentPoints >= 0) {
+    entityRuntime.self.talentPoints = talentPoints;
+    if (selfStatic) {
+      selfStatic.talentPoints = talentPoints;
+    }
   }
   if (msg.abilityLevels !== undefined) {
     entityRuntime.self.abilityLevels = abilityLevels;
@@ -6420,7 +10657,9 @@ const serverMessageHandlers = {
       type: "join",
       name,
       classType,
-      isAdmin: !!isAdmin
+      isAdmin: !!isAdmin,
+      viewportWidth: Math.max(1, Math.floor(Number(canvas.width) || 0)),
+      viewportHeight: Math.max(1, Math.floor(Number(canvas.height) || 0))
     });
   },
   __close: () => {
@@ -6459,6 +10698,12 @@ const serverMessageHandlers = {
     }
     gameState.map = msg.map || gameState.map;
     gameState.visibilityRange = msg.visibilityRange || gameState.visibilityRange;
+    gameState.visibilityRangeX = msg.visibilityRangeX || gameState.visibilityRangeX;
+    gameState.visibilityRangeY = msg.visibilityRangeY || gameState.visibilityRangeY;
+    if (msg && typeof msg === "object" && msg.talentTree) {
+      selfStatic.talentTree = msg.talentTree;
+      selfStatic.talentPoints = msg.talentTree.availablePoints || 0;
+    }
     resetClientSessionState();
     joinScreen.classList.add("hidden");
     gameUI.classList.remove("hidden");
@@ -6500,6 +10745,14 @@ const serverMessageHandlers = {
   },
   player_casts: (msg) => applyPlayerCastStates(msg),
   mob_casts: (msg) => applyMobCastStates(msg),
+  ability_used: (msg) => {
+    const abilityId = String(msg && msg.abilityId || "").trim();
+    if (!abilityId) {
+      return;
+    }
+    markAbilityUsedClient(abilityId, performance.now());
+  },
+  self_buffs: (msg) => applySelfPositiveBuffs(msg),
   player_effects: (msg) => applyPlayerEffects(msg),
   player_effects_nearby: (msg) => applyNearbyPlayerEffects(msg),
   mob_bites: (msg) => {
@@ -6525,6 +10778,7 @@ const serverMessageHandlers = {
   projectile_hit_events: (msg) => addProjectileHitEvents(msg.events),
   mob_death_events: (msg) => addMobDeathEvents(msg.events),
   self_progress: (msg) => handleServerSelfProgress(msg),
+  talent_update: (msg) => handleTalentUpdate(msg),
   loot_picked: (msg) => handleServerLootPicked(msg),
   item_used: (msg) => handleServerItemUsed(msg),
   vendor_sale_result: (msg) => {
@@ -6556,6 +10810,42 @@ const serverMessageHandlers = {
   },
   admin_action_result: (msg) => {
     setStatus(msg && msg.message ? msg.message : "Admin action completed.");
+  },
+  world_stats: (msg) => {
+    debugState.totalMobCount = Math.max(0, Math.floor(Number(msg && msg.mobCount) || 0));
+    updateDebugPanel();
+  },
+  chat_message: (msg) => {
+    if (!msg || !chatMessages) {
+      return;
+    }
+    const sender = String(msg.sender || "").trim();
+    const text = String(msg.text || "").trim();
+    if (!text) {
+      return;
+    }
+    const isAdmin = !!msg.isAdmin;
+    const messageEl = document.createElement("div");
+    messageEl.className = "chat-message";
+    if (isAdmin) {
+      messageEl.classList.add("admin");
+    }
+    if (sender) {
+      const senderEl = document.createElement("span");
+      senderEl.className = "chat-sender";
+      senderEl.textContent = sender + ": ";
+      messageEl.appendChild(senderEl);
+    }
+    const textEl = document.createElement("span");
+    textEl.className = "chat-text";
+    textEl.textContent = text;
+    messageEl.appendChild(textEl);
+    chatMessages.appendChild(messageEl);
+    // Limit chat history to last 100 messages to prevent performance issues
+    while (chatMessages.children.length > 100) {
+      chatMessages.removeChild(chatMessages.firstChild);
+    }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
   }
 };
 
@@ -6585,8 +10875,18 @@ function connectAndJoin(name, classType, isAdmin = false) {
 }
 
 function resizeCanvas() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const viewportWidth = Math.max(1, Math.floor(Number(window.innerWidth) || 0));
+  const viewportHeight = Math.max(1, Math.floor(Number(window.innerHeight) || 0));
+  const usePortraitMobileZoom =
+    isTouchJoystickEnabled() && viewportHeight > viewportWidth && viewportWidth > 0 && viewportHeight > 0;
+  const targetWidthPx = MOBILE_PORTRAIT_TARGET_VIEW_TILES_X * TILE_SIZE;
+  const viewportScale = usePortraitMobileZoom ? Math.max(1, targetWidthPx / viewportWidth) : 1;
+  canvas.width = Math.max(1, Math.round(viewportWidth * viewportScale));
+  canvas.height = Math.max(1, Math.round(viewportHeight * viewportScale));
+  if (rendererBootstrap && typeof rendererBootstrap.resize === "function") {
+    rendererBootstrap.resize(canvas.width, canvas.height);
+  }
+  sendViewportToServer();
   updateInventoryUI();
   updateEquipmentUI();
 }
@@ -6601,6 +10901,7 @@ const playerControlTools = sharedCreatePlayerControlTools
       keys,
       movementSync,
       mouseState,
+      touchJoystickState,
       autoMoveTarget,
       gameState,
       canvas,
@@ -6644,12 +10945,160 @@ function clearAutoMoveTarget() {
   playerControlTools.clearAutoMoveTarget();
 }
 
+function normalizeAimAngle(angle) {
+  const tau = Math.PI * 2;
+  let normalized = Number(angle) || 0;
+  while (normalized <= -Math.PI) {
+    normalized += tau;
+  }
+  while (normalized > Math.PI) {
+    normalized -= tau;
+  }
+  return normalized;
+}
+
+function getShortestAimAngleDelta(fromAngle, toAngle) {
+  return normalizeAimAngle((Number(toAngle) || 0) - (Number(fromAngle) || 0));
+}
+
+function getAimAngleMidpoint(angleA, angleB) {
+  return normalizeAimAngle((Number(angleA) || 0) + getShortestAimAngleDelta(angleA, angleB) * 0.5);
+}
+
+function resolveAbilityUseTarget(abilityId, worldX, worldY) {
+  const self = (lastRenderState && lastRenderState.self) || gameState.self;
+  const targetX = Number(worldX);
+  const targetY = Number(worldY);
+  if (!self) {
+    return Number.isFinite(targetX) && Number.isFinite(targetY) ? { x: targetX, y: targetY } : null;
+  }
+
+  const abilityDef = getActionDefById(abilityId);
+  if (String(abilityDef && abilityDef.kind || "").trim().toLowerCase() !== "meleecone") {
+    return Number.isFinite(targetX) && Number.isFinite(targetY)
+      ? { x: targetX, y: targetY }
+      : { x: Number(self.x) || 0, y: Number(self.y) || 0 };
+  }
+
+  const requestedDir =
+    normalizeDirection(targetX - Number(self.x), targetY - Number(self.y)) ||
+    normalizeDirection(self && self.lastDirection && self.lastDirection.dx, self && self.lastDirection && self.lastDirection.dy);
+  const range = Math.max(
+    0.2,
+    Number(getAbilityEffectiveRangeForSelf(abilityId, self)) || Number(abilityDef && abilityDef.range) || 1.5
+  );
+  if (!requestedDir) {
+    return { x: Number(self.x) || 0, y: Number(self.y) || 0 };
+  }
+
+  const candidateMobs = [];
+  for (const mob of Array.isArray(gameState.mobs) ? gameState.mobs : []) {
+    if (!mob || Number(mob.hp) <= 0) {
+      continue;
+    }
+    const dx = Number(mob.x) - Number(self.x);
+    const dy = Number(mob.y) - Number(self.y);
+    const distance = Math.hypot(dx, dy);
+    if (!Number.isFinite(distance) || distance <= 0.0001 || distance > range) {
+      continue;
+    }
+    const dir = normalizeDirection(dx, dy);
+    if (!dir) {
+      continue;
+    }
+    candidateMobs.push({
+      distance,
+      dir,
+      angle: Math.atan2(dir.dy, dir.dx)
+    });
+  }
+
+  if (!candidateMobs.length) {
+    return {
+      x: Number(self.x) + requestedDir.dx * range,
+      y: Number(self.y) + requestedDir.dy * range
+    };
+  }
+
+  const requestedAngle = Math.atan2(requestedDir.dy, requestedDir.dx);
+  const candidateAngles = [requestedAngle];
+  for (const candidate of candidateMobs) {
+    candidateAngles.push(candidate.angle);
+  }
+  for (let i = 0; i < candidateMobs.length; i += 1) {
+    for (let j = i + 1; j < candidateMobs.length; j += 1) {
+      candidateAngles.push(getAimAngleMidpoint(candidateMobs[i].angle, candidateMobs[j].angle));
+    }
+  }
+
+  const coneAngleDeg = Math.max(1, Number(abilityDef && abilityDef.coneAngleDeg) || 120);
+  const coneCos = Math.cos((coneAngleDeg * Math.PI) / 360);
+  let bestDir = requestedDir;
+  let bestHitCount = -1;
+  let bestNearestDistance = Infinity;
+  let bestAlignment = -Infinity;
+  let bestTotalDot = -Infinity;
+
+  for (const angle of candidateAngles) {
+    const dir = {
+      dx: Math.cos(angle),
+      dy: Math.sin(angle)
+    };
+    let hitCount = 0;
+    let nearestDistance = Infinity;
+    let totalDot = 0;
+
+    for (const candidate of candidateMobs) {
+      const dot = dir.dx * candidate.dir.dx + dir.dy * candidate.dir.dy;
+      if (dot < coneCos) {
+        continue;
+      }
+      hitCount += 1;
+      totalDot += dot;
+      if (candidate.distance < nearestDistance) {
+        nearestDistance = candidate.distance;
+      }
+    }
+
+    if (hitCount <= 0) {
+      continue;
+    }
+
+    const alignment = dir.dx * requestedDir.dx + dir.dy * requestedDir.dy;
+    const isBetter =
+      hitCount > bestHitCount ||
+      (hitCount === bestHitCount && nearestDistance < bestNearestDistance - 1e-6) ||
+      (hitCount === bestHitCount &&
+        Math.abs(nearestDistance - bestNearestDistance) <= 1e-6 &&
+        alignment > bestAlignment + 1e-6) ||
+      (hitCount === bestHitCount &&
+        Math.abs(nearestDistance - bestNearestDistance) <= 1e-6 &&
+        Math.abs(alignment - bestAlignment) <= 1e-6 &&
+        totalDot > bestTotalDot + 1e-6);
+    if (!isBetter) {
+      continue;
+    }
+
+    bestDir = dir;
+    bestHitCount = hitCount;
+    bestNearestDistance = nearestDistance;
+    bestAlignment = alignment;
+    bestTotalDot = totalDot;
+  }
+
+  return {
+    x: Number(self.x) + bestDir.dx * range,
+    y: Number(self.y) + bestDir.dy * range
+  };
+}
+
 function triggerSwordSwing(worldX, worldY) {
   const self = (lastRenderState && lastRenderState.self) || gameState.self;
   if (!self) {
     return;
   }
-  swordSwing.angle = Math.atan2(worldY - self.y, worldX - self.x);
+  const target = resolveAbilityUseTarget("slash", worldX, worldY);
+  swordSwing.angle = Math.atan2(Number(target && target.y) - self.y, Number(target && target.x) - self.x);
   swordSwing.activeUntil = performance.now() + swordSwing.durationMs;
 }
 
@@ -6891,11 +11340,11 @@ function hasEnoughManaForAbility(self, abilityId) {
   return abilityRuntimeTools.hasEnoughManaForAbility(self, abilityId);
 }
 
-function useAbilityAt(abilityId, worldX, worldY) {
+function useAbilityAt(abilityId, worldX, worldY, options = {}) {
   if (!abilityRuntimeTools) {
     return false;
   }
-  return abilityRuntimeTools.useAbilityAt(abilityId, worldX, worldY);
+  return abilityRuntimeTools.useAbilityAt(abilityId, worldX, worldY, options);
 }
 
 function updateAbilityChannel(now) {
@@ -6917,6 +11366,13 @@ function executeBoundAction(slotId) {
     return false;
   }
   return uiActionTools.executeBoundAction(slotId);
+}
+
+function executeBoundActionAt(slotId, worldX, worldY, options = {}) {
+  if (!uiActionTools || typeof uiActionTools.executeBoundActionAt !== "function") {
+    return false;
+  }
+  return uiActionTools.executeBoundActionAt(slotId, worldX, worldY, options);
 }
 
 function tryPrimaryAutoAction(force = false) {
@@ -7122,6 +11578,195 @@ function drawFloatingDamageNumbers(cameraX, cameraY) {
   }
 }
 
+function getPlayerCastVisualState(player, isSelf, frameNow) {
+  const castState = isSelf ? abilityChannel : remotePlayerCasts.get(player.id);
+  const cast = getCastProgress(castState, frameNow);
+  if (!cast) {
+    if (!isSelf && castState && castState.active) {
+      remotePlayerCasts.delete(player.id);
+    }
+    return null;
+  }
+  return {
+    ratio: clamp(Number(cast.ratio) || 0, 0, 1)
+  };
+}
+
+function getPlayerStatusVisualState(player, isSelf, frameNow) {
+  const stunState = isSelf ? selfNegativeEffects.stun : remotePlayerStuns.get(player.id);
+  const slowState = isSelf ? selfNegativeEffects.slow : remotePlayerSlows.get(player.id);
+  const burnState = isSelf ? selfNegativeEffects.burn : remotePlayerBurns.get(player.id);
+  const bloodWrathState = isSelf ? selfPositiveEffects.bloodWrath : remotePlayerBloodWraths.get(player.id);
+  const status = {
+    phaseSeed: Number(player && player.id) || 0,
+    stunActive: false,
+    slowActive: false,
+    burnActive: false,
+    bloodWrathActive: false,
+    slowMultiplier: 1
+  };
+
+  if (stunState) {
+    if ((Number(stunState.endsAt) || 0) > frameNow) {
+      status.stunActive = true;
+    } else if (!isSelf) {
+      remotePlayerStuns.delete(player.id);
+    } else {
+      selfNegativeEffects.stun = null;
+    }
+  }
+
+  if (slowState) {
+    if ((Number(slowState.endsAt) || 0) > frameNow) {
+      status.slowActive = true;
+      status.slowMultiplier = isSelf
+        ? clamp((Number(slowState.multiplierQ) || 1000) / 1000, 0.1, 1)
+        : clamp(Number(slowState.multiplier) || 1, 0.1, 1);
+    } else if (!isSelf) {
+      remotePlayerSlows.delete(player.id);
+    } else {
+      selfNegativeEffects.slow = null;
+    }
+  }
+
+  if (burnState) {
+    if ((Number(burnState.endsAt) || 0) > frameNow) {
+      status.burnActive = true;
+    } else if (!isSelf) {
+      remotePlayerBurns.delete(player.id);
+    } else {
+      selfNegativeEffects.burn = null;
+    }
+  }
+
+  if (bloodWrathState) {
+    if ((Number(bloodWrathState.endsAt) || 0) > frameNow) {
+      status.bloodWrathActive = true;
+    } else if (!isSelf) {
+      remotePlayerBloodWraths.delete(player.id);
+    } else {
+      selfPositiveEffects.bloodWrath = null;
+    }
+  }
+
+  return status.stunActive || status.slowActive || status.burnActive || status.bloodWrathActive ? status : null;
+}
+
+function getMobCastVisualState(mob, frameNow) {
+  const castState = remoteMobCasts.get(mob.id);
+  const cast = getCastProgress(castState, frameNow);
+  if (!cast) {
+    if (castState && castState.active) {
+      remoteMobCasts.delete(mob.id);
+    }
+    return null;
+  }
+  return {
+    ratio: clamp(Number(cast.ratio) || 0, 0, 1)
+  };
+}
+
+function getMobStatusVisualState(mob, frameNow) {
+  const status = {
+    phaseSeed: Number(mob && mob.id) || 0,
+    stunActive: false,
+    slowActive: false,
+    burnActive: false,
+    slowMultiplier: 1
+  };
+
+  const stunState = remoteMobStuns.get(mob.id);
+  if (stunState) {
+    if ((Number(stunState.endsAt) || 0) > frameNow) {
+      status.stunActive = true;
+    } else {
+      remoteMobStuns.delete(mob.id);
+    }
+  }
+
+  const slowState = remoteMobSlows.get(mob.id);
+  if (slowState) {
+    if ((Number(slowState.endsAt) || 0) > frameNow) {
+      status.slowActive = true;
+      status.slowMultiplier = clamp(Number(slowState.multiplier) || 1, 0.1, 1);
+    } else {
+      remoteMobSlows.delete(mob.id);
+    }
+  }
+
+  const burnState = remoteMobBurns.get(mob.id);
+  if (burnState) {
+    if ((Number(burnState.endsAt) || 0) > frameNow) {
+      status.burnActive = true;
+    } else {
+      remoteMobBurns.delete(mob.id);
+    }
+  }
+
+  return status.stunActive || status.slowActive || status.burnActive ? status : null;
+}
+
+function getFloatingDamageViews(frameNow) {
+  if (!floatingDamageNumbers.length) {
+    return [];
+  }
+  const active = [];
+  const views = [];
+  for (const entry of floatingDamageNumbers) {
+    const age = frameNow - entry.createdAt;
+    if (age >= entry.durationMs) {
+      continue;
+    }
+    active.push(entry);
+    const progress = clamp(age / entry.durationMs, 0, 1);
+    views.push({
+      id: Number(entry.id) || 0,
+      x: Number(entry.x) || 0,
+      y: Number(entry.y) || 0,
+      amount: Math.max(0, Math.round(Number(entry.amount) || 0)),
+      targetType: entry.targetType === "player" ? "player" : "mob",
+      progress,
+      jitterX: Number(entry.jitterX) || 0,
+      riseOffset: Number(entry.riseOffset) || 0
+    });
+  }
+  floatingDamageNumbers.length = 0;
+  for (const entry of active) {
+    floatingDamageNumbers.push(entry);
+  }
+  return views;
+}
+
+function getExplosionViews(frameNow) {
+  if (!activeExplosions.length) {
+    return [];
+  }
+  const active = [];
+  const views = [];
+  for (const entry of activeExplosions) {
+    const age = frameNow - Number(entry.createdAt || frameNow);
+    const durationMs = Math.max(1, Number(entry.durationMs) || 380);
+    if (age >= durationMs) {
+      continue;
+    }
+    active.push(entry);
+    views.push({
+      id: Number(entry.id) || 0,
+      x: Number(entry.x) || 0,
+      y: Number(entry.y) || 0,
+      radius: Math.max(0.1, Number(entry.radius) || 0.1),
+      abilityId: String(entry.abilityId || ""),
+      progress: clamp(age / durationMs, 0, 1),
+      alpha: clamp(1 - age / durationMs, 0, 1)
+    });
+  }
+  activeExplosions.length = 0;
+  for (const entry of active) {
+    activeExplosions.push(entry);
+  }
+  return views;
+}
+
 function drawExplosionEffects(cameraX, cameraY) {
   if (!activeExplosions.length) {
     return;
@@ -7169,6 +11814,56 @@ function drawExplosionEffects(cameraX, cameraY) {
         ctx.moveTo(screen.x + Math.cos(a) * inner, screen.y + Math.sin(a) * inner);
         ctx.lineTo(screen.x + Math.cos(a) * outer, screen.y + Math.sin(a) * outer);
         ctx.stroke();
+      }
+      ctx.restore();
+      continue;
+    }
+
+    if (String(fx.abilityId || "").toLowerCase() === "charge") {
+      ctx.save();
+      // Outer shockwave ring
+      ctx.globalAlpha = 0.85 * alpha;
+      ctx.strokeStyle = "rgba(255, 220, 140, 0.95)";
+      ctx.lineWidth = Math.max(1.6, 4.2 * (1 - progress));
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, ringRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner impact ring
+      ctx.globalAlpha = 0.5 * alpha;
+      ctx.strokeStyle = "rgba(255, 180, 80, 0.88)";
+      ctx.lineWidth = Math.max(1.2, 2.8 * (1 - progress));
+      ctx.beginPath();
+      ctx.arc(screen.x, screen.y, ringRadius * 0.65, 0, Math.PI * 2);
+      ctx.stroke();
+      // Radial impact lines
+      for (let i = 0; i < 12; i += 1) {
+        const a = (Math.PI * 2 * i) / 12 + progress * 0.6;
+        const inner = ringRadius * 0.2;
+        const outer = ringRadius * 0.9;
+        ctx.globalAlpha = 0.55 * alpha;
+        ctx.strokeStyle = "rgba(255, 200, 100, 0.78)";
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(screen.x + Math.cos(a) * inner, screen.y + Math.sin(a) * inner);
+        ctx.lineTo(screen.x + Math.cos(a) * outer, screen.y + Math.sin(a) * outer);
+        ctx.stroke();
+      }
+      // Dust particles
+      ctx.globalAlpha = 0.35 * alpha;
+      ctx.fillStyle = "rgba(200, 180, 150, 0.65)";
+      for (let i = 0; i < 8; i += 1) {
+        const particleAngle = (Math.PI * 2 * i) / 8 + progress * 1.2;
+        const particleDist = ringRadius * (0.4 + (i % 3) * 0.15);
+        const particleSize = 1.8 + (i % 4) * 0.4;
+        ctx.beginPath();
+        ctx.arc(
+          screen.x + Math.cos(particleAngle) * particleDist,
+          screen.y + Math.sin(particleAngle) * particleDist,
+          particleSize,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
       }
       ctx.restore();
       continue;
@@ -7861,16 +12556,27 @@ function getCaltropSprite() {
   return sprite;
 }
 
+function getCurrentAbilityPreviewState() {
+  if (mobileAbilityAimState.active && mobileAbilityAimState.abilityId) {
+    return mobileAbilityAimState;
+  }
+  if (abilityChannel.active && abilityChannel.abilityId) {
+    return abilityChannel;
+  }
+  return null;
+}
+
 function drawCircularTargetPreview(self, cameraX, cameraY, now, options = {}) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || (options.fallbackId ? findAbilityDefById(options.fallbackId) : null);
   const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
   const areaRadius = Math.max(0.2, Number(options.radius) || Number(abilityDef?.areaRadius || abilityDef?.radius || 2.5));
@@ -8181,20 +12887,21 @@ function drawTargetCircleCastPreview(self, cameraX, cameraY, now) {
 }
 
 function drawBallistaNestCastPreview(self, cameraX, cameraY, now) {
+  const previewState = getCurrentAbilityPreviewState();
   const preview = drawCircularTargetPreview(self, cameraX, cameraY, now, {
     fallbackId: "ballistaNest",
     strokeColor: "rgba(248, 219, 170, 0.72)",
     fillColor: "rgba(188, 126, 66, 0.13)"
   });
-  if (!preview || !self) {
+  if (!preview || !self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("ballistaNest");
   const level = getSelfAbilityLevel(self, activeAbilityId, 1);
   const summonCount = sharedGetSummonCountForLevel(
@@ -8251,15 +12958,16 @@ function drawAreaEffects(cameraX, cameraY, now, layer = "all") {
 }
 
 function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("blizzard");
   const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
   const areaRadius = Math.max(0.2, Number(abilityDef?.areaRadius || abilityDef?.radius || 3));
@@ -8294,15 +13002,16 @@ function drawBlizzardCastPreview(self, cameraX, cameraY, now) {
 }
 
 function drawFireHydraCastPreview(self, cameraX, cameraY, now) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const targetX = Number(abilityChannel.targetX);
-  const targetY = Number(abilityChannel.targetY);
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
   if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
     return;
   }
-  const activeAbilityId = String(abilityChannel.abilityId || "");
+  const activeAbilityId = String(previewState.abilityId || "");
   const abilityDef = findAbilityDefById(activeAbilityId) || findAbilityDefById("fireHydra");
   const level = getSelfAbilityLevel(self, activeAbilityId, 1);
   const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
@@ -8349,6 +13058,186 @@ function drawFireHydraCastPreview(self, cameraX, cameraY, now) {
   ctx.restore();
 }
 
+function drawAbilityPreviewSnapMarker(previewState, cameraX, cameraY, now) {
+  if (!previewState || !Number.isFinite(Number(previewState.snappedTargetId))) {
+    return;
+  }
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+  const p = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
+  const pulse = 0.82 + Math.sin(now * 0.015) * 0.16;
+  ctx.save();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = `rgba(255, 246, 198, ${(0.72 * pulse).toFixed(3)})`;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 12 + pulse * 2.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 5.8 + pulse * 1.2, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGenericAbilityCastPreview(self, cameraX, cameraY, now, previewState) {
+  if (!self || !previewState) {
+    return;
+  }
+  const activeAbilityId = String(previewState.abilityId || "");
+  const abilityDef = findAbilityDefById(activeAbilityId) || getActionDefById(activeAbilityId);
+  const kind = String(abilityDef && abilityDef.kind || "").trim().toLowerCase();
+  const targetX = Number(previewState.targetX);
+  const targetY = Number(previewState.targetY);
+  if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+    return;
+  }
+
+  const start = worldToScreen(self.x + 0.5, self.y + 0.5, cameraX, cameraY);
+  const end = worldToScreen(targetX + 0.5, targetY + 0.5, cameraX, cameraY);
+  const dx = targetX - self.x;
+  const dy = targetY - self.y;
+  const len = Math.hypot(dx, dy);
+  const direction = len > 0.0001 ? { dx: dx / len, dy: dy / len } : getMobileAbilityAimFallbackDirection(self);
+  const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(activeAbilityId, self));
+  const inRange = castRange <= 0 || len <= castRange + 0.001;
+  const strokeColor = inRange ? "rgba(214, 228, 255, 0.72)" : "rgba(255, 164, 164, 0.72)";
+  const fillColor = inRange ? "rgba(124, 178, 240, 0.14)" : "rgba(214, 104, 104, 0.14)";
+  const pulse = 0.72 + Math.sin(now * 0.011) * 0.14;
+
+  if (kind === "area" || kind === "summon" || kind === "teleport") {
+    drawCircularTargetPreview(self, cameraX, cameraY, now, {
+      fallbackId: activeAbilityId,
+      radius: kind === "teleport" ? 0.45 : undefined,
+      strokeColor,
+      fillColor
+    });
+    return;
+  }
+
+  ctx.save();
+  ctx.setLineDash([6, 5]);
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = inRange ? "rgba(206, 220, 245, 0.46)" : "rgba(255, 141, 141, 0.48)";
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  if (kind === "meleecone") {
+    const coneAngleDeg = Math.max(24, Number(abilityDef && abilityDef.coneAngleDeg) || 90);
+    const halfAngle = (coneAngleDeg * Math.PI) / 360;
+    const radiusPx = Math.max(18, Math.max(0.5, castRange || len || 1.8) * TILE_SIZE);
+    const facing = Math.atan2(direction.dy, direction.dx);
+
+    // Draw cone fill
+    ctx.fillStyle = inRange ? `rgba(239, 230, 185, ${(0.16 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.15 * pulse).toFixed(3)})`;
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.arc(start.x, start.y, radiusPx, facing - halfAngle, facing + halfAngle);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Draw slashy animation - sweeping arc trails
+    const slashAlpha = 0.35 * pulse;
+    const slashColor = inRange ? `rgba(255, 245, 220, ${slashAlpha.toFixed(3)})` : `rgba(255, 180, 180, ${slashAlpha.toFixed(3)})`;
+    ctx.strokeStyle = slashColor;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+
+    // Draw multiple arc trails for slash effect
+    for (let i = 0; i < 3; i++) {
+      const trailRadius = radiusPx * (0.6 + i * 0.15);
+      const trailAlpha = slashAlpha * (1 - i * 0.25);
+      ctx.strokeStyle = inRange ? `rgba(255, 245, 220, ${trailAlpha.toFixed(3)})` : `rgba(255, 180, 180, ${trailAlpha.toFixed(3)})`;
+      ctx.lineWidth = 2.5 - i * 0.5;
+      ctx.beginPath();
+      ctx.arc(start.x, start.y, trailRadius, facing - halfAngle * 0.8, facing + halfAngle * 0.8);
+      ctx.stroke();
+    }
+
+    // Draw slash marks
+    const slashCount = 3;
+    for (let i = 0; i < slashCount; i++) {
+      const slashAngle = facing - halfAngle * 0.6 + (halfAngle * 1.2 * i / (slashCount - 1));
+      const slashLength = radiusPx * (0.7 + Math.random() * 0.3);
+      const slashAlpha2 = slashAlpha * (0.7 + Math.random() * 0.3);
+      ctx.strokeStyle = inRange ? `rgba(255, 245, 220, ${slashAlpha2.toFixed(3)})` : `rgba(255, 180, 180, ${slashAlpha2.toFixed(3)})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(start.x + Math.cos(slashAngle) * slashLength, start.y + Math.sin(slashAngle) * slashLength);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+    return;
+  }
+
+  if (kind === "beam" || kind === "chain") {
+    const beamWidthPx = Math.max(4, (Number(abilityDef && abilityDef.beamWidth) || 0.5) * TILE_SIZE);
+    ctx.strokeStyle = inRange ? `rgba(176, 214, 255, ${(0.18 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.18 * pulse).toFixed(3)})`;
+    ctx.lineWidth = beamWidthPx * 1.7;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.strokeStyle = inRange ? `rgba(242, 248, 255, ${(0.86 * pulse).toFixed(3)})` : `rgba(255, 210, 210, ${(0.82 * pulse).toFixed(3)})`;
+    ctx.lineWidth = Math.max(1.2, beamWidthPx * 0.28);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+
+  const projectileCount = Math.max(1, Math.floor(Number(abilityDef && abilityDef.projectileCount) || 1));
+  const spreadDeg = Math.max(0, Number(abilityDef && abilityDef.spreadDeg) || 0);
+  const lineCount = projectileCount > 1 ? projectileCount : 1;
+  const baseAngle = Math.atan2(direction.dy, direction.dx);
+  const previewRange = Math.max(castRange, len, 0.5);
+  for (let index = 0; index < lineCount; index += 1) {
+    const spreadOffset =
+      lineCount > 1 && spreadDeg > 0
+        ? (((index / Math.max(1, lineCount - 1)) - 0.5) * spreadDeg * Math.PI) / 180
+        : 0;
+    const angle = baseAngle + spreadOffset;
+    const endPoint = worldToScreen(
+      self.x + Math.cos(angle) * previewRange + 0.5,
+      self.y + Math.sin(angle) * previewRange + 0.5,
+      cameraX,
+      cameraY
+    );
+    ctx.strokeStyle = inRange ? `rgba(236, 242, 250, ${(0.8 * pulse).toFixed(3)})` : `rgba(255, 210, 210, ${(0.76 * pulse).toFixed(3)})`;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(endPoint.x, endPoint.y);
+    ctx.stroke();
+  }
+
+  const endpointRadiusPx = Math.max(
+    5,
+    Math.max(Number(abilityDef && abilityDef.explosionRadius) || 0, Number(abilityDef && abilityDef.projectileHitRadius) || 0.25) * TILE_SIZE
+  );
+  ctx.beginPath();
+  ctx.fillStyle = inRange ? `rgba(165, 208, 255, ${(0.12 * pulse).toFixed(3)})` : `rgba(214, 104, 104, ${(0.12 * pulse).toFixed(3)})`;
+  ctx.arc(end.x, end.y, endpointRadiusPx, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = strokeColor;
+  ctx.arc(end.x, end.y, endpointRadiusPx, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 const ABILITY_AREA_EFFECT_RENDERERS = Object.freeze({
   blizzard: drawBlizzardAreaEffect,
   arcane_beam: drawArcaneBeamAreaEffect,
@@ -8369,15 +13258,19 @@ const ABILITY_CAST_PREVIEW_RENDERERS = Object.freeze({
 });
 
 function drawAbilityCastPreview(self, cameraX, cameraY, now) {
-  if (!self || !abilityChannel.active) {
+  const previewState = getCurrentAbilityPreviewState();
+  if (!self || !previewState) {
     return;
   }
-  const actionDef = getActionDefById(abilityChannel.abilityId);
-  const castHook = getAbilityVisualHook(abilityChannel.abilityId, actionDef, "castPreviewRenderer", "");
+  const actionDef = getActionDefById(previewState.abilityId);
+  const castHook = getAbilityVisualHook(previewState.abilityId, actionDef, "castPreviewRenderer", "");
   const drawCastPreview = ABILITY_CAST_PREVIEW_RENDERERS[castHook];
   if (drawCastPreview) {
     drawCastPreview(self, cameraX, cameraY, now);
+  } else {
+    drawGenericAbilityCastPreview(self, cameraX, cameraY, now, previewState);
   }
+  drawAbilityPreviewSnapMarker(previewState, cameraX, cameraY, now);
 }
 
 function hashString(value) {
@@ -8983,15 +13876,16 @@ function getSpiderWalkFrames(typeName, style = null) {
   ];
   const palette = applyMobPaletteOverrides(palettes[(seed >>> 5) % palettes.length], style);
   const frames = [];
+  const frameSize = MOB_SPRITE_SIZE + 24;
 
   for (let i = 0; i < 6; i += 1) {
     const phase = (i / 6) * Math.PI * 2;
     const pose = Math.sin(phase);
     const frame = document.createElement("canvas");
-    frame.width = MOB_SPRITE_SIZE;
-    frame.height = MOB_SPRITE_SIZE;
+    frame.width = frameSize;
+    frame.height = frameSize;
     const fctx = frame.getContext("2d");
-    fctx.translate(MOB_SPRITE_SIZE / 2, MOB_SPRITE_SIZE / 2);
+    fctx.translate(frameSize / 2, frameSize / 2);
     drawSpiderSpriteFrame(fctx, palette, pose);
     frames.push(frame);
   }
@@ -10158,7 +15052,9 @@ function drawVendorNpc(cameraX, cameraY, frameNow) {
 
 function drawVendorTooltip(vendor, p) {
   const title = String(vendor && vendor.name ? vendor.name : "Quartermaster");
-  const subtitle = canInteractWithVendor() ? "Right-click to sell gear" : "Right-click to approach";
+  const subtitle = isTouchJoystickEnabled()
+    ? (canInteractWithVendor() ? "Tap Sell to open vendor" : "Move closer to interact")
+    : (canInteractWithVendor() ? "Right-click to sell gear" : "Right-click to approach");
   ctx.font = "12px sans-serif";
   const width = Math.max(ctx.measureText(title).width, ctx.measureText(subtitle).width) + 18;
   const x = Math.round(p.x - width / 2);
@@ -10791,6 +15687,13 @@ function drawMob(mob, cameraX, cameraY, attackState = null) {
   mobRenderTools.drawMob(mob, cameraX, cameraY, attackState);
 }
 
+function isHumanoidMob(mob) {
+  if (!mobRenderTools || typeof mobRenderTools.isHumanoidMob !== "function") {
+    return false;
+  }
+  return !!mobRenderTools.isHumanoidMob(mob);
+}
+
 function createLootBagSprite(variant = 0) {
   const spriteSize = 64;
   const spriteCanvas = document.createElement("canvas");
@@ -10952,34 +15855,64 @@ const sharedCreateRenderLoopTools =
   sharedClientRenderLoop && typeof sharedClientRenderLoop.createRenderLoopTools === "function"
     ? sharedClientRenderLoop.createRenderLoopTools
     : null;
-const renderLoopTools = sharedCreateRenderLoopTools
-  ? sharedCreateRenderLoopTools({
+const sharedClientWorldViewModels = globalThis.VibeClientWorldViewModels || null;
+const sharedCreateWorldViewModelTools =
+  sharedClientWorldViewModels && typeof sharedClientWorldViewModels.createWorldViewModelTools === "function"
+    ? sharedClientWorldViewModels.createWorldViewModelTools
+    : null;
+const worldViewModelTools = sharedCreateWorldViewModelTools
+  ? sharedCreateWorldViewModelTools({
+      gameState,
+      getAreaEffects: () => Array.from(activeAreaEffectsById.values()),
+      getExplosionViews,
+      getTownVendor,
+      getActionDefById,
+      getAbilityVisualHook,
+      getProjectileSpriteFrame:
+        projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
+          ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
+          : null,
+      getActiveMobAttackState,
+      getPlayerAttackState: (player, isSelf, frameNow) => {
+        void frameNow;
+        return String(player && player.classType || "").toLowerCase() === "warrior"
+          && playerRenderTools
+          && typeof playerRenderTools.getWarriorSwingState === "function"
+          ? playerRenderTools.getWarriorSwingState(player, isSelf)
+          : null;
+      },
+      getMobAttackVisualType,
+      isHumanoidMob,
+      getPlayerCastVisualState,
+      getPlayerStatusVisualState,
+      getMobCastVisualState,
+      getMobStatusVisualState,
+      getFloatingDamageViews,
+      getHoveredMob,
+      getHoveredLootBag,
+      getHoveredVendor
+    })
+  : null;
+const sharedClientCanvasWorldRenderer = globalThis.VibeClientCanvasWorldRenderer || null;
+const sharedCreateCanvasWorldRenderer =
+  sharedClientCanvasWorldRenderer && typeof sharedClientCanvasWorldRenderer.createCanvasWorldRenderer === "function"
+    ? sharedClientCanvasWorldRenderer.createCanvasWorldRenderer
+    : null;
+const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
+  ? sharedCreateCanvasWorldRenderer({
       ctx,
       canvas,
-      gameState,
-      requestAnimationFrame,
-      reportFrame,
-      updateAbilityChannel,
-      getInterpolatedState,
-      setLastRenderState: (state) => {
-        lastRenderState = state;
-      },
       updateActionBarUI,
       updateMobCastSpatialAudio,
       updateProjectileSpatialAudio,
       drawGrid,
       drawAbilityCastPreview,
-      getHoveredMob,
-      getHoveredLootBag,
-      getHoveredVendor,
       drawProjectile,
       drawExplosionEffects,
       drawAreaEffects,
       drawVendorNpc,
       drawLootBag,
       drawMob,
-      getActiveMobAttackState,
-      getMobAttackVisualType,
       drawSkeletonSwordSwing,
       drawSkeletonArcherBowShot,
       drawCreeperIgnitionAnimation,
@@ -11004,7 +15937,89 @@ const renderLoopTools = sharedCreateRenderLoopTools
       drawPlayerCastBar,
       drawMobTooltip,
       drawLootBagTooltip,
-      drawVendorTooltip,
+      drawVendorTooltip
+    })
+  : null;
+const sharedClientPixiWorldRenderer = globalThis.VibeClientPixiWorldRenderer || null;
+const sharedCreatePixiWorldRenderer =
+  sharedClientPixiWorldRenderer && typeof sharedClientPixiWorldRenderer.createPixiWorldRenderer === "function"
+    ? sharedClientPixiWorldRenderer.createPixiWorldRenderer
+    : null;
+const pixiWorldRenderer = sharedCreatePixiWorldRenderer
+  ? sharedCreatePixiWorldRenderer({
+      PIXI: globalThis.PIXI || null,
+      windowObject: window,
+      canvasElement: canvas,
+      tileSize: TILE_SIZE,
+      townClientState,
+      hashString,
+      sanitizeCssColor,
+      mouseState,
+      screenToWorld,
+      getCurrentSelf,
+      getClassRenderStyle,
+      getPlayerVisualEquipment,
+      getMobRenderStyle,
+      lootBagSparkleConfig: LOOT_BAG_SPARKLE_PARTICLE_CONFIG,
+      getLootBagSprite,
+      getTownTileSprite,
+      getVendorNpcSprite,
+      mobSpriteSize: MOB_SPRITE_SIZE,
+      getCreeperWalkSprite,
+      getSpiderWalkSprite,
+      getActionDefById,
+      findAbilityDefById,
+      getAbilityEffectiveRangeForSelf,
+      getAbilityPreviewState: getCurrentAbilityPreviewState,
+      getAbilityVisualHook,
+      abilityChannel,
+      getCurrentMovementVector,
+      isTouchJoystickEnabled,
+      getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
+        ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
+        : null
+    })
+  : null;
+const sharedClientRendererBootstrap = globalThis.VibeClientRendererBootstrap || null;
+const sharedCreateRendererBootstrap =
+  sharedClientRendererBootstrap && typeof sharedClientRendererBootstrap.createRendererBootstrap === "function"
+    ? sharedClientRendererBootstrap.createRendererBootstrap
+    : null;
+const rendererBootstrap = sharedCreateRendererBootstrap
+  ? sharedCreateRendererBootstrap({
+      windowObject: window,
+      canvasElement: canvas,
+      canvasWorldRenderer,
+      pixiWorldRenderer
+    })
+  : null;
+globalThis.__vibemmoGetRendererDebugStats = () =>
+  rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function" ? rendererBootstrap.getDebugStats() : null;
+const renderLoopTools = sharedCreateRenderLoopTools
+  ? sharedCreateRenderLoopTools({
+      ctx,
+      canvas,
+      gameState,
+      requestAnimationFrame,
+      reportFrame,
+      updateAbilityChannel,
+      updateResourceBars,
+      getInterpolatedState,
+      updateActionBarUI,
+      buildWorldFrameViewModel: (interpolatedState, frameNow) =>
+        worldViewModelTools ? worldViewModelTools.buildWorldFrameViewModel(interpolatedState, frameNow) : null,
+      renderWorldFrame: (frameViewModel) => {
+        if (rendererBootstrap) {
+          return rendererBootstrap.renderWorldFrame(frameViewModel);
+        }
+        if (canvasWorldRenderer) {
+          return canvasWorldRenderer.renderWorldFrame(frameViewModel);
+        }
+        return null;
+      },
+      setLastRenderState: (state) => {
+        lastRenderState = state;
+      },
       hudName,
       hudClass,
       hudPos,
@@ -11033,6 +16048,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleInventoryPanel,
       toggleEquipmentPanel,
       toggleSpellbookPanel,
+      toggleTalentPanel,
       toggleDpsPanel,
       executeBoundAction,
       tryContextVendorInteraction,
@@ -11047,6 +16063,15 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       stopAllSpatialLoops,
       updateMouseScreenPosition,
       tryPrimaryAutoAction,
+      isTouchJoystickEnabled,
+      beginTouchJoystick,
+      updateTouchJoystick,
+      endTouchJoystick,
+      resetTouchJoystick,
+      resetMobileAbilityAim,
+      hasActiveMobileAbilityAim: () => mobileAbilityAimState.active,
+      hasActiveTouchJoystick: () => touchJoystickState.active,
+      getActiveTouchJoystickId: () => touchJoystickState.touchId,
       setStatus,
       connectAndJoin,
       updateDebugPanel,
@@ -11065,8 +16090,41 @@ function render() {
   renderLoopTools.renderFrame();
 }
 
+function getAutomationDebugMetricsSnapshot() {
+  const now = performance.now();
+  const upKbps = (Math.max(0, Number(debugState.upBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
+  const downKbps = (Math.max(0, Number(debugState.downBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
+  let fps = 0;
+  if (uiPanelTools && typeof uiPanelTools.getFps === "function") {
+    fps = Number(uiPanelTools.getFps(now)) || 0;
+  } else if (Array.isArray(debugState.frameSamples) && debugState.frameSamples.length > 1) {
+    const first = Number(debugState.frameSamples[0]) || now;
+    const elapsedMs = Math.max(1, now - first);
+    fps = ((debugState.frameSamples.length - 1) * 1000) / elapsedMs;
+  }
+  return {
+    upKbps,
+    downKbps,
+    fps,
+    mobCount: Math.max(0, Math.floor(Number(debugState.totalMobCount) || 0))
+  };
+}
+
+function getAutomationRendererStatsSnapshot() {
+  if (rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function") {
+    const stats = rendererBootstrap.getDebugStats();
+    return stats && typeof stats === "object" ? { ...stats } : { mode: rendererBootstrap.getRendererMode() };
+  }
+  return {
+    mode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"
+  };
+}
+
 function buildAutomationSnapshot() {
   return {
+    rendererMode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas",
+    debugMetrics: getAutomationDebugMetricsSnapshot(),
+    rendererStats: getAutomationRendererStatsSnapshot(),
     self: gameState.self
       ? {
           id: myId,
@@ -11101,7 +16159,8 @@ function buildAutomationSnapshot() {
       y: Number(mob.y) || 0,
       hp: Number(mob.hp) || 0,
       maxHp: Number(mob.maxHp) || 0,
-      name: String(mob.type || mob.name || "")
+      name: String(mob.type || mob.name || ""),
+      level: Math.max(1, Math.floor(Number(mob.level) || 1))
     })),
     projectiles: gameState.projectiles.map((projectile) => ({
       id: projectile.id,
@@ -11141,6 +16200,13 @@ function installAutomationApi() {
   }
   window.__vibemmoTest = Object.freeze({
     getState: () => buildAutomationSnapshot(),
+    getRendererMode: () => (rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"),
+    setRendererMode(mode) {
+      if (!rendererBootstrap) {
+        return "canvas";
+      }
+      return rendererBootstrap.setRendererMode(mode);
+    },
     connectAndJoin,
     send: (payload) => sendJsonMessage(payload),
     setMove(dx, dy) {
@@ -11217,4 +16283,42 @@ installAutomationApi();
 
 if (inputBootstrapTools) {
   inputBootstrapTools.bind();
+}
+
+// Chat functionality
+function sendChatMessage() {
+  if (!chatInput || !socket || socket.readyState !== WebSocket.OPEN) {
+    return;
+  }
+  const text = chatInput.value.trim();
+  if (!text) {
+    return;
+  }
+  sendJsonMessage({
+    type: "chat_message",
+    text: text
+  });
+  chatInput.value = "";
+}
+
+if (chatSendButton) {
+  chatSendButton.addEventListener("click", sendChatMessage);
+}
+
+if (chatInput) {
+  chatInput.addEventListener("keypress", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      sendChatMessage();
+    }
+  });
+
+  // Prevent game input when typing in chat
+  chatInput.addEventListener("focus", () => {
+    if (typeof keys === "object") {
+      for (const key in keys) {
+        keys[key] = false;
+      }
+    }
+  });
 }

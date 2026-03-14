@@ -18,6 +18,8 @@
 
     const getPrimaryClassAbilityId =
       typeof deps.getPrimaryClassAbilityId === "function" ? deps.getPrimaryClassAbilityId : () => "none";
+    const getDefaultClassAbilityIds =
+      typeof deps.getDefaultClassAbilityIds === "function" ? deps.getDefaultClassAbilityIds : () => [];
     const getCurrentSelf = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf : () => null;
     const screenToWorld = typeof deps.screenToWorld === "function" ? deps.screenToWorld : () => null;
     const sendUseItem = typeof deps.sendUseItem === "function" ? deps.sendUseItem : () => {};
@@ -31,6 +33,8 @@
     const getCastProgress = typeof deps.getCastProgress === "function" ? deps.getCastProgress : () => null;
     const resetAbilityChanneling =
       typeof deps.resetAbilityChanneling === "function" ? deps.resetAbilityChanneling : () => {};
+    const isTouchJoystickEnabled =
+      typeof deps.isTouchJoystickEnabled === "function" ? deps.isTouchJoystickEnabled : () => false;
 
     function makeActionBinding(actionId) {
       return `action:${String(actionId || "none")}`;
@@ -63,6 +67,7 @@
     function applyDefaultActionBindings(classType) {
       const resolvedClass = String(classType || "").trim();
       const primary = getPrimaryClassAbilityId(resolvedClass);
+      const useMobileDefaults = isTouchJoystickEnabled();
 
       actionBindings.clear();
       for (let i = 1; i <= 9; i += 1) {
@@ -70,7 +75,13 @@
       }
       actionBindings.set("mouse_left", makeActionBinding(primary));
       actionBindings.set("mouse_right", makeActionBinding("pickup_bag"));
-      actionBindings.set("1", makeActionBinding(primary));
+      if (useMobileDefaults) {
+        if (primary !== "none") {
+          actionBindings.set("1", makeActionBinding(primary));
+        }
+      } else {
+        actionBindings.set("1", makeActionBinding(primary));
+      }
       return resolvedClass;
     }
 
@@ -106,7 +117,10 @@
         return { type: "cooldown", ratio: 0 };
       }
       const runtime = abilityRuntime.get(String(actionId || "").toLowerCase());
-      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
+      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) : NaN;
+      if (!Number.isFinite(lastUsedAt) || lastUsedAt <= 0) {
+        return { type: "cooldown", ratio: 0 };
+      }
       const remaining = cooldownMs - (now - lastUsedAt);
       if (remaining > 0) {
         return {
@@ -125,13 +139,26 @@
       return screenToWorld(mouseState.sx, mouseState.sy, self);
     }
 
-    function executeBoundAction(slotId) {
+    function resolveTargetWorld(explicitTarget) {
+      if (
+        explicitTarget &&
+        Number.isFinite(Number(explicitTarget.x)) &&
+        Number.isFinite(Number(explicitTarget.y))
+      ) {
+        return {
+          x: Number(explicitTarget.x),
+          y: Number(explicitTarget.y)
+        };
+      }
+      return getActionTargetWorld();
+    }
+
+    function executeParsedBinding(binding, explicitTarget = null, options = {}) {
       const self = getCurrentSelf();
-      if (!self || self.hp <= 0) {
+      if (!self || self.hp <= 0 || !binding) {
         return false;
       }
 
-      const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
       if (binding.kind === "item") {
         if (!binding.id) {
           return false;
@@ -141,7 +168,7 @@
       }
 
       const actionId = binding.id;
-      const target = getActionTargetWorld();
+      const target = resolveTargetWorld(explicitTarget);
       if (!target) {
         return false;
       }
@@ -153,7 +180,24 @@
       if (actionId === "none") {
         return false;
       }
-      return useAbilityAt(actionId, target.x, target.y);
+      return useAbilityAt(actionId, target.x, target.y, options);
+    }
+
+    function executeBoundAction(slotId) {
+      const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+      return executeParsedBinding(binding);
+    }
+
+    function executeBoundActionAt(slotId, worldX, worldY, options = {}) {
+      const binding = parseActionBinding(actionBindings.get(slotId) || makeActionBinding("none"));
+      return executeParsedBinding(
+        binding,
+        {
+          x: worldX,
+          y: worldY
+        },
+        options
+      );
     }
 
     function tryPrimaryAutoAction(force = false) {
@@ -187,6 +231,7 @@
       getActionVisualState,
       getActionTargetWorld,
       executeBoundAction,
+      executeBoundActionAt,
       tryPrimaryAutoAction
     };
   }

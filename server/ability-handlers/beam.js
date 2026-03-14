@@ -5,7 +5,12 @@ function executeBeamAbility({ player, abilityDef, abilityLevel, targetDx, target
   if (!beamDir) {
     return false;
   }
-  const beamLength = Math.max(0.25, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+  const beamLength = Math.max(
+    0.25,
+    (typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel)) || 0
+  );
   const beamDurationMs = Math.max(150, Number(abilityDef.durationMs) || 0);
   if (beamLength <= 0 || beamDurationMs <= 0) {
     return false;

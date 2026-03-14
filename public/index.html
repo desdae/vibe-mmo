@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>VibeMMO Prototype</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
@@ -32,12 +32,17 @@
 
     <div id="game-ui" class="hidden">
       <canvas id="game"></canvas>
+      <div id="mobile-joystick" class="hidden" aria-hidden="true">
+        <div id="mobile-joystick-base" class="mobile-joystick-base"></div>
+        <div id="mobile-joystick-knob" class="mobile-joystick-knob"></div>
+      </div>
       <div id="hud">
         <span id="hud-name"></span>
         <span id="hud-class"></span>
         <span id="hud-pos"></span>
       </div>
       <div id="action-ui">
+        <div id="buff-icons" class="hidden"></div>
         <div id="debuff-icons" class="hidden"></div>
         <div id="resource-bars">
           <div class="resource-bar hp">
@@ -77,6 +82,13 @@
         <div class="inventory-header">Spellbook (P)</div>
         <div id="spellbook-grid"></div>
       </div>
+      <div id="talent-panel" class="hidden">
+        <div class="inventory-header">Talents (T)</div>
+        <div id="talent-tree-container"></div>
+        <div id="talent-points-display" class="talent-points-display">
+          <span id="talent-points-available">0</span> points available
+        </div>
+      </div>
       <div id="dps-panel" class="hidden">
         <div class="dps-header">DPS Meter (K)</div>
         <div id="dps-tabs" class="dps-tabs">
@@ -86,14 +98,50 @@
         </div>
         <div id="dps-value" class="dps-value">0.00 DPS</div>
       </div>
+      <div id="chat-panel">
+        <div class="chat-header">Chat</div>
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+          <input id="chat-input" type="text" placeholder="Type a message..." maxlength="200" />
+          <button id="chat-send" type="button">Send</button>
+        </div>
+      </div>
       <div id="debug-panel" class="hidden">
         <h2>Debug</h2>
         <div id="debug-net"></div>
+        <div id="debug-renderer-controls" class="debug-renderer-controls">
+          <label for="debug-renderer-select">Renderer</label>
+          <select id="debug-renderer-select">
+            <option value="canvas">Canvas</option>
+            <option value="pixi">Pixi WebGL</option>
+          </select>
+          <button id="debug-renderer-apply" type="button">Apply</button>
+        </div>
         <div id="debug-admin-controls" class="debug-admin hidden">
           <label for="debug-bot-class">Bot class</label>
           <select id="debug-bot-class"></select>
           <button id="debug-create-bot" type="button">Create Bot Player</button>
           <button id="debug-toggle-bot-list" type="button">Bot List</button>
+          <button id="debug-toggle-gear-lab" type="button">Debug Gear</button>
+        </div>
+      </div>
+      <div id="debug-gear-panel" class="hidden">
+        <div class="debug-gear-header">
+          <div class="inventory-header">Debug Gear Lab</div>
+          <button id="debug-gear-close" class="vendor-close-button" type="button">Close</button>
+        </div>
+        <div class="debug-gear-subtitle">Live gear preview. Press the debug button again to reroll the entire loadout.</div>
+        <div class="debug-gear-actions">
+          <button id="debug-gear-reroll-affixes" type="button">Reroll Affixes</button>
+        </div>
+        <div class="debug-gear-layout">
+          <div class="debug-gear-preview-shell">
+            <div id="debug-gear-preview-layout" class="debug-gear-preview-layout">
+              <div class="debug-gear-preview-figure"></div>
+              <canvas id="debug-gear-preview-canvas" width="360" height="460"></canvas>
+            </div>
+          </div>
+          <div id="debug-gear-controls" class="debug-gear-controls"></div>
         </div>
       </div>
       <div id="bot-list-panel" class="hidden">
@@ -106,6 +154,7 @@
       <div id="bot-context-menu" class="bot-context-menu hidden"></div>
     </div>
 
+    <script src="/vendor/pixi.min.js"></script>
     <script src="/shared/protocol.js"></script>
     <script src="/shared/protocol-codecs.js"></script>
     <script src="/shared/ability-visuals.js"></script>
@@ -117,10 +166,12 @@
     <script src="/shared/town-layout.js"></script>
     <script src="/shared/item-value.js"></script>
     <script src="/shared/ability-normalization.js"></script>
+    <script src="/shared/humanoid-style.js"></script>
     <script src="/shared/mob-render-style.js"></script>
     <script src="/client/network-packets.js"></script>
     <script src="/client/network-session.js"></script>
     <script src="/client/render-state.js"></script>
+    <script src="/client/world-view-models.js"></script>
     <script src="/client/audio-spatial.js"></script>
     <script src="/client/ui-panels.js"></script>
     <script src="/client/ui-presentation.js"></script>
@@ -129,9 +180,14 @@
     <script src="/client/ui-actions.js"></script>
     <script src="/client/vfx-runtime.js"></script>
     <script src="/client/particle-system.js"></script>
+    <script src="/client/render-humanoids.js"></script>
     <script src="/client/render-mobs.js"></script>
     <script src="/client/render-players.js"></script>
     <script src="/client/render-projectiles.js"></script>
+    <script src="/client/canvas-world-renderer.js"></script>
+    <script src="/client/pixi-particle-system.js"></script>
+    <script src="/client/pixi-world-renderer.js"></script>
+    <script src="/client/renderer-bootstrap.js"></script>
     <script src="/client/render-loop.js"></script>
     <script src="/client/input-bootstrap.js"></script>
     <script src="/client.js"></script>

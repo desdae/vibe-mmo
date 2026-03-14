@@ -87,6 +87,115 @@
       return "bite";
     }
 
+    function isHumanoidMob(mob) {
+      const style = getMobRenderStyle(mob);
+      if (deps.humanoidRenderTools && typeof deps.humanoidRenderTools.isHumanoidStyle === "function") {
+        return deps.humanoidRenderTools.isHumanoidStyle(style);
+      }
+      if (deps.humanoidRenderTools && typeof deps.humanoidRenderTools.isHumanoidSpriteType === "function") {
+        return deps.humanoidRenderTools.isHumanoidSpriteType(getMobSpriteType(mob));
+      }
+      return false;
+    }
+
+    function buildHumanoidMobStyle(mob) {
+      const baseStyle = getMobRenderStyle(mob);
+      if (!baseStyle || typeof baseStyle !== "object") {
+        return {
+          rigType: "humanoid",
+          species: "human"
+        };
+      }
+      if (deps.humanoidRenderTools && typeof deps.humanoidRenderTools.isHumanoidStyle === "function" && deps.humanoidRenderTools.isHumanoidStyle(baseStyle)) {
+        return baseStyle;
+      }
+      const spriteType = getMobSpriteType(mob);
+      if (spriteType === "zombie") {
+        return {
+          ...baseStyle,
+          rigType: "humanoid",
+          species: "zombie",
+          defaults: {
+            head: "none",
+            chest: "ragged",
+            shoulders: "ragged",
+            gloves: "ragged",
+            bracers: "ragged",
+            belt: "ragged",
+            pants: "ragged",
+            boots: "leather",
+            mainHand: "claws",
+            offHand: "none"
+          }
+        };
+      }
+      if (spriteType === "skeleton_archer") {
+        return {
+          ...baseStyle,
+          rigType: "humanoid",
+          species: "skeleton",
+          archetype: "archer",
+          defaults: {
+            head: "rusty_helmet",
+            chest: "ribcage",
+            shoulders: "none",
+            gloves: "none",
+            bracers: "none",
+            belt: "none",
+            pants: "none",
+            boots: "none",
+            mainHand: "bow",
+            offHand: "none"
+          }
+        };
+      }
+      if (spriteType === "skeleton") {
+        return {
+          ...baseStyle,
+          rigType: "humanoid",
+          species: "skeleton",
+          archetype: "warrior",
+          defaults: {
+            head: "rusty_helmet",
+            chest: "ribcage",
+            shoulders: "none",
+            gloves: "none",
+            bracers: "none",
+            belt: "none",
+            pants: "none",
+            boots: "none",
+            mainHand: "sword",
+            offHand: "shield"
+          }
+        };
+      }
+      if (spriteType === "orc") {
+        return {
+          ...baseStyle,
+          rigType: "humanoid",
+          species: "orc",
+          archetype: "berserker",
+          defaults: {
+            head: "none",
+            chest: "leather",
+            shoulders: "leather",
+            gloves: "leather",
+            bracers: "leather",
+            belt: "leather",
+            pants: "leather",
+            boots: "leather",
+            mainHand: "axe",
+            offHand: "axe"
+          }
+        };
+      }
+      return {
+        ...baseStyle,
+        rigType: "humanoid",
+        species: "human"
+      };
+    }
+
     function getMobStyleNumber(style, key, fallback, min, max) {
       const n = Number(style && style[key]);
       if (!Number.isFinite(n)) {
@@ -246,6 +355,26 @@
 
     function drawMob(mob, cameraX, cameraY, attackState = null) {
       const p = deps.worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
+      if (isHumanoidMob(mob) && deps.humanoidRenderTools && typeof deps.humanoidRenderTools.drawHumanoid === "function") {
+        const activeCastState =
+          deps.remoteMobCasts && typeof deps.getCastProgress === "function" ? deps.remoteMobCasts.get(mob.id) || null : null;
+        const castProgress =
+          activeCastState && typeof deps.getCastProgress === "function" ? deps.getCastProgress(activeCastState, performance.now()) : null;
+        deps.humanoidRenderTools.drawHumanoid({
+          entity: mob,
+          entityKey: `mob:${String(mob.id ?? "0")}`,
+          p,
+          style: buildHumanoidMobStyle(mob),
+          equipmentSlots: {},
+          attackState,
+          castState: castProgress ? { active: true, ratio: castProgress.ratio, abilityId: activeCastState.abilityId || "", isCharge: activeCastState.isCharge, chargeStartX: activeCastState.chargeStartX, chargeStartY: activeCastState.chargeStartY, chargeTargetX: activeCastState.chargeTargetX, chargeTargetY: activeCastState.chargeTargetY } : null,
+          aimWorldX: typeof deps.getCurrentSelf === "function" && deps.getCurrentSelf() ? deps.getCurrentSelf().x + 0.5 : NaN,
+          aimWorldY: typeof deps.getCurrentSelf === "function" && deps.getCurrentSelf() ? deps.getCurrentSelf().y + 0.5 : NaN,
+          isSelf: false
+        });
+        drawMobHpBar(mob, p);
+        return;
+      }
       const mobStyle = getMobRenderStyle(mob);
       const mobName = String(mob.name || "Mob");
       const spriteType = getMobSpriteType(mob);
@@ -278,6 +407,7 @@
       detectMobSpriteTypeFromName,
       getMobRenderStyle,
       getMobSpriteType,
+      isHumanoidMob,
       getMobAttackVisualType,
       getMobStyleNumber,
       getMobStyleCacheKey,

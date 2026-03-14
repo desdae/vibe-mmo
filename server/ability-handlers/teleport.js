@@ -6,7 +6,12 @@ function executeTeleportAbility({ player, abilityDef, abilityLevel, targetDx, ta
     return false;
   }
 
-  const castRange = Math.max(0.25, ctx.getAbilityRangeForLevel(abilityDef, abilityLevel) || 0);
+  const castRange = Math.max(
+    0.25,
+    (typeof ctx.getAbilityRangeForEntity === "function"
+      ? ctx.getAbilityRangeForEntity(player, abilityDef, abilityLevel)
+      : ctx.getAbilityRangeForLevel(abilityDef, abilityLevel)) || 0
+  );
   if (castRange <= 0) {
     return false;
   }
@@ -29,6 +34,9 @@ function executeTeleportAbility({ player, abilityDef, abilityLevel, targetDx, ta
   if (invulnerabilityMs > 0) {
     player.invulnerableUntil = Math.max(Number(player.invulnerableUntil) || 0, now + invulnerabilityMs);
   }
+  if (typeof ctx.applySelfBuffs === "function") {
+    ctx.applySelfBuffs(player, abilityDef, now);
+  }
 
   ctx.queueExplosionEvent(originX, originY, 0.45, abilityDef.id);
   ctx.queueExplosionEvent(player.x, player.y, 0.55, abilityDef.id);
@@ -36,4 +44,3 @@ function executeTeleportAbility({ player, abilityDef, abilityLevel, targetDx, ta
 }
 
 module.exports = executeTeleportAbility;
-

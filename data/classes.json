@@ -5,12 +5,59 @@
         "baseHealth": 100,
         "baseMana": 30,
         "manaRegen": 0.3,
+        "talentTree": "warrior",
+        "talentPointsPerLevel": 1,
         "abilities": [
-            {"id":"slash", "level": 1}, 
-            {"id":"warstomp", "level": 1}
+            {"id":"slash", "level": 1},
+            {"id":"warstomp", "level": 1},
+            {"id":"charge", "level": 1},
+            {"id":"bloodWrath", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50, "manaPotion01": 20}],
-        "speed": 1.8
+        "startingEquipment": [
+            "starter_warrior_helm",
+            "starter_warrior_chest",
+            "starter_warrior_shoulders",
+            "starter_warrior_gloves",
+            "starter_warrior_bracers",
+            "starter_warrior_belt",
+            "starter_warrior_pants",
+            "starter_warrior_boots",
+            "starter_warrior_sword",
+            "starter_warrior_shield"
+        ],
+        "speed": 1.8,
+        "renderStyle": {
+            "rigType": "humanoid",
+            "species": "human",
+            "archetype": "warrior",
+            "sizeScale": 1,
+            "walkCycleSpeed": 2.9,
+            "defaults": {
+                "head": "helmet",
+                "chest": "plate",
+                "shoulders": "plate",
+                "gloves": "plate",
+                "bracers": "plate",
+                "belt": "plate",
+                "pants": "plate",
+                "boots": "plate",
+                "mainHand": "sword",
+                "offHand": "shield"
+            },
+            "palette": {
+                "skin": "#dcb089",
+                "skinDark": "#b27f58",
+                "cloth": "#5c7197",
+                "clothDark": "#40536d",
+                "leather": "#87613f",
+                "leatherDark": "#5e432b",
+                "metal": "#eef3f8",
+                "metalDark": "#8f9caf",
+                "outline": "#111822",
+                "accent": "#d6deea"
+            }
+        }
     },
     "mage": {
         "name": "Mage",
@@ -18,19 +65,63 @@
         "baseHealth": 60,
         "baseMana": 100,
         "manaRegen": 0.5,
+        "talentTree": "mage",
+        "talentPointsPerLevel": 1,
         "abilities": [
-            {"id":"fireball", "level": 1}, 
-            {"id":"frostbolt", "level": 1}, 
-            {"id":"arcaneMissiles", "level": 1}, 
+            {"id":"fireball", "level": 1},
+            {"id":"frostbolt", "level": 1},
+            {"id":"arcaneMissiles", "level": 1},
             {"id":"blizzard", "level": 1},
-            {"id":"blink", "level": 1}, 
+            {"id":"blink", "level": 1},
             {"id":"arcaneBeam", "level": 1},
             {"id":"lightningBeam", "level": 1},
             {"id":"chainLightning", "level": 1},
             {"id":"fireHydra", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 50}],
-        "speed": 1.7
+        "startingEquipment": [
+            "starter_mage_hat",
+            "starter_mage_chest",
+            "starter_mage_shoulders",
+            "starter_mage_gloves",
+            "starter_mage_bracers",
+            "starter_mage_belt",
+            "starter_mage_pants",
+            "starter_mage_boots",
+            "starter_mage_staff"
+        ],
+        "speed": 1.7,
+        "renderStyle": {
+            "rigType": "humanoid",
+            "species": "human",
+            "archetype": "mage",
+            "sizeScale": 0.98,
+            "walkCycleSpeed": 2.5,
+            "defaults": {
+                "head": "wizard_hat",
+                "chest": "robe",
+                "shoulders": "robe",
+                "gloves": "robe",
+                "bracers": "robe",
+                "belt": "robe",
+                "pants": "robe",
+                "boots": "robe",
+                "mainHand": "staff",
+                "offHand": "orb"
+            },
+            "palette": {
+                "skin": "#eed1b1",
+                "skinDark": "#b6855f",
+                "cloth": "#1d2f5f",
+                "clothDark": "#17244b",
+                "leather": "#6f5234",
+                "leatherDark": "#513a26",
+                "metal": "#c8d7ea",
+                "metalDark": "#8397ae",
+                "outline": "#0f1322",
+                "accent": "#ffae52"
+            }
+        }
     },
     "ranger": {
         "name": "Ranger",
@@ -38,6 +129,8 @@
         "baseHealth": 78,
         "baseMana": 70,
         "manaRegen": 0.45,
+        "talentTree": "ranger",
+        "talentPointsPerLevel": 1,
         "abilities": [
             {"id":"aimedShot", "level": 1},
             {"id":"multishot", "level": 1},
@@ -51,6 +144,48 @@
             {"id":"piercingBolt", "level": 1}
         ],
         "startingItems": [{"healthPotion01": 50}, {"manaPotion01": 35}],
-        "speed": 1.95
+        "startingEquipment": [
+            "starter_ranger_hood",
+            "starter_ranger_chest",
+            "starter_ranger_shoulders",
+            "starter_ranger_gloves",
+            "starter_ranger_bracers",
+            "starter_ranger_belt",
+            "starter_ranger_pants",
+            "starter_ranger_boots",
+            "starter_ranger_bow"
+        ],
+        "speed": 1.95,
+        "renderStyle": {
+            "rigType": "humanoid",
+            "species": "human",
+            "archetype": "ranger",
+            "sizeScale": 0.98,
+            "walkCycleSpeed": 3.1,
+            "defaults": {
+                "head": "hood",
+                "chest": "leather",
+                "shoulders": "leather",
+                "gloves": "leather",
+                "bracers": "leather",
+                "belt": "leather",
+                "pants": "leather",
+                "boots": "leather",
+                "mainHand": "bow",
+                "offHand": "none"
+            },
+            "palette": {
+                "skin": "#d8b28b",
+                "skinDark": "#ab7d57",
+                "cloth": "#355a46",
+                "clothDark": "#22382c",
+                "leather": "#7f6a4b",
+                "leatherDark": "#5c4d36",
+                "metal": "#b8c7d8",
+                "metalDark": "#798ba0",
+                "outline": "#0c1017",
+                "accent": "#96cfa8"
+            }
+        }
     }
 }

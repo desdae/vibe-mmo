@@ -1,0 +1,405 @@
+{
+  "warrior": {
+    "className": "Warrior",
+    "talents": [
+      {
+        "id": "juggernaut",
+        "name": "Juggernaut",
+        "description": "Increases maximum health by {value}% per rank.",
+        "maxRank": 5,
+        "icon": "health_boost",
+        "tier": 1,
+        "column": 1,
+        "effects": [
+          { "stat": "maxHp.percent", "value": 4 }
+        ]
+      },
+      {
+        "id": "iron_will",
+        "name": "Iron Will",
+        "description": "Increases armor by {value}% per rank.",
+        "maxRank": 5,
+        "icon": "armor_up",
+        "tier": 1,
+        "column": 2,
+        "effects": [
+          { "stat": "armor.percent", "value": 3 }
+        ]
+      },
+      {
+        "id": "enraged_strikes",
+        "name": "Enraged Strikes",
+        "description": "Increases melee damage by {value}% per rank.",
+        "maxRank": 5,
+        "icon": "melee_damage",
+        "tier": 1,
+        "column": 3,
+        "effects": [
+          { "stat": "meleeDamage.percent", "value": 2 }
+        ]
+      },
+      {
+        "id": "charge_mastery",
+        "name": "Charge Mastery",
+        "description": "Reduces Charge cooldown by 0.5s per rank and increases range by 0.5 per rank.",
+        "maxRank": 5,
+        "icon": "charge",
+        "tier": 2,
+        "column": 1,
+        "prerequisites": [{ "talentId": "juggernaut", "minRank": 3 }],
+        "effects": [
+          { "abilityCooldownReduction": { "charge": 0.5 } },
+          { "abilityRangeBonus": { "charge": 0.5 } }
+        ]
+      },
+      {
+        "id": "warstomp_enhancement",
+        "name": "Devastating Stomp",
+        "description": "Increases War Stomp damage by 8% per rank and stun duration by 0.1s per rank.",
+        "maxRank": 5,
+        "icon": "warstomp",
+        "tier": 2,
+        "column": 2,
+        "prerequisites": [{ "talentId": "iron_will", "minRank": 3 }],
+        "effects": [
+          { "abilityDamageBonus": { "warstomp": 8 } },
+          { "abilityStunDurationBonus": { "warstomp": 0.1 } }
+        ]
+      },
+      {
+        "id": "bloodlust",
+        "name": "Bloodlust",
+        "description": "Blood Wrath now also increases attack speed by 3% per rank.",
+        "maxRank": 5,
+        "icon": "blood_wrath",
+        "tier": 2,
+        "column": 3,
+        "prerequisites": [{ "talentId": "enraged_strikes", "minRank": 3 }],
+        "effects": [
+          { "abilityStatBonus": { "bloodWrath": { "attackSpeed.percent": 3 } } }
+        ]
+      },
+      {
+        "id": "unyielding",
+        "name": "Unyielding",
+        "description": "When below 30% health, gain 5% damage reduction per rank.",
+        "maxRank": 5,
+        "icon": "defense_stance",
+        "tier": 3,
+        "column": 1,
+        "prerequisites": [{ "talentId": "charge_mastery", "minRank": 3 }],
+        "effects": [
+          { "conditionalStat": { "condition": "hpBelow30Percent", "stat": "damageReduction.percent", "value": 5 } }
+        ]
+      },
+      {
+        "id": "mortal_strike",
+        "name": "Mortal Strike",
+        "description": "Your next attack after using Charge deals 10% additional damage per rank and reduces healing on target by 4% per rank for 3s.",
+        "maxRank": 5,
+        "icon": "mortal_strike",
+        "tier": 3,
+        "column": 2,
+        "prerequisites": [{ "talentId": "warstomp_enhancement", "minRank": 3 }],
+        "effects": [
+          { "abilityDamageBonus": { "charge": 10 } },
+          { "abilityHealingReduction": { "charge": 4 } }
+        ]
+      },
+      {
+        "id": "berserker_rage",
+        "name": "Berserker Rage",
+        "description": "When you deal damage, gain 1.5% attack power per rank for 4s (stacks up to 5 times).",
+        "maxRank": 5,
+        "icon": "berserker",
+        "tier": 3,
+        "column": 3,
+        "prerequisites": [{ "talentId": "bloodlust", "minRank": 3 }],
+        "effects": [
+          { "onDamageDealt": { "stat": "attackPower.percent", "value": 1.5, "duration": 4, "maxStacks": 5 } }
+        ]
+      },
+      {
+        "id": "avatar",
+        "name": "Avatar",
+        "description": "Activating Blood Wrath makes you immune to crowd control for 1s per rank and increases all damage by 5% per rank for the duration.",
+        "maxRank": 5,
+        "icon": "avatar",
+        "tier": 4,
+        "column": 2,
+        "prerequisites": [{ "talentId": "mortal_strike", "minRank": 5 }],
+        "effects": [
+          { "abilityCrowdControlImmunity": { "bloodWrath": 1 } },
+          { "abilityDamageBonus": { "bloodWrath": 5 } }
+        ]
+      }
+    ]
+  },
+  "mage": {
+    "className": "Mage",
+    "talents": [
+      {
+        "id": "arcane_focus",
+        "name": "Arcane Focus",
+        "description": "Increases spell power by 3% per rank.",
+        "maxRank": 5,
+        "icon": "spell_power",
+        "tier": 1,
+        "column": 1,
+        "effects": [
+          { "stat": "spellPower.percent", "value": 3 }
+        ]
+      },
+      {
+        "id": "frostbite",
+        "name": "Frostbite",
+        "description": "Your spells have a {chance}% chance per rank to freeze the target for {duration}s.",
+        "maxRank": 5,
+        "icon": "frost",
+        "tier": 1,
+        "column": 2,
+        "effects": [
+          { "onSpellHit": { "chance": 2, "effect": "freeze", "duration": 1 } }
+        ]
+      },
+      {
+        "id": "pyromaniac",
+        "name": "Pyromaniac",
+        "description": "Increases fire damage by 4% per rank.",
+        "maxRank": 5,
+        "icon": "fire",
+        "tier": 1,
+        "column": 3,
+        "effects": [
+          { "stat": "fireDamage.percent", "value": 4 }
+        ]
+      },
+      {
+        "id": "evocation",
+        "name": "Evocation",
+        "description": "Reduces mana cost of all spells by 2% per rank.",
+        "maxRank": 5,
+        "icon": "mana",
+        "tier": 2,
+        "column": 1,
+        "prerequisites": [{ "talentId": "arcane_focus", "minRank": 3 }],
+        "effects": [
+          { "stat": "manaCostReduction.percent", "value": 2 }
+        ]
+      },
+      {
+        "id": "ice_barrier",
+        "name": "Ice Barrier",
+        "description": "When you take damage, gain a shield absorbing 3% of max mana per rank for 5s (10s cooldown).",
+        "maxRank": 5,
+        "icon": "ice_barrier",
+        "tier": 2,
+        "column": 2,
+        "prerequisites": [{ "talentId": "frostbite", "minRank": 3 }],
+        "effects": [
+          { "onDamageTaken": { "shield": { "percentOfMana": 3, "duration": 5, "cooldown": 10 } } }
+        ]
+      },
+      {
+        "id": "combustion",
+        "name": "Combustion",
+        "description": "Your fire spells have a 3% chance per rank to ignite the target, dealing 15% of the damage dealt over 4s.",
+        "maxRank": 5,
+        "icon": "combustion",
+        "tier": 2,
+        "column": 3,
+        "prerequisites": [{ "talentId": "pyromaniac", "minRank": 3 }],
+        "effects": [
+          { "onFireSpellHit": { "chance": 3, "effect": "ignite", "damagePercent": 15, "duration": 4 } }
+        ]
+      },
+      {
+        "id": "presence_of_mind",
+        "name": "Presence of Mind",
+        "description": "Reduces cast time of next spell by 10% per rank after using a spell (stacks up to 3 times).",
+        "maxRank": 5,
+        "icon": "presence_of_mind",
+        "tier": 3,
+        "column": 1,
+        "prerequisites": [{ "talentId": "evocation", "minRank": 3 }],
+        "effects": [
+          { "onSpellCast": { "castTimeReduction": 10, "maxStacks": 3 } }
+        ]
+      },
+      {
+        "id": "deep_freeze",
+        "name": "Deep Freeze",
+        "description": "Frozen targets take 5% additional damage per rank from all sources.",
+        "maxRank": 5,
+        "icon": "deep_freeze",
+        "tier": 3,
+        "column": 2,
+        "prerequisites": [{ "talentId": "ice_barrier", "minRank": 3 }],
+        "effects": [
+          { "damageBonusToFrozen": 5 }
+        ]
+      },
+      {
+        "id": "living_bomb",
+        "name": "Living Bomb",
+        "description": "Your fire spells have a 4% chance per rank to plant a bomb that explodes after 3s for 50% of the original damage.",
+        "maxRank": 5,
+        "icon": "living_bomb",
+        "tier": 3,
+        "column": 3,
+        "prerequisites": [{ "talentId": "combustion", "minRank": 3 }],
+        "effects": [
+          { "onFireSpellHit": { "chance": 4, "effect": "livingBomb", "delay": 3, "damagePercent": 50 } }
+        ]
+      },
+      {
+        "id": "arcane_power",
+        "name": "Arcane Power",
+        "description": "Activating a defensive ability grants 8% spell power per rank for 6s.",
+        "maxRank": 5,
+        "icon": "arcane_power",
+        "tier": 4,
+        "column": 2,
+        "prerequisites": [{ "talentId": "deep_freeze", "minRank": 5 }],
+        "effects": [
+          { "onDefensiveAbility": { "stat": "spellPower.percent", "value": 8, "duration": 6 } }
+        ]
+      }
+    ]
+  },
+  "ranger": {
+    "className": "Ranger",
+    "talents": [
+      {
+        "id": "precision",
+        "name": "Precision",
+        "description": "Increases critical hit chance by 1% per rank.",
+        "maxRank": 5,
+        "icon": "precision",
+        "tier": 1,
+        "column": 1,
+        "effects": [
+          { "stat": "critChance", "value": 1 }
+        ]
+      },
+      {
+        "id": "quick_shot",
+        "name": "Quick Shot",
+        "description": "Increases attack speed by 2% per rank.",
+        "maxRank": 5,
+        "icon": "attack_speed",
+        "tier": 1,
+        "column": 2,
+        "effects": [
+          { "stat": "attackSpeed.percent", "value": 2 }
+        ]
+      },
+      {
+        "id": "hunter_mark",
+        "name": "Hunter's Mark",
+        "description": "Your attacks mark the target, increasing ranged damage they take by 2% per rank for 4s.",
+        "maxRank": 5,
+        "icon": "hunters_mark",
+        "tier": 1,
+        "column": 3,
+        "effects": [
+          { "onAttack": { "debuff": "huntersMark", "rangedDamageTaken": 2, "duration": 4 } }
+        ]
+      },
+      {
+        "id": "eagle_eye",
+        "name": "Eagle Eye",
+        "description": "Increases range of all abilities by 0.5 per rank.",
+        "maxRank": 5,
+        "icon": "eagle_eye",
+        "tier": 2,
+        "column": 1,
+        "prerequisites": [{ "talentId": "precision", "minRank": 3 }],
+        "effects": [
+          { "stat": "rangeBonus", "value": 0.5 }
+        ]
+      },
+      {
+        "id": "poison_tips",
+        "name": "Poison Tips",
+        "description": "Your arrows have a 3% chance per rank to poison the target, dealing 8% weapon damage over 6s.",
+        "maxRank": 5,
+        "icon": "poison_arrow",
+        "tier": 2,
+        "column": 2,
+        "prerequisites": [{ "talentId": "quick_shot", "minRank": 3 }],
+        "effects": [
+          { "onAttack": { "chance": 3, "effect": "poison", "damagePercent": 8, "duration": 6 } }
+        ]
+      },
+      {
+        "id": "explosive_shot",
+        "name": "Explosive Shot",
+        "description": "Your attacks have a 2% chance per rank to explode, dealing 25% damage to nearby enemies.",
+        "maxRank": 5,
+        "icon": "explosive_arrow",
+        "tier": 2,
+        "column": 3,
+        "prerequisites": [{ "talentId": "hunter_mark", "minRank": 3 }],
+        "effects": [
+          { "onAttack": { "chance": 2, "effect": "explosion", "damagePercent": 25, "radius": 2 } }
+        ]
+      },
+      {
+        "id": "camouflage",
+        "name": "Camouflage",
+        "description": "When out of combat for 3s, gain 4% movement speed per rank and 2% damage reduction per rank.",
+        "maxRank": 5,
+        "icon": "camouflage",
+        "tier": 3,
+        "column": 1,
+        "prerequisites": [{ "talentId": "eagle_eye", "minRank": 3 }],
+        "effects": [
+          { "outOfCombat": { "stat": "moveSpeed.percent", "value": 4 } },
+          { "outOfCombat": { "stat": "damageReduction.percent", "value": 2 } }
+        ]
+      },
+      {
+        "id": "aimed_shot_mastery",
+        "name": "Aimed Shot Mastery",
+        "description": "Aimed Shot cooldown reduced by 0.3s per rank and deals 6% additional damage per rank.",
+        "maxRank": 5,
+        "icon": "aimed_shot",
+        "tier": 3,
+        "column": 2,
+        "prerequisites": [{ "talentId": "poison_tips", "minRank": 3 }],
+        "effects": [
+          { "abilityCooldownReduction": { "aimedShot": 0.3 } },
+          { "abilityDamageBonus": { "aimedShot": 6 } }
+        ]
+      },
+      {
+        "id": "beast_mastery",
+        "name": "Beast Mastery",
+        "description": "Summons last 10% longer per rank and deal 5% additional damage per rank.",
+        "maxRank": 5,
+        "icon": "beast_mastery",
+        "tier": 3,
+        "column": 3,
+        "prerequisites": [{ "talentId": "explosive_shot", "minRank": 3 }],
+        "effects": [
+          { "summonDurationBonus": 10 },
+          { "summonDamageBonus": 5 }
+        ]
+      },
+      {
+        "id": "barrage",
+        "name": "Barrage",
+        "description": "After using Multi-shot, your next 2 attacks fire an additional arrow per rank.",
+        "maxRank": 5,
+        "icon": "barrage",
+        "tier": 4,
+        "column": 2,
+        "prerequisites": [{ "talentId": "aimed_shot_mastery", "minRank": 5 }],
+        "effects": [
+          { "onAbilityUsed": { "ability": "multiShot", "extraAttacks": 2 } }
+        ]
+      }
+    ]
+  }
+}

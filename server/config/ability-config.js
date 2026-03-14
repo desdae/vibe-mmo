@@ -69,7 +69,9 @@ const OMITTED_CLIENT_FIELDS = new Set([
   "homingRange",
   "homingTurnRate",
   "turnRate",
-  "damageMode"
+  "damageMode",
+  "dashSpeed",
+  "dashImpactRadius"
 ]);
 
 function loadAbilityConfigFromDisk(configPath, options) {
@@ -200,6 +202,36 @@ function loadAbilityConfigFromDisk(configPath, options) {
     return buildEmitProjectilesConfig(resolvedEntry, abilityId);
   }
 
+  function buildBuffEffects(entry) {
+    const effects = Array.isArray(entry && entry.effects) ? entry.effects : [];
+    const result = [];
+    for (const effect of effects) {
+      if (!effect || typeof effect !== "object") {
+        continue;
+      }
+      if (String(effect.type || "").trim().toLowerCase() !== "buff") {
+        continue;
+      }
+      const durationMsRaw = Number(effect.durationMs);
+      const durationSecRaw = Number(effect.duration);
+      const durationMs =
+        Number.isFinite(durationMsRaw) && durationMsRaw > 0
+          ? Math.round(durationMsRaw)
+          : Number.isFinite(durationSecRaw) && durationSecRaw > 0
+            ? Math.round(durationSecRaw * 1000)
+            : 0;
+      result.push({
+        id: String(effect.id || "").trim(),
+        name: String(effect.name || "").trim(),
+        label: String(effect.label || "").trim(),
+        color: String(effect.color || "").trim(),
+        durationMs,
+        stats: effect.stats && typeof effect.stats === "object" ? { ...effect.stats } : {}
+      });
+    }
+    return result;
+  }
+
   for (const entry of normalizedEntries) {
     const id = String(entry?.id || "").trim();
     if (!id || !entry || typeof entry !== "object") {
@@ -216,14 +248,17 @@ function loadAbilityConfigFromDisk(configPath, options) {
     const speed = Math.max(0, Number(entry.speed) || 0);
     const coneAngleDeg = clamp(Number(entry.coneAngle) || 60, 5, 180);
     const coneCos = Math.cos((coneAngleDeg * Math.PI) / 360);
+    const deliveryType = entry.delivery && typeof entry.delivery === "object" ? String(entry.delivery.type || "").trim().toLowerCase() : "";
     const kind =
       typeof entry.kind === "string" && entry.kind.trim()
         ? entry.kind.trim()
-        : speed > 0
-          ? "projectile"
-          : coneAngleDeg > 0
-            ? "meleeCone"
-            : defaultAbilityKind;
+        : deliveryType === "charge"
+          ? "charge"
+          : speed > 0
+            ? "projectile"
+            : coneAngleDeg > 0
+              ? "meleeCone"
+              : defaultAbilityKind;
 
     const castMsRaw = Number(entry.castMs);
     const castTimeRaw = Number(entry.castTime);
@@ -289,7 +324,13 @@ function loadAbilityConfigFromDisk(configPath, options) {
     });
     const summonAttackRange = Math.max(0, Number((summonProjectile && summonProjectile.range) || 0));
     const summonAttackIntervalMs = Math.max(0, Number((summonProjectile && summonProjectile.cooldownMs) || 0));
-    const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000));
+    const effects = Array.isArray(entry.effects) ? entry.effects : [];
+    const dashEffect = findAbilityEffect(effects, "dash");
+    const dashSpeed = dashEffect ? Math.max(1, Number(dashEffect.speed) || 12) : 0;
+    const dashImpactRadius = dashEffect ? Math.max(0.5, Number(dashEffect.impactRadius) || 2) : 0;
+    const stunEffect = findAbilityEffect(effects, "stun");
+    const stunDurationFromEffect = stunEffect ? Math.max(0, Math.round((Number(stunEffect.duration) || 0) * 1000)) : 0;
+    const stunDurationMs = Math.max(0, Math.round((Number(entry.stunDuration) || 0) * 1000)) || stunDurationFromEffect;
     const slowDurationMsRaw = Number(entry.slowDurationMs);
     const slowDurationSecRaw = Number(entry.slowDuration);
     const slowDurationMs =
@@ -311,6 +352,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
     const homingTurnRateDefault = id.toLowerCase() === "arcanemissiles" ? 6.5 : 0;
     const homingRange = Math.max(0, Number(entry.homingRange) || homingRangeDefault);
     const homingTurnRate = Math.max(0, Number(entry.homingTurnRate ?? entry.turnRate) || homingTurnRateDefault);
+    const buffEffects = buildBuffEffects(entry);
     const emitProjectiles = buildResolvedEmitProjectilesConfig(entry, id);
     const firstDamageEffect = (Array.isArray(entry.effects) ? entry.effects : []).find(
       (effect) => effect && typeof effect === "object" && String(effect.type || "").toLowerCase() === "damage"
@@ -368,6 +410,8 @@ function loadAbilityConfigFromDisk(configPath, options) {
       maxSummonCount,
       summonKind,
       summonProjectile,
+      dashSpeed,
+      dashImpactRadius,
       stunDurationMs,
       slowDurationMs,
       slowMultiplier,
@@ -376,6 +420,7 @@ function loadAbilityConfigFromDisk(configPath, options) {
       explodeOnExpire: entry.explodeOnExpire !== false,
       homingRange,
       homingTurnRate,
+      buffEffects,
       emitProjectiles
     };
 

@@ -32,6 +32,13 @@
     const triggerSwordSwing = typeof deps.triggerSwordSwing === "function" ? deps.triggerSwordSwing : () => {};
     const stopAllAbilityChannelAudio =
       typeof deps.stopAllAbilityChannelAudio === "function" ? deps.stopAllAbilityChannelAudio : () => {};
+    const resolveAbilityUseTarget =
+      typeof deps.resolveAbilityUseTarget === "function"
+        ? deps.resolveAbilityUseTarget
+        : (_abilityId, worldX, worldY) => ({
+            x: Number(worldX) || 0,
+            y: Number(worldY) || 0
+          });
 
     function getAbilityRuntimeKey(abilityId) {
       return String(abilityId || "").trim().toLowerCase();
@@ -43,7 +50,10 @@
         return true;
       }
       const runtime = abilityRuntime.get(getAbilityRuntimeKey(abilityId));
-      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) || 0 : 0;
+      const lastUsedAt = runtime ? Number(runtime.lastUsedAt) : NaN;
+      if (!Number.isFinite(lastUsedAt) || lastUsedAt <= 0) {
+        return true;
+      }
       return now - lastUsedAt >= cooldownMs;
     }
 
@@ -97,7 +107,6 @@
       if (prev.active && !next.active) {
         const completion = prev.durationMs > 0 ? clamp((now - prev.startedAt) / prev.durationMs, 0, 1) : 0;
         if (completion >= 0.94) {
-          markAbilityUsedClient(prevAbility, now);
           playAbilityAudioEvent(prevAbility, "cast", now);
         }
       }
@@ -114,6 +123,7 @@
       abilityChannel.lastRetargetSentAt = 0;
       abilityChannel.lastSentTargetX = NaN;
       abilityChannel.lastSentTargetY = NaN;
+      abilityChannel.trackPointer = false;
     }
 
     function applyServerCastState(targetState, payload) {
@@ -125,6 +135,12 @@
         targetState.abilityId = "";
         targetState.startedAt = 0;
         targetState.durationMs = 0;
+        targetState.trackPointer = false;
+        targetState.isCharge = false;
+        targetState.chargeStartX = null;
+        targetState.chargeStartY = null;
+        targetState.chargeTargetX = null;
+        targetState.chargeTargetY = null;
         return;
       }
 
@@ -134,6 +150,11 @@
       targetState.abilityId = String(payload.abilityId || "");
       targetState.durationMs = durationMs;
       targetState.startedAt = performance.now() - elapsedMs;
+      targetState.isCharge = !!payload.isCharge;
+      targetState.chargeStartX = payload.chargeStartX;
+      targetState.chargeStartY = payload.chargeStartY;
+      targetState.chargeTargetX = payload.chargeTargetX;
+      targetState.chargeTargetY = payload.chargeTargetY;
     }
 
     function getCastProgress(castState, now) {
@@ -154,7 +175,7 @@
       };
     }
 
-    function useAbilityAt(abilityId, worldX, worldY) {
+    function useAbilityAt(abilityId, worldX, worldY, options = {}) {
       const self = getCurrentSelf();
       if (!self || self.hp <= 0) {
         return false;
@@ -177,13 +198,21 @@
         return false;
       }
 
-      if (!sendAbilityUse(resolvedAbilityId, worldX, worldY)) {
+      const resolvedTarget = resolveAbilityUseTarget(resolvedAbilityId, worldX, worldY, options);
+      const targetX = Number(resolvedTarget && resolvedTarget.x);
+      const targetY = Number(resolvedTarget && resolvedTarget.y);
+      if (!Number.isFinite(targetX) || !Number.isFinite(targetY)) {
+        return false;
+      }
+
+      if (!sendAbilityUse(resolvedAbilityId, targetX, targetY)) {
         return false;
       }
       const castMs = Math.max(0, Number(abilityDef.castMs) || 0);
+      const previousSelfCast = captureCastStateSnapshot(abilityChannel);
       if (castMs > 0) {
-        const dx = worldX - self.x;
-        const dy = worldY - self.y;
+        const dx = targetX - self.x;
+        const dy = targetY - self.y;
         const len = Math.hypot(dx, dy);
         abilityChannel.active = true;
         abilityChannel.abilityId = resolvedAbilityId;
@@ -192,6 +221,7 @@
         abilityChannel.lastRetargetSentAt = 0;
         abilityChannel.lastSentTargetX = NaN;
         abilityChannel.lastSentTargetY = NaN;
+        abilityChannel.trackPointer = options.trackPointer !== false;
         if (len > 0) {
           const castRange = Math.max(0, getAbilityEffectiveRangeForSelf(resolvedAbilityId, self) || len);
           const distance = castRange > 0 ? Math.min(len, castRange) : len;
@@ -201,13 +231,14 @@
           abilityChannel.targetX = self.x;
           abilityChannel.targetY = self.y;
         }
+        syncLocalCastAudio(previousSelfCast, abilityChannel);
       }
       if (castMs <= 0) {
         markAbilityUsedClient(resolvedAbilityId, now);
         playAbilityAudioEvent(resolvedAbilityId, "cast", now);
       }
       if (resolvedAbilityId === "slash") {
-        triggerSwordSwing(worldX, worldY);
+        triggerSwordSwing(targetX, targetY);
       }
       return true;
     }
@@ -215,6 +246,9 @@
     function updateLocalCastTargetFromMouse() {
       const self = getCurrentSelf();
       if (!self || !abilityChannel.active) {
+        return false;
+      }
+      if (abilityChannel.trackPointer === false) {
         return false;
       }
       const targetWorld = screenToWorld(mouseState.sx, mouseState.sy, self);

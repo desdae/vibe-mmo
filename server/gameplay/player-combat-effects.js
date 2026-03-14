@@ -1,3 +1,6 @@
+const { createEffectEngine } = require("./effects/effect-engine");
+const { buildHitEffectDefsFromAbilityDef, buildHitEffectDefsFromProjectile } = require("./effects/hit-effect-defs");
+
 function defaultClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -13,6 +16,13 @@ function createPlayerCombatEffectTools(options = {}) {
     typeof options.applyDamageToPlayer === "function" ? options.applyDamageToPlayer : () => 0;
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
+  const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
+  const effectEngine = createEffectEngine({ clamp, randomInt });
+
+  const tools = {
+    // Mutable callback; server.js wires talent handlers after tool creation.
+    onTalentSpellHit: typeof options.onTalentSpellHit === "function" ? options.onTalentSpellHit : null
+  };
 
   function clearPlayerCombatEffects(player) {
     if (!player) {
@@ -39,6 +49,9 @@ function createPlayerCombatEffectTools(options = {}) {
     if (!player || player.hp <= 0) {
       return;
     }
+    if ((Number(player.crowdControlImmuneUntil) || 0) > now) {
+      return;
+    }
     const duration = Math.max(0, Math.floor(Number(durationMs) || 0));
     if (duration <= 0) {
       return;
@@ -51,6 +64,9 @@ function createPlayerCombatEffectTools(options = {}) {
 
   function applySlowToPlayer(player, slowMultiplier, durationMs, now = Date.now()) {
     if (!player || player.hp <= 0) {
+      return;
+    }
+    if ((Number(player.crowdControlImmuneUntil) || 0) > now) {
       return;
     }
     const duration = Math.max(0, Math.round(Number(durationMs) || 0));
@@ -182,27 +198,31 @@ function createPlayerCombatEffectTools(options = {}) {
     if (!player || player.hp <= 0 || dealtDamage <= 0 || !abilityDef) {
       return;
     }
-    const slowDurationMs = Math.max(0, Number(abilityDef.slowDurationMs) || 0);
-    const slowMultiplier = clamp(Number(abilityDef.slowMultiplier) || 1, 0.1, 1);
-    if (slowDurationMs > 0 && slowMultiplier < 1) {
-      applySlowToPlayer(player, slowMultiplier, slowDurationMs, now);
+
+    const hitEffectDefs = buildHitEffectDefsFromAbilityDef(abilityDef, abilityLevel, getAbilityDotDamageRange);
+    if (hitEffectDefs.length) {
+      const compiled = effectEngine.compile(hitEffectDefs, { defaultTrigger: "onHit" });
+      effectEngine.run(compiled, "onHit", {
+        now,
+        source: { id: ownerId ? String(ownerId) : "" },
+        target: player,
+        ops: {
+          applySlow: (target, multiplier, durationMs, appliedAt) =>
+            applySlowToPlayer(target, multiplier, durationMs, appliedAt),
+          applyStun: (target, durationMs, appliedAt) => stunPlayer(target, durationMs, appliedAt),
+          applyDot: (target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt) =>
+            applyDotToPlayer(target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt)
+        }
+      });
     }
-    const stunDurationMs = Math.max(0, Number(abilityDef.stunDurationMs) || 0);
-    if (stunDurationMs > 0) {
-      stunPlayer(player, stunDurationMs, now);
-    }
-    const dotDurationMs = Math.max(0, Number(abilityDef.dotDurationMs) || 0);
-    const [dotDamageMin, dotDamageMax] = getAbilityDotDamageRange(abilityDef, abilityLevel);
-    if (dotDurationMs > 0 && dotDamageMax > 0) {
-      applyDotToPlayer(
-        player,
-        ownerId,
-        String(abilityDef.dotSchool || "generic"),
-        dotDamageMin,
-        dotDamageMax,
-        dotDurationMs,
-        now
-      );
+
+    // Trigger talent on-spell-hit effects (for PvP)
+    const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
+    if (ownerPlayer) {
+      const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
+      if (handler) {
+        handler(ownerPlayer, player, abilityDef, now);
+      }
     }
   }
 
@@ -210,40 +230,42 @@ function createPlayerCombatEffectTools(options = {}) {
     if (!player || player.hp <= 0 || dealtDamage <= 0 || !projectile) {
       return;
     }
-    const slowDurationMs = Math.max(0, Number(projectile.slowDurationMs) || 0);
-    const slowMultiplier = clamp(Number(projectile.slowMultiplier) || 1, 0.1, 1);
-    if (slowDurationMs > 0 && slowMultiplier < 1) {
-      applySlowToPlayer(player, slowMultiplier, slowDurationMs, now);
+
+    const hitEffectDefs = buildHitEffectDefsFromProjectile(projectile);
+    if (hitEffectDefs.length) {
+      const compiled = effectEngine.compile(hitEffectDefs, { defaultTrigger: "onHit" });
+      effectEngine.run(compiled, "onHit", {
+        now,
+        source: { id: projectile.ownerId ? String(projectile.ownerId) : "" },
+        target: player,
+        ops: {
+          applySlow: (target, multiplier, durationMs, appliedAt) =>
+            applySlowToPlayer(target, multiplier, durationMs, appliedAt),
+          applyStun: (target, durationMs, appliedAt) => stunPlayer(target, durationMs, appliedAt),
+          applyDot: (target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt) =>
+            applyDotToPlayer(target, dotOwnerId, school, damageMin, damageMax, durationMs, appliedAt)
+        }
+      });
     }
-    const stunDurationMs = Math.max(0, Number(projectile.stunDurationMs) || 0);
-    if (stunDurationMs > 0) {
-      stunPlayer(player, stunDurationMs, now);
-    }
-    const dotDurationMs = Math.max(0, Number(projectile.dotDurationMs) || 0);
-    const dotDamageMin = Math.max(0, Number(projectile.dotDamageMin) || 0);
-    const dotDamageMax = Math.max(dotDamageMin, Number(projectile.dotDamageMax) || dotDamageMin);
-    if (dotDurationMs > 0 && dotDamageMax > 0) {
-      applyDotToPlayer(
-        player,
-        projectile.ownerId || null,
-        String(projectile.dotSchool || "generic"),
-        dotDamageMin,
-        dotDamageMax,
-        dotDurationMs,
-        now
-      );
+
+    // Trigger talent on-spell-hit effects for projectile hits (for PvP).
+    const ownerPlayer = projectile.ownerId ? getPlayerById(String(projectile.ownerId)) : null;
+    if (ownerPlayer) {
+      const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
+      if (handler) {
+        handler(ownerPlayer, player, null, now);
+      }
     }
   }
 
-  return {
-    clearPlayerCombatEffects,
-    stunPlayer,
-    applySlowToPlayer,
-    applyDotToPlayer,
-    tickPlayerDotEffects,
-    applyAbilityHitEffectsToPlayer,
-    applyProjectileHitEffectsToPlayer
-  };
+  tools.clearPlayerCombatEffects = clearPlayerCombatEffects;
+  tools.stunPlayer = stunPlayer;
+  tools.applySlowToPlayer = applySlowToPlayer;
+  tools.applyDotToPlayer = applyDotToPlayer;
+  tools.tickPlayerDotEffects = tickPlayerDotEffects;
+  tools.applyAbilityHitEffectsToPlayer = applyAbilityHitEffectsToPlayer;
+  tools.applyProjectileHitEffectsToPlayer = applyProjectileHitEffectsToPlayer;
+  return tools;
 }
 
 module.exports = {

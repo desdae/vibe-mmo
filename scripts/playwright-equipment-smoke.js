@@ -12,6 +12,36 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function ensurePanelVisible(page, panelSelector, toggleKey) {
+  const isHidden = await page.evaluate((selector) => {
+    const el = document.querySelector(selector);
+    return !el || el.classList.contains("hidden");
+  }, panelSelector);
+  if (!isHidden) {
+    return;
+  }
+  await page.keyboard.press(toggleKey);
+  await page.waitForFunction((selector) => {
+    const el = document.querySelector(selector);
+    return !!(el && !el.classList.contains("hidden"));
+  }, panelSelector);
+}
+
+async function ensurePanelHidden(page, panelSelector, toggleKey) {
+  const isHidden = await page.evaluate((selector) => {
+    const el = document.querySelector(selector);
+    return !el || el.classList.contains("hidden");
+  }, panelSelector);
+  if (isHidden) {
+    return;
+  }
+  await page.keyboard.press(toggleKey);
+  await page.waitForFunction((selector) => {
+    const el = document.querySelector(selector);
+    return !!(el && el.classList.contains("hidden"));
+  }, panelSelector);
+}
+
 function normalizeDirection(dx, dy) {
   const len = Math.hypot(dx, dy);
   if (!len) {
@@ -148,25 +178,34 @@ async function moveToNearestBagAndLoot(page) {
 }
 
 async function equipFirstEquipmentItem(page) {
-  await page.keyboard.press("KeyI");
-  await page.keyboard.press("KeyC");
+  await ensurePanelVisible(page, "#inventory-panel", "KeyI");
+  await ensurePanelHidden(page, "#equipment-panel", "KeyC");
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const snapshot = await getState(page);
-    if (!snapshot.equipmentVisible) {
-      await sleep(100);
-      continue;
-    }
-    const inventoryIndex = snapshot.inventory.findIndex((slot) => slot && slot.isEquipment && slot.slot);
+    const inventoryIndex = snapshot.inventory.findIndex((slot) => slot && slot.isEquipment);
     if (inventoryIndex < 0) {
       throw new Error("No equipment item found in inventory.");
     }
-    const slot = snapshot.inventory[inventoryIndex].slot;
-    await page.click(`#inventory-grid .inventory-slot[data-index="${inventoryIndex}"]`, { button: "right" });
+    const wantedInstanceId = snapshot.inventory[inventoryIndex].instanceId ? String(snapshot.inventory[inventoryIndex].instanceId) : "";
+    const wantedItemId = String(snapshot.inventory[inventoryIndex].itemId || "");
+    await page.click(`#inventory-grid .inventory-slot[data-index="${inventoryIndex}"]`, {
+      button: "right",
+      force: true
+    });
     await sleep(300);
     const nextSnapshot = await getState(page);
-    if (nextSnapshot.equipment && nextSnapshot.equipment[slot] && nextSnapshot.equipment[slot].itemId) {
+    const equippedSlot = Object.entries(nextSnapshot.equipment || {}).find(([_slotId, entry]) => {
+      if (!entry || !entry.itemId) {
+        return false;
+      }
+      if (wantedInstanceId) {
+        return String(entry.instanceId || "") === wantedInstanceId;
+      }
+      return String(entry.itemId || "") === wantedItemId;
+    });
+    if (equippedSlot) {
       return {
-        slot,
+        slot: equippedSlot[0],
         inventoryIndex,
         state: nextSnapshot
       };
@@ -176,15 +215,62 @@ async function equipFirstEquipmentItem(page) {
   throw new Error("Failed to equip looted item.");
 }
 
+async function grantEquipmentItem(page, { minAffixes = 1 } = {}) {
+  await page.evaluate((minAffixesValue) => {
+    window.__vibemmoTest.send({
+      type: "admin_grant_equipment_item",
+      minAffixes: minAffixesValue
+    });
+  }, Math.max(0, Math.floor(Number(minAffixes) || 0)));
+
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const snapshot = await getState(page);
+    if (!snapshot.self) {
+      throw new Error("Missing player state while granting equipment.");
+    }
+    if (!snapshot.self.isAdmin) {
+      throw new Error(`Expected admin join for equipment smoke, got isAdmin=${snapshot.self.isAdmin}.`);
+    }
+    const statusText = String(snapshot.status || "").trim();
+    if (statusText && statusText.toLowerCase().includes("failed")) {
+      throw new Error(`Server reported failure while granting equipment: ${statusText}`);
+    }
+    if (statusText && statusText.toLowerCase().includes("error")) {
+      throw new Error(`Server reported error while granting equipment: ${statusText}`);
+    }
+    if (statusText && statusText.toLowerCase().includes("admin rights required")) {
+      throw new Error(`Server reported missing admin rights while granting equipment: ${statusText}`);
+    }
+    const equipmentIndex = snapshot.inventory.findIndex((slot) => {
+      if (!slot || !slot.isEquipment) {
+        return false;
+      }
+      const affixes = Array.isArray(slot.affixes)
+        ? slot.affixes
+        : [
+            ...(Array.isArray(slot.prefixes) ? slot.prefixes : []),
+            ...(Array.isArray(slot.suffixes) ? slot.suffixes : [])
+          ];
+      return affixes.length >= minAffixes;
+    });
+    if (equipmentIndex >= 0) {
+      return snapshot;
+    }
+    await sleep(100);
+  }
+
+  throw new Error("Failed to grant an equipment item into inventory.");
+}
+
 async function assertNoDuplicateTooltipAffixes(page, inventoryIndex) {
+  await ensurePanelVisible(page, "#inventory-panel", "KeyI");
+  await page.hover(`#inventory-grid .inventory-slot[data-index="${inventoryIndex}"]`);
+  await page.waitForSelector("#hover-tooltip:not(.hidden)");
+
   const result = await page.evaluate((slotIndex) => {
     const slotData = window.__vibemmoTest.getState().inventory[slotIndex];
-    const slotEl = document.querySelector(`#inventory-grid .inventory-slot[data-index="${slotIndex}"]`);
-    const title = slotEl ? String(slotEl.getAttribute("title") || "") : "";
-    const tooltipAffixLines = title
-      .split("\n")
-      .filter((line) => line.trim().startsWith("- "))
-      .map((line) => line.trim());
+    const tooltipEl = document.querySelector("#hover-tooltip");
+    const tooltipAffixEls = tooltipEl ? Array.from(tooltipEl.querySelectorAll(".tooltip-affix")) : [];
     const sourceAffixes = Array.isArray(slotData && slotData.affixes)
       ? slotData.affixes
       : [
@@ -195,15 +281,15 @@ async function assertNoDuplicateTooltipAffixes(page, inventoryIndex) {
       sourceAffixes.map((affix) => `${String(affix && (affix.id || affix.name || ""))}|${JSON.stringify(affix && affix.modifiers || [])}`)
     );
     return {
-      title,
-      tooltipAffixCount: tooltipAffixLines.length,
+      tooltipText: tooltipEl ? String(tooltipEl.textContent || "") : "",
+      tooltipAffixCount: tooltipAffixEls.length,
       expectedAffixCount: expectedKeys.size
     };
   }, inventoryIndex);
 
   if (result.tooltipAffixCount !== result.expectedAffixCount) {
     throw new Error(
-      `Tooltip affix count mismatch. expected=${result.expectedAffixCount} actual=${result.tooltipAffixCount}\n${result.title}`
+      `Tooltip affix count mismatch. expected=${result.expectedAffixCount} actual=${result.tooltipAffixCount}\n${result.tooltipText}`
     );
   }
 }
@@ -229,18 +315,17 @@ async function run() {
     await page.waitForFunction(() => window.__vibemmoTest && document.querySelector("#classType option[value]"));
     await page.fill("#name", "pw-mage");
     await page.selectOption("#classType", "mage");
+    await page.check("#isAdmin");
     await page.click("#join-form button[type='submit']");
     await page.waitForFunction(() => {
       const state = window.__vibemmoTest && window.__vibemmoTest.getState();
       return !!(state && state.self);
     });
 
-    await searchForVisibleMobs(page);
-    await killNearestMob(page);
-    const lootState = await moveToNearestBagAndLoot(page);
-    const inventoryIndex = lootState.inventory.findIndex((slot) => slot && slot.isEquipment);
+    const grantedState = await grantEquipmentItem(page, { minAffixes: 1 });
+    const inventoryIndex = grantedState.inventory.findIndex((slot) => slot && slot.isEquipment);
     if (inventoryIndex < 0) {
-      throw new Error("No equipment item in inventory after looting.");
+      throw new Error("No equipment item in inventory after grant.");
     }
     await assertNoDuplicateTooltipAffixes(page, inventoryIndex);
     const equipResult = await equipFirstEquipmentItem(page);
@@ -261,6 +346,17 @@ async function run() {
         2
       )
     );
+  } catch (error) {
+    const logs = server.getLogs ? server.getLogs() : { stdout: "", stderr: "" };
+    const stdout = String(logs.stdout || "").trim();
+    const stderr = String(logs.stderr || "").trim();
+    if (stdout) {
+      console.error(`Server stdout:\n${stdout}`);
+    }
+    if (stderr) {
+      console.error(`Server stderr:\n${stderr}`);
+    }
+    throw error;
   } finally {
     if (browser) {
       await browser.close();

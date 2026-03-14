@@ -7,6 +7,8 @@ function createProgressionTools(options = {}) {
   const expGrowthFactor = Math.max(1, Number(options.expGrowthFactor) || 1);
   const getExpMultiplier =
     typeof options.getExpMultiplier === "function" ? options.getExpMultiplier : () => Number(options.expMultiplier) || 1;
+  const getTalentPointsPerLevel =
+    typeof options.getTalentPointsPerLevel === "function" ? options.getTalentPointsPerLevel : () => 1;
   const sendSelfProgress = options.sendSelfProgress;
 
   if (typeof sendSelfProgress !== "function") {
@@ -31,6 +33,7 @@ function createProgressionTools(options = {}) {
     const beforeExp = player.exp;
     const beforeExpToNext = player.expToNext;
     const beforeSkillPoints = Math.max(0, Math.floor(Number(player.skillPoints) || 0));
+    const beforeTalentPoints = Math.max(0, Math.floor(Number(player.talentPoints) || 0));
     let levelsGained = 0;
 
     player.exp += scaledAmount;
@@ -42,13 +45,16 @@ function createProgressionTools(options = {}) {
     }
     if (levelsGained > 0) {
       player.skillPoints = clamp(beforeSkillPoints + levelsGained, 0, 65535);
+      const pointsPerLevel = getTalentPointsPerLevel(player.classType);
+      player.talentPoints = clamp(beforeTalentPoints + levelsGained * pointsPerLevel, 0, 65535);
     }
 
     if (
       player.level !== beforeLevel ||
       player.exp !== beforeExp ||
       player.expToNext !== beforeExpToNext ||
-      Math.floor(Number(player.skillPoints) || 0) !== beforeSkillPoints
+      Math.floor(Number(player.skillPoints) || 0) !== beforeSkillPoints ||
+      Math.floor(Number(player.talentPoints) || 0) !== beforeTalentPoints
     ) {
       sendSelfProgress(player);
     }

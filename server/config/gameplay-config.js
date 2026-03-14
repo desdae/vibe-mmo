@@ -18,7 +18,15 @@ function buildGameplayConfig(parsed, defaults) {
     map: {
       width: parseGameplayInt(map.width, defaults.map.width, 10, 10000),
       height: parseGameplayInt(map.height, defaults.map.height, 10, 10000),
-      visibilityRange: parseGameplayNumber(map.visibilityRange, defaults.map.visibilityRange, 1, 100)
+      visibilityRange: parseGameplayNumber(map.visibilityRange, defaults.map.visibilityRange, 1, 100),
+      maxViewportWidth: parseGameplayInt(map.maxViewportWidth, defaults.map.maxViewportWidth, 320, 4096),
+      maxViewportHeight: parseGameplayInt(map.maxViewportHeight, defaults.map.maxViewportHeight, 240, 2160),
+      visibilityPaddingTiles: parseGameplayNumber(
+        map.visibilityPaddingTiles,
+        defaults.map.visibilityPaddingTiles,
+        0,
+        12
+      )
     },
     town: {
       enabled: town.enabled !== undefined ? !!town.enabled : defaults.town.enabled,
@@ -64,6 +72,24 @@ function buildGameplayConfig(parsed, defaults) {
         defaults.clusterSpawning.maxClustersPerArea,
         1,
         20
+      ),
+      minSpawnRadiusFromCenter: parseGameplayNumber(
+        clusterSpawning.minSpawnRadiusFromCenter,
+        defaults.clusterSpawning.minSpawnRadiusFromCenter,
+        0,
+        5000
+      ),
+      observedSpawnPadding: parseGameplayNumber(
+        clusterSpawning.observedSpawnPadding,
+        defaults.clusterSpawning.observedSpawnPadding,
+        0,
+        500
+      ),
+      unobservedDespawnMs: parseGameplayInt(
+        clusterSpawning.unobservedDespawnMs,
+        defaults.clusterSpawning.unobservedDespawnMs,
+        1000,
+        86400000
       )
     },
     mob: {
@@ -74,7 +100,44 @@ function buildGameplayConfig(parsed, defaults) {
       attackRange: parseGameplayNumber(mob.attackRange, defaults.mob.attackRange, 0, 1000),
       attackCooldownMs: parseGameplayInt(mob.attackCooldownMs, defaults.mob.attackCooldownMs, 50, 600000),
       minSeparation: parseGameplayNumber(mob.minSeparation, defaults.mob.minSeparation, 0, 10),
-      separationIterations: parseGameplayInt(mob.separationIterations, defaults.mob.separationIterations, 0, 20)
+      separationIterations: parseGameplayInt(mob.separationIterations, defaults.mob.separationIterations, 0, 20),
+      baseLevel: parseGameplayInt(mob.baseLevel, defaults.mob.baseLevel, 1, 1000),
+      levelStartDistance: parseGameplayNumber(
+        mob.levelStartDistance,
+        defaults.mob.levelStartDistance,
+        0,
+        5000
+      ),
+      levelDistance: parseGameplayNumber(
+        mob.levelDistance ?? mob.levelDistanceStep,
+        defaults.mob.levelDistance,
+        1,
+        500
+      ),
+      levelDistanceStep: parseGameplayNumber(
+        mob.levelDistanceStep ?? mob.levelDistance,
+        defaults.mob.levelDistanceStep,
+        1,
+        500
+      ),
+      levelHealthMultiplier: parseGameplayNumber(
+        mob.levelHealthMultiplier,
+        defaults.mob.levelHealthMultiplier,
+        1,
+        10
+      ),
+      levelDamageMultiplier: parseGameplayNumber(
+        mob.levelDamageMultiplier,
+        defaults.mob.levelDamageMultiplier,
+        1,
+        10
+      ),
+      levelSpeedMultiplier: parseGameplayNumber(
+        mob.levelSpeedMultiplier,
+        defaults.mob.levelSpeedMultiplier,
+        1,
+        10
+      )
     },
     loot: {
       bagPickupRange: parseGameplayNumber(loot.bagPickupRange, defaults.loot.bagPickupRange, 0, 50),

@@ -1,5 +1,6 @@
 function createAbilityHandlerContext(params = {}) {
   const {
+    players,
     mobs,
     projectiles,
     mapWidth,
@@ -11,25 +12,32 @@ function createAbilityHandlerContext(params = {}) {
     randomInt,
     rotateDirection,
     getAbilityRangeForLevel,
+    getAbilityRangeForEntity,
     getAbilityDamageRange,
     getAbilityDamageRangeForEntity,
     getAbilityDotDamageRange,
     getAbilityDotDamageRangeForEntity,
     getAbilityChainStatsForEntity,
+    getAbilityDefForEntity,
     markAbilityUsed,
     applyDamageToMob,
     applyAbilityHitEffectsToMob,
+    applyDamageToPlayer,
     stunMob,
+    stunPlayer,
     queueExplosionEvent,
     getAreaAbilityTargetPosition,
     createPersistentAreaEffect,
     createPersistentBeamEffect,
     createPersistentSummonEffect,
     resolvePlayerMobCollisions,
-    getAbilityInvulnerabilityDurationMs
+    applySelfBuffs,
+    getAbilityInvulnerabilityDurationMs,
+    isPlayerEnemy
   } = params;
 
   return {
+    players,
     mobs,
     projectiles,
     mapWidth,
@@ -41,22 +49,28 @@ function createAbilityHandlerContext(params = {}) {
     randomInt,
     rotateDirection,
     getAbilityRangeForLevel,
+    getAbilityRangeForEntity,
     getAbilityDamageRange,
     getAbilityDamageRangeForEntity,
     getAbilityDotDamageRange,
     getAbilityDotDamageRangeForEntity,
     getAbilityChainStatsForEntity,
+    getAbilityDefForEntity,
     markAbilityUsed,
     applyDamageToMob,
     applyAbilityHitEffectsToMob,
+    applyDamageToPlayer,
     stunMob,
+    stunPlayer,
     queueExplosionEvent,
     getAreaAbilityTargetPosition,
     createPersistentAreaEffect,
     createPersistentBeamEffect,
     createPersistentSummonEffect,
     resolvePlayerMobCollisions,
-    getAbilityInvulnerabilityDurationMs
+    applySelfBuffs,
+    getAbilityInvulnerabilityDurationMs,
+    isPlayerEnemy
   };
 }
 

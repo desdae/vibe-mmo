@@ -2,7 +2,10 @@
   "map": {
     "width": 1000,
     "height": 1000,
-    "visibilityRange": 20
+    "visibilityRange": 20,
+    "maxViewportWidth": 2560,
+    "maxViewportHeight": 1440,
+    "visibilityPaddingTiles": 2
   },
   "town": {
     "enabled": true,
@@ -28,7 +31,10 @@
   "clusterSpawning": {
     "targetClusters": 16,
     "clusterAreaSize": 10,
-    "maxClustersPerArea": 2
+    "maxClustersPerArea": 2,
+    "minSpawnRadiusFromCenter": 20,
+    "observedSpawnPadding": 10,
+    "unobservedDespawnMs": 120000
   },
   "mob": {
     "wanderRadius": 10,
@@ -38,7 +44,13 @@
     "attackRange": 1.25,
     "attackCooldownMs": 900,
     "minSeparation": 0.85,
-    "separationIterations": 2
+    "separationIterations": 2,
+    "baseLevel": 1,
+    "levelStartDistance": 30,
+    "levelDistanceStep": 10,
+    "levelHealthMultiplier": 1.25,
+    "levelDamageMultiplier": 1.15,
+    "levelSpeedMultiplier": 1.03
   },
   "loot": {
     "bagPickupRange": 2.25,

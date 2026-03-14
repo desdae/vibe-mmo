@@ -34,6 +34,15 @@
     const FIRE_SPARK_VARIANTS = 4;
     const FIRE_SPARK_FRAMES = 5;
     const FIRE_SPARK_FRAME_MS = 42;
+    const FROSTBOLT_VARIANTS = 4;
+    const FROSTBOLT_FRAMES = 5;
+    const FROSTBOLT_FRAME_MS = 54;
+    const ARCANE_MISSILE_VARIANTS = 4;
+    const ARCANE_MISSILE_FRAMES = 5;
+    const ARCANE_MISSILE_FRAME_MS = 52;
+    const BONE_ARROW_VARIANTS = 4;
+    const BONE_ARROW_FRAMES = 4;
+    const BONE_ARROW_FRAME_MS = 60;
     const ARROW_VARIANTS = 4;
     const ARROW_FRAMES = 4;
     const ARROW_FRAME_MS = 56;
@@ -213,10 +222,226 @@
       return sprite;
     }
 
-    function createVariantFrames(variantCount, frameCount, buildFrame) {
+    function tagSpriteCanvas(sprite, key) {
+      if (!sprite || typeof sprite !== "object") {
+        return sprite;
+      }
+      try {
+        sprite.__vibeSpriteKey = String(key || "");
+      } catch (_error) {
+        // Canvas tagging is best-effort only.
+      }
+      return sprite;
+    }
+
+    function createVariantFrames(variantCount, frameCount, buildFrame, familyKey = "projectile") {
       return Array.from({ length: variantCount }, (_, variantIndex) =>
-        Array.from({ length: frameCount }, (_, frameIndex) => buildFrame(variantIndex, frameIndex))
+        Array.from({ length: frameCount }, (_, frameIndex) =>
+          tagSpriteCanvas(buildFrame(variantIndex, frameIndex), `${familyKey}:v${variantIndex}:f${frameIndex}`)
+        )
       );
+    }
+
+    function createFrostboltSprite(variantIndex, frameIndex) {
+      const size = 68;
+      const sprite = createSpriteCanvas(size);
+      const sctx = sprite.getContext("2d");
+      const cx = size * 0.56;
+      const cy = size * 0.5;
+      const phase = frameIndex / FROSTBOLT_FRAMES;
+
+      sctx.save();
+      sctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 9; i += 1) {
+        const t = (i + 1) / 9;
+        const wobble = Math.sin(phase * Math.PI * 2 + variantIndex * 0.7 + i * 1.17) * (1.1 - t * 0.7) * 2.2;
+        const dist = 7 + t * 24 + seededUnit(variantIndex + 17, i * 19 + frameIndex * 11) * 2;
+        const px = cx - dist;
+        const py = cy + wobble;
+        const pr = Math.max(0.8, 2.4 - t * 1.7);
+        const alpha = 0.36 * (1 - t) + 0.1;
+        sctx.beginPath();
+        sctx.fillStyle = `rgba(156, 223, 255, ${alpha.toFixed(3)})`;
+        sctx.arc(px, py, pr, 0, Math.PI * 2);
+        sctx.fill();
+      }
+
+      const glow = sctx.createRadialGradient(cx, cy, 1.2, cx, cy, 13.8);
+      glow.addColorStop(0, "rgba(242, 253, 255, 0.97)");
+      glow.addColorStop(0.35, "rgba(171, 233, 255, 0.9)");
+      glow.addColorStop(0.7, "rgba(103, 185, 242, 0.48)");
+      glow.addColorStop(1, "rgba(75, 157, 224, 0)");
+      sctx.fillStyle = glow;
+      sctx.beginPath();
+      sctx.arc(cx, cy, 13.8, 0, Math.PI * 2);
+      sctx.fill();
+      sctx.restore();
+
+      const spearLength = 17;
+      const spearWidth = 4.6;
+      const tipX = cx + spearLength;
+      const tipY = cy;
+      const backX = cx - 5.2;
+      const backY = cy;
+      const leftX = cx;
+      const leftY = cy - spearWidth;
+      const rightX = cx;
+      const rightY = cy + spearWidth;
+
+      sctx.beginPath();
+      sctx.fillStyle = "rgba(198, 244, 255, 0.95)";
+      sctx.strokeStyle = "rgba(107, 180, 231, 0.95)";
+      sctx.lineWidth = 1.8;
+      sctx.moveTo(tipX, tipY);
+      sctx.lineTo(leftX, leftY);
+      sctx.lineTo(backX, backY);
+      sctx.lineTo(rightX, rightY);
+      sctx.closePath();
+      sctx.fill();
+      sctx.stroke();
+
+      sctx.beginPath();
+      sctx.strokeStyle = "rgba(236, 253, 255, 0.9)";
+      sctx.lineWidth = 1.2;
+      sctx.moveTo(backX + 1.4, backY);
+      sctx.lineTo(tipX, tipY);
+      sctx.stroke();
+
+      sctx.strokeStyle = "rgba(209, 244, 255, 0.85)";
+      sctx.lineWidth = 1.1;
+      for (let i = 0; i < 5; i += 1) {
+        const a = phase * Math.PI * 2 + i * ((Math.PI * 2) / 5) + variantIndex * 0.42;
+        const r = 7 + (i % 2) * 2 + Math.sin(phase * Math.PI * 2 + i) * 0.8;
+        const sx = cx + Math.cos(a) * r;
+        const sy = cy + Math.sin(a) * r;
+        sctx.beginPath();
+        sctx.moveTo(sx - 1.4, sy);
+        sctx.lineTo(sx + 1.4, sy);
+        sctx.moveTo(sx, sy - 1.4);
+        sctx.lineTo(sx, sy + 1.4);
+        sctx.stroke();
+      }
+
+      return sprite;
+    }
+
+    function createArcaneMissileSprite(variantIndex, frameIndex) {
+      const size = 78;
+      const sprite = createSpriteCanvas(size);
+      const sctx = sprite.getContext("2d");
+      const cx = size * 0.56;
+      const cy = size * 0.5;
+      const phase = frameIndex / ARCANE_MISSILE_FRAMES;
+
+      sctx.save();
+      sctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 11; i += 1) {
+        const t = (i + 1) / 11;
+        const dist = 6 + t * 22;
+        const wobble =
+          Math.sin(phase * Math.PI * 2 + variantIndex * 0.9 + i * 0.9) * (2.6 - t * 1.5) +
+          (seededUnit(variantIndex + 31, i * 29 + frameIndex * 7) - 0.5) * 1.3;
+        const px = cx - dist;
+        const py = cy + wobble;
+        const radius = Math.max(0.7, 2.2 - t * 1.6);
+        const alpha = 0.35 * (1 - t) + 0.08;
+        sctx.beginPath();
+        sctx.fillStyle = `rgba(207, 176, 255, ${alpha.toFixed(3)})`;
+        sctx.arc(px, py, radius, 0, Math.PI * 2);
+        sctx.fill();
+      }
+      const glow = sctx.createRadialGradient(cx, cy, 1.2, cx, cy, 14.5);
+      glow.addColorStop(0, "rgba(255, 246, 255, 0.98)");
+      glow.addColorStop(0.35, "rgba(212, 186, 255, 0.9)");
+      glow.addColorStop(0.7, "rgba(145, 100, 222, 0.5)");
+      glow.addColorStop(1, "rgba(91, 63, 173, 0)");
+      sctx.fillStyle = glow;
+      sctx.beginPath();
+      sctx.arc(cx, cy, 14.5, 0, Math.PI * 2);
+      sctx.fill();
+      sctx.restore();
+
+      const tipX = cx + 15.5;
+      const tipY = cy;
+      const backX = cx - 6.2;
+      const backY = cy;
+      const wing = 4.8;
+      sctx.beginPath();
+      sctx.fillStyle = "rgba(242, 231, 255, 0.96)";
+      sctx.strokeStyle = "rgba(146, 117, 214, 0.95)";
+      sctx.lineWidth = 1.7;
+      sctx.moveTo(tipX, tipY);
+      sctx.lineTo(cx, cy - wing);
+      sctx.lineTo(backX, backY);
+      sctx.lineTo(cx, cy + wing);
+      sctx.closePath();
+      sctx.fill();
+      sctx.stroke();
+
+      const coreGrad = sctx.createLinearGradient(backX, backY, tipX, tipY);
+      coreGrad.addColorStop(0, "rgba(128, 93, 205, 0.55)");
+      coreGrad.addColorStop(0.5, "rgba(252, 240, 255, 0.98)");
+      coreGrad.addColorStop(1, "rgba(178, 140, 236, 0.78)");
+      sctx.strokeStyle = coreGrad;
+      sctx.lineWidth = 1.5;
+      sctx.beginPath();
+      sctx.moveTo(backX + 1.2, backY);
+      sctx.lineTo(tipX, tipY);
+      sctx.stroke();
+
+      sctx.lineCap = "round";
+      for (let band = 0; band < 3; band += 1) {
+        sctx.beginPath();
+        sctx.strokeStyle = `rgba(232, 214, 255, ${(0.7 - band * 0.14).toFixed(3)})`;
+        sctx.lineWidth = 1.2 + (2 - band) * 0.35;
+        for (let i = 0; i <= 24; i += 1) {
+          const t = i / 24;
+          const dist = -8 + t * 30;
+          const swirlPhase = phase * Math.PI * 2 + variantIndex * 1.1 + band * 2.0 + t * 11.5;
+          const radius = (1 - Math.abs(t - 0.5) * 1.15) * (5.6 - band * 1.15);
+          const swirl = Math.sin(swirlPhase) * radius;
+          const x = cx - dist;
+          const y = cy + swirl;
+          if (i === 0) {
+            sctx.moveTo(x, y);
+          } else {
+            sctx.lineTo(x, y);
+          }
+        }
+        sctx.stroke();
+      }
+
+      sctx.strokeStyle = "rgba(244, 236, 255, 0.88)";
+      sctx.lineWidth = 1.2;
+      for (let i = 0; i < 6; i += 1) {
+        const a = phase * Math.PI * 2 * 0.8 + i * ((Math.PI * 2) / 6) + variantIndex * 0.35;
+        const r = 7 + (i % 2) * 2 + Math.sin(phase * Math.PI * 2 + i) * 0.6;
+        const sx = cx + Math.cos(a) * r;
+        const sy = cy + Math.sin(a) * r;
+        sctx.beginPath();
+        sctx.moveTo(sx - 1.4, sy);
+        sctx.lineTo(sx + 1.4, sy);
+        sctx.moveTo(sx, sy - 1.4);
+        sctx.lineTo(sx, sy + 1.4);
+        sctx.stroke();
+      }
+
+      return sprite;
+    }
+
+    function createBoneArrowSprite(variantIndex, frameIndex) {
+      return createArrowSprite(variantIndex, frameIndex, {
+        size: 54,
+        length: 25,
+        wing: 4.6,
+        shaftColor: "#d8dde6",
+        fletchColor: "#6d7581",
+        headColor: "#c2ccd8",
+        edgeColor: "#808a9a",
+        glowColor: "rgba(228, 233, 242, 0.18)",
+        accentColor: "rgba(255, 255, 255, 0.72)",
+        tailColor: "rgba(226, 233, 242, ALPHA)"
+      });
     }
 
     function createArrowSprite(variantIndex, frameIndex, options = {}) {
@@ -388,8 +613,16 @@
       return sprite;
     }
 
-    const fireballSprites = createVariantFrames(FIREBALL_VARIANTS, FIREBALL_FRAMES, createFireballSprite);
-    const fireSparkSprites = createVariantFrames(FIRE_SPARK_VARIANTS, FIRE_SPARK_FRAMES, createFireSparkSprite);
+    const fireballSprites = createVariantFrames(FIREBALL_VARIANTS, FIREBALL_FRAMES, createFireballSprite, "fireball");
+    const fireSparkSprites = createVariantFrames(FIRE_SPARK_VARIANTS, FIRE_SPARK_FRAMES, createFireSparkSprite, "fire_spark");
+    const frostboltSprites = createVariantFrames(FROSTBOLT_VARIANTS, FROSTBOLT_FRAMES, createFrostboltSprite, "frostbolt");
+    const arcaneMissileSprites = createVariantFrames(
+      ARCANE_MISSILE_VARIANTS,
+      ARCANE_MISSILE_FRAMES,
+      createArcaneMissileSprite,
+      "arcane_missiles"
+    );
+    const boneArrowSprites = createVariantFrames(BONE_ARROW_VARIANTS, BONE_ARROW_FRAMES, createBoneArrowSprite, "bone_arrow");
     const rangerArrowSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         shaftColor: "#d9dfeb",
@@ -401,7 +634,7 @@
         tailColor: "rgba(206, 221, 255, ALPHA)",
         ringColor: "rgba(244, 247, 255, 0.72)"
       })
-    );
+    , "ranger_arrow");
     const poisonArrowSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         shaftColor: "#bfd8c1",
@@ -413,7 +646,7 @@
         tailColor: "rgba(117, 226, 139, ALPHA)",
         ringColor: "rgba(190, 255, 184, 0.72)"
       })
-    );
+    , "poison_arrow");
     const explosiveArrowSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         shaftColor: "#e8d2ba",
@@ -425,7 +658,7 @@
         tailColor: "rgba(255, 152, 76, ALPHA)",
         ringColor: "rgba(255, 204, 124, 0.72)"
       })
-    );
+    , "explosive_arrow");
     const shrapnelShardSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         size: 50,
@@ -439,7 +672,7 @@
         accentColor: "rgba(255, 251, 240, 0.74)",
         tailColor: "rgba(228, 216, 184, ALPHA)"
       })
-    );
+    , "shrapnel_shard");
     const ballistaBoltSprites = createVariantFrames(ARROW_VARIANTS, ARROW_FRAMES, (variant, frame) =>
       createArrowSprite(variant, frame, {
         size: 66,
@@ -454,7 +687,7 @@
         tailColor: "rgba(219, 208, 172, ALPHA)",
         ringColor: "rgba(171, 122, 71, 0.8)"
       })
-    );
+    , "ballista_bolt");
     const shrapnelGrenadeSprites = createVariantFrames(GRENADE_VARIANTS, GRENADE_FRAMES, (variant, frame) =>
       createGrenadeSprite(variant, frame, {
         bodyFill: "#5e6673",
@@ -464,7 +697,7 @@
         fuseSpark: "rgba(255, 247, 196, 0.94)",
         trailColor: "rgba(255, 222, 172, ALPHA)"
       })
-    );
+    , "shrapnel_grenade");
 
     function getProjectileVisualState(projectile, now) {
       const key = String(projectile.id ?? "");
@@ -557,6 +790,16 @@
 
     function drawBallistaBoltProjectile(p, runtime, now) {
       drawCachedSpriteProjectile(ballistaBoltSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, p, runtime, now);
+    }
+
+    function getCachedProjectileSpriteFrame(spriteSets, variantCount, frameCount, frameMs, runtime, now, headingOffset = 0) {
+      const heading = Math.atan2(runtime.dirY, runtime.dirX) + headingOffset;
+      const variant = getVariantIndex(runtime.seed, variantCount);
+      const frame = getFrameIndex(now, frameCount, frameMs);
+      return {
+        canvas: spriteSets[variant][frame],
+        rotation: heading
+      };
     }
 
     function drawFrostboltProjectile(p, runtime, now) {
@@ -822,6 +1065,55 @@
       ballista_bolt: drawBallistaBoltProjectile
     });
 
+    function getProjectileSpriteFrame(projectile, frameNow) {
+      const now = Number.isFinite(frameNow) ? frameNow : performance.now();
+      const runtime = getProjectileVisualState(projectile, now);
+      const abilityId = String(projectile && projectile.abilityId || "");
+      const actionDef = deps.getActionDefById(abilityId);
+      const projectileHook = deps.getAbilityVisualHook(abilityId, actionDef, "projectileRenderer", "default");
+      if (projectileHook === "fireball") {
+        return getCachedProjectileSpriteFrame(fireballSprites, FIREBALL_VARIANTS, FIREBALL_FRAMES, FIREBALL_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "fire_spark") {
+        return getCachedProjectileSpriteFrame(fireSparkSprites, FIRE_SPARK_VARIANTS, FIRE_SPARK_FRAMES, FIRE_SPARK_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "frostbolt") {
+        return getCachedProjectileSpriteFrame(frostboltSprites, FROSTBOLT_VARIANTS, FROSTBOLT_FRAMES, FROSTBOLT_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "arcane_missiles") {
+        return getCachedProjectileSpriteFrame(
+          arcaneMissileSprites,
+          ARCANE_MISSILE_VARIANTS,
+          ARCANE_MISSILE_FRAMES,
+          ARCANE_MISSILE_FRAME_MS,
+          runtime,
+          now
+        );
+      }
+      if (projectileHook === "bone_arrow") {
+        return getCachedProjectileSpriteFrame(boneArrowSprites, BONE_ARROW_VARIANTS, BONE_ARROW_FRAMES, BONE_ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "ranger_arrow") {
+        return getCachedProjectileSpriteFrame(rangerArrowSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "poison_arrow") {
+        return getCachedProjectileSpriteFrame(poisonArrowSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "explosive_arrow") {
+        return getCachedProjectileSpriteFrame(explosiveArrowSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "shrapnel_grenade") {
+        return getCachedProjectileSpriteFrame(shrapnelGrenadeSprites, GRENADE_VARIANTS, GRENADE_FRAMES, GRENADE_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "shrapnel_shard") {
+        return getCachedProjectileSpriteFrame(shrapnelShardSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      if (projectileHook === "ballista_bolt") {
+        return getCachedProjectileSpriteFrame(ballistaBoltSprites, ARROW_VARIANTS, ARROW_FRAMES, ARROW_FRAME_MS, runtime, now);
+      }
+      return null;
+    }
+
     function drawProjectile(projectile, cameraX, cameraY, frameNow) {
       const p = deps.worldToScreen(projectile.x + 0.5, projectile.y + 0.5, cameraX, cameraY);
       const now = Number.isFinite(frameNow) ? frameNow : performance.now();
@@ -844,7 +1136,8 @@
 
     return {
       pruneProjectileVisualRuntime,
-      drawProjectile
+      drawProjectile,
+      getProjectileSpriteFrame
     };
   }
 

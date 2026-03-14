@@ -95,7 +95,8 @@ function sanitizeBaseItem(entry, fallbackId) {
     weaponClass: String(entry.weaponClass || "").trim(),
     itemLevelRange: [itemLevelMin, itemLevelMax],
     tags: sanitizeStringArray(entry.tags),
-    baseStats
+    baseStats,
+    starterOnly: !!entry.starterOnly
   };
 }
 
@@ -133,7 +134,24 @@ function buildEquipmentItemDef(baseItem) {
     weaponClass: baseItem.weaponClass,
     baseStats: { ...baseItem.baseStats },
     itemLevelRange: [...baseItem.itemLevelRange],
-    tags: [...baseItem.tags]
+    tags: [...baseItem.tags],
+    starterOnly: !!baseItem.starterOnly
+  };
+}
+
+function buildClientAffixDef(affix) {
+  return {
+    id: affix.id,
+    name: affix.name,
+    minItemLevel: affix.minItemLevel,
+    allowedSlots: [...affix.allowedSlots],
+    requiredItemTagsAny: [...affix.requiredItemTagsAny],
+    tags: [...affix.tags],
+    modifiers: affix.modifiers.map((modifier) => ({
+      stat: modifier.stat,
+      rollMin: modifier.rollMin,
+      rollMax: modifier.rollMax
+    }))
   };
 }
 
@@ -201,7 +219,8 @@ function loadEquipmentConfigFromDisk(configPath) {
     .map((entry, index) => sanitizeAffix(entry, `suffix_${index + 1}`))
     .filter(Boolean);
 
-  const maxItemLevel = baseItems.reduce((max, entry) => Math.max(max, entry.itemLevelRange[1]), 1);
+  const droppableBaseItems = baseItems.filter((entry) => !entry.starterOnly);
+  const maxItemLevel = (droppableBaseItems.length ? droppableBaseItems : baseItems).reduce((max, entry) => Math.max(max, entry.itemLevelRange[1]), 1);
   const equipmentSlotIds = expandEquipmentSlotIds(itemSlots);
   const clientItemRarities = Object.fromEntries(
     rarityEntries.map((entry) => [
@@ -213,7 +232,27 @@ function loadEquipmentConfigFromDisk(configPath) {
   );
   const clientEquipmentConfig = {
     itemSlots: equipmentSlotIds,
-    itemRarities: clientItemRarities
+    itemRarities: clientItemRarities,
+    debugBaseItems: baseItems.filter((entry) => !entry.starterOnly).map((entry) => ({
+      id: entry.id,
+      name: entry.name,
+      slot: entry.slot,
+      weaponClass: entry.weaponClass,
+      itemLevelRange: [...entry.itemLevelRange],
+      tags: [...entry.tags],
+      baseStats: { ...entry.baseStats }
+    })),
+    debugPrefixes: prefixes.map(buildClientAffixDef),
+    debugSuffixes: suffixes.map(buildClientAffixDef),
+    debugRarities: rarityEntries.map((entry) => ({
+      id: entry.id,
+      prefixMin: entry.prefixMin,
+      prefixMax: entry.prefixMax,
+      suffixMin: entry.suffixMin,
+      suffixMax: entry.suffixMax,
+      color: entry.color || ""
+    })),
+    maxItemLevel
   };
   const equipmentItemDefs = baseItems.map(buildEquipmentItemDef);
 

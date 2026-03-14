@@ -3,6 +3,7 @@ function createPlayerEntitySyncState() {
     playerSlotsByRealId: new Map(),
     playerRealIdBySlot: new Map(),
     playerStatesBySlot: new Map(),
+    playerMetaSignatureBySlot: new Map(),
     playerSwingBySlot: new Map(),
     playerCastVersionBySlot: new Map(),
     playerEffectStatesBySlot: new Map(),
@@ -32,6 +33,7 @@ function createPlayerEntitySyncState() {
     nextLootBagSlot: 1,
     selfState: null,
     selfEffectState: null,
+    selfBuffStateSignature: "",
     areaEffectStatesById: new Map()
   };
 }
@@ -49,15 +51,51 @@ function createPlayerFactory(options = {}) {
     typeof options.normalizeItemEntries === "function" ? options.normalizeItemEntries : () => [];
   const addItemsToInventory =
     typeof options.addItemsToInventory === "function" ? options.addItemsToInventory : () => ({ changed: false });
+  const createEquipmentEntryFromBaseItem =
+    typeof options.createEquipmentEntryFromBaseItem === "function" ? options.createEquipmentEntryFromBaseItem : () => null;
+  const recomputePlayerDerivedStats =
+    typeof options.recomputePlayerDerivedStats === "function" ? options.recomputePlayerDerivedStats : () => {};
   const syncPlayerCopperFromInventory =
     typeof options.syncPlayerCopperFromInventory === "function" ? options.syncPlayerCopperFromInventory : () => {};
   const expNeededForLevel =
     typeof options.expNeededForLevel === "function" ? options.expNeededForLevel : () => 20;
   const sanitizeSpawn = typeof options.sanitizeSpawn === "function" ? options.sanitizeSpawn : (spawn) => spawn;
+  const defaultVisibilityRange = Math.max(1, Number(options.defaultVisibilityRange) || 20);
   const players = options.players instanceof Map ? options.players : null;
 
   if (!players) {
     throw new Error("createPlayerFactory requires players map");
+  }
+
+  function getSlotFamily(slotId) {
+    const normalized = String(slotId || "").trim();
+    if (normalized === "ring1" || normalized === "ring2") {
+      return "ring";
+    }
+    if (normalized === "trinket1" || normalized === "trinket2") {
+      return "trinket";
+    }
+    return normalized;
+  }
+
+  function findFirstCompatibleEquipmentSlot(equipmentSlots, slotId) {
+    if (!equipmentSlots || typeof equipmentSlots !== "object") {
+      return "";
+    }
+    const family = getSlotFamily(slotId);
+    const exact = String(slotId || "").trim();
+    if (exact && exact in equipmentSlots && !equipmentSlots[exact]) {
+      return exact;
+    }
+    for (const candidate of Object.keys(equipmentSlots)) {
+      if (getSlotFamily(candidate) !== family) {
+        continue;
+      }
+      if (!equipmentSlots[candidate]) {
+        return candidate;
+      }
+    }
+    return "";
   }
 
   function createPlayer(params = {}) {
@@ -108,6 +146,7 @@ function createPlayerFactory(options = {}) {
       baseMana: classDef.baseMana,
       healthRegen: 0,
       baseHealthRegen: 0,
+      buffHealthRegenFlat: 0,
       manaRegen: classDef.manaRegen,
       baseManaRegen: classDef.manaRegen,
       moveSpeed: classDef.movementSpeed,
@@ -123,14 +162,18 @@ function createPlayerFactory(options = {}) {
       thorns: 0,
       attackSpeedMultiplier: 1,
       castSpeedMultiplier: 1,
+      meleeDamageBonusPercent: 0,
       activeHeals: [],
       activeManaRestores: [],
+      activeBuffs: [],
       activeDots: new Map(),
       copper: 0,
       level: 1,
       exp: 0,
       expToNext: expNeededForLevel(1),
       skillPoints: 0,
+      talentPoints: 0,
+      talents: {},
       abilityLevels: new Map(classDef.abilities.map((entry) => [entry.id, entry.level])),
       abilityLastUsedAt: new Map(),
       activeCast: null,
@@ -146,6 +189,10 @@ function createPlayerFactory(options = {}) {
       burningUntil: 0,
       burnAppliedAt: 0,
       burnDurationMs: 0,
+      clientViewportWidth: 0,
+      clientViewportHeight: 0,
+      visibilityRangeX: defaultVisibilityRange,
+      visibilityRangeY: defaultVisibilityRange,
       inventorySlots: createEmptyInventorySlots(),
       equipmentSlots: createEmptyEquipmentSlots(),
       input: { dx: 0, dy: 0 },
@@ -159,6 +206,18 @@ function createPlayerFactory(options = {}) {
     if (starterItems.length) {
       addItemsToInventory(player, starterItems);
     }
+    for (const itemId of Array.isArray(classDef.startingEquipment) ? classDef.startingEquipment : []) {
+      const entry = createEquipmentEntryFromBaseItem(itemId, { rarity: "normal" });
+      if (!entry) {
+        continue;
+      }
+      const targetSlot = findFirstCompatibleEquipmentSlot(player.equipmentSlots, entry.slot);
+      if (!targetSlot) {
+        continue;
+      }
+      player.equipmentSlots[targetSlot] = entry;
+    }
+    recomputePlayerDerivedStats(player);
     syncPlayerCopperFromInventory(player, false);
 
     if (params.overrides && typeof params.overrides === "object") {

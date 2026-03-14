@@ -24,8 +24,23 @@ function createMobLifecycleTools({
   targetMobClusters,
   clusterAreaSize,
   maxClustersPerArea,
+  visibilityRange,
+  observedSpawnPadding,
+  minSpawnRadiusFromCenter,
+  unobservedDespawnMs,
+  getMobLevelForDistance,
+  applyScaledStatsToMob,
   logger = console
 }) {
+  const spawnerIdsByCellKey = new Map();
+  const initializedCellKeys = new Set();
+  const centerX = mapWidth / 2;
+  const centerY = mapHeight / 2;
+
+  function getDistanceFromCenter(x, y) {
+    return Math.hypot((Number(x) || 0) - centerX, (Number(y) || 0) - centerY);
+  }
+
   function isPointExcludedByTown(x, y) {
     if (!townLayout || townLayout.enabled === false) {
       return false;
@@ -41,7 +56,83 @@ function createMobLifecycleTools({
     );
   }
 
-  function createMob(spawner) {
+  function getSpawnerCellKey(x, y) {
+    const cellX = Math.floor((Number(x) || 0) / clusterAreaSize);
+    const cellY = Math.floor((Number(y) || 0) / clusterAreaSize);
+    return `${cellX},${cellY}`;
+  }
+
+  function getCellBounds(cellX, cellY) {
+    const minX = Math.max(0, cellX * clusterAreaSize);
+    const minY = Math.max(0, cellY * clusterAreaSize);
+    return {
+      minX,
+      minY,
+      maxX: Math.min(mapWidth - 0.01, minX + clusterAreaSize),
+      maxY: Math.min(mapHeight - 0.01, minY + clusterAreaSize)
+    };
+  }
+
+  function registerSpawnerCell(spawner) {
+    if (!spawner) {
+      return;
+    }
+    const cellKey = String(spawner.cellKey || getSpawnerCellKey(spawner.x, spawner.y));
+    spawner.cellKey = cellKey;
+    const list = spawnerIdsByCellKey.get(cellKey) || [];
+    if (!list.includes(spawner.id)) {
+      list.push(spawner.id);
+      spawnerIdsByCellKey.set(cellKey, list);
+    }
+  }
+
+  function unregisterMobFromSpawner(mob) {
+    if (!mob) {
+      return;
+    }
+    const spawner = mob.spawnerId ? mobSpawners.get(String(mob.spawnerId)) || null : null;
+    if (!spawner || !Array.isArray(spawner.mobIds)) {
+      return;
+    }
+    spawner.mobIds = spawner.mobIds.filter((mobId) => String(mobId) !== String(mob.id));
+  }
+
+  function getObservationSources() {
+    const sources = [];
+    for (const player of players.values()) {
+      if (!player || Number(player.hp) <= 0) {
+        continue;
+      }
+      sources.push(player);
+    }
+    return sources;
+  }
+
+  function isPointWithinObservedRange(x, y, extraPadding = 0) {
+    const range = Math.max(0, Number(visibilityRange) || 0) + Math.max(0, Number(extraPadding) || 0);
+    for (const source of getObservationSources()) {
+      if (
+        Math.abs((Number(source.x) || 0) - (Number(x) || 0)) <= range &&
+        Math.abs((Number(source.y) || 0) - (Number(y) || 0)) <= range
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function isSpawnerObserved(spawnerOrX, y = null) {
+    if (spawnerOrX && typeof spawnerOrX === "object") {
+      return isPointWithinObservedRange(spawnerOrX.x, spawnerOrX.y, observedSpawnPadding);
+    }
+    return isPointWithinObservedRange(spawnerOrX, y, observedSpawnPadding);
+  }
+
+  function isPointActivelyObserved(x, y) {
+    return isPointWithinObservedRange(x, y, 0);
+  }
+
+  function createMob(spawner, now = Date.now()) {
     if (!spawner.clusterDef || !spawner.clusterDef.members.length) {
       return null;
     }
@@ -49,6 +140,8 @@ function createMobLifecycleTools({
     const memberIndex = randomInt(0, spawner.clusterDef.members.length - 1);
     const mobDef = spawner.clusterDef.members[memberIndex];
     const spawnPos = pickMobSpawnPosition(spawner.x, spawner.y);
+    const spawnDistanceFromCenter = getDistanceFromCenter(spawnPos.x, spawnPos.y);
+    const level = getMobLevelForDistance(spawnDistanceFromCenter);
     const mob = {
       id: String(allocateMobId()),
       spawnerId: spawner.id,
@@ -83,7 +176,7 @@ function createMobLifecycleTools({
       alive: true,
       respawnAt: 0,
       wanderTarget: null,
-      nextWanderAt: Date.now() + randomInt(400, 1200),
+      nextWanderAt: now + randomInt(400, 1200),
       lastAttackAt: 0,
       chaseTargetPlayerId: null,
       chaseUntil: 0,
@@ -93,8 +186,12 @@ function createMobLifecycleTools({
       burningUntil: 0,
       activeDots: new Map(),
       returningHome: false,
-      abilityCooldowns: new Map()
+      abilityCooldowns: new Map(),
+      distanceFromCenter: spawnDistanceFromCenter,
+      level,
+      lastObservedAt: now
     };
+    applyScaledStatsToMob(mob, mobDef, level, { keepHpRatio: false });
     mobs.set(mob.id, mob);
     spawner.mobIds.push(mob.id);
     return mob;
@@ -103,73 +200,202 @@ function createMobLifecycleTools({
   function pickMobSpawnPosition(originX, originY) {
     for (let attempt = 0; attempt < 8; attempt += 1) {
       const candidate = randomPointInRadius(originX, originY, 1.5);
-      if (!isPointExcludedByTown(candidate.x, candidate.y)) {
+      if (
+        !isPointExcludedByTown(candidate.x, candidate.y) &&
+        getDistanceFromCenter(candidate.x, candidate.y) >= minSpawnRadiusFromCenter
+      ) {
         return candidate;
       }
     }
-    return { x: originX, y: originY };
+    if (getDistanceFromCenter(originX, originY) >= minSpawnRadiusFromCenter) {
+      return { x: originX, y: originY };
+    }
+    const dirX = (Number(originX) || centerX) - centerX;
+    const dirY = (Number(originY) || centerY) - centerY;
+    const length = Math.hypot(dirX, dirY) || 1;
+    return {
+      x: clamp(centerX + (dirX / length) * minSpawnRadiusFromCenter, 0, mapWidth - 1),
+      y: clamp(centerY + (dirY / length) * minSpawnRadiusFromCenter, 0, mapHeight - 1)
+    };
   }
 
-  function getSpawnerCellKey(x, y) {
-    const cellX = Math.floor(x / clusterAreaSize);
-    const cellY = Math.floor(y / clusterAreaSize);
-    return `${cellX},${cellY}`;
+  function estimateObservedCellCapacity() {
+    const observedRadius = Math.max(0, Number(visibilityRange) || 0) + Math.max(0, Number(observedSpawnPadding) || 0);
+    const cellRadius = Math.max(0, Math.ceil(observedRadius / clusterAreaSize));
+    return Math.max(1, Math.pow(cellRadius * 2 + 1, 2));
   }
 
-  function initializeMobSpawners() {
-    const centerX = mapWidth / 2;
-    const centerY = mapHeight / 2;
+  function getClusterSlotSpawnChance() {
     const serverConfig = getServerConfig();
-    const mobConfig = getMobConfig();
-    const targetClusters = Math.max(0, Math.round(targetMobClusters * serverConfig.mobSpawnMultiplier));
-    const maxSpawnRadius = Math.max(1, Number(mobConfig.maxSpawnRadius) || 1);
+    const desiredClusters = Math.max(1, Math.round(targetMobClusters * (Number(serverConfig.mobSpawnMultiplier) || 1)));
+    const estimatedCells = estimateObservedCellCapacity();
+    return clamp(desiredClusters / Math.max(1, estimatedCells * maxClustersPerArea), 0, 1);
+  }
 
-    const clustersPerCell = new Map();
-    let attempts = 0;
-    const maxAttempts = targetClusters * 100;
-
-    while (mobSpawners.size < targetClusters && attempts < maxAttempts) {
-      attempts += 1;
-      const distanceFromCenter = Math.random() * maxSpawnRadius;
-      const clusterDef = pickClusterDef(mobConfig, distanceFromCenter);
-      if (!clusterDef) {
+  function pickSpawnerPositionInCell(cellX, cellY) {
+    const bounds = getCellBounds(cellX, cellY);
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const x = clamp(bounds.minX + Math.random() * Math.max(0.1, bounds.maxX - bounds.minX), 0, mapWidth - 1);
+      const y = clamp(bounds.minY + Math.random() * Math.max(0.1, bounds.maxY - bounds.minY), 0, mapHeight - 1);
+      const distanceFromCenter = getDistanceFromCenter(x, y);
+      if (distanceFromCenter < minSpawnRadiusFromCenter) {
         continue;
       }
-
-      const angle = Math.random() * Math.PI * 2;
-      const x = clamp(centerX + Math.cos(angle) * distanceFromCenter, 0, mapWidth - 1);
-      const y = clamp(centerY + Math.sin(angle) * distanceFromCenter, 0, mapHeight - 1);
       if (isPointExcludedByTown(x, y)) {
         continue;
       }
-      const cellKey = getSpawnerCellKey(x, y);
-      const existingInCell = clustersPerCell.get(cellKey) || 0;
-      if (existingInCell >= maxClustersPerArea) {
-        continue;
-      }
-
-      const spawner = {
-        id: String(allocateSpawnerId()),
+      return {
         x,
         y,
-        clusterName: clusterDef.name,
-        clusterDef,
-        mobIds: []
+        distanceFromCenter
       };
+    }
+    return null;
+  }
 
-      mobSpawners.set(spawner.id, spawner);
-      clustersPerCell.set(cellKey, existingInCell + 1);
+  function createSpawnerInCell(cellX, cellY, clusterDef, spawnPosition) {
+    if (!clusterDef || !spawnPosition) {
+      return null;
+    }
+    const spawner = {
+      id: String(allocateSpawnerId()),
+      x: spawnPosition.x,
+      y: spawnPosition.y,
+      clusterName: clusterDef.name,
+      clusterDef,
+      distanceFromCenter: spawnPosition.distanceFromCenter,
+      cellKey: `${cellX},${cellY}`,
+      mobIds: []
+    };
+    mobSpawners.set(spawner.id, spawner);
+    registerSpawnerCell(spawner);
+    for (let index = 0; index < clusterDef.maxSize; index += 1) {
+      createMob(spawner);
+    }
+    return spawner;
+  }
 
-      for (let m = 0; m < clusterDef.maxSize; m += 1) {
-        createMob(spawner);
+  function initializeCellSpawners(cellX, cellY, now = Date.now()) {
+    const cellKey = `${cellX},${cellY}`;
+    if (initializedCellKeys.has(cellKey)) {
+      return;
+    }
+    initializedCellKeys.add(cellKey);
+
+    const bounds = getCellBounds(cellX, cellY);
+    const cellCenterX = (bounds.minX + bounds.maxX) * 0.5;
+    const cellCenterY = (bounds.minY + bounds.maxY) * 0.5;
+    const cellDistance = getDistanceFromCenter(cellCenterX, cellCenterY);
+    if (cellDistance < minSpawnRadiusFromCenter) {
+      return;
+    }
+
+    const mobConfig = getMobConfig();
+    if (!mobConfig || cellDistance > Math.max(0, Number(mobConfig.maxSpawnRadius) || 0)) {
+      return;
+    }
+
+    const clusterSlotSpawnChance = getClusterSlotSpawnChance();
+    let spawned = 0;
+    for (let slotIndex = 0; slotIndex < maxClustersPerArea; slotIndex += 1) {
+      if (Math.random() > clusterSlotSpawnChance) {
+        continue;
+      }
+      const spawnPosition = pickSpawnerPositionInCell(cellX, cellY);
+      if (!spawnPosition) {
+        continue;
+      }
+      const clusterDef = pickClusterDef(mobConfig, spawnPosition.distanceFromCenter);
+      if (!clusterDef) {
+        continue;
+      }
+      createSpawnerInCell(cellX, cellY, clusterDef, spawnPosition, now);
+      spawned += 1;
+    }
+
+    if (spawned === 0) {
+      spawnerIdsByCellKey.set(cellKey, []);
+    }
+  }
+
+  function ensureObservedSpawnerCoverage(now = Date.now()) {
+    const observedRadius = Math.max(0, Number(visibilityRange) || 0) + Math.max(0, Number(observedSpawnPadding) || 0);
+    const cellRadius = Math.max(0, Math.ceil(observedRadius / clusterAreaSize));
+    const seenCells = new Set();
+
+    for (const source of getObservationSources()) {
+      const originCellX = Math.floor((Number(source.x) || 0) / clusterAreaSize);
+      const originCellY = Math.floor((Number(source.y) || 0) / clusterAreaSize);
+      for (let cellY = originCellY - cellRadius; cellY <= originCellY + cellRadius; cellY += 1) {
+        for (let cellX = originCellX - cellRadius; cellX <= originCellX + cellRadius; cellX += 1) {
+          if (cellX < 0 || cellY < 0) {
+            continue;
+          }
+          const cellKey = `${cellX},${cellY}`;
+          if (seenCells.has(cellKey)) {
+            continue;
+          }
+          const bounds = getCellBounds(cellX, cellY);
+          if (
+            bounds.minX > Number(source.x) + observedRadius ||
+            bounds.maxX < Number(source.x) - observedRadius ||
+            bounds.minY > Number(source.y) + observedRadius ||
+            bounds.maxY < Number(source.y) - observedRadius
+          ) {
+            continue;
+          }
+          seenCells.add(cellKey);
+          initializeCellSpawners(cellX, cellY, now);
+          const spawnerIds = spawnerIdsByCellKey.get(cellKey) || [];
+          for (const spawnerId of spawnerIds) {
+            const spawner = mobSpawners.get(String(spawnerId)) || null;
+            if (!spawner || !isSpawnerObserved(spawner)) {
+              continue;
+            }
+            spawner.mobIds = Array.isArray(spawner.mobIds) ? spawner.mobIds.filter((mobId) => mobs.has(String(mobId))) : [];
+            while (spawner.mobIds.length < spawner.clusterDef.maxSize) {
+              createMob(spawner, now);
+            }
+          }
+        }
       }
     }
+  }
 
-    if (targetClusters > 0 && mobSpawners.size < targetClusters) {
-      logger.warn(
-        `Only initialized ${mobSpawners.size}/${targetClusters} mob clusters with area limit ${maxClustersPerArea} per ${clusterAreaSize}x${clusterAreaSize}.`
-      );
+  function refreshMobObservation(now = Date.now()) {
+    for (const mob of mobs.values()) {
+      if (mob && isPointActivelyObserved(mob.x, mob.y)) {
+        mob.lastObservedAt = now;
+      }
     }
+  }
+
+  function despawnUnobservedMobs(now = Date.now()) {
+    if (unobservedDespawnMs <= 0) {
+      return 0;
+    }
+    let removed = 0;
+    for (const mob of Array.from(mobs.values())) {
+      const lastObservedAt = Number(mob?.lastObservedAt) || 0;
+      if (lastObservedAt > 0 && now - lastObservedAt < unobservedDespawnMs) {
+        continue;
+      }
+      unregisterMobFromSpawner(mob);
+      clearMobCast(mob);
+      mobs.delete(String(mob.id));
+      removed += 1;
+    }
+    return removed;
+  }
+
+  function initializeMobSpawners() {
+    mobSpawners.clear();
+    spawnerIdsByCellKey.clear();
+    initializedCellKeys.clear();
+    if (mobs.size > 0) {
+      mobs.clear();
+    }
+    logger.log("[mobs] Using observed-area dynamic spawning.");
   }
 
   function killMob(mob, killerPlayerId = null) {
@@ -189,6 +415,7 @@ function createMobLifecycleTools({
     mob.burningUntil = 0;
     mob.activeDots = new Map();
     mob.abilityCooldowns = new Map();
+    mob.lastObservedAt = Date.now();
     clearMobCast(mob);
     queueMobDeathEvent(mob);
     const killer = killerPlayerId ? players.get(String(killerPlayerId)) : null;
@@ -212,10 +439,16 @@ function createMobLifecycleTools({
   }
 
   function respawnMob(mob) {
+    if (!mob) {
+      return;
+    }
+    const mobConfig = getMobConfig();
+    const mobDef = mobConfig && mobConfig.mobDefs instanceof Map ? mobConfig.mobDefs.get(String(mob.type || "")) : null;
     const spawnPos = pickMobSpawnPosition(mob.spawnX, mob.spawnY);
     mob.x = spawnPos.x;
     mob.y = spawnPos.y;
-    mob.hp = mob.maxHp;
+    mob.distanceFromCenter = getDistanceFromCenter(spawnPos.x, spawnPos.y);
+    mob.level = getMobLevelForDistance(mob.distanceFromCenter);
     mob.alive = true;
     mob.lastBiteDirection = { dx: 0, dy: -1 };
     mob.lastAttackAbilityId = "";
@@ -233,14 +466,35 @@ function createMobLifecycleTools({
     mob.activeDots = new Map();
     mob.returningHome = false;
     mob.abilityCooldowns = new Map();
+    mob.lastObservedAt = Date.now();
+    if (mobDef) {
+      applyScaledStatsToMob(mob, mobDef, Number(mob.level) || 1, { keepHpRatio: false });
+    } else {
+      mob.hp = mob.maxHp;
+    }
     clearMobCast(mob);
+  }
+
+  function getAliveMobCount() {
+    let total = 0;
+    for (const mob of mobs.values()) {
+      if (mob && mob.alive) {
+        total += 1;
+      }
+    }
+    return total;
   }
 
   return {
     createMob,
     initializeMobSpawners,
+    ensureObservedSpawnerCoverage,
+    refreshMobObservation,
+    despawnUnobservedMobs,
     killMob,
-    respawnMob
+    respawnMob,
+    isSpawnerObserved,
+    getAliveMobCount
   };
 }
 
