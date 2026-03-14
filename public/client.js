@@ -1882,7 +1882,11 @@ function applyGameplayClientConfig(payload) {
     0.1,
     50
   );
-  townClientState.layout = town ? { ...town, vendor: town.vendor ? { ...town.vendor } : null } : null;
+  townClientState.layout = town ? { 
+    ...town, 
+    vendor: town.vendor ? { ...town.vendor } : null,
+    questGivers: town.questGivers ? town.questGivers.map(qg => ({ ...qg })) : []
+  } : null;
   townClientState.wallTiles =
     townClientState.layout && sharedGetTownWallTiles ? sharedGetTownWallTiles(townClientState.layout) : [];
   updateVendorPanelUI();
