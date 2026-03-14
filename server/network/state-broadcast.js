@@ -7,7 +7,8 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     inVisibilityRange,
     VISIBILITY_RANGE,
     serializePlayer,
-    serializeMob
+    serializeMob,
+    spatialGrids
   } = deps;
 
   const nearbyPlayers = [];
@@ -17,41 +18,87 @@ function collectNearbyEntitiesForPlayer(player, deps) {
   const nearbyProjectiles = [];
   const nearbyLootBags = [];
 
-  for (const other of players.values()) {
-    if (other.id === player.id) {
-      continue;
+  if (spatialGrids) {
+    const playerIds = spatialGrids.players.queryRect(player.x, player.y, VISIBILITY_RANGE);
+    for (let i = 0; i < playerIds.length; i++) {
+      const id = playerIds[i];
+      if (id === player.id) {
+        continue;
+      }
+      const other = players.get(id);
+      if (other && inVisibilityRange(player, other, VISIBILITY_RANGE)) {
+        nearbyPlayers.push(serializePlayer(other));
+        nearbyPlayerObjects.push(other);
+      }
     }
-    if (inVisibilityRange(player, other, VISIBILITY_RANGE)) {
-      nearbyPlayers.push(serializePlayer(other));
-      nearbyPlayerObjects.push(other);
-    }
-  }
 
-  for (const projectile of projectiles.values()) {
-    if (inVisibilityRange(player, projectile, VISIBILITY_RANGE)) {
-      nearbyProjectiles.push({
-        id: projectile.id,
-        ownerId: projectile.ownerId,
-        abilityId: projectile.abilityId,
-        x: projectile.x,
-        y: projectile.y
-      });
+    const projectileIds = spatialGrids.projectiles.queryRect(player.x, player.y, VISIBILITY_RANGE);
+    for (let i = 0; i < projectileIds.length; i++) {
+      const projectile = projectiles.get(projectileIds[i]);
+      if (projectile && inVisibilityRange(player, projectile, VISIBILITY_RANGE)) {
+        nearbyProjectiles.push({
+          id: projectile.id,
+          ownerId: projectile.ownerId,
+          abilityId: projectile.abilityId,
+          x: projectile.x,
+          y: projectile.y
+        });
+      }
     }
-  }
 
-  for (const mob of mobs.values()) {
-    if (!mob.alive) {
-      continue;
+    const mobIds = spatialGrids.mobs.queryRect(player.x, player.y, VISIBILITY_RANGE);
+    for (let i = 0; i < mobIds.length; i++) {
+      const mob = mobs.get(mobIds[i]);
+      if (mob && mob.alive && inVisibilityRange(player, mob, VISIBILITY_RANGE)) {
+        nearbyMobs.push(serializeMob(mob));
+        nearbyMobObjects.push(mob);
+      }
     }
-    if (inVisibilityRange(player, mob, VISIBILITY_RANGE)) {
-      nearbyMobs.push(serializeMob(mob));
-      nearbyMobObjects.push(mob);
-    }
-  }
 
-  for (const bag of lootBags.values()) {
-    if (inVisibilityRange(player, bag, VISIBILITY_RANGE)) {
-      nearbyLootBags.push(bag);
+    const bagIds = spatialGrids.lootBags.queryRect(player.x, player.y, VISIBILITY_RANGE);
+    for (let i = 0; i < bagIds.length; i++) {
+      const bag = lootBags.get(bagIds[i]);
+      if (bag && inVisibilityRange(player, bag, VISIBILITY_RANGE)) {
+        nearbyLootBags.push(bag);
+      }
+    }
+  } else {
+    for (const other of players.values()) {
+      if (other.id === player.id) {
+        continue;
+      }
+      if (inVisibilityRange(player, other, VISIBILITY_RANGE)) {
+        nearbyPlayers.push(serializePlayer(other));
+        nearbyPlayerObjects.push(other);
+      }
+    }
+
+    for (const projectile of projectiles.values()) {
+      if (inVisibilityRange(player, projectile, VISIBILITY_RANGE)) {
+        nearbyProjectiles.push({
+          id: projectile.id,
+          ownerId: projectile.ownerId,
+          abilityId: projectile.abilityId,
+          x: projectile.x,
+          y: projectile.y
+        });
+      }
+    }
+
+    for (const mob of mobs.values()) {
+      if (!mob.alive) {
+        continue;
+      }
+      if (inVisibilityRange(player, mob, VISIBILITY_RANGE)) {
+        nearbyMobs.push(serializeMob(mob));
+        nearbyMobObjects.push(mob);
+      }
+    }
+
+    for (const bag of lootBags.values()) {
+      if (inVisibilityRange(player, bag, VISIBILITY_RANGE)) {
+        nearbyLootBags.push(bag);
+      }
     }
   }
 
@@ -245,10 +292,25 @@ function clearPendingWorldEvents(deps, options = {}) {
   }
 }
 
+function rebuildSpatialGrids(deps) {
+  const { spatialGrids, players, mobs, projectiles, lootBags } = deps;
+  if (!spatialGrids) {
+    return;
+  }
+  spatialGrids.players.rebuildFromMap(players);
+  spatialGrids.mobs.rebuildFromMap(mobs, function (mob) {
+    return mob.alive;
+  });
+  spatialGrids.projectiles.rebuildFromMap(projectiles);
+  spatialGrids.lootBags.rebuildFromMap(lootBags);
+}
+
 function broadcastStateToPlayers(deps, now = Date.now(), options = {}) {
   const { players, buildEntityUpdatePacket, sendBinary } = deps;
   const sendCosmeticBursts = options.sendCosmeticBursts !== false;
   const sendDamageBursts = options.sendDamageBursts !== false;
+
+  rebuildSpatialGrids(deps);
 
   for (const player of players.values()) {
     if (!player || !player.ws) {

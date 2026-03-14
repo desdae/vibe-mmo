@@ -14,6 +14,7 @@ const { createProjectileTickSystem } = require("./server/runtime/projectile-tick
 const { createPlayerTickSystem } = require("./server/runtime/player-tick");
 const { createMobTickSystem } = require("./server/runtime/mob-tick");
 const { createWorldState } = require("./server/runtime/world-state");
+const { createSpatialGrid } = require("./server/runtime/spatial-grid");
 const {
   createAbilityConfigLoader,
   createClassAbilityDefsBroadcaster
@@ -971,6 +972,12 @@ const runtimeBootstrap = createRuntimeBootstrap({
     lootBags,
     VISIBILITY_RANGE,
     inVisibilityRange,
+    spatialGrids: {
+      players: createSpatialGrid(VISIBILITY_RANGE),
+      mobs: createSpatialGrid(VISIBILITY_RANGE),
+      projectiles: createSpatialGrid(VISIBILITY_RANGE),
+      lootBags: createSpatialGrid(VISIBILITY_RANGE)
+    },
     serializePlayer,
     serializeMob,
     buildPlayerSwingEventsForRecipient,
