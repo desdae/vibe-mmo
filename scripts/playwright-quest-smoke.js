@@ -162,6 +162,38 @@ async function ensureObjectiveComplete(page, questId, textFragment) {
   }, { expectedQuestId: questId, expectedText: textFragment });
 }
 
+async function ensurePixiQuestNpcVisible(page, expectedNpcId) {
+  await page.evaluate(() => window.__vibemmoTest.setRendererMode("pixi"));
+  await page.waitForFunction(() => window.__vibemmoTest.getRendererMode() === "pixi");
+  let lastState = null;
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    lastState = await getState(page);
+    const stats = lastState && lastState.rendererStats ? lastState.rendererStats : null;
+    const samples = Array.isArray(stats && stats.questNpcSamples) ? stats.questNpcSamples : [];
+    const sample = samples.find((entry) => String(entry && entry.id || "") === expectedNpcId);
+    if (
+      stats &&
+      stats.mode === "pixi" &&
+      Number(stats.questNpcCount) >= 1 &&
+      sample &&
+      sample.visible &&
+      sample.spriteVisible &&
+      sample.onScreen &&
+      String(sample.label || "").includes("Town Herald")
+    ) {
+      return;
+    }
+    await sleep(250);
+  }
+  throw new Error(
+    `Town Herald was not visible in Pixi renderer. Last renderer snapshot:\n${JSON.stringify(
+      lastState && lastState.rendererStats ? lastState.rendererStats : lastState,
+      null,
+      2
+    )}`
+  );
+}
+
 function findNearestMob(state, matcher) {
   if (!state || !state.self || !Array.isArray(state.mobs)) {
     return null;
@@ -259,6 +291,7 @@ async function run() {
     });
 
     await joinGame(page);
+    await ensurePixiQuestNpcVisible(page, "town_herald");
 
     const initialState = await getState(page);
     const town = initialState.town;

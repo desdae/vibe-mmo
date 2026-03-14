@@ -115,7 +115,7 @@
     let projectileFallbackNodes = new Map();
     let vendorNode = null;
     let questNpcLayer = null;
-    let questNpcNode = null;
+    let questNpcNodes = new Map();
     let pixiParticleSystem = null;
     const floatingDamageTextPool = [];
     const activeFloatingDamageTexts = [];
@@ -137,6 +137,8 @@
       pooledSprites: 0,
       particleEmitters: 0,
       particleSprites: 0,
+      questNpcCount: 0,
+      questNpcSamples: [],
       projectileSamples: []
     };
     const spritePools = {
@@ -2486,6 +2488,19 @@
       return frame;
     }
 
+    function getQuestNpcSpriteFrame() {
+      if (getQuestNpcSprite) {
+        const questNpcSprite = getQuestNpcSprite();
+        if (questNpcSprite && questNpcSprite.width > 0 && questNpcSprite.height > 0) {
+          return {
+            canvas: questNpcSprite,
+            rotation: 0
+          };
+        }
+      }
+      return null;
+    }
+
 
     function drawPlayerGraphic(graphics, player, isSelf) {
       const classType = String(player && player.classType || "").toLowerCase();
@@ -3361,27 +3376,37 @@
       }
 
       // Render quest NPCs
-      const questGivers = frameViewModel.townQuestGivers;
-      if (questGivers && questGivers.length > 0) {
-        const questNpc = questGivers[0];
-        if (questNpc) {
-          if (!questNpcNode) {
-            questNpcNode = createLabeledSpriteNode();
-            questNpcLayer.addChild(questNpcNode.container);
-          }
+      syncNodeMap(
+        questNpcNodes,
+        Array.isArray(frameViewModel.townQuestGivers) ? frameViewModel.townQuestGivers : [],
+        (entry) => String(entry && entry.id || ""),
+        () => createLabeledSpriteNode(),
+        (node, questNpc) => {
           const p = worldToScreen(Number(questNpc.x) + 0.5, Number(questNpc.y) + 0.5, cameraX, cameraY, width, height);
           const questBob = Math.sin(frameNow / 340) * 1.2;
-          const sprite = getQuestNpcSprite ? getQuestNpcSprite() : null;
-          // Account for sprite height (anchor at bottom-center)
-          const spriteHeight = sprite ? sprite.height : 64;
-          // Draw sprite with bottom at world position, then offset for label
-          updateLabeledSpriteNode(questNpcNode, p.x, p.y - spriteHeight + questBob, String(questNpc.name || "Quest Giver"), 1, 1, sprite, (graphics) => {
-            graphics.clear();
-          });
-          questNpcNode.hpBack.clear();
-          questNpcNode.hpFill.clear();
-        }
-      }
+          const spriteFrame = getQuestNpcSpriteFrame();
+          const spriteHeight =
+            spriteFrame && spriteFrame.canvas && Number(spriteFrame.canvas.height) > 0
+              ? Number(spriteFrame.canvas.height)
+              : 64;
+          // Pixi sprites are anchored at the center, so shift by half-height to keep feet on the tile.
+          updateLabeledSpriteNode(
+            node,
+            p.x,
+            p.y - spriteHeight * 0.5 + questBob,
+            String(questNpc.name || "Quest Giver"),
+            1,
+            1,
+            spriteFrame,
+            (graphics) => {
+              graphics.clear();
+            }
+          );
+          node.hpBack.clear();
+          node.hpFill.clear();
+        },
+        questNpcLayer
+      );
 
       syncNodeMap(
         mobNodes,
@@ -3545,7 +3570,8 @@
           areaUnderlayNodes.size +
           areaOverlayNodes.size +
           activeFloatingDamageTexts.length +
-          (vendorNode ? 1 : 0),
+          (vendorNode ? 1 : 0) +
+          questNpcNodes.size,
         pooledSprites:
           spritePools.loot.length +
           spritePools.explosion.length +
@@ -3557,6 +3583,32 @@
         particleEmitters: Number(particleStats.emitterCount || 0),
         particleSprites: Number(particleStats.particleCount || 0),
         fallbackNodes: lootFallbackNodes.size + projectileFallbackNodes.size,
+        questNpcCount: questNpcNodes.size,
+        questNpcSamples: Array.from(questNpcNodes.entries()).slice(0, 8).map(([id, node]) => ({
+          id,
+          label: String(node && node.nameText && node.nameText.text || ""),
+          visible: !!(node && node.container && node.container.visible),
+          x: node && node.container ? Math.round(Number(node.container.position.x) || 0) : 0,
+          y: node && node.container ? Math.round(Number(node.container.position.y) || 0) : 0,
+          onScreen: !!(
+            node &&
+            node.container &&
+            Number(node.container.position.x) >= -64 &&
+            Number(node.container.position.x) <= width + 64 &&
+            Number(node.container.position.y) >= -96 &&
+            Number(node.container.position.y) <= height + 96
+          ),
+          spriteVisible: !!(node && node.sprite && node.sprite.visible),
+          spriteKey: String(
+            node &&
+            node.sprite &&
+            node.sprite.texture &&
+            node.sprite.texture.baseTexture &&
+            node.sprite.texture.baseTexture.resource &&
+            node.sprite.texture.baseTexture.resource.source &&
+            node.sprite.texture.baseTexture.resource.source.__vibeSpriteKey || ""
+          )
+        })),
         projectileSamples: projectileSpriteEntries.slice(0, 12).map((item) => ({
           id: Number(item.entry && item.entry.projectile && item.entry.projectile.id) || 0,
           abilityId: String(item.entry && item.entry.projectile && item.entry.projectile.abilityId || ""),
