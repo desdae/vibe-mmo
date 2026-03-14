@@ -15133,6 +15133,66 @@ function getVendorNpcSprite() {
   return vendorNpcSprite;
 }
 
+// Quest NPC sprite
+let questNpcSprite = null;
+
+function createQuestNpcSprite() {
+  const sprite = document.createElement("canvas");
+  sprite.width = 32;
+  sprite.height = 48;
+  const sctx = sprite.getContext("2d");
+  
+  // Body (blue/green robes like a sage)
+  sctx.fillStyle = "#2d5a4a";
+  sctx.beginPath();
+  sctx.moveTo(-8, 10);
+  sctx.lineTo(-10, 20);
+  sctx.lineTo(10, 20);
+  sctx.lineTo(8, 10);
+  sctx.fill();
+  
+  // Head
+  sctx.fillStyle = "#e8c39e";
+  sctx.beginPath();
+  sctx.arc(0, 2, 7, 0, Math.PI * 2);
+  sctx.fill();
+  
+  // Hood
+  sctx.fillStyle = "#1a3d2e";
+  sctx.beginPath();
+  sctx.arc(0, 0, 9, Math.PI, Math.PI * 2);
+  sctx.fill();
+  
+  // Staff
+  sctx.fillStyle = "#8b6914";
+  sctx.fillRect(10, -8, 2, 28);
+  sctx.fillStyle = "#ffd700";
+  sctx.beginPath();
+  sctx.arc(11, -10, 3, 0, Math.PI * 2);
+  sctx.fill();
+  
+  // Glow effect
+  sctx.strokeStyle = "rgba(255, 215, 0, 0.3)";
+  sctx.lineWidth = 2;
+  sctx.beginPath();
+  sctx.arc(0, 5, 14, 0, Math.PI * 2);
+  sctx.stroke();
+  
+  return sprite;
+}
+
+function getQuestNpcSprite() {
+  if (!questNpcSprite) {
+    questNpcSprite = createQuestNpcSprite();
+  }
+  return questNpcSprite;
+}
+
+// Get quest givers from layout
+function getTownQuestGivers() {
+  return townClientState.layout && townClientState.layout.questGivers ? townClientState.layout.questGivers : [];
+}
+
 function drawTown(cameraX, cameraY) {
   const layout = townClientState.layout;
   if (!layout || layout.enabled === false) {
@@ -15166,6 +15226,44 @@ function drawVendorNpc(cameraX, cameraY, frameNow) {
   ctx.drawImage(sprite, Math.round(p.x - sprite.width / 2), Math.round(p.y - sprite.height / 2 - 4 + bob));
 }
 
+// Draw quest givers
+function drawQuestNpcs(cameraX, cameraY, frameNow) {
+  const questGivers = getTownQuestGivers();
+  if (!questGivers || questGivers.length === 0) {
+    return;
+  }
+  const bob = Math.sin(frameNow / 340) * 1.2;
+  for (const questGiver of questGivers) {
+    if (!questGiver) continue;
+    const p = worldToScreen(Number(questGiver.x) + 0.5, Number(questGiver.y) + 0.5, cameraX, cameraY);
+    const sprite = getQuestNpcSprite();
+    ctx.drawImage(sprite, Math.round(p.x - sprite.width / 2), Math.round(p.y - sprite.height / 2 - 4 + bob));
+  }
+}
+
+// Get hovered quest NPC
+function getHoveredQuestNpc(cameraX, cameraY) {
+  return getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseState.sx, mouseState.sy);
+}
+
+function getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseX, mouseY) {
+  const questGivers = getTownQuestGivers();
+  if (!questGivers || questGivers.length === 0) {
+    return null;
+  }
+  const radius = 1.5;
+  for (const questGiver of questGivers) {
+    if (!questGiver) continue;
+    const p = worldToScreen(Number(questGiver.x) + 0.5, Number(questGiver.y) + 0.5, cameraX, cameraY);
+    const dx = mouseX - p.x;
+    const dy = mouseY - (p.y - 10);
+    if (dx * dx + dy * dy <= radius * radius * 400) {
+      return { npc: questGiver, p };
+    }
+  }
+  return null;
+}
+
 function drawVendorTooltip(vendor, p) {
   const title = String(vendor && vendor.name ? vendor.name : "Quartermaster");
   const subtitle = isTouchJoystickEnabled()
@@ -15183,6 +15281,28 @@ function drawVendorTooltip(vendor, p) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = "#f4e0aa";
+  ctx.fillText(title, x + 9, y + 14);
+  ctx.fillStyle = "rgba(224, 230, 236, 0.8)";
+  ctx.fillText(subtitle, x + 9, y + 28);
+}
+
+function drawQuestNpcTooltip(npc, p) {
+  const title = String(npc && npc.name ? npc.name : "Quest Giver");
+  const subtitle = isTouchJoystickEnabled()
+    ? "Tap to talk"
+    : "Right-click to talk";
+  ctx.font = "12px sans-serif";
+  const width = Math.max(ctx.measureText(title).width, ctx.measureText(subtitle).width) + 18;
+  const x = Math.round(p.x - width / 2);
+  const y = Math.round(p.y - 52);
+  ctx.fillStyle = "rgba(5, 10, 15, 0.94)";
+  ctx.strokeStyle = "rgba(255, 215, 0, 0.76)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, 34, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#ffd700";
   ctx.fillText(title, x + 9, y + 14);
   ctx.fillStyle = "rgba(224, 230, 236, 0.8)";
   ctx.fillText(subtitle, x + 9, y + 28);
@@ -16006,7 +16126,8 @@ const worldViewModelTools = sharedCreateWorldViewModelTools
       getFloatingDamageViews,
       getHoveredMob,
       getHoveredLootBag,
-      getHoveredVendor
+      getHoveredVendor,
+      getHoveredQuestNpc
     })
   : null;
 const sharedClientCanvasWorldRenderer = globalThis.VibeClientCanvasWorldRenderer || null;
@@ -16027,6 +16148,7 @@ const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
       drawExplosionEffects,
       drawAreaEffects,
       drawVendorNpc,
+      drawQuestNpcs,
       drawLootBag,
       drawMob,
       drawSkeletonSwordSwing,
@@ -16053,7 +16175,8 @@ const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
       drawPlayerCastBar,
       drawMobTooltip,
       drawLootBagTooltip,
-      drawVendorTooltip
+      drawVendorTooltip,
+      drawQuestNpcTooltip
     })
   : null;
 const sharedClientPixiWorldRenderer = globalThis.VibeClientPixiWorldRenderer || null;

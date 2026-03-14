@@ -86,7 +86,8 @@
         townVendor: getTownVendor(),
         hoveredMob: typeof deps.getHoveredMob === "function" ? deps.getHoveredMob(mobs, cameraX, cameraY) : null,
         hoveredBag: typeof deps.getHoveredLootBag === "function" ? deps.getHoveredLootBag(lootBags, cameraX, cameraY) : null,
-        hoveredVendor: typeof deps.getHoveredVendor === "function" ? deps.getHoveredVendor(cameraX, cameraY) : null
+        hoveredVendor: typeof deps.getHoveredVendor === "function" ? deps.getHoveredVendor(cameraX, cameraY) : null,
+        hoveredQuestNpc: typeof deps.getHoveredQuestNpc === "function" ? deps.getHoveredQuestNpc(cameraX, cameraY) : null
       };
     }
 

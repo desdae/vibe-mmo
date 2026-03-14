@@ -63,6 +63,7 @@
       deps.drawExplosionEffects(cameraX, cameraY);
       deps.drawAreaEffects(cameraX, cameraY, frameNow, "underlay");
       deps.drawVendorNpc(cameraX, cameraY, frameNow);
+      deps.drawQuestNpcs(cameraX, cameraY, frameNow);
 
       for (const entry of frameViewModel.lootBagViews) {
         deps.drawLootBag(entry.bag, cameraX, cameraY, frameNow);
@@ -127,6 +128,9 @@
       }
       if (frameViewModel.hoveredVendor) {
         deps.drawVendorTooltip(frameViewModel.hoveredVendor.vendor, frameViewModel.hoveredVendor.p);
+      }
+      if (frameViewModel.hoveredQuestNpc) {
+        deps.drawQuestNpcTooltip(frameViewModel.hoveredQuestNpc.npc, frameViewModel.hoveredQuestNpc.p);
       }
     }
 

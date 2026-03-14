@@ -175,7 +175,8 @@
       southGate: { ...layout.southGate },
       westGate: { ...layout.westGate },
       eastGate: { ...layout.eastGate },
-      vendor: layout.vendor ? { ...layout.vendor } : null
+      vendor: layout.vendor ? { ...layout.vendor } : null,
+      questGivers: Array.isArray(layout.questGivers) ? layout.questGivers.map(qg => ({ ...qg })) : []
     };
   }
 

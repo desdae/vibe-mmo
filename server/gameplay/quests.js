@@ -34,7 +34,37 @@ function createQuestTools(options = {}) {
 
   function getQuestNpcData() {
     const data = loadQuestData();
-    return data.npcs || {};
+    let npcs = { ...(data.npcs || {}) };
+    
+    // Merge quest givers from town layout
+    if (townLayout && townLayout.questGivers && Array.isArray(townLayout.questGivers)) {
+      for (const qg of townLayout.questGivers) {
+        if (qg && qg.id) {
+          npcs[qg.id] = {
+            name: qg.name || qg.id,
+            x: qg.x,
+            y: qg.y,
+            interactRange: qg.interactRange || 2.5,
+            questGiver: true,
+            ...(npcs[qg.id] || {})
+          };
+        }
+      }
+    }
+    
+    // Also add vendor as a quest NPC
+    if (townLayout && townLayout.vendor) {
+      npcs[townLayout.vendor.id] = {
+        name: townLayout.vendor.name,
+        x: townLayout.vendor.x,
+        y: townLayout.vendor.y,
+        interactRange: townLayout.vendor.interactRange || 2.25,
+        questGiver: true,
+        ...(npcs[townLayout.vendor.id] || {})
+      };
+    }
+    
+    return npcs;
   }
 
   function getQuestNpc(npcId) {
