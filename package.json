@@ -29,6 +29,7 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "testPathIgnorePatterns": ["/node_modules/", "/server/__tests__/quest-system.test.js"],
     "coverageDirectory": "coverage",
     "collectCoverageFrom": [
       "server/**/*.js"

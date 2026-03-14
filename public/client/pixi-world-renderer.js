@@ -52,6 +52,7 @@
     const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
     const getTownTileSprite = typeof deps.getTownTileSprite === "function" ? deps.getTownTileSprite : null;
     const getVendorNpcSprite = typeof deps.getVendorNpcSprite === "function" ? deps.getVendorNpcSprite : null;
+    const getQuestNpcSprite = typeof deps.getQuestNpcSprite === "function" ? deps.getQuestNpcSprite : null;
     const getCreeperWalkSprite = typeof deps.getCreeperWalkSprite === "function" ? deps.getCreeperWalkSprite : null;
     const getSpiderWalkSprite = typeof deps.getSpiderWalkSprite === "function" ? deps.getSpiderWalkSprite : null;
     const mobSpriteSize = Math.max(20, Number(deps.mobSpriteSize) || 36);
@@ -113,6 +114,8 @@
     let areaOverlayNodes = new Map();
     let projectileFallbackNodes = new Map();
     let vendorNode = null;
+    let questNpcLayer = null;
+    let questNpcNode = null;
     let pixiParticleSystem = null;
     const floatingDamageTextPool = [];
     const activeFloatingDamageTexts = [];
@@ -533,6 +536,7 @@
       projectileSpriteLayer = createMixedTextureSpriteLayer();
       projectileFallbackLayer = new PIXI.Container();
       vendorLayer = new PIXI.Container();
+      questNpcLayer = new PIXI.Container();
       areaOverlayLayer = new PIXI.Container();
       areaOverlaySpriteLayer = createMixedTextureSpriteLayer();
       abilityPreviewLayer = new PIXI.Container();
@@ -572,6 +576,7 @@
         areaUnderlayLayer,
         particleLayer,
         vendorLayer,
+        questNpcLayer,
         lootSpriteLayer,
         lootFallbackLayer,
         mobLayer,
@@ -3353,6 +3358,26 @@
         });
         vendorNode.hpBack.clear();
         vendorNode.hpFill.clear();
+      }
+
+      // Render quest NPCs
+      const questGivers = frameViewModel.townQuestGivers;
+      if (questGivers && questGivers.length > 0) {
+        const questNpc = questGivers[0];
+        if (questNpc) {
+          if (!questNpcNode) {
+            questNpcNode = createLabeledSpriteNode();
+            questNpcLayer.addChild(questNpcNode.container);
+          }
+          const p = worldToScreen(Number(questNpc.x) + 0.5, Number(questNpc.y) + 0.5, cameraX, cameraY, width, height);
+          const questBob = Math.sin(frameNow / 340) * 1.2;
+          const sprite = getQuestNpcSprite ? getQuestNpcSprite() : null;
+          updateLabeledSpriteNode(questNpcNode, p.x, p.y - 4 + questBob, String(questNpc.name || "Quest Giver"), 1, 1, sprite, (graphics) => {
+            graphics.clear();
+          });
+          questNpcNode.hpBack.clear();
+          questNpcNode.hpFill.clear();
+        }
       }
 
       syncNodeMap(

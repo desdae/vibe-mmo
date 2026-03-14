@@ -1912,21 +1912,7 @@ function getNearbyQuestNpc() {
 }
 
 function getHoveredQuestNpc(cameraX, cameraY) {
-  const mobsVal = mobs;
-  if (!mobsVal) {
-    return null;
-  }
-  const radius = 1.5;
-  const npc = mobsVal.find((m) => m && m.npcType === "quest");
-  if (!npc) {
-    return null;
-  }
-  const dx = (npc.x || 0) + 0.5 - cameraX;
-  const dy = (npc.y || 0) + 0.5 - cameraY;
-  if (dx * dx + dy * dy > radius * radius) {
-    return null;
-  }
-  return { npc, p: npc };
+  return getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseState.sx, mouseState.sy);
 }
 
 function tryContextQuestNpcInteraction() {
@@ -16106,6 +16092,7 @@ const worldViewModelTools = sharedCreateWorldViewModelTools
       getAreaEffects: () => Array.from(activeAreaEffectsById.values()),
       getExplosionViews,
       getTownVendor,
+      getTownQuestGivers,
       getActionDefById,
       getAbilityVisualHook,
       getProjectileSpriteFrame:
@@ -16207,6 +16194,7 @@ const pixiWorldRenderer = sharedCreatePixiWorldRenderer
       getLootBagSprite,
       getTownTileSprite,
       getVendorNpcSprite,
+      getQuestNpcSprite,
       mobSpriteSize: MOB_SPRITE_SIZE,
       getCreeperWalkSprite,
       getSpiderWalkSprite,
@@ -16293,6 +16281,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleSpellbookPanel,
       toggleTalentPanel,
       toggleDpsPanel,
+      toggleQuestPanel: () => questUiTools && questUiTools.toggleQuestPanel && questUiTools.toggleQuestPanel(),
       executeBoundAction,
       tryContextVendorInteraction,
       tryContextQuestNpcInteraction,

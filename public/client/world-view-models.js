@@ -7,6 +7,7 @@
     const getAreaEffects = typeof deps.getAreaEffects === "function" ? deps.getAreaEffects : () => [];
     const getExplosionViews = typeof deps.getExplosionViews === "function" ? deps.getExplosionViews : () => [];
     const getTownVendor = typeof deps.getTownVendor === "function" ? deps.getTownVendor : () => null;
+    const getTownQuestGivers = typeof deps.getTownQuestGivers === "function" ? deps.getTownQuestGivers : () => [];
     const getActionDefById = typeof deps.getActionDefById === "function" ? deps.getActionDefById : () => null;
     const getAbilityVisualHook = typeof deps.getAbilityVisualHook === "function" ? deps.getAbilityVisualHook : () => "default";
     const getProjectileSpriteFrame = typeof deps.getProjectileSpriteFrame === "function" ? deps.getProjectileSpriteFrame : null;
@@ -84,6 +85,7 @@
         explosionViews,
         floatingDamageViews: typeof deps.getFloatingDamageViews === "function" ? deps.getFloatingDamageViews(frameNow) : [],
         townVendor: getTownVendor(),
+        townQuestGivers: getTownQuestGivers(),
         hoveredMob: typeof deps.getHoveredMob === "function" ? deps.getHoveredMob(mobs, cameraX, cameraY) : null,
         hoveredBag: typeof deps.getHoveredLootBag === "function" ? deps.getHoveredLootBag(lootBags, cameraX, cameraY) : null,
         hoveredVendor: typeof deps.getHoveredVendor === "function" ? deps.getHoveredVendor(cameraX, cameraY) : null,
