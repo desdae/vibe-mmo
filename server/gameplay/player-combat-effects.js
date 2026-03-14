@@ -1,5 +1,6 @@
 const { createEffectEngine } = require("./effects/effect-engine");
 const { buildHitEffectDefsFromAbilityDef, buildHitEffectDefsFromProjectile } = require("./effects/hit-effect-defs");
+const { normalizeId } = require("../utils/id-utils");
 
 function defaultClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -17,6 +18,7 @@ function createPlayerCombatEffectTools(options = {}) {
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
   const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
+  const normalizeIdFn = typeof options.normalizeId === "function" ? options.normalizeId : normalizeId;
   const effectEngine = createEffectEngine({ clamp, randomInt });
 
   const tools = {
@@ -116,9 +118,10 @@ function createPlayerCombatEffectTools(options = {}) {
     }
     const tickIntervalMs = 1000;
     const nextEndsAt = now + duration;
+    const normalizedOwnerId = normalizeIdFn(ownerId);
     const existing = player.activeDots.get(schoolKey);
     if (existing) {
-      existing.ownerId = ownerId ? String(ownerId) : existing.ownerId;
+      existing.ownerId = normalizedOwnerId || existing.ownerId;
       existing.damageMin = Math.max(Number(existing.damageMin) || 0, dotMin);
       existing.damageMax = Math.max(Number(existing.damageMax) || existing.damageMin, dotMax);
       existing.endsAt = Math.max(Number(existing.endsAt) || 0, nextEndsAt);
@@ -127,7 +130,7 @@ function createPlayerCombatEffectTools(options = {}) {
     } else {
       player.activeDots.set(schoolKey, {
         school: schoolKey,
-        ownerId: ownerId ? String(ownerId) : "",
+        ownerId: normalizedOwnerId || "",
         damageMin: dotMin,
         damageMax: dotMax,
         tickIntervalMs,
@@ -199,12 +202,13 @@ function createPlayerCombatEffectTools(options = {}) {
       return;
     }
 
+    const normalizedOwnerId = normalizeIdFn(ownerId);
     const hitEffectDefs = buildHitEffectDefsFromAbilityDef(abilityDef, abilityLevel, getAbilityDotDamageRange);
     if (hitEffectDefs.length) {
       const compiled = effectEngine.compile(hitEffectDefs, { defaultTrigger: "onHit" });
       effectEngine.run(compiled, "onHit", {
         now,
-        source: { id: ownerId ? String(ownerId) : "" },
+        source: { id: normalizedOwnerId || "" },
         target: player,
         ops: {
           applySlow: (target, multiplier, durationMs, appliedAt) =>
@@ -217,7 +221,7 @@ function createPlayerCombatEffectTools(options = {}) {
     }
     
     // Trigger talent on-spell-hit effects (for PvP)
-    const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
+    const ownerPlayer = normalizedOwnerId ? getPlayerById(normalizedOwnerId) : null;
     if (ownerPlayer) {
       const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
       if (handler) {
@@ -231,12 +235,13 @@ function createPlayerCombatEffectTools(options = {}) {
       return;
     }
 
+    const normalizedProjectileOwnerId = normalizeIdFn(projectile.ownerId);
     const hitEffectDefs = buildHitEffectDefsFromProjectile(projectile);
     if (hitEffectDefs.length) {
       const compiled = effectEngine.compile(hitEffectDefs, { defaultTrigger: "onHit" });
       effectEngine.run(compiled, "onHit", {
         now,
-        source: { id: projectile.ownerId ? String(projectile.ownerId) : "" },
+        source: { id: normalizedProjectileOwnerId || "" },
         target: player,
         ops: {
           applySlow: (target, multiplier, durationMs, appliedAt) =>
@@ -249,7 +254,7 @@ function createPlayerCombatEffectTools(options = {}) {
     }
 
     // Trigger talent on-spell-hit effects for projectile hits (for PvP).
-    const ownerPlayer = projectile.ownerId ? getPlayerById(String(projectile.ownerId)) : null;
+    const ownerPlayer = normalizedProjectileOwnerId ? getPlayerById(normalizedProjectileOwnerId) : null;
     if (ownerPlayer) {
       const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
       if (handler) {

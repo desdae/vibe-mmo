@@ -2,6 +2,7 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 const { WebSocketServer } = require("ws");
+const { normalizeId, mapGet, mapHas } = require("./server/utils/id-utils");
 const townLayoutTools = require("./public/shared/town-layout");
 const { executeAbilityByKind } = require("./server/ability-handlers");
 const { createAbilityHandlerContext } = require("./server/ability-handlers/context");
@@ -776,7 +777,7 @@ const damageTools = createDamageTools({
   killMob,
   clearPlayerCast: (...args) => clearPlayerCast(...args),
   clearPlayerCombatEffects: (...args) => clearPlayerCombatEffects(...args),
-  getPlayerById: (playerId) => players.get(String(playerId || "")) || null,
+  getPlayerById: (playerId) => mapGet(players, playerId) || null,
   clamp
 });
 const applyDamageToMob = damageTools.applyDamageToMob;
@@ -786,7 +787,7 @@ const mobCombatEffectTools = createMobCombatEffectTools({
   randomInt,
   applyDamageToMob,
   getAbilityDotDamageRange,
-  getPlayerById: (playerId) => players.get(String(playerId || "")) || null
+  getPlayerById: (playerId) => mapGet(players, playerId) || null
 });
 const stunMob = mobCombatEffectTools.stunMob;
 const applySlowToMob = mobCombatEffectTools.applySlowToMob;
@@ -798,7 +799,7 @@ const projectileEffectTools = createProjectileEffectTools({
   applySlowToMob,
   stunMob,
   applyDotToMob,
-  getPlayerById: (playerId) => players.get(String(playerId || "")) || null
+  getPlayerById: (playerId) => mapGet(players, playerId) || null
 });
 const applyProjectileHitEffects = projectileEffectTools.applyProjectileHitEffects;
 const areaEffectTools = createAreaEffectTools({
@@ -843,7 +844,7 @@ const playerCombatEffectTools = createPlayerCombatEffectTools({
   randomInt,
   applyDamageToPlayer,
   getAbilityDotDamageRange,
-  getPlayerById: (playerId) => players.get(String(playerId || "")) || null
+  getPlayerById: (playerId) => mapGet(players, playerId) || null
 });
 const clearPlayerCombatEffects = playerCombatEffectTools.clearPlayerCombatEffects;
 const tickPlayerDotEffects = playerCombatEffectTools.tickPlayerDotEffects;

@@ -1,5 +1,6 @@
 const { createEffectEngine } = require("./effects/effect-engine");
 const { buildHitEffectDefsFromAbilityDef } = require("./effects/hit-effect-defs");
+const { normalizeId } = require("../utils/id-utils");
 
 function defaultClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -16,6 +17,7 @@ function createMobCombatEffectTools(options = {}) {
   const getAbilityDotDamageRange =
     typeof options.getAbilityDotDamageRange === "function" ? options.getAbilityDotDamageRange : () => [0, 0];
   const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
+  const normalizeIdFn = typeof options.normalizeId === "function" ? options.normalizeId : normalizeId;
   const effectEngine = createEffectEngine({ clamp, randomInt });
 
   const tools = {
@@ -85,9 +87,10 @@ function createMobCombatEffectTools(options = {}) {
     }
     const tickIntervalMs = 1000;
     const nextEndsAt = now + duration;
+    const normalizedOwnerId = normalizeIdFn(ownerId);
     const existing = mob.activeDots.get(schoolKey);
     if (existing) {
-      existing.ownerId = ownerId ? String(ownerId) : existing.ownerId;
+      existing.ownerId = normalizedOwnerId || existing.ownerId;
       existing.damageMin = Math.max(Number(existing.damageMin) || 0, dotMin);
       existing.damageMax = Math.max(Number(existing.damageMax) || existing.damageMin, dotMax);
       existing.endsAt = Math.max(Number(existing.endsAt) || 0, nextEndsAt);
@@ -96,7 +99,7 @@ function createMobCombatEffectTools(options = {}) {
     } else {
       mob.activeDots.set(schoolKey, {
         school: schoolKey,
-        ownerId: ownerId ? String(ownerId) : "",
+        ownerId: normalizedOwnerId || "",
         damageMin: dotMin,
         damageMax: dotMax,
         tickIntervalMs,
@@ -174,12 +177,13 @@ function createMobCombatEffectTools(options = {}) {
       return;
     }
 
+    const normalizedOwnerId = normalizeIdFn(ownerId);
     const hitEffectDefs = buildHitEffectDefsFromAbilityDef(abilityDef, abilityLevel, getAbilityDotDamageRange);
     if (hitEffectDefs.length) {
       const compiled = effectEngine.compile(hitEffectDefs, { defaultTrigger: "onHit" });
       effectEngine.run(compiled, "onHit", {
         now,
-        source: { id: ownerId ? String(ownerId) : "" },
+        source: { id: normalizedOwnerId || "" },
         target: mob,
         ops: {
           applySlow: (target, multiplier, durationMs, appliedAt) =>
@@ -192,7 +196,7 @@ function createMobCombatEffectTools(options = {}) {
     }
     
     // Trigger talent on-spell-hit effects
-    const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
+    const ownerPlayer = normalizedOwnerId ? getPlayerById(normalizedOwnerId) : null;
     if (ownerPlayer) {
       const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
       if (handler) {

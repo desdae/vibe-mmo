@@ -7,6 +7,7 @@ function createDamageTools(options = {}) {
   const clearPlayerCombatEffects =
     typeof options.clearPlayerCombatEffects === "function" ? options.clearPlayerCombatEffects : () => {};
   const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
+  const normalizeId = typeof options.normalizeId === "function" ? options.normalizeId : (id) => id == null ? null : String(id);
   const clamp =
     typeof options.clamp === "function" ? options.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -35,7 +36,8 @@ function createDamageTools(options = {}) {
       return 0;
     }
 
-    const ownerPlayer = ownerId ? getPlayerById(String(ownerId)) : null;
+    const normalizedOwnerId = normalizeId(ownerId);
+    const ownerPlayer = normalizedOwnerId ? getPlayerById(normalizedOwnerId) : null;
     if (ownerPlayer && extra.allowCrit !== false) {
       const critChance = clamp(Number(ownerPlayer.critChance) || 0, 0, 100);
       if (critChance > 0 && Math.random() * 100 < critChance) {

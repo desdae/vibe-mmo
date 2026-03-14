@@ -1,3 +1,5 @@
+const { normalizeId, mapGet } = require("../utils/id-utils");
+
 function defaultClamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -21,12 +23,12 @@ function createMobBehaviorTools(options = {}) {
     if (!mob || !ownerId) {
       return;
     }
-    const ownerKey = String(ownerId);
-    const owner = players.get(ownerKey);
+    const normalizedOwnerId = normalizeId(ownerId);
+    const owner = mapGet(players, normalizedOwnerId);
     if (!owner || owner.hp <= 0) {
       return;
     }
-    mob.chaseTargetPlayerId = ownerKey;
+    mob.chaseTargetPlayerId = normalizedOwnerId;
     mob.chaseUntil = Math.max(Number(mob.chaseUntil) || 0, now + mobProvokedChaseMs);
     mob.wanderTarget = null;
     mob.returningHome = false;

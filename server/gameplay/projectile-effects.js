@@ -1,5 +1,6 @@
 const { createEffectEngine } = require("./effects/effect-engine");
 const { buildHitEffectDefsFromProjectile } = require("./effects/hit-effect-defs");
+const { normalizeId } = require("../utils/id-utils");
 
 function createProjectileEffectTools(options = {}) {
   const clamp = typeof options.clamp === "function" ? options.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
@@ -8,6 +9,7 @@ function createProjectileEffectTools(options = {}) {
   const applyDotToMob = typeof options.applyDotToMob === "function" ? options.applyDotToMob : () => {};
   const randomInt = typeof options.randomInt === "function" ? options.randomInt : null;
   const getPlayerById = typeof options.getPlayerById === "function" ? options.getPlayerById : () => null;
+  const normalizeIdFn = typeof options.normalizeId === "function" ? options.normalizeId : normalizeId;
   const effectEngine = createEffectEngine({ clamp, randomInt: randomInt || undefined });
 
   const tools = {
@@ -19,12 +21,13 @@ function createProjectileEffectTools(options = {}) {
     if (!mob || !mob.alive || dealtDamage <= 0 || !projectile) {
       return;
     }
+    const normalizedOwnerId = normalizeIdFn(projectile.ownerId);
     const hitEffectDefs = buildHitEffectDefsFromProjectile(projectile);
     if (hitEffectDefs.length) {
       const compiled = effectEngine.compile(hitEffectDefs, { defaultTrigger: "onHit" });
       effectEngine.run(compiled, "onHit", {
         now,
-        source: { id: projectile.ownerId ? String(projectile.ownerId) : "" },
+        source: { id: normalizedOwnerId || "" },
         target: mob,
         ops: {
           applySlow: (target, multiplier, durationMs, appliedAt) => applySlowToMob(target, multiplier, durationMs, appliedAt),
@@ -36,7 +39,7 @@ function createProjectileEffectTools(options = {}) {
     }
 
     // Trigger talent on-spell-hit effects for projectile impacts.
-    const ownerPlayer = projectile.ownerId ? getPlayerById(String(projectile.ownerId)) : null;
+    const ownerPlayer = normalizedOwnerId ? getPlayerById(normalizedOwnerId) : null;
     if (ownerPlayer) {
       const handler = typeof tools.onTalentSpellHit === "function" ? tools.onTalentSpellHit : null;
       if (handler) {
