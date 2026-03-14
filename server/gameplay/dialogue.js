@@ -13,6 +13,17 @@ function createDialogueTools(options = {}) {
     playerDialogueState.delete(playerId);
   }
 
+  function normalizeDialogueNodes(nodes) {
+    const source = Array.isArray(nodes) ? nodes : [];
+    return source.map((node, index) => {
+      const entry = node && typeof node === "object" ? { ...node } : { text: String(node || "") };
+      if (!entry.id) {
+        entry.id = `node_${index}`;
+      }
+      return entry;
+    });
+  }
+
   function startDialogue(playerId, player, npcId) {
     if (!questTools) {
       return { error: "Quest system not available" };
@@ -61,12 +72,14 @@ function createDialogueTools(options = {}) {
       ];
     }
 
+    const normalizedNodes = normalizeDialogueNodes(dialogueNodes);
+
     const dialogueState = {
       npcId,
       dialogueType,
       questId: talkQuest?.questId || (availableQuests.length > 0 ? availableQuests[0].id : null),
       currentNodeIndex: 0,
-      nodes: dialogueNodes
+      nodes: normalizedNodes
     };
 
     playerDialogueState.set(playerId, dialogueState);
@@ -76,7 +89,7 @@ function createDialogueTools(options = {}) {
       npcName: npc.name,
       dialogueType,
       questId: dialogueState.questId,
-      nodes: dialogueNodes
+      nodes: normalizedNodes
     };
   }
 
@@ -171,7 +184,7 @@ function createDialogueTools(options = {}) {
       npcId,
       dialogueType,
       questId,
-      nodes: dialogueNodes
+      nodes: normalizeDialogueNodes(dialogueNodes)
     };
   }
 

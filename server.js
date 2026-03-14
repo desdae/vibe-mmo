@@ -484,7 +484,7 @@ const questTools = createQuestTools({
   townLayout: TOWN_LAYOUT,
   sendJson,
   sendSelfProgress,
-  addExp: (player, amount) => progressionTools.grantPlayerExp(player, amount),
+  addExp: (player, amount) => grantPlayerExp(player, amount),
   addItemsToInventory
 });
 
@@ -498,6 +498,7 @@ const getNearbyQuestNpc = questTools.getNearbyQuestNpc;
 const getQuestProgress = questTools.getQuestProgress;
 const acceptQuest = questTools.acceptQuest;
 const completeQuest = questTools.completeQuest;
+const debugCompleteQuest = questTools.debugCompleteQuest;
 const abandonQuest = questTools.abandonQuest;
 const getAvailableQuestsForPlayer = questTools.getAvailableQuestsForPlayer;
 const updateQuestObjective = questTools.updateQuestObjective;
@@ -1318,7 +1319,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     syncPlayerCopperFromInventory,
     sendInventoryState,
     sendEquipmentState,
-    sendSelfProgress,
+    sendSelfProgress: sendSelfProgressWithQuests,
     updatePlayerViewport,
     clamp,
     normalizeDirection,
@@ -1348,6 +1349,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     isPlayerNearNpc: questTools.isPlayerNearNpc,
     acceptQuest,
     completeQuest,
+    debugCompleteQuest,
     abandonQuest,
     updateQuestObjective,
     getPlayerQuestState

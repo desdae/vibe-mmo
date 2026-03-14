@@ -90,6 +90,9 @@
 
       if (event.code in deps.keys) {
         deps.cancelAutoVendorInteraction();
+        if (typeof deps.cancelAutoQuestInteraction === "function") {
+          deps.cancelAutoQuestInteraction();
+        }
         deps.cancelAutoLootPickup();
         deps.keys[event.code] = true;
         deps.sendMove();
@@ -124,6 +127,9 @@
       }
       deps.mouseState.leftDown = false;
       deps.cancelAutoVendorInteraction();
+      if (typeof deps.cancelAutoQuestInteraction === "function") {
+        deps.cancelAutoQuestInteraction();
+      }
       deps.cancelAutoLootPickup();
       deps.clearDragState();
       deps.resetAbilityChanneling();
@@ -142,6 +148,9 @@
 
       deps.updateMouseScreenPosition(event);
       deps.cancelAutoVendorInteraction();
+      if (typeof deps.cancelAutoQuestInteraction === "function") {
+        deps.cancelAutoQuestInteraction();
+      }
       deps.cancelAutoLootPickup();
       deps.mouseState.leftDown = true;
       deps.tryPrimaryAutoAction(true);
@@ -187,6 +196,9 @@
       const point = getCanvasTouchPoint(touch);
       deps.resumeSpatialAudioContext();
       deps.cancelAutoVendorInteraction();
+      if (typeof deps.cancelAutoQuestInteraction === "function") {
+        deps.cancelAutoQuestInteraction();
+      }
       deps.cancelAutoLootPickup();
       if (typeof deps.beginTouchJoystick === "function") {
         deps.beginTouchJoystick(touch.identifier, point.x, point.y);
@@ -298,6 +310,9 @@
       globalScope.setInterval(deps.refreshAdminBotList, 1500);
       globalScope.setInterval(deps.tryPrimaryAutoAction, 50);
       globalScope.setInterval(deps.updateAutoVendorInteraction, 75);
+      if (typeof deps.updateAutoQuestInteraction === "function") {
+        globalScope.setInterval(deps.updateAutoQuestInteraction, 75);
+      }
       globalScope.setInterval(deps.updateAutoLootPickup, 75);
       deps.initializeDpsPanel();
       deps.loadInitialGameConfig();

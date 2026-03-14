@@ -32,8 +32,8 @@ function createVendorTools(options = {}) {
     if (vendorId && String(vendor.id || "") !== String(vendorId || "")) {
       return false;
     }
-    const dx = Number(player.x) - Number(vendor.x);
-    const dy = Number(player.y) - Number(vendor.y);
+    const dx = Number(player.x) - (Number(vendor.x) + 0.5);
+    const dy = Number(player.y) - (Number(vendor.y) + 0.5);
     return Math.hypot(dx, dy) <= Math.max(0.5, Number(vendor.interactRange) || 2.25);
   }
 

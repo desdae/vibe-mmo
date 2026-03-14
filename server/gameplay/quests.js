@@ -7,6 +7,8 @@ function createQuestTools(options = {}) {
   const sendJson = typeof options.sendJson === "function" ? options.sendJson : () => {};
   const sendSelfProgress = typeof options.sendSelfProgress === "function" ? options.sendSelfProgress : () => {};
   const addExp = typeof options.addExp === "function" ? options.addExp : () => {};
+  const getInventoryItemCount =
+    typeof options.getInventoryItemCount === "function" ? options.getInventoryItemCount : () => 0;
   const addItemsToInventory =
     typeof options.addItemsToInventory === "function" ? options.addItemsToInventory : () => ({ added: [], leftover: [] });
 
@@ -41,12 +43,12 @@ function createQuestTools(options = {}) {
       for (const qg of townLayout.questGivers) {
         if (qg && qg.id) {
           npcs[qg.id] = {
+            ...(npcs[qg.id] || {}),
             name: qg.name || qg.id,
             x: qg.x,
             y: qg.y,
             interactRange: qg.interactRange || 2.5,
-            questGiver: true,
-            ...(npcs[qg.id] || {})
+            questGiver: true
           };
         }
       }
@@ -55,12 +57,12 @@ function createQuestTools(options = {}) {
     // Also add vendor as a quest NPC
     if (townLayout && townLayout.vendor) {
       npcs[townLayout.vendor.id] = {
+        ...(npcs[townLayout.vendor.id] || {}),
         name: townLayout.vendor.name,
         x: townLayout.vendor.x,
         y: townLayout.vendor.y,
         interactRange: townLayout.vendor.interactRange || 2.25,
-        questGiver: true,
-        ...(npcs[townLayout.vendor.id] || {})
+        questGiver: true
       };
     }
     
@@ -77,13 +79,24 @@ function createQuestTools(options = {}) {
     return quests.find(q => q.id === questId) || null;
   }
 
+  function getObjectiveProgressKey(obj) {
+    if (!obj || typeof obj !== "object") {
+      return "";
+    }
+    const type = String(obj.type || "").trim().toLowerCase();
+    if (type === "explore") {
+      return `explore_${Number(obj.x) || 0}_${Number(obj.y) || 0}`;
+    }
+    return String(obj.targetId || obj.mobId || obj.itemId || obj.type || "").trim();
+  }
+
   function isPlayerNearNpc(player, npcId) {
     const npc = getQuestNpc(npcId);
     if (!player || !npc) {
       return false;
     }
-    const dx = Number(player.x) - Number(npc.x);
-    const dy = Number(player.y) - Number(npc.y);
+    const dx = Number(player.x) - (Number(npc.x) + 0.5);
+    const dy = Number(player.y) - (Number(npc.y) + 0.5);
     return Math.hypot(dx, dy) <= Math.max(0.5, Number(npc.interactRange) || 2.5);
   }
 
@@ -147,7 +160,23 @@ function createQuestTools(options = {}) {
 
     const objectives = {};
     for (const obj of quest.objectives) {
-      objectives[obj.targetId || obj.type] = { current: 0, required: obj.count || 1 };
+      const key = getObjectiveProgressKey(obj);
+      if (!key) {
+        continue;
+      }
+      const required = Math.max(1, Number(obj.count) || 1);
+      let current = 0;
+      if (obj.type === "collect") {
+        current = Math.min(required, Math.max(0, Number(getInventoryItemCount(player, obj.itemId)) || 0));
+      } else if (obj.type === "explore") {
+        const dx = (Number(player?.x) || 0) - Number(obj.x);
+        const dy = (Number(player?.y) || 0) - Number(obj.y);
+        const dist = Math.hypot(dx, dy);
+        if (dist <= Number(obj.radius || 15)) {
+          current = 1;
+        }
+      }
+      objectives[key] = { current, required };
     }
 
     player.questState.active[questId] = {
@@ -176,7 +205,7 @@ function createQuestTools(options = {}) {
         if (type === "collect" && obj.itemId !== targetId) continue;
         if (type === "talk" && obj.targetId !== targetId) continue;
 
-        const key = targetId || type;
+        const key = getObjectiveProgressKey(obj);
         const questObj = player.questState.active[questId];
         if (!questObj || !questObj.objectives[key]) continue;
 
@@ -215,7 +244,7 @@ function createQuestTools(options = {}) {
         const dist = Math.hypot(dx, dy);
         if (dist > Number(obj.radius || 15)) continue;
 
-        const key = `explore_${obj.x}_${obj.y}`;
+        const key = getObjectiveProgressKey(obj);
         const questObj = player.questState.active[questId];
         if (!questObj || !questObj.objectives[key]) continue;
 
@@ -236,7 +265,7 @@ function createQuestTools(options = {}) {
     if (!questState) return { canComplete: false, reason: "Quest state not found" };
 
     for (const obj of quest.objectives) {
-      const key = obj.targetId || obj.type;
+      const key = getObjectiveProgressKey(obj);
       const required = obj.count || 1;
       const current = questState.objectives[key]?.current || 0;
       if (current < required) {
@@ -293,6 +322,28 @@ function createQuestTools(options = {}) {
     return { success: true, quest, rewards };
   }
 
+  function debugCompleteQuest(player, questId) {
+    if (!hasQuest(player, questId)) {
+      return { success: false, reason: "Not on this quest" };
+    }
+    const quest = getQuestById(questId);
+    const questState = player && player.questState && player.questState.active ? player.questState.active[questId] : null;
+    if (!quest || !questState || !questState.objectives) {
+      return { success: false, reason: "Quest state not found" };
+    }
+    for (const obj of quest.objectives) {
+      const key = getObjectiveProgressKey(obj);
+      if (!key || !questState.objectives[key]) {
+        continue;
+      }
+      questState.objectives[key].current = Math.max(
+        questState.objectives[key].current || 0,
+        questState.objectives[key].required || Math.max(1, Number(obj.count) || 1)
+      );
+    }
+    return { success: true, quest };
+  }
+
   function abandonQuest(player, questId) {
     if (!hasQuest(player, questId)) {
       return { success: false, reason: "Not on this quest" };
@@ -317,7 +368,7 @@ function createQuestTools(options = {}) {
     if (!questState) return null;
 
     const objectives = quest.objectives.map(obj => {
-      const key = obj.targetId || obj.type;
+      const key = getObjectiveProgressKey(obj);
       const current = questState.objectives[key]?.current || 0;
       const required = obj.count || 1;
       return {
@@ -366,18 +417,7 @@ function createQuestTools(options = {}) {
     const quests = getQuestDefs();
     const state = getPlayerQuestState(player);
 
-    // Check for talk objectives in active quests
-    for (const questId of Object.keys(state.active)) {
-      const quest = quests.find(q => q.id === questId);
-      if (!quest) continue;
-      for (const obj of quest.objectives) {
-        if (obj.type === "talk" && obj.targetId === npcId) {
-          return { questId, objective: obj, quest };
-        }
-      }
-    }
-
-    // Check if NPC can complete a quest
+    // Check completable quests first so talk-objective turn-ins can complete immediately.
     for (const questId of Object.keys(state.active)) {
       const quest = quests.find(q => q.id === questId);
       if (!quest) continue;
@@ -385,6 +425,17 @@ function createQuestTools(options = {}) {
         const check = canCompleteQuest(player, questId);
         if (check.canComplete) {
           return { questId, quest, canComplete: true };
+        }
+      }
+    }
+
+    // Check for talk objectives in active quests.
+    for (const questId of Object.keys(state.active)) {
+      const quest = quests.find(q => q.id === questId);
+      if (!quest) continue;
+      for (const obj of quest.objectives) {
+        if (obj.type === "talk" && obj.targetId === npcId) {
+          return { questId, objective: obj, quest };
         }
       }
     }
@@ -409,6 +460,7 @@ function createQuestTools(options = {}) {
     checkQuestExploreObjective,
     canCompleteQuest,
     completeQuest,
+    debugCompleteQuest,
     abandonQuest,
     getQuestProgress,
     getAvailableQuestsForPlayer,

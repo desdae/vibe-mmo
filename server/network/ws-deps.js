@@ -56,6 +56,7 @@ function createWsConnectionDeps({
   isPlayerNearNpc,
   acceptQuest,
   completeQuest,
+  debugCompleteQuest,
   abandonQuest,
   updateQuestObjective,
   getPlayerQuestState
@@ -124,6 +125,7 @@ function createWsConnectionDeps({
     isPlayerNearNpc,
     acceptQuest,
     completeQuest,
+    debugCompleteQuest,
     abandonQuest,
     updateQuestObjective,
     getPlayerQuestState

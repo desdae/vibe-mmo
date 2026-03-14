@@ -192,6 +192,39 @@ function sendAdminBotInspect(player, botData, deps) {
   });
 }
 
+function handleQuestNpcInteraction(player, npcId, deps, options = {}) {
+  const opts = options && typeof options === "object" ? options : {};
+  const sendNoQuestDialogue = opts.sendNoQuestDialogue !== false;
+  const npc = deps.getQuestNpc(npcId);
+  if (!npc || !deps.isPlayerNearNpc(player, npcId)) {
+    return false;
+  }
+
+  const talkQuest = deps.questTools.getTalkQuestForNpc(player, npcId);
+  if (talkQuest && talkQuest.objective && talkQuest.objective.type === "talk") {
+    const updatedQuestIds = deps.updateQuestObjective(player, "talk", npcId, 1);
+    if (Array.isArray(updatedQuestIds) && updatedQuestIds.length > 0) {
+      deps.sendSelfProgress(player);
+    }
+  }
+  if (!sendNoQuestDialogue && !talkQuest) {
+    return true;
+  }
+
+  const dialogue = deps.dialogueTools.startDialogue(player.id, player, npcId);
+  if (
+    dialogue &&
+    !dialogue.error &&
+    (sendNoQuestDialogue || String(dialogue.dialogueType || "") !== "noQuest")
+  ) {
+    deps.sendJson(player.ws, {
+      type: "quest_dialogue",
+      ...dialogue
+    });
+  }
+  return true;
+}
+
 function routeIncomingMessage({ rawMessage, ws, player, deps }) {
   let msg;
   try {
@@ -482,6 +515,33 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "admin_complete_quest") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const questId = String(msg.questId || "").trim();
+    if (!questId) {
+      return { player };
+    }
+    const result = typeof deps.debugCompleteQuest === "function"
+      ? deps.debugCompleteQuest(player, questId)
+      : { success: false, reason: "Quest debug tools unavailable." };
+    if (!result || !result.success) {
+      deps.sendJson(player.ws, {
+        type: "error",
+        message: result && result.reason ? String(result.reason) : "Failed to complete quest objectives."
+      });
+      return { player };
+    }
+    deps.sendSelfProgress(player);
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      message: `Marked quest objectives complete for ${questId}.`
+    });
+    return { player };
+  }
+
   if (msg.type === "create_bot_player") {
     if (!player.isAdmin) {
       deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
@@ -614,28 +674,7 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     if (!npcId) {
       return { player };
     }
-    
-    // Check if player is near the NPC
-    const npc = deps.getQuestNpc(npcId);
-    if (!npc || !deps.isPlayerNearNpc(player, npcId)) {
-      return { player };
-    }
-    
-    // Handle talk objective
-    const talkQuest = deps.questTools.getTalkQuestForNpc(player, npcId);
-    if (talkQuest && talkQuest.objective && talkQuest.objective.type === "talk") {
-      deps.updateQuestObjective(player, "talk", npcId, 1);
-      deps.sendSelfProgress(player);
-    }
-    
-    // Start dialogue
-    const dialogue = deps.dialogueTools.getDialogueForQuest(player, player, npcId);
-    if (dialogue) {
-      deps.sendJson(player.ws, {
-        type: "quest_dialogue",
-        ...dialogue
-      });
-    }
+    handleQuestNpcInteraction(player, npcId, deps, { sendNoQuestDialogue: true });
     return { player };
   }
 
@@ -644,28 +683,7 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     if (!npcId) {
       return { player };
     }
-    
-    // Check if player is near the NPC
-    const npc = deps.getQuestNpc(npcId);
-    if (!npc || !deps.isPlayerNearNpc(player, npcId)) {
-      return { player };
-    }
-    
-    // Handle talk objective
-    const talkQuest = deps.questTools.getTalkQuestForNpc(player, npcId);
-    if (talkQuest && talkQuest.objective && talkQuest.objective.type === "talk") {
-      deps.updateQuestObjective(player, "talk", npcId, 1);
-      deps.sendSelfProgress(player);
-    }
-    
-    // Start dialogue
-    const dialogue = deps.dialogueTools.getDialogueForQuest(player, player, npcId);
-    if (dialogue) {
-      deps.sendJson(player.ws, {
-        type: "quest_dialogue",
-        ...dialogue
-      });
-    }
+    handleQuestNpcInteraction(player, npcId, deps, { sendNoQuestDialogue: false });
     return { player };
   }
 
@@ -675,7 +693,7 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
       return { player };
     }
     
-    const result = deps.dialogueTools.selectDialogueOption(player.playerId, player, nodeId);
+    const result = deps.dialogueTools.selectDialogueOption(player.id, player, nodeId);
     if (result.error) {
       deps.sendJson(player.ws, {
         type: "quest_dialogue_error",
