@@ -21,6 +21,18 @@
         return;
       }
 
+      // Don't handle movement keys when typing in input fields (chat, etc.)
+      const activeElement = deps.document.activeElement;
+      const isTyping = activeElement && (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.isContentEditable
+      );
+      if (isTyping) {
+        // Allow typing in input fields but don't trigger movement
+        return;
+      }
+
       if (event.code === "F3") {
         deps.toggleDebugPanel();
         event.preventDefault();
