@@ -15128,44 +15128,56 @@ let questNpcSprite = null;
 
 function createQuestNpcSprite() {
   const sprite = document.createElement("canvas");
-  sprite.width = 32;
-  sprite.height = 48;
+  sprite.width = 48;
+  sprite.height = 64;
   const sctx = sprite.getContext("2d");
+  if (!sctx) {
+    return sprite;
+  }
+  // Translate to center-bottom of sprite (like vendor)
+  sctx.translate(24, 56);
+  
+  // Shadow
+  sctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+  sctx.beginPath();
+  sctx.ellipse(0, 0, 14, 6, 0, 0, Math.PI * 2);
+  sctx.fill();
   
   // Body (blue/green robes like a sage)
   sctx.fillStyle = "#2d5a4a";
   sctx.beginPath();
-  sctx.moveTo(-8, 10);
-  sctx.lineTo(-10, 20);
-  sctx.lineTo(10, 20);
-  sctx.lineTo(8, 10);
+  sctx.moveTo(-10, -20);
+  sctx.lineTo(-12, 0);
+  sctx.lineTo(12, 0);
+  sctx.lineTo(10, -20);
+  sctx.closePath();
   sctx.fill();
   
   // Head
   sctx.fillStyle = "#e8c39e";
   sctx.beginPath();
-  sctx.arc(0, 2, 7, 0, Math.PI * 2);
+  sctx.arc(0, -28, 8, 0, Math.PI * 2);
   sctx.fill();
   
   // Hood
   sctx.fillStyle = "#1a3d2e";
   sctx.beginPath();
-  sctx.arc(0, 0, 9, Math.PI, Math.PI * 2);
+  sctx.arc(0, -32, 11, Math.PI, Math.PI * 2);
   sctx.fill();
   
   // Staff
   sctx.fillStyle = "#8b6914";
-  sctx.fillRect(10, -8, 2, 28);
+  sctx.fillRect(14, -48, 3, 48);
   sctx.fillStyle = "#ffd700";
   sctx.beginPath();
-  sctx.arc(11, -10, 3, 0, Math.PI * 2);
+  sctx.arc(15.5, -50, 4, 0, Math.PI * 2);
   sctx.fill();
   
   // Glow effect
   sctx.strokeStyle = "rgba(255, 215, 0, 0.3)";
   sctx.lineWidth = 2;
   sctx.beginPath();
-  sctx.arc(0, 5, 14, 0, Math.PI * 2);
+  sctx.arc(0, -25, 16, 0, Math.PI * 2);
   sctx.stroke();
   
   return sprite;
@@ -15227,7 +15239,8 @@ function drawQuestNpcs(cameraX, cameraY, frameNow) {
     if (!questGiver) continue;
     const p = worldToScreen(Number(questGiver.x) + 0.5, Number(questGiver.y) + 0.5, cameraX, cameraY);
     const sprite = getQuestNpcSprite();
-    ctx.drawImage(sprite, Math.round(p.x - sprite.width / 2), Math.round(p.y - sprite.height / 2 - 4 + bob));
+    // Draw with anchor at bottom-center (like vendor)
+    ctx.drawImage(sprite, Math.round(p.x - sprite.width / 2), Math.round(p.y - sprite.height + bob));
   }
 }
 
@@ -15241,13 +15254,19 @@ function getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseX, mouseY) {
   if (!questGivers || questGivers.length === 0) {
     return null;
   }
-  const radius = 1.5;
+  // Use larger radius for easier clicking on the taller NPC
+  const radius = 1.8;
   for (const questGiver of questGivers) {
     if (!questGiver) continue;
     const p = worldToScreen(Number(questGiver.x) + 0.5, Number(questGiver.y) + 0.5, cameraX, cameraY);
-    const dx = mouseX - p.x;
-    const dy = mouseY - (p.y - 10);
-    if (dx * dx + dy * dy <= radius * radius * 400) {
+    const sprite = getQuestNpcSprite();
+    // Check against the sprite's bounding box (centered on sprite)
+    const spriteCenterX = p.x;
+    const spriteTopY = p.y - sprite.height;
+    const dx = mouseX - spriteCenterX;
+    const dy = mouseY - (spriteTopY + sprite.height / 2);
+    // Check if within sprite bounds with some padding
+    if (Math.abs(dx) < sprite.width / 2 + 10 && Math.abs(dy) < sprite.height / 2 + 10) {
       return { npc: questGiver, p };
     }
   }

@@ -3372,7 +3372,10 @@
           const p = worldToScreen(Number(questNpc.x) + 0.5, Number(questNpc.y) + 0.5, cameraX, cameraY, width, height);
           const questBob = Math.sin(frameNow / 340) * 1.2;
           const sprite = getQuestNpcSprite ? getQuestNpcSprite() : null;
-          updateLabeledSpriteNode(questNpcNode, p.x, p.y - 4 + questBob, String(questNpc.name || "Quest Giver"), 1, 1, sprite, (graphics) => {
+          // Account for sprite height (anchor at bottom-center)
+          const spriteHeight = sprite ? sprite.height : 64;
+          // Draw sprite with bottom at world position, then offset for label
+          updateLabeledSpriteNode(questNpcNode, p.x, p.y - spriteHeight + questBob, String(questNpc.name || "Quest Giver"), 1, 1, sprite, (graphics) => {
             graphics.clear();
           });
           questNpcNode.hpBack.clear();
