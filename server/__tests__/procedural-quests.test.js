@@ -9,7 +9,17 @@ function createMockItemDefs() {
     ["manaPotion01", { id: "manaPotion01", name: "Small Mana Potion", tags: ["potion"] }],
     ["boneFragment", { id: "boneFragment", name: "Bone Fragment", tags: ["crafting", "bone", "quest"] }],
     ["rottenFlesh", { id: "rottenFlesh", name: "Rotten Flesh", tags: ["crafting", "undead"] }],
-    ["orcTusk", { id: "orcTusk", name: "Orc Tusk", tags: ["crafting", "orc", "trophy"] }]
+    ["orcTusk", { id: "orcTusk", name: "Orc Tusk", tags: ["crafting", "orc", "trophy"] }],
+    ["oakLog", { id: "oakLog", name: "Oak Log", tags: ["crafting", "wood", "log", "oak", "gathered"] }],
+    ["birchLog", { id: "birchLog", name: "Birch Log", tags: ["crafting", "wood", "log", "birch", "gathered"] }],
+    ["copperOre", { id: "copperOre", name: "Copper Ore", tags: ["crafting", "ore", "metal", "copper", "gathered"] }],
+    ["roughStone", { id: "roughStone", name: "Rough Stone", tags: ["crafting", "stone", "ore", "gathered"] }],
+    ["rawMeat", { id: "rawMeat", name: "Raw Meat", tags: ["crafting", "food", "hunting", "animal", "gathered"] }],
+    ["rabbitPelt", { id: "rabbitPelt", name: "Rabbit Pelt", tags: ["crafting", "hunting", "animal", "hide", "fur", "gathered"] }],
+    ["lightHide", { id: "lightHide", name: "Light Hide", tags: ["crafting", "hunting", "animal", "hide", "leather", "gathered"] }],
+    ["deerAntler", { id: "deerAntler", name: "Deer Antler", tags: ["crafting", "hunting", "animal", "bone", "trophy", "gathered"] }],
+    ["thickHide", { id: "thickHide", name: "Thick Hide", tags: ["crafting", "hunting", "animal", "hide", "leather", "gathered"] }],
+    ["boarTusk", { id: "boarTusk", name: "Boar Tusk", tags: ["crafting", "hunting", "animal", "bone", "trophy", "gathered"] }]
   ]);
 }
 
@@ -42,16 +52,53 @@ function createMockMobConfig() {
     damageMax: 7,
     dropRules: [{ itemId: "orcTusk", kind: "chance", chance: 0.23 }]
   };
+  const rabbit = {
+    name: "Rabbit",
+    tags: ["starter", "animal", "passive", "huntable", "rabbit", "fur", "meat"],
+    health: 10,
+    damageMax: 0,
+    dropRules: [
+      { itemId: "rawMeat", kind: "chance", chance: 0.24 },
+      { itemId: "rabbitPelt", kind: "chance", chance: 0.22 }
+    ]
+  };
+  const deer = {
+    name: "Deer",
+    tags: ["starter", "animal", "passive", "huntable", "deer", "hide", "meat", "antler"],
+    health: 18,
+    damageMax: 0,
+    dropRules: [
+      { itemId: "rawMeat", kind: "chance", chance: 0.28 },
+      { itemId: "lightHide", kind: "chance", chance: 0.22 },
+      { itemId: "deerAntler", kind: "chance", chance: 0.12 }
+    ]
+  };
+  const boar = {
+    name: "Boar",
+    tags: ["mid", "animal", "passive", "huntable", "boar", "hide", "meat", "tusk"],
+    health: 24,
+    damageMax: 0,
+    dropRules: [
+      { itemId: "rawMeat", kind: "chance", chance: 0.3 },
+      { itemId: "thickHide", kind: "chance", chance: 0.24 },
+      { itemId: "boarTusk", kind: "chance", chance: 0.18 }
+    ]
+  };
   return {
     mobDefs: new Map([
       [zombie.name, zombie],
       [skeleton.name, skeleton],
       [skeletonArcher.name, skeletonArcher],
-      [orc.name, orc]
+      [orc.name, orc],
+      [rabbit.name, rabbit],
+      [deer.name, deer],
+      [boar.name, boar]
     ]),
     clusterDefs: [
       { name: "Undead Horde", members: [zombie, skeleton, skeletonArcher], spawnRangeMin: 20, spawnRangeMax: 180 },
-      { name: "Berserker Patrol", members: [orc], spawnRangeMin: 40, spawnRangeMax: 220 }
+      { name: "Berserker Patrol", members: [orc], spawnRangeMin: 40, spawnRangeMax: 220 },
+      { name: "Starter Wildlife", members: [rabbit, deer], spawnRangeMin: 18, spawnRangeMax: 160 },
+      { name: "Boar Wallows", members: [boar], spawnRangeMin: 55, spawnRangeMax: 220 }
     ]
   };
 }
@@ -128,6 +175,8 @@ describe("procedural quest generation", () => {
       "starter_undead_hunt",
       "starter_bone_collection",
       "starter_scouting_run",
+      "starter_hunting_drive",
+      "starter_supply_stockpile",
       "frontier_cleanup_campaign"
     ]);
   });
@@ -160,7 +209,7 @@ describe("procedural quest generation", () => {
     );
 
     expect(menuNode).toBeTruthy();
-    expect(menuNode.choices).toHaveLength(4);
+    expect(menuNode.choices).toHaveLength(6);
     expect(frontierDetailsNode && frontierDetailsNode.rewards).toBeTruthy();
     expect(frontierDetailsNode.rewards.exp).toBe(frontierQuest.rewards.exp);
     expect(frontierDetailsNode.rewards.items).toEqual(frontierQuest.rewards.items);
@@ -193,6 +242,38 @@ describe("procedural quest generation", () => {
     expect(questTools.getQuestProgress(player, collectQuest.id).rewards.exp).toBe(collectQuest.rewards.exp);
     expect(questTools.completeQuest(player, collectQuest.id).success).toBe(true);
     expect(getInventoryItemCount(player, "boneFragment")).toBe(12 - collectQuest.objectives[0].count);
+  });
+
+  test("prefarmed gathered items count for resource-supply quests", () => {
+    const questTools = createQuestTools({
+      townLayout,
+      mapWidth: 1000,
+      mapHeight: 1000,
+      questDataPath,
+      templateDataPath,
+      regionDataPath,
+      mobConfigProvider: () => mobConfig,
+      itemDefsProvider: () => itemDefs,
+      getInventoryItemCount,
+      consumeInventoryItem,
+      addItemsToInventory: () => ({ added: [], leftover: [] }),
+      sendInventoryState: () => {},
+      syncPlayerCopperFromInventory: () => false
+    });
+    const player = createPlayer({
+      inventorySlots: [
+        { itemId: "oakLog", qty: 20 },
+        { itemId: "birchLog", qty: 20 },
+        { itemId: "copperOre", qty: 12 },
+        ...Array.from({ length: 10 }, () => null)
+      ]
+    });
+    const stockpile = questTools.getAvailableQuestsForPlayer(player).find((quest) => quest.templateId === "starter_supply_stockpile");
+
+    const accepted = questTools.acceptQuest(player, stockpile.id);
+    expect(accepted.success).toBe(true);
+    expect(questTools.getQuestProgress(player, stockpile.id).objectives.every((objective) => objective.complete)).toBe(true);
+    expect(questTools.completeQuest(player, stockpile.id).success).toBe(true);
   });
 
   test("multi-objective quests support kill plus collect combinations", () => {

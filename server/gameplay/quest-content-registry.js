@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { createResourceRegistry } = require("./resource-registry");
 
 function createQuestContentRegistry(options = {}) {
   const mapWidth = Math.max(64, Math.floor(Number(options.mapWidth) || 1000));
@@ -9,9 +10,16 @@ function createQuestContentRegistry(options = {}) {
     typeof options.mobConfigProvider === "function" ? options.mobConfigProvider : () => null;
   const itemDefsProvider =
     typeof options.itemDefsProvider === "function" ? options.itemDefsProvider : () => null;
+  const resourceDataPath = options.resourceDataPath
+    ? path.resolve(String(options.resourceDataPath))
+    : path.resolve(__dirname, "../../data/resources.json");
   const regionDataPath = options.regionDataPath
     ? path.resolve(String(options.regionDataPath))
     : path.resolve(__dirname, "../../data/quest-regions.json");
+  const resourceRegistry =
+    typeof options.resourceRegistryProvider === "function"
+      ? options.resourceRegistryProvider() || createResourceRegistry({ resourceDataPath, itemDefsProvider })
+      : createResourceRegistry({ resourceDataPath, itemDefsProvider });
 
   let loadedRegionData = null;
 
@@ -179,6 +187,46 @@ function createQuestContentRegistry(options = {}) {
     return Array.from(byItemId.values());
   }
 
+  function buildGatherItemCatalog() {
+    const itemCatalog = buildItemCatalog();
+    const itemById = new Map(itemCatalog.map((entry) => [entry.id, entry]));
+    const byItemId = new Map();
+    const resourceDefs =
+      resourceRegistry && typeof resourceRegistry.getResourceDefs === "function"
+        ? resourceRegistry.getResourceDefs()
+        : [];
+    for (const resourceDef of Array.isArray(resourceDefs) ? resourceDefs : []) {
+      const resourceTags = normalizeTags(resourceDef && resourceDef.tags);
+      for (const yieldEntry of Array.isArray(resourceDef && resourceDef.yields) ? resourceDef.yields : []) {
+        const itemId = String(yieldEntry && yieldEntry.itemId || "").trim();
+        if (!itemId) {
+          continue;
+        }
+        const itemInfo = itemById.get(itemId);
+        if (!itemInfo) {
+          continue;
+        }
+        const entry = byItemId.get(itemId) || {
+          itemId,
+          itemName: itemInfo.name,
+          itemTags: normalizeTags(itemInfo.tags),
+          sourceResources: []
+        };
+        entry.sourceResources.push({
+          resourceId: String(resourceDef && resourceDef.id || ""),
+          resourceName: String(resourceDef && resourceDef.name || resourceDef && resourceDef.id || ""),
+          resourceTags,
+          skillId: normalizeTag(resourceDef && resourceDef.skillId),
+          requiredLevel: Math.max(1, Number(resourceDef && resourceDef.requiredLevel) || 1),
+          requiredToolTier: Math.max(0, Number(resourceDef && resourceDef.requiredToolTier) || 0),
+          chance: Number(yieldEntry && yieldEntry.chance) || 0
+        });
+        byItemId.set(itemId, entry);
+      }
+    }
+    return Array.from(byItemId.values());
+  }
+
   function getRegions() {
     const raw = loadRegionData();
     return (Array.isArray(raw.regions) ? raw.regions : []).map((region) => ({
@@ -266,6 +314,60 @@ function createQuestContentRegistry(options = {}) {
     });
   }
 
+  function findGatherItems(query = {}) {
+    return buildGatherItemCatalog().filter((entry) => {
+      if (!hasAllTags(entry.itemTags, query.itemTagsAll)) {
+        return false;
+      }
+      if (!hasAnyTags(entry.itemTags, query.itemTagsAny)) {
+        return false;
+      }
+      if (!hasNoForbiddenTags(entry.itemTags, query.itemTagsNone)) {
+        return false;
+      }
+      if (Array.isArray(query.sourceResourceTagsAll) && query.sourceResourceTagsAll.length > 0) {
+        const sourceMatches = entry.sourceResources.some((source) =>
+          hasAllTags(source.resourceTags, query.sourceResourceTagsAll)
+        );
+        if (!sourceMatches) {
+          return false;
+        }
+      }
+      if (Array.isArray(query.sourceResourceTagsAny) && query.sourceResourceTagsAny.length > 0) {
+        const sourceMatches = entry.sourceResources.some((source) =>
+          hasAnyTags(source.resourceTags, query.sourceResourceTagsAny)
+        );
+        if (!sourceMatches) {
+          return false;
+        }
+      }
+      if (Array.isArray(query.sourceResourceTagsNone) && query.sourceResourceTagsNone.length > 0) {
+        const sourceMatches = entry.sourceResources.some((source) =>
+          hasNoForbiddenTags(source.resourceTags, query.sourceResourceTagsNone)
+        );
+        if (!sourceMatches) {
+          return false;
+        }
+      }
+      const requiredSkillId = normalizeTag(query.sourceSkillId);
+      if (requiredSkillId) {
+        const sourceMatches = entry.sourceResources.some((source) => normalizeTag(source.skillId) === requiredSkillId);
+        if (!sourceMatches) {
+          return false;
+        }
+      }
+      if (Number.isFinite(Number(query.maxRequiredLevel))) {
+        const sourceMatches = entry.sourceResources.some(
+          (source) => Number(source.requiredLevel) <= Number(query.maxRequiredLevel)
+        );
+        if (!sourceMatches) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }
+
   function getTownAnchor() {
     return {
       x: Number(townLayout && townLayout.centerTileX) || Math.floor(mapWidth * 0.5),
@@ -278,9 +380,11 @@ function createQuestContentRegistry(options = {}) {
     getRegions,
     buildMobCatalog,
     buildDropItemCatalog,
+    buildGatherItemCatalog,
     buildItemCatalog,
     findMobs,
     findDropItems,
+    findGatherItems,
     findRegions,
     getTownAnchor
   };

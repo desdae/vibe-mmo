@@ -136,6 +136,10 @@ function main() {
   const gatherResult = resourceTools.interactWithResourceNode(visiblePlayer, { id: gatherNode.id, x: gatherNode.x, y: gatherNode.y });
   assert.strictEqual(gatherResult.ok, true, "Expected resource gather to succeed");
   assert.ok(gatherResult.itemsGained.length > 0, "Expected gathered items");
+  assert.ok(
+    gatherResult.itemsGained.some((entry) => ["oakLog", "birchLog", "pineLog", "sap", "resin"].includes(String(entry && entry.itemId || ""))),
+    "Expected gathered starter wood items to preserve canonical item IDs"
+  );
   assert.ok(visiblePlayer.skills.woodcutting.exp > beforeXp, "Expected woodcutting XP gain");
   assert.ok(getInventoryCount(visiblePlayer, gatherResult.itemsGained[0].itemId) > 0, "Expected gathered item in inventory");
   assert.strictEqual(resourceNodes.get(gatherNode.id).available, false, "Expected gathered node to deplete");

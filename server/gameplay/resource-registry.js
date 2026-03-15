@@ -65,8 +65,8 @@ function createResourceRegistry(options = {}) {
   }
 
   function normalizeYieldEntry(entry) {
-    const itemId = normalizeId(entry && entry.itemId);
-    if (!itemId) {
+    const itemId = String(entry && entry.itemId || "").trim();
+    if (!normalizeId(itemId)) {
       return null;
     }
     const qtyMin = Math.max(1, Math.floor(Number(entry.qtyMin) || Number(entry.qty) || 1));

@@ -1,5 +1,5 @@
 {
-  "maxOffersPerNpc": 4,
+  "maxOffersPerNpc": 6,
   "templates": [
     {
       "id": "starter_undead_hunt",
@@ -162,6 +162,143 @@
           "Good work. Fresh scouting keeps everyone alive.",
           "Excellent. Reliable reports are worth their weight in copper.",
           "That information will help us plan our next move."
+        ]
+      }
+    },
+    {
+      "id": "starter_hunting_drive",
+      "npcGiverId": "town_herald",
+      "npcCompleteId": "town_herald",
+      "repeatable": true,
+      "minLevel": 2,
+      "objectives": [
+        {
+          "type": "kill",
+          "countRange": [3, 5],
+          "target": {
+            "kind": "mobByTags",
+            "tagsAll": ["animal", "passive", "huntable"],
+            "tagsAny": ["rabbit", "deer"],
+            "maxSpawnRange": 220
+          }
+        },
+        {
+          "type": "collect",
+          "countRange": [4, 6],
+          "target": {
+            "kind": "dropItemByTags",
+            "itemTagsAll": ["gathered", "animal", "hunting"],
+            "itemTagsAny": ["food", "meat"],
+            "sourceMobTagsAll": ["animal", "huntable"],
+            "sourceMobTagsAny": ["rabbit", "deer", "boar"],
+            "maxSpawnRange": 240
+          }
+        }
+      ],
+      "rewards": {
+        "baseExp": 42,
+        "expPerTarget": 12,
+        "distanceExpFactor": 0.07
+      },
+      "text": {
+        "titleVariants": [
+          "Thin the Small Game",
+          "Stock the Hunting Larder",
+          "Bring in Fresh Game"
+        ],
+        "offerIntroVariants": [
+          "The cooks are short on fresh meat and the outskirts are thick with skittish game.",
+          "We need hunters more than heroes for this one.",
+          "The camp stores could use a proper hunting run."
+        ],
+        "offerDetailVariants": [
+          "Head out and {objectiveList}.",
+          "This is a hunter's job: {objectiveList}.",
+          "Bring in supplies the hard way and {objectiveList}."
+        ],
+        "acceptVariants": [
+          "Good. {objectiveListCapitalized}, then bring the haul back here.",
+          "Fine. {objectiveListCapitalized}; the town can use every scrap.",
+          "Excellent. {objectiveListCapitalized} and we'll keep the stores full."
+        ],
+        "inProgressVariants": [
+          "You're not done yet. {objectiveListCapitalized}.",
+          "Keep after the game and finish the assignment.",
+          "The hunters are still waiting on you. {objectiveListCapitalized}."
+        ],
+        "completeVariants": [
+          "Excellent haul. That's the kind of work that keeps a town fed.",
+          "Well done. Fresh game and good fieldwork in one run.",
+          "Perfect. The cooks and tanners will both be pleased."
+        ]
+      }
+    },
+    {
+      "id": "starter_supply_stockpile",
+      "npcGiverId": "town_herald",
+      "npcCompleteId": "town_herald",
+      "repeatable": true,
+      "minLevel": 2,
+      "objectives": [
+        {
+          "type": "collect",
+          "countRange": [6, 9],
+          "target": {
+            "kind": "gatherItemByTags",
+            "itemTagsAll": ["gathered", "wood", "log"],
+            "itemTagsAny": ["oak", "birch"],
+            "sourceSkillId": "woodcutting",
+            "sourceResourceTagsAny": ["starter_ring", "midlands"]
+          }
+        },
+        {
+          "type": "collect",
+          "countRange": [4, 6],
+          "target": {
+            "kind": "gatherItemByTags",
+            "itemTagsAll": ["gathered"],
+            "itemTagsAny": ["copper"],
+            "sourceSkillId": "mining",
+            "sourceResourceTagsAny": ["starter_ring", "midlands"],
+            "maxRequiredLevel": 2
+          }
+        }
+      ],
+      "rewards": {
+        "baseExp": 48,
+        "expPerTarget": 10,
+        "distanceExpFactor": 0.05
+      },
+      "text": {
+        "titleVariants": [
+          "Build the Supply Stockpile",
+          "Gather Field Materials",
+          "Stock the Work Crews"
+        ],
+        "offerIntroVariants": [
+          "Repairs and fieldworks chew through timber and stone faster than you'd think.",
+          "The quartermaster needs proper gathered materials, not scavenged scraps.",
+          "We're building up stores for the crews outside town."
+        ],
+        "offerDetailVariants": [
+          "Bring back what we need by doing this: {objectiveList}.",
+          "This is a gatherer's assignment: {objectiveList}.",
+          "If you want steady work, {objectiveList}."
+        ],
+        "acceptVariants": [
+          "Good. {objectiveListCapitalized}. Prefarmed supplies count if they're clean.",
+          "Excellent. {objectiveListCapitalized}, then bring the lot back here.",
+          "Fine. {objectiveListCapitalized}; every stack helps."
+        ],
+        "inProgressVariants": [
+          "The stockpile still isn't full. {objectiveListCapitalized}.",
+          "We're still short on gathered supplies.",
+          "Come back when the materials are in hand. {objectiveListCapitalized}."
+        ],
+        "completeVariants": [
+          "Perfect. That's exactly the sort of supply haul we needed.",
+          "Excellent work. Timber and ore keep this town standing.",
+          "Well gathered. The crews will put all of this to use."
         ]
       }
     },

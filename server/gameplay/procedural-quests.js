@@ -17,7 +17,7 @@ Quest template:
       type: "kill" | "collect" | "explore",
       countRange?,
       target: {
-        kind: "mobByTags" | "dropItemByTags" | "regionByTags",
+        kind: "mobByTags" | "dropItemByTags" | "gatherItemByTags" | "regionByTags",
         tagsAll?,
         tagsAny?,
         tagsNone?,
@@ -27,7 +27,12 @@ Quest template:
         sourceMobTagsAll?,
         sourceMobTagsAny?,
         sourceMobTagsNone?,
-        maxSpawnRange?
+        sourceResourceTagsAll?,
+        sourceResourceTagsAny?,
+        sourceResourceTagsNone?,
+        sourceSkillId?,
+        maxSpawnRange?,
+        maxRequiredLevel?
       }
     }
   ],
@@ -68,7 +73,9 @@ function createProceduralQuestTools(options = {}) {
     mapHeight: options.mapHeight,
     mobConfigProvider: typeof options.mobConfigProvider === "function" ? options.mobConfigProvider : () => null,
     itemDefsProvider: typeof options.itemDefsProvider === "function" ? options.itemDefsProvider : () => null,
-    regionDataPath: options.regionDataPath
+    regionDataPath: options.regionDataPath,
+    resourceDataPath: options.resourceDataPath,
+    resourceRegistryProvider: options.resourceRegistryProvider
   });
 
   let loadedTemplateData = null;
@@ -188,7 +195,7 @@ function createProceduralQuestTools(options = {}) {
 
   function getMaxOffersPerNpc() {
     const data = loadTemplateData();
-    return clamp(Math.floor(Number(data && data.maxOffersPerNpc) || 1), 1, 5);
+    return clamp(Math.floor(Number(data && data.maxOffersPerNpc) || 1), 1, 8);
   }
 
   function getPlayerGeneratedState(player) {
@@ -283,6 +290,7 @@ function createProceduralQuestTools(options = {}) {
     const spec = objectiveSpec && typeof objectiveSpec === "object" ? objectiveSpec : {};
     const type = normalizeText(spec.type).toLowerCase();
     const target = spec.target && typeof spec.target === "object" ? spec.target : {};
+    const targetKind = normalizeText(target.kind).toLowerCase();
     const maxSpawnRange = Number.isFinite(Number(target.maxSpawnRange)) ? Number(target.maxSpawnRange) : null;
 
     if (type === "kill") {
@@ -323,16 +331,34 @@ function createProceduralQuestTools(options = {}) {
     }
 
     if (type === "collect") {
-      const candidates = registry.findDropItems({
-        itemTagsAll: target.itemTagsAll,
-        itemTagsAny: target.itemTagsAny,
-        itemTagsNone: target.itemTagsNone,
-        sourceMobTagsAll: target.sourceMobTagsAll,
-        sourceMobTagsAny: target.sourceMobTagsAny,
-        sourceMobTagsNone: target.sourceMobTagsNone,
-        maxSpawnRange
-      }).filter((entry) => !usedSelections.itemIds.has(entry.itemId));
+      const candidates =
+        targetKind === "gatheritembytags"
+          ? registry.findGatherItems({
+              itemTagsAll: target.itemTagsAll,
+              itemTagsAny: target.itemTagsAny,
+              itemTagsNone: target.itemTagsNone,
+              sourceResourceTagsAll: target.sourceResourceTagsAll,
+              sourceResourceTagsAny: target.sourceResourceTagsAny,
+              sourceResourceTagsNone: target.sourceResourceTagsNone,
+              sourceSkillId: target.sourceSkillId,
+              maxRequiredLevel: target.maxRequiredLevel
+            }).filter((entry) => !usedSelections.itemIds.has(entry.itemId))
+          : registry.findDropItems({
+              itemTagsAll: target.itemTagsAll,
+              itemTagsAny: target.itemTagsAny,
+              itemTagsNone: target.itemTagsNone,
+              sourceMobTagsAll: target.sourceMobTagsAll,
+              sourceMobTagsAny: target.sourceMobTagsAny,
+              sourceMobTagsNone: target.sourceMobTagsNone,
+              maxSpawnRange
+            }).filter((entry) => !usedSelections.itemIds.has(entry.itemId));
       const item = chooseCandidate(rng, candidates, (entry) => {
+        if (targetKind === "gatheritembytags") {
+          const source = Array.isArray(entry.sourceResources) && entry.sourceResources.length > 0
+            ? entry.sourceResources[0]
+            : null;
+          return source ? Number(source.requiredLevel) || 0 : 0;
+        }
         const source = Array.isArray(entry.sourceMobs) && entry.sourceMobs.length > 0 ? entry.sourceMobs[0] : null;
         return source ? Number(source.spawnRangeMin) || 0 : 0;
       });
@@ -340,9 +366,35 @@ function createProceduralQuestTools(options = {}) {
         return null;
       }
       usedSelections.itemIds.add(item.itemId);
-      const primarySource = Array.isArray(item.sourceMobs) && item.sourceMobs.length > 0 ? item.sourceMobs[0] : null;
       const count = calculateCount(rng, spec.countRange, 5, 8);
       const itemPlural = pluralizeName(item.itemName);
+      if (targetKind === "gatheritembytags") {
+        const primarySource = Array.isArray(item.sourceResources) && item.sourceResources.length > 0
+          ? item.sourceResources[0]
+          : null;
+        const sourceNamePlural = primarySource ? pluralizeName(primarySource.resourceName) : "resource nodes";
+        return {
+          objective: {
+            type: "collect",
+            itemId: item.itemId,
+            count,
+            description: `Gather ${count} ${String(itemPlural).toLowerCase()}`
+          },
+          tokens: {
+            itemName: item.itemName,
+            itemNamePlural: itemPlural,
+            sourceName: primarySource ? primarySource.resourceName : "resource node",
+            sourceNamePlural,
+            skillName: capitalizeFirst(primarySource ? primarySource.skillId : ""),
+            count,
+            distanceScore: Math.max(0, Number(primarySource && primarySource.requiredLevel) || 0) * 18
+          },
+          summary: `gather ${count} ${String(itemPlural).toLowerCase()} from ${String(sourceNamePlural).toLowerCase()}`,
+          rewardUnits: count,
+          rewardDistance: Math.max(0, Number(primarySource && primarySource.requiredLevel) || 0) * 18
+        };
+      }
+      const primarySource = Array.isArray(item.sourceMobs) && item.sourceMobs.length > 0 ? item.sourceMobs[0] : null;
       const sourceNamePlural = primarySource ? pluralizeName(primarySource.mobName) : "creatures";
       return {
         objective: {

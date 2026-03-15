@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { createProceduralQuestTools } = require("./procedural-quests");
+const { createResourceRegistry } = require("./resource-registry");
 
 function createQuestTools(options = {}) {
   const townLayout = options.townLayout || null;
@@ -22,17 +23,26 @@ function createQuestTools(options = {}) {
     typeof options.mobConfigProvider === "function" ? options.mobConfigProvider : () => null;
   const itemDefsProvider =
     typeof options.itemDefsProvider === "function" ? options.itemDefsProvider : () => null;
+  const resourceDataPath = options.resourceDataPath
+    ? path.resolve(String(options.resourceDataPath))
+    : path.resolve(__dirname, "../../data/resources.json");
   const questDataPath = options.questDataPath
     ? path.resolve(String(options.questDataPath))
     : path.resolve(__dirname, "../../data/quests.json");
 
   let loadedQuestData = null;
+  const resourceRegistry =
+    typeof options.resourceRegistryProvider === "function"
+      ? options.resourceRegistryProvider() || createResourceRegistry({ resourceDataPath, itemDefsProvider })
+      : createResourceRegistry({ resourceDataPath, itemDefsProvider });
   const proceduralQuestTools = createProceduralQuestTools({
     townLayout,
     mapWidth: options.mapWidth,
     mapHeight: options.mapHeight,
     mobConfigProvider,
     itemDefsProvider,
+    resourceDataPath,
+    resourceRegistryProvider: options.resourceRegistryProvider,
     regionDataPath: options.regionDataPath,
     templateDataPath: options.templateDataPath
   });
@@ -240,6 +250,22 @@ function createQuestTools(options = {}) {
     return false;
   }
 
+  function canAnyResourceYieldItem(itemId) {
+    const resourceDefs =
+      resourceRegistry && typeof resourceRegistry.getResourceDefs === "function"
+        ? resourceRegistry.getResourceDefs()
+        : [];
+    const targetKey = normalizeQuestLookupId(itemId);
+    if (!targetKey) {
+      return false;
+    }
+    return resourceDefs.some((resourceDef) =>
+      (Array.isArray(resourceDef && resourceDef.yields) ? resourceDef.yields : []).some(
+        (yieldEntry) => normalizeQuestLookupId(yieldEntry && yieldEntry.itemId) === targetKey
+      )
+    );
+  }
+
   function isQuestDefinitionValid(quest) {
     if (!quest || typeof quest !== "object") {
       return false;
@@ -253,7 +279,7 @@ function createQuestTools(options = {}) {
       if (type === "kill" && !hasMobDefinition(obj.mobId)) {
         return false;
       }
-      if (type === "collect" && !canAnyMobDropItem(obj.itemId)) {
+      if (type === "collect" && !canAnyMobDropItem(obj.itemId) && !canAnyResourceYieldItem(obj.itemId)) {
         return false;
       }
       if (type === "talk" && !getQuestNpc(obj.targetId)) {

@@ -12,7 +12,17 @@ function createMockItemDefs() {
     ["rottenFlesh", { id: "rottenFlesh", name: "Rotten Flesh", tags: ["crafting", "undead"] }],
     ["spiderSilk", { id: "spiderSilk", name: "Spider Silk", tags: ["crafting", "silk"] }],
     ["orcTusk", { id: "orcTusk", name: "Orc Tusk", tags: ["crafting", "orc", "trophy"] }],
-    ["volatilePowder", { id: "volatilePowder", name: "Volatile Powder", tags: ["crafting", "volatile"] }]
+    ["volatilePowder", { id: "volatilePowder", name: "Volatile Powder", tags: ["crafting", "volatile"] }],
+    ["oakLog", { id: "oakLog", name: "Oak Log", tags: ["crafting", "wood", "log", "oak", "gathered"] }],
+    ["birchLog", { id: "birchLog", name: "Birch Log", tags: ["crafting", "wood", "log", "birch", "gathered"] }],
+    ["copperOre", { id: "copperOre", name: "Copper Ore", tags: ["crafting", "ore", "metal", "copper", "gathered"] }],
+    ["roughStone", { id: "roughStone", name: "Rough Stone", tags: ["crafting", "stone", "ore", "gathered"] }],
+    ["rawMeat", { id: "rawMeat", name: "Raw Meat", tags: ["crafting", "food", "hunting", "animal", "gathered"] }],
+    ["rabbitPelt", { id: "rabbitPelt", name: "Rabbit Pelt", tags: ["crafting", "hunting", "animal", "hide", "fur", "gathered"] }],
+    ["lightHide", { id: "lightHide", name: "Light Hide", tags: ["crafting", "hunting", "animal", "hide", "leather", "gathered"] }],
+    ["deerAntler", { id: "deerAntler", name: "Deer Antler", tags: ["crafting", "hunting", "animal", "bone", "trophy", "gathered"] }],
+    ["thickHide", { id: "thickHide", name: "Thick Hide", tags: ["crafting", "hunting", "animal", "hide", "leather", "gathered"] }],
+    ["boarTusk", { id: "boarTusk", name: "Boar Tusk", tags: ["crafting", "hunting", "animal", "bone", "trophy", "gathered"] }]
   ]);
 }
 
@@ -45,12 +55,47 @@ function createMockMobConfig() {
     damageMax: 7,
     dropRules: [{ itemId: "orcTusk", kind: "chance", chance: 0.23 }]
   };
+  const rabbit = {
+    name: "Rabbit",
+    tags: ["starter", "animal", "passive", "huntable", "rabbit", "fur", "meat"],
+    health: 10,
+    damageMax: 0,
+    dropRules: [
+      { itemId: "rawMeat", kind: "chance", chance: 0.24 },
+      { itemId: "rabbitPelt", kind: "chance", chance: 0.22 }
+    ]
+  };
+  const deer = {
+    name: "Deer",
+    tags: ["starter", "animal", "passive", "huntable", "deer", "hide", "meat", "antler"],
+    health: 18,
+    damageMax: 0,
+    dropRules: [
+      { itemId: "rawMeat", kind: "chance", chance: 0.28 },
+      { itemId: "lightHide", kind: "chance", chance: 0.22 },
+      { itemId: "deerAntler", kind: "chance", chance: 0.12 }
+    ]
+  };
+  const boar = {
+    name: "Boar",
+    tags: ["mid", "animal", "passive", "huntable", "boar", "hide", "meat", "tusk"],
+    health: 24,
+    damageMax: 0,
+    dropRules: [
+      { itemId: "rawMeat", kind: "chance", chance: 0.3 },
+      { itemId: "thickHide", kind: "chance", chance: 0.24 },
+      { itemId: "boarTusk", kind: "chance", chance: 0.18 }
+    ]
+  };
   return {
     mobDefs: new Map([
       [zombie.name, zombie],
       [skeleton.name, skeleton],
       [skeletonArcher.name, skeletonArcher],
-      [orc.name, orc]
+      [orc.name, orc],
+      [rabbit.name, rabbit],
+      [deer.name, deer],
+      [boar.name, boar]
     ]),
     clusterDefs: [
       {
@@ -63,6 +108,18 @@ function createMockMobConfig() {
         name: "Berserker Patrol",
         members: [orc],
         spawnRangeMin: 40,
+        spawnRangeMax: 220
+      },
+      {
+        name: "Starter Wildlife",
+        members: [rabbit, deer],
+        spawnRangeMin: 18,
+        spawnRangeMax: 160
+      },
+      {
+        name: "Boar Wallows",
+        members: [boar],
+        spawnRangeMin: 55,
         spawnRangeMax: 220
       }
     ]
@@ -159,13 +216,15 @@ function main() {
   const generatedPlayer = createPlayer({ level: 6 });
   const generatedOffers = proceduralQuestTools.getAvailableQuestsForNpc(generatedPlayer, "town_herald");
   const generatedTemplateIds = generatedOffers.map((quest) => quest.templateId);
-  assert.strictEqual(generatedOffers.length, 4, "Expected four simultaneous generated offers for a high-level player");
+  assert.strictEqual(generatedOffers.length, 6, "Expected six simultaneous generated offers for a high-level player");
   assert.deepStrictEqual(
     generatedTemplateIds,
     [
       "starter_undead_hunt",
       "starter_bone_collection",
       "starter_scouting_run",
+      "starter_hunting_drive",
+      "starter_supply_stockpile",
       "frontier_cleanup_campaign"
     ],
     "Expected all template types to be offered in order"
@@ -200,14 +259,14 @@ function main() {
     }
   });
   const repeatableOffers = questTools.getAvailableQuestsForPlayer(repeatablePlayer);
-  assert.strictEqual(repeatableOffers.length, 4, "Expected multiple quests to choose from after the tutorial");
+  assert.strictEqual(repeatableOffers.length, 6, "Expected multiple quests to choose from after the tutorial");
 
   const dialogueTools = createDialogueTools({ questTools });
   const dialogue = dialogueTools.startDialogue(repeatablePlayer.id, repeatablePlayer, "town_herald");
   assert.strictEqual(dialogue.dialogueType, "offer", "Expected offer dialogue for the Herald");
   const questMenuNode = dialogue.nodes.find((node) => String(node.id) === "quest_menu");
   assert.ok(questMenuNode, "Expected a quest selection menu node");
-  assert.strictEqual(questMenuNode.choices.length, 4, "Expected one dialogue choice per available quest");
+  assert.strictEqual(questMenuNode.choices.length, 6, "Expected one dialogue choice per available quest");
   const frontierOffer = repeatableOffers.find((quest) => quest.templateId === "frontier_cleanup_campaign");
   const frontierDetailsNode = dialogue.nodes.find(
     (node) => String(node.id) === `quest_${String(frontierOffer && frontierOffer.id || "")}_details`
@@ -252,6 +311,40 @@ function main() {
   const collectComplete = questTools.completeQuest(prefarmedPlayer, collectQuest.id);
   assert.strictEqual(collectComplete.success, true, "Expected prefarmed collect quest to hand in successfully");
   assert.strictEqual(getInventoryItemCount(prefarmedPlayer, "boneFragment"), 12 - collectQuest.objectives[0].count, "Quest hand-in should consume collected items");
+
+  const gatheredPlayer = createPlayer({
+    level: 6,
+    inventorySlots: [
+      { itemId: "oakLog", qty: 20 },
+      { itemId: "birchLog", qty: 20 },
+      { itemId: "copperOre", qty: 12 },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null
+    ],
+    questState: {
+      active: {},
+      completed: ["quest_first_steps"]
+    }
+  });
+  const stockpileQuest = questTools.getAvailableQuestsForPlayer(gatheredPlayer).find(
+    (quest) => quest.templateId === "starter_supply_stockpile"
+  );
+  assert.ok(stockpileQuest, "Expected a generated gather-supplies quest");
+  const acceptedStockpile = questTools.acceptQuest(gatheredPlayer, stockpileQuest.id);
+  assert.strictEqual(acceptedStockpile.success, true, "Expected the gather-supplies quest to be accepted");
+  const stockpileProgress = questTools.getQuestProgress(gatheredPlayer, stockpileQuest.id);
+  assert.strictEqual(stockpileProgress.objectives.length, 2, "Expected two gathered-material objectives");
+  assert.ok(stockpileProgress.objectives.every((objective) => objective.complete), "Prefarmed gathered items should count immediately");
+  const completedStockpile = questTools.completeQuest(gatheredPlayer, stockpileQuest.id);
+  assert.strictEqual(completedStockpile.success, true, "Expected gathered-material quest hand-in to succeed");
 
   const campaignPlayer = createPlayer({
     level: 6,
