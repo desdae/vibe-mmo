@@ -30,6 +30,7 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     projectiles,
     mobs,
     lootBags,
+    getVisibleResourceNodesForPlayer,
     serializePlayer,
     serializeMob
   } = deps;
@@ -40,6 +41,10 @@ function collectNearbyEntitiesForPlayer(player, deps) {
   const nearbyMobObjects = [];
   const nearbyProjectiles = [];
   const nearbyLootBags = [];
+  const nearbyResourceNodes =
+    typeof getVisibleResourceNodesForPlayer === "function"
+      ? getVisibleResourceNodesForPlayer(player, deps.inVisibilityRange, getPlayerVisibilityExtents(player, deps))
+      : [];
 
   for (const other of players.values()) {
     if (other.id === player.id) {
@@ -85,8 +90,28 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     nearbyMobs,
     nearbyMobObjects,
     nearbyProjectiles,
-    nearbyLootBags
+    nearbyLootBags,
+    nearbyResourceNodes
   };
+}
+
+function sendVisibleResourceNodes(player, nearbyResourceNodes, deps) {
+  const { sendJson, serializeResourceNode } = deps;
+  if (typeof sendJson !== "function" || typeof serializeResourceNode !== "function" || !player || !player.entitySync) {
+    return;
+  }
+  const visibleNodes = Array.isArray(nearbyResourceNodes) ? nearbyResourceNodes.map((node) => serializeResourceNode(node)).filter(Boolean) : [];
+  const signature = visibleNodes
+    .map((node) => `${node.id}:${node.resourceId}:${Math.round(Number(node.x) || 0)}:${Math.round(Number(node.y) || 0)}`)
+    .join("|");
+  if ((player.entitySync.resourceNodeStateSignature || "") === signature) {
+    return;
+  }
+  player.entitySync.resourceNodeStateSignature = signature;
+  sendJson(player.ws, {
+    type: "resource_nodes_state",
+    nodes: visibleNodes
+  });
 }
 
 function sendEntityMeta(player, entityUpdate, deps) {
@@ -355,6 +380,7 @@ function broadcastStateToPlayers(deps, now = Date.now(), options = {}) {
     );
 
     sendEntityMeta(player, entityUpdate, deps);
+    sendVisibleResourceNodes(player, nearby.nearbyResourceNodes, deps);
     sendCastAndCombatAnimationEvents(player, nearby.nearbyPlayerObjects, nearby.nearbyMobObjects, now, deps);
     sendSelfBuffUpdates(player, now, deps);
     sendAreaEffectEvents(player, now, deps);

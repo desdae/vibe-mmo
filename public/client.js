@@ -452,7 +452,8 @@ const gameState = {
   players: [],
   projectiles: [],
   mobs: [],
-  lootBags: []
+  lootBags: [],
+  resourceNodes: []
 };
 
 const keys = {
@@ -772,6 +773,7 @@ const entityRuntime = {
   projectiles: new Map(),
   lootBags: new Map(),
   lootBagMeta: new Map(),
+  resourceNodes: new Map(),
   playerMeta: new Map()
 };
 
@@ -783,6 +785,14 @@ const lootPickupState = {
   bagId: "",
   x: 0,
   y: 0,
+  nextAttemptAt: 0
+};
+const resourceInteractionState = {
+  active: false,
+  resourceNodeId: "",
+  x: 0,
+  y: 0,
+  interactRange: 0,
   nextAttemptAt: 0
 };
 const mobilePanelState = {
@@ -855,6 +865,7 @@ const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
   ])
 });
 const lootBagSpriteCache = new Map();
+const resourceNodeSpriteCache = new Map();
 
 function clamp(value, min, max) {
   if (sharedClamp) {
@@ -6999,6 +7010,7 @@ function startAutoVendorInteraction(vendor) {
     return false;
   }
   clearAutoQuestNpcInteraction(false);
+  clearAutoResourceInteraction(false);
   vendorInteractionState.active = true;
   vendorInteractionState.npcId = String(vendor.id || "");
   vendorInteractionState.x = Number(vendor.x) || 0;
@@ -7061,6 +7073,7 @@ function tryContextVendorInteraction() {
   }
   if (canInteractWithVendor(self)) {
     clearAutoVendorInteraction(false, true);
+    clearAutoResourceInteraction(false);
     notifyQuestTalkToNpc(hovered.vendor.id);
     setVendorPanelVisible(true);
     updateVendorPanelUI();
@@ -9072,7 +9085,8 @@ function pushSnapshot(msg) {
     players: Array.isArray(msg.players) ? msg.players.map((entity) => ({ ...entity })) : [],
     projectiles: Array.isArray(msg.projectiles) ? msg.projectiles.map((entity) => ({ ...entity })) : [],
     mobs: Array.isArray(msg.mobs) ? msg.mobs.map((entity) => ({ ...entity })) : [],
-    lootBags: Array.isArray(msg.lootBags) ? msg.lootBags.map((entity) => ({ ...entity })) : []
+    lootBags: Array.isArray(msg.lootBags) ? msg.lootBags.map((entity) => ({ ...entity })) : [],
+    resourceNodes: Array.isArray(msg.resourceNodes) ? msg.resourceNodes.map((entity) => ({ ...entity })) : []
   });
 
   while (snapshots.length > MAX_SNAPSHOTS) {
@@ -9091,6 +9105,7 @@ function clearEntityRuntime() {
   entityRuntime.projectiles.clear();
   entityRuntime.lootBags.clear();
   entityRuntime.lootBagMeta.clear();
+  entityRuntime.resourceNodes.clear();
   entityRuntime.playerMeta.clear();
   remoteMobCasts.clear();
   stopAllSpatialLoops();
@@ -9114,6 +9129,7 @@ function syncEntityArraysToGameState() {
       items: meta ? meta.items : []
     };
   });
+  gameState.resourceNodes = Array.from(entityRuntime.resourceNodes.values()).map((entity) => ({ ...entity }));
 }
 
 function syncSelfToGameState() {
@@ -9144,6 +9160,12 @@ function syncSelfToGameState() {
     exp: entityRuntime.self.exp ?? prev.exp ?? 0,
     expToNext: entityRuntime.self.expToNext ?? prev.expToNext ?? 20,
     skillPoints: entityRuntime.self.skillPoints ?? prev.skillPoints ?? 0,
+    skills:
+      entityRuntime.self.skills && typeof entityRuntime.self.skills === "object"
+        ? { ...entityRuntime.self.skills }
+        : prev.skills && typeof prev.skills === "object"
+          ? { ...prev.skills }
+          : {},
     abilityLevels
   };
 }
@@ -10592,6 +10614,7 @@ function resetClientSessionState() {
   gameState.projectiles = [];
   gameState.mobs = [];
   gameState.lootBags = [];
+  gameState.resourceNodes = [];
   inventoryState.slots = [];
   equipmentState.slots = {};
   entityRuntime.lootBagMeta.clear();
@@ -10628,6 +10651,7 @@ function resetClientSessionState() {
   ambientParticleEmitters.clear();
   clearAutoVendorInteraction(false, false);
   clearAutoQuestNpcInteraction(false);
+  clearAutoResourceInteraction(false);
   clearAutoLootPickup(false);
   abilityRuntime.clear();
   adminBotState.bots = [];
@@ -10666,6 +10690,10 @@ function handleServerSelfProgress(msg) {
       exp: 0,
       expToNext: 20,
       skillPoints: 0,
+      skills:
+        selfStatic && selfStatic.skills && typeof selfStatic.skills === "object"
+          ? { ...selfStatic.skills }
+          : {},
       abilityLevels: {},
       _xq: gameState.self ? Math.round(gameState.self.x * POS_SCALE) : 0,
       _yq: gameState.self ? Math.round(gameState.self.y * POS_SCALE) : 0
@@ -10678,6 +10706,7 @@ function handleServerSelfProgress(msg) {
   const skillPoints = Number(msg.skillPoints);
   const talentPoints = Number(msg.talentPoints);
   const abilityLevels = parseAbilityLevelsPayload(msg.abilityLevels);
+  const skillsPayload = Array.isArray(msg.skills) ? msg.skills : [];
   if (Number.isFinite(copper) && copper >= 0) {
     entityRuntime.self.copper = copper;
   }
@@ -10701,6 +10730,27 @@ function handleServerSelfProgress(msg) {
   }
   if (msg.abilityLevels !== undefined) {
     entityRuntime.self.abilityLevels = abilityLevels;
+  }
+  if (Array.isArray(msg.skills)) {
+    const nextSkills = skillsPayload.reduce((accumulator, entry) => {
+      const skillId = String(entry && entry.id || "").trim();
+      if (!skillId) {
+        return accumulator;
+      }
+      accumulator[skillId] = {
+        id: skillId,
+        name: String(entry && entry.name || skillId),
+        category: String(entry && entry.category || ""),
+        level: Math.max(1, Math.floor(Number(entry && entry.level) || 1)),
+        exp: Math.max(0, Math.floor(Number(entry && entry.exp) || 0)),
+        expToNext: Math.max(1, Math.floor(Number(entry && entry.expToNext) || 1))
+      };
+      return accumulator;
+    }, {});
+    entityRuntime.self.skills = nextSkills;
+    if (selfStatic) {
+      selfStatic.skills = { ...nextSkills };
+    }
   }
   syncSelfToGameState();
 }
@@ -10805,6 +10855,9 @@ const serverMessageHandlers = {
       selfStatic.talentTree = msg.talentTree;
       selfStatic.talentPoints = msg.talentTree.availablePoints || 0;
     }
+    if (msg && typeof msg === "object" && selfStatic && msg.selfStatic && msg.selfStatic.skills) {
+      selfStatic.skills = { ...msg.selfStatic.skills };
+    }
     resetClientSessionState();
     joinScreen.classList.add("hidden");
     gameUI.classList.remove("hidden");
@@ -10824,6 +10877,39 @@ const serverMessageHandlers = {
   lootbag_meta: (msg) => {
     applyLootBagMeta(msg.bags);
     syncEntityArraysToGameState();
+  },
+  resource_nodes_state: (msg) => {
+    const nextNodes = Array.isArray(msg && msg.nodes) ? msg.nodes : [];
+    entityRuntime.resourceNodes.clear();
+    for (const entry of nextNodes) {
+      if (!entry || !entry.id) {
+        continue;
+      }
+      entityRuntime.resourceNodes.set(String(entry.id), {
+        ...entry,
+        id: String(entry.id || ""),
+        resourceId: String(entry.resourceId || ""),
+        family: String(entry.family || ""),
+        skillId: String(entry.skillId || ""),
+        requiredLevel: Math.max(1, Math.floor(Number(entry.requiredLevel) || 1)),
+        x: Number(entry.x) || 0,
+        y: Number(entry.y) || 0,
+        interactRange: Math.max(0.5, Number(entry.interactRange) || 1.75),
+        items: Array.isArray(entry.items) ? entry.items.map((item) => ({ ...item })) : [],
+        visual: entry.visual && typeof entry.visual === "object" ? { ...entry.visual } : {}
+      });
+    }
+    syncEntityArraysToGameState();
+    if (gameState.self) {
+      pushSnapshot({
+        self: gameState.self,
+        players: gameState.players,
+        projectiles: gameState.projectiles,
+        mobs: gameState.mobs,
+        lootBags: gameState.lootBags,
+        resourceNodes: gameState.resourceNodes
+      });
+    }
   },
   mob_meta: (msg) => {
     applyMobMeta(msg.mobs);
@@ -10881,6 +10967,21 @@ const serverMessageHandlers = {
   self_progress: (msg) => handleServerSelfProgress(msg),
   talent_update: (msg) => handleTalentUpdate(msg),
   loot_picked: (msg) => handleServerLootPicked(msg),
+  resource_gathered: (msg) => {
+    clearAutoResourceInteraction(false);
+    if (Array.isArray(msg && msg.itemsGained) && msg.itemsGained.length) {
+      const summary = msg.itemsGained
+        .map((entry) => `${String(entry && (entry.name || entry.itemId) || "")} x${Math.max(0, Math.floor(Number(entry && entry.qty) || 0))}`)
+        .join(", ");
+      setStatus(`Gathered ${String(msg.resourceName || "resource")}: ${summary}`);
+    } else if (msg && msg.resourceName) {
+      setStatus(`Gathered ${String(msg.resourceName)}`);
+    }
+  },
+  resource_gather_error: (msg) => {
+    clearAutoResourceInteraction(false);
+    setStatus(msg && msg.message ? String(msg.message) : "Could not gather that resource.");
+  },
   item_used: (msg) => handleServerItemUsed(msg),
   vendor_sale_result: (msg) => {
     if (!msg) {
@@ -11307,6 +11408,133 @@ function findLootBagById(bagId) {
   return null;
 }
 
+function findResourceNodeById(resourceNodeId) {
+  const id = String(resourceNodeId || "").trim();
+  if (!id) {
+    return null;
+  }
+  const nodes =
+    (lastRenderState && Array.isArray(lastRenderState.resourceNodes) ? lastRenderState.resourceNodes : null) ||
+    gameState.resourceNodes;
+  for (const node of nodes) {
+    if (String(node && node.id) === id) {
+      return node;
+    }
+  }
+  return null;
+}
+
+function sendInteractResourceNode(resourceNode) {
+  if (!resourceNode) {
+    return false;
+  }
+  return sendJsonMessage({
+    type: "interact_resource",
+    resourceNodeId: String(resourceNode.id || ""),
+    x: Number(resourceNode.x) || 0,
+    y: Number(resourceNode.y) || 0
+  });
+}
+
+function clearAutoResourceInteraction(sendStopMove = false) {
+  const wasActive = resourceInteractionState.active || autoMoveTarget.active;
+  resourceInteractionState.active = false;
+  resourceInteractionState.resourceNodeId = "";
+  resourceInteractionState.x = 0;
+  resourceInteractionState.y = 0;
+  resourceInteractionState.interactRange = 0;
+  resourceInteractionState.nextAttemptAt = 0;
+  clearAutoMoveTarget();
+  if (sendStopMove && wasActive) {
+    sendMove();
+  }
+}
+
+function startAutoResourceInteraction(resourceNode) {
+  if (!resourceNode) {
+    return false;
+  }
+  clearAutoVendorInteraction(false, false);
+  clearAutoQuestNpcInteraction(false);
+  clearAutoLootPickup(false);
+  resourceInteractionState.active = true;
+  resourceInteractionState.resourceNodeId = String(resourceNode.id || "");
+  resourceInteractionState.x = Number(resourceNode.x) || 0;
+  resourceInteractionState.y = Number(resourceNode.y) || 0;
+  resourceInteractionState.interactRange = Math.max(0.8, Number(resourceNode.interactRange) || 1.8);
+  resourceInteractionState.nextAttemptAt = 0;
+  setAutoMoveTarget(
+    resourceInteractionState.x + 0.5,
+    resourceInteractionState.y + 0.5,
+    Math.max(0.1, resourceInteractionState.interactRange - 0.55)
+  );
+  sendMove();
+  return true;
+}
+
+function tryContextResourceInteraction() {
+  const self = getCurrentSelf();
+  const renderState = lastRenderState || gameState;
+  if (!self || !renderState || !Array.isArray(renderState.resourceNodes) || !renderState.resourceNodes.length) {
+    return false;
+  }
+  const cameraX = self.x + 0.5;
+  const cameraY = self.y + 0.5;
+  const hovered = getHoveredResourceNode(renderState.resourceNodes, cameraX, cameraY);
+  if (!hovered || !hovered.node) {
+    return false;
+  }
+  const resourceNode = hovered.node;
+  const interactRange = Math.max(0.8, Number(resourceNode.interactRange) || 1.8);
+  const dist = Math.hypot(resourceNode.x + 0.5 - self.x, resourceNode.y + 0.5 - self.y);
+  if (dist <= interactRange) {
+    clearAutoResourceInteraction(false);
+    sendInteractResourceNode(resourceNode);
+    return true;
+  }
+  return startAutoResourceInteraction(resourceNode);
+}
+
+function updateAutoResourceInteraction(now = performance.now()) {
+  if (!resourceInteractionState.active) {
+    return;
+  }
+  const self = getCurrentSelf();
+  if (!self || self.hp <= 0) {
+    clearAutoResourceInteraction(true);
+    return;
+  }
+  const manualMove = getCurrentInputVector();
+  if (manualMove.dx || manualMove.dy) {
+    clearAutoResourceInteraction(false);
+    return;
+  }
+  const resourceNode = findResourceNodeById(resourceInteractionState.resourceNodeId);
+  if (!resourceNode) {
+    clearAutoResourceInteraction(true);
+    return;
+  }
+  resourceInteractionState.x = Number(resourceNode.x) || 0;
+  resourceInteractionState.y = Number(resourceNode.y) || 0;
+  resourceInteractionState.interactRange = Math.max(0.8, Number(resourceNode.interactRange) || resourceInteractionState.interactRange || 1.8);
+  setAutoMoveTarget(
+    resourceInteractionState.x + 0.5,
+    resourceInteractionState.y + 0.5,
+    Math.max(0.1, resourceInteractionState.interactRange - 0.55)
+  );
+  const dist = Math.hypot(resourceInteractionState.x + 0.5 - self.x, resourceInteractionState.y + 0.5 - self.y);
+  if (dist <= resourceInteractionState.interactRange) {
+    if (now < resourceInteractionState.nextAttemptAt) {
+      return;
+    }
+    resourceInteractionState.nextAttemptAt = now + 450;
+    clearAutoResourceInteraction(true);
+    sendInteractResourceNode(resourceNode);
+    return;
+  }
+  sendMove();
+}
+
 function clearAutoLootPickup(sendStopMove = false) {
   const wasActive = lootPickupState.active || autoMoveTarget.active;
   lootPickupState.active = false;
@@ -11325,6 +11553,7 @@ function startAutoLootPickup(bag) {
     return false;
   }
   clearAutoQuestNpcInteraction(false);
+  clearAutoResourceInteraction(false);
   lootPickupState.active = true;
   lootPickupState.bagId = String(bag.id || "");
   lootPickupState.x = Number(bag.x) || 0;
@@ -11351,6 +11580,7 @@ function tryContextLootPickup() {
   const dist = Math.hypot(bag.x + 0.5 - self.x, bag.y + 0.5 - self.y);
   if (dist <= lootClientConfig.bagPickupRange) {
     clearAutoQuestNpcInteraction(false);
+    clearAutoResourceInteraction(false);
     clearAutoLootPickup(false);
     sendPickupBag(bag.x, bag.y);
     return true;
@@ -15019,6 +15249,13 @@ function getHoveredLootBag(lootBags, cameraX, cameraY) {
   return mobRenderTools.getHoveredLootBag(lootBags, cameraX, cameraY);
 }
 
+function getHoveredResourceNode(resourceNodes, cameraX, cameraY) {
+  if (!mobRenderTools || typeof mobRenderTools.getHoveredResourceNode !== "function") {
+    return null;
+  }
+  return mobRenderTools.getHoveredResourceNode(resourceNodes, cameraX, cameraY);
+}
+
 function drawMobTooltip(mob, p) {
   if (!uiPresentationTools) {
     return;
@@ -15031,6 +15268,13 @@ function drawLootBagTooltip(bag, p) {
     return;
   }
   uiPresentationTools.drawLootBagTooltip(bag, p);
+}
+
+function drawResourceTooltip(node, p) {
+  if (!uiPresentationTools || typeof uiPresentationTools.drawResourceTooltip !== "function") {
+    return;
+  }
+  uiPresentationTools.drawResourceTooltip(node, p);
 }
 
 function createTownTileSprite(kind, variantSeed) {
@@ -16085,6 +16329,112 @@ function getLootBagSprite(variant) {
   return sprite;
 }
 
+function createResourceNodeSprite(resourceNode) {
+  const visual = resourceNode && resourceNode.visual && typeof resourceNode.visual === "object" ? resourceNode.visual : {};
+  const key = JSON.stringify({
+    resourceId: String(resourceNode && resourceNode.resourceId || ""),
+    kind: String(visual.kind || resourceNode && resourceNode.family || ""),
+    trunkColor: String(visual.trunkColor || ""),
+    leafColor: String(visual.leafColor || ""),
+    rockColor: String(visual.rockColor || ""),
+    oreColor: String(visual.oreColor || ""),
+    accentColor: String(visual.accentColor || "")
+  });
+  if (resourceNodeSpriteCache.has(key)) {
+    return resourceNodeSpriteCache.get(key);
+  }
+  const spriteCanvas = document.createElement("canvas");
+  spriteCanvas.width = 64;
+  spriteCanvas.height = 72;
+  const spriteCtx = spriteCanvas.getContext("2d");
+  if (!spriteCtx) {
+    return null;
+  }
+  spriteCtx.translate(32, 40);
+  const kind = String(visual.kind || resourceNode && resourceNode.family || "").toLowerCase();
+  if (kind === "tree") {
+    spriteCtx.fillStyle = "rgba(12, 20, 32, 0.34)";
+    spriteCtx.beginPath();
+    spriteCtx.ellipse(0, 18, 15, 5, 0, 0, Math.PI * 2);
+    spriteCtx.fill();
+    spriteCtx.fillStyle = String(visual.trunkColor || "#6d4727");
+    spriteCtx.fillRect(-4, -2, 8, 26);
+    spriteCtx.fillStyle = String(visual.leafColor || "#4f8d3c");
+    spriteCtx.beginPath();
+    spriteCtx.arc(0, -14, 17, 0, Math.PI * 2);
+    spriteCtx.fill();
+    spriteCtx.fillStyle = String(visual.accentColor || "#7fb861");
+    spriteCtx.beginPath();
+    spriteCtx.arc(-8, -16, 6, 0, Math.PI * 2);
+    spriteCtx.arc(8, -17, 6.5, 0, Math.PI * 2);
+    spriteCtx.arc(0, -23, 5.5, 0, Math.PI * 2);
+    spriteCtx.fill();
+  } else {
+    spriteCtx.fillStyle = "rgba(12, 20, 32, 0.34)";
+    spriteCtx.beginPath();
+    spriteCtx.ellipse(0, 11, 14, 4.5, 0, 0, Math.PI * 2);
+    spriteCtx.fill();
+    spriteCtx.fillStyle = String(visual.rockColor || "#5f6874");
+    spriteCtx.beginPath();
+    spriteCtx.moveTo(-15, 11);
+    spriteCtx.lineTo(-11, -9);
+    spriteCtx.lineTo(2, -17);
+    spriteCtx.lineTo(14, -7);
+    spriteCtx.lineTo(12, 10);
+    spriteCtx.lineTo(-1, 15);
+    spriteCtx.closePath();
+    spriteCtx.fill();
+    spriteCtx.fillStyle = String(visual.oreColor || "#cf8452");
+    spriteCtx.beginPath();
+    spriteCtx.arc(-6, -1, 4.2, 0, Math.PI * 2);
+    spriteCtx.arc(5, -6, 3.4, 0, Math.PI * 2);
+    spriteCtx.arc(4, 5, 4.1, 0, Math.PI * 2);
+    spriteCtx.fill();
+  }
+  resourceNodeSpriteCache.set(key, spriteCanvas);
+  return spriteCanvas;
+}
+
+function getResourceNodeSprite(resourceNode) {
+  return createResourceNodeSprite(resourceNode);
+}
+
+function drawResourceNode(resourceNode, cameraX, cameraY) {
+  const p = worldToScreen(resourceNode.x + 0.5, resourceNode.y + 0.5, cameraX, cameraY);
+  const sprite = getResourceNodeSprite(resourceNode);
+  if (sprite) {
+    ctx.drawImage(sprite, Math.round(p.x - sprite.width * 0.5), Math.round(p.y - sprite.height * 0.7));
+    return;
+  }
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  const visual = resourceNode && resourceNode.visual && typeof resourceNode.visual === "object" ? resourceNode.visual : {};
+  if (String(visual.kind || resourceNode.family || "").toLowerCase() === "tree") {
+    ctx.fillStyle = String(visual.trunkColor || "#6d4727");
+    ctx.fillRect(-3, -16, 6, 18);
+    ctx.fillStyle = String(visual.leafColor || "#4f8d3c");
+    ctx.beginPath();
+    ctx.arc(0, -20, 12, 0, Math.PI * 2);
+    ctx.fill();
+  } else {
+    ctx.fillStyle = String(visual.rockColor || "#5f6874");
+    ctx.beginPath();
+    ctx.moveTo(-10, 8);
+    ctx.lineTo(-7, -5);
+    ctx.lineTo(2, -11);
+    ctx.lineTo(10, -4);
+    ctx.lineTo(8, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = String(visual.oreColor || "#cf8452");
+    ctx.beginPath();
+    ctx.arc(-3, 0, 3, 0, Math.PI * 2);
+    ctx.arc(4, -4, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 function drawLootBag(bag, cameraX, cameraY, frameNow = performance.now()) {
   const p = worldToScreen(bag.x + 0.5, bag.y + 0.5, cameraX, cameraY);
   const bagId = String((bag && bag.id) || `${bag.x}:${bag.y}`);
@@ -16163,6 +16513,7 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       getFloatingDamageViews,
       getHoveredMob,
       getHoveredLootBag,
+      getHoveredResourceNode,
       getHoveredVendor,
       getHoveredQuestNpc,
       updateActionBarUI,
@@ -16176,6 +16527,7 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       drawVendorNpc,
       drawQuestNpcs,
       drawLootBag,
+      drawResourceNode,
       drawMob,
       drawSkeletonSwordSwing,
       drawSkeletonArcherBowShot,
@@ -16201,6 +16553,7 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       drawPlayerCastBar,
       drawMobTooltip,
       drawLootBagTooltip,
+      drawResourceTooltip,
       drawVendorTooltip,
       drawQuestNpcTooltip,
       hashString,
@@ -16211,6 +16564,7 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       getPlayerVisualEquipment,
       getMobRenderStyle,
       getLootBagSprite,
+      getResourceNodeSprite,
       getTownTileSprite,
       getVendorNpcSprite,
       getQuestNpcSprite,
@@ -16242,13 +16596,16 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       executeBoundAction,
       tryContextVendorInteraction,
       tryContextQuestNpcInteraction,
+      tryContextResourceInteraction,
       tryContextLootPickup,
       sendMove,
       cancelAutoVendorInteraction: () => clearAutoVendorInteraction(true, true),
       cancelAutoQuestInteraction: () => clearAutoQuestNpcInteraction(true),
+      cancelAutoResourceInteraction: () => clearAutoResourceInteraction(true),
       cancelAutoLootPickup: () => clearAutoLootPickup(true),
       updateAutoVendorInteraction,
       updateAutoQuestInteraction: updateAutoQuestNpcInteraction,
+      updateAutoResourceInteraction,
       updateAutoLootPickup,
       clearDragState,
       resetAbilityChanneling,
@@ -16307,6 +16664,7 @@ const automationTools = sharedCreateAutomationTools
       questInteractionState,
       vendorInteractionState,
       lootPickupState,
+      resourceInteractionState,
       selfStatic,
       myId,
       statusEl,

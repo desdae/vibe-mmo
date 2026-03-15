@@ -367,6 +367,24 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "interact_resource") {
+    if (player.hp <= 0) {
+      return { player };
+    }
+    const result = deps.interactWithResourceNode(player, {
+      id: msg.resourceNodeId,
+      x: Number(msg.x),
+      y: Number(msg.y)
+    });
+    if (!result || !result.ok) {
+      deps.sendJson(player.ws, {
+        type: "resource_gather_error",
+        message: result && result.message ? result.message : "Could not gather that resource."
+      });
+    }
+    return { player };
+  }
+
   if (msg.type === "sell_inventory_item") {
     const inventoryIndex = Math.floor(Number(msg.inventoryIndex));
     const vendorId = String(msg.vendorId || "").trim();

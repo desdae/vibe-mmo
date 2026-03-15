@@ -353,6 +353,23 @@
       return best;
     }
 
+    function getHoveredResourceNode(resourceNodes, cameraX, cameraY) {
+      let best = null;
+      let bestDist = Infinity;
+      for (const node of resourceNodes) {
+        const p = deps.worldToScreen(node.x + 0.5, node.y + 0.5, cameraX, cameraY);
+        const dx = deps.mouseState.sx - p.x;
+        const dy = deps.mouseState.sy - p.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > 18 * 18 || distSq >= bestDist) {
+          continue;
+        }
+        bestDist = distSq;
+        best = { node, p };
+      }
+      return best;
+    }
+
     function drawMob(mob, cameraX, cameraY, attackState = null) {
       const p = deps.worldToScreen(mob.x + 0.5, mob.y + 0.5, cameraX, cameraY);
       if (isHumanoidMob(mob) && deps.humanoidRenderTools && typeof deps.humanoidRenderTools.drawHumanoid === "function") {
@@ -416,6 +433,7 @@
       drawMobHpBar,
       getHoveredMob,
       getHoveredLootBag,
+      getHoveredResourceNode,
       drawMob
     };
   }

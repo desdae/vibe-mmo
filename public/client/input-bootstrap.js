@@ -93,6 +93,9 @@
         if (typeof deps.cancelAutoQuestInteraction === "function") {
           deps.cancelAutoQuestInteraction();
         }
+        if (typeof deps.cancelAutoResourceInteraction === "function") {
+          deps.cancelAutoResourceInteraction();
+        }
         deps.cancelAutoLootPickup();
         deps.keys[event.code] = true;
         deps.sendMove();
@@ -130,6 +133,9 @@
       if (typeof deps.cancelAutoQuestInteraction === "function") {
         deps.cancelAutoQuestInteraction();
       }
+      if (typeof deps.cancelAutoResourceInteraction === "function") {
+        deps.cancelAutoResourceInteraction();
+      }
       deps.cancelAutoLootPickup();
       deps.clearDragState();
       deps.resetAbilityChanneling();
@@ -151,6 +157,9 @@
       if (typeof deps.cancelAutoQuestInteraction === "function") {
         deps.cancelAutoQuestInteraction();
       }
+      if (typeof deps.cancelAutoResourceInteraction === "function") {
+        deps.cancelAutoResourceInteraction();
+      }
       deps.cancelAutoLootPickup();
       deps.mouseState.leftDown = true;
       deps.tryPrimaryAutoAction(true);
@@ -170,6 +179,9 @@
         return;
       }
       if (deps.tryContextQuestNpcInteraction()) {
+        return;
+      }
+      if (typeof deps.tryContextResourceInteraction === "function" && deps.tryContextResourceInteraction()) {
         return;
       }
       if (deps.tryContextLootPickup()) {
@@ -198,6 +210,9 @@
       deps.cancelAutoVendorInteraction();
       if (typeof deps.cancelAutoQuestInteraction === "function") {
         deps.cancelAutoQuestInteraction();
+      }
+      if (typeof deps.cancelAutoResourceInteraction === "function") {
+        deps.cancelAutoResourceInteraction();
       }
       deps.cancelAutoLootPickup();
       if (typeof deps.beginTouchJoystick === "function") {
@@ -312,6 +327,9 @@
       globalScope.setInterval(deps.updateAutoVendorInteraction, 75);
       if (typeof deps.updateAutoQuestInteraction === "function") {
         globalScope.setInterval(deps.updateAutoQuestInteraction, 75);
+      }
+      if (typeof deps.updateAutoResourceInteraction === "function") {
+        globalScope.setInterval(deps.updateAutoResourceInteraction, 75);
       }
       globalScope.setInterval(deps.updateAutoLootPickup, 75);
       deps.initializeDpsPanel();

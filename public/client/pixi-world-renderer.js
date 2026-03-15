@@ -53,6 +53,7 @@
     const getTownTileSprite = typeof deps.getTownTileSprite === "function" ? deps.getTownTileSprite : null;
     const getVendorNpcSprite = typeof deps.getVendorNpcSprite === "function" ? deps.getVendorNpcSprite : null;
     const getQuestNpcSprite = typeof deps.getQuestNpcSprite === "function" ? deps.getQuestNpcSprite : null;
+    const getResourceNodeSprite = typeof deps.getResourceNodeSprite === "function" ? deps.getResourceNodeSprite : null;
     const getCreeperWalkSprite = typeof deps.getCreeperWalkSprite === "function" ? deps.getCreeperWalkSprite : null;
     const getSpiderWalkSprite = typeof deps.getSpiderWalkSprite === "function" ? deps.getSpiderWalkSprite : null;
     const mobSpriteSize = Math.max(20, Number(deps.mobSpriteSize) || 36);
@@ -84,6 +85,7 @@
     let areaUnderlayFallbackLayer = null;
     let lootSpriteLayer = null;
     let lootFallbackLayer = null;
+    let resourceLayer = null;
     let explosionLayer = null;
     let particleLayer = null;
     let mobLayer = null;
@@ -109,6 +111,7 @@
     let projectileNodes = new Map();
     let lootNodes = new Map();
     let lootFallbackNodes = new Map();
+    let resourceNodeMap = new Map();
     let explosionNodes = new Map();
     let areaUnderlayNodes = new Map();
     let areaOverlayNodes = new Map();
@@ -132,6 +135,7 @@
       mobs: 0,
       projectiles: 0,
       lootBags: 0,
+      resources: 0,
       areaEffects: 0,
       activeSpriteNodes: 0,
       pooledSprites: 0,
@@ -529,6 +533,7 @@
       areaUnderlayLayer = new PIXI.Container();
       areaUnderlaySpriteLayer = createMixedTextureSpriteLayer();
       areaUnderlayFallbackLayer = new PIXI.Container();
+      resourceLayer = new PIXI.Container();
       lootSpriteLayer = createMixedTextureSpriteLayer();
       lootFallbackLayer = new PIXI.Container();
       explosionLayer = createMixedTextureSpriteLayer();
@@ -579,6 +584,7 @@
         particleLayer,
         vendorLayer,
         questNpcLayer,
+        resourceLayer,
         lootSpriteLayer,
         lootFallbackLayer,
         mobLayer,
@@ -2502,6 +2508,76 @@
       return null;
     }
 
+    function getResourceNodeSpriteFrame(resourceNode) {
+      if (getResourceNodeSprite) {
+        const provided = getResourceNodeSprite(resourceNode);
+        if (provided && provided.width > 0 && provided.height > 0) {
+          return {
+            canvas: provided,
+            rotation: 0
+          };
+        }
+      }
+      const visual = resourceNode && resourceNode.visual && typeof resourceNode.visual === "object" ? resourceNode.visual : {};
+      const key = `resource:${String(resourceNode && resourceNode.resourceId || "")}:${JSON.stringify(visual)}`;
+      const cached = genericCanvasCache.get(key);
+      if (cached) {
+        return cached;
+      }
+      const kind = String(visual.kind || resourceNode && resourceNode.family || "").toLowerCase();
+      const canvas = createRuntimeCanvas(42, 50);
+      if (!canvas) {
+        return null;
+      }
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        return null;
+      }
+      if (kind === "tree") {
+        ctx.fillStyle = "rgba(10, 18, 28, 0.34)";
+        ctx.beginPath();
+        ctx.ellipse(21, 42, 11, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = String(visual.trunkColor || "#6d4727");
+        ctx.fillRect(18, 22, 6, 18);
+        ctx.fillStyle = String(visual.leafColor || "#4f8d3c");
+        ctx.beginPath();
+        ctx.arc(21, 17, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = String(visual.accentColor || "#7fb861");
+        ctx.beginPath();
+        ctx.arc(16, 14, 5, 0, Math.PI * 2);
+        ctx.arc(25, 13, 5.5, 0, Math.PI * 2);
+        ctx.arc(21, 9, 4.6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "rgba(10, 18, 28, 0.34)";
+        ctx.beginPath();
+        ctx.ellipse(21, 38, 11, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = String(visual.rockColor || "#5f6874");
+        ctx.beginPath();
+        ctx.moveTo(10, 36);
+        ctx.lineTo(14, 19);
+        ctx.lineTo(24, 12);
+        ctx.lineTo(32, 18);
+        ctx.lineTo(35, 31);
+        ctx.lineTo(26, 39);
+        ctx.lineTo(15, 40);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = String(visual.oreColor || "#cf8452");
+        ctx.beginPath();
+        ctx.arc(18, 24, 3.6, 0, Math.PI * 2);
+        ctx.arc(26, 21, 3.2, 0, Math.PI * 2);
+        ctx.arc(24, 30, 3.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const frame = { canvas, rotation: 0 };
+      genericCanvasCache.set(key, frame);
+      return frame;
+    }
+
 
     function drawPlayerGraphic(graphics, player, isSelf) {
       const classType = String(player && player.classType || "").toLowerCase();
@@ -2631,6 +2707,40 @@
       graphics.drawCircle(-4, -8, 1.3 * pulse);
       graphics.drawCircle(3, -11, 1.1 * pulse);
       graphics.drawCircle(6, -6, 0.95 * pulse);
+      graphics.endFill();
+    }
+
+    function drawResourceGraphic(graphics, resourceNode) {
+      const visual = resourceNode && resourceNode.visual && typeof resourceNode.visual === "object" ? resourceNode.visual : {};
+      const kind = String(visual.kind || resourceNode && resourceNode.family || "").toLowerCase();
+      graphics.clear();
+      if (kind === "tree") {
+        graphics.beginFill(0x0c1420, 0.32);
+        graphics.drawEllipse(0, 15, 10, 3.5);
+        graphics.endFill();
+        graphics.beginFill(PIXI.utils.string2hex(String(visual.trunkColor || "#6d4727")), 1);
+        graphics.drawRoundedRect(-3, -4, 6, 18, 2);
+        graphics.endFill();
+        graphics.beginFill(PIXI.utils.string2hex(String(visual.leafColor || "#4f8d3c")), 1);
+        graphics.drawCircle(0, -10, 11);
+        graphics.endFill();
+        graphics.beginFill(PIXI.utils.string2hex(String(visual.accentColor || "#7fb861")), 0.95);
+        graphics.drawCircle(-5, -12, 4.2);
+        graphics.drawCircle(5, -13, 4.5);
+        graphics.drawCircle(0, -17, 3.8);
+        graphics.endFill();
+        return;
+      }
+      graphics.beginFill(0x0c1420, 0.32);
+      graphics.drawEllipse(0, 10, 10, 3.5);
+      graphics.endFill();
+      graphics.beginFill(PIXI.utils.string2hex(String(visual.rockColor || "#5f6874")), 1);
+      graphics.drawPolygon([-10, 10, -7, -6, 3, -12, 11, -3, 9, 9, -1, 13]);
+      graphics.endFill();
+      graphics.beginFill(PIXI.utils.string2hex(String(visual.oreColor || "#cf8452")), 1);
+      graphics.drawCircle(-4, -2, 3);
+      graphics.drawCircle(4, -5, 2.7);
+      graphics.drawCircle(2, 4, 3.3);
       graphics.endFill();
     }
 
@@ -3275,6 +3385,18 @@
         ? { label: `${frameViewModel.hoveredMob.mob.name} [${Math.max(1, Math.floor(Number(frameViewModel.hoveredMob.mob.level) || 1))}]`, p: frameViewModel.hoveredMob.p }
         : frameViewModel.hoveredBag
           ? { label: lootBagLines.join("\n"), p: frameViewModel.hoveredBag.p }
+          : frameViewModel.hoveredResourceNode
+            ? {
+                label: [
+                  String(frameViewModel.hoveredResourceNode.node.name || "Resource"),
+                  `${String(frameViewModel.hoveredResourceNode.node.skillId || "skill")} ${Math.max(1, Math.floor(Number(frameViewModel.hoveredResourceNode.node.requiredLevel) || 1))}+`,
+                  ...((Array.isArray(frameViewModel.hoveredResourceNode.node.items)
+                    ? frameViewModel.hoveredResourceNode.node.items
+                    : []
+                  ).map((entry) => `${String(entry && (entry.name || entry.itemId) || "")} x${Math.max(0, Math.floor(Number(entry && entry.qty) || 0))}`))
+                ].join("\n"),
+                p: frameViewModel.hoveredResourceNode.p
+              }
           : frameViewModel.hoveredVendor
             ? { label: String(frameViewModel.hoveredVendor.vendor && frameViewModel.hoveredVendor.vendor.name || "Quartermaster"), p: frameViewModel.hoveredVendor.p }
             : null;
@@ -3324,6 +3446,38 @@
       if (pixiParticleSystem && typeof pixiParticleSystem.pruneEmitters === "function") {
         pixiParticleSystem.pruneEmitters(frameNow);
       }
+
+      syncNodeMap(
+        resourceNodeMap,
+        Array.isArray(frameViewModel.resourceNodeViews) ? frameViewModel.resourceNodeViews : [],
+        (entry) => entry.node.id,
+        () => createLabeledSpriteNode(),
+        (node, entry) => {
+          const p = worldToScreen(Number(entry.node.x) + 0.5, Number(entry.node.y) + 0.5, cameraX, cameraY, width, height);
+          const hoveredResourceId =
+            frameViewModel.hoveredResourceNode && frameViewModel.hoveredResourceNode.node
+              ? frameViewModel.hoveredResourceNode.node.id
+              : null;
+          const isHovered = hoveredResourceId != null && String(hoveredResourceId) === String(entry.node.id);
+          updateLabeledSpriteNode(
+            node,
+            p.x,
+            p.y,
+            isHovered ? String(entry.node.name || "Resource") : "",
+            1,
+            1,
+            getResourceNodeSpriteFrame(entry.node),
+            (graphics) => drawResourceGraphic(graphics, entry.node),
+            {
+              showHpBar: false,
+              labelOffsetY: -18
+            }
+          );
+          node.hpBack.clear();
+          node.hpFill.clear();
+        },
+        resourceLayer
+      );
 
       const lootSpriteEntries = [];
       const lootFallbackEntries = [];
@@ -3582,6 +3736,7 @@
         mobs: Array.isArray(frameViewModel.mobViews) ? frameViewModel.mobViews.length : 0,
         projectiles: Array.isArray(frameViewModel.projectileViews) ? frameViewModel.projectileViews.length : 0,
         lootBags: Array.isArray(frameViewModel.lootBagViews) ? frameViewModel.lootBagViews.length : 0,
+        resources: Array.isArray(frameViewModel.resourceNodeViews) ? frameViewModel.resourceNodeViews.length : 0,
         areaEffects: Array.isArray(frameViewModel.areaEffects) ? frameViewModel.areaEffects.length : 0,
         activeSpriteNodes:
           playerNodes.size +
@@ -3589,6 +3744,7 @@
           projectileNodes.size +
           explosionNodes.size +
           lootNodes.size +
+          resourceNodeMap.size +
           areaUnderlayNodes.size +
           areaOverlayNodes.size +
           activeFloatingDamageTexts.length +

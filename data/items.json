@@ -72,5 +72,77 @@
         "description": "A gritty, unstable residue recovered from an explosive creature.",
         "icon": "Procedurally generated volatile powder pouch",
         "tags": ["crafting", "volatile", "monster", "quest"]
+    },
+    {
+        "name": "Oak Log",
+        "id": "oakLog",
+        "stackSize": 99,
+        "description": "A sturdy hardwood log cut from a healthy oak.",
+        "icon": "Procedurally generated oak log bundle",
+        "tags": ["crafting", "wood", "log", "oak", "gathered"]
+    },
+    {
+        "name": "Birch Log",
+        "id": "birchLog",
+        "stackSize": 99,
+        "description": "A pale birch log prized for clean woodworking.",
+        "icon": "Procedurally generated birch log bundle",
+        "tags": ["crafting", "wood", "log", "birch", "gathered"]
+    },
+    {
+        "name": "Pine Log",
+        "id": "pineLog",
+        "stackSize": 99,
+        "description": "A resin-rich pine log with a sharp woodland scent.",
+        "icon": "Procedurally generated pine log bundle",
+        "tags": ["crafting", "wood", "log", "pine", "gathered"]
+    },
+    {
+        "name": "Sap",
+        "id": "sap",
+        "stackSize": 99,
+        "description": "Sticky sap scraped from fresh-cut bark.",
+        "icon": "Procedurally generated amber sap glob",
+        "tags": ["crafting", "wood", "resin", "gathered"]
+    },
+    {
+        "name": "Resin",
+        "id": "resin",
+        "stackSize": 99,
+        "description": "A fragrant chunk of hardened pine resin.",
+        "icon": "Procedurally generated pine resin shard",
+        "tags": ["crafting", "wood", "resin", "gathered"]
+    },
+    {
+        "name": "Copper Ore",
+        "id": "copperOre",
+        "stackSize": 99,
+        "description": "A rough copper-bearing stone ready for smelting.",
+        "icon": "Procedurally generated copper ore chunk",
+        "tags": ["crafting", "ore", "metal", "copper", "gathered"]
+    },
+    {
+        "name": "Tin Ore",
+        "id": "tinOre",
+        "stackSize": 99,
+        "description": "A pale metallic ore often alloyed into bronze.",
+        "icon": "Procedurally generated tin ore chunk",
+        "tags": ["crafting", "ore", "metal", "tin", "gathered"]
+    },
+    {
+        "name": "Iron Ore",
+        "id": "ironOre",
+        "stackSize": 99,
+        "description": "A dense, dark ore used for stronger tools and weapons.",
+        "icon": "Procedurally generated iron ore chunk",
+        "tags": ["crafting", "ore", "metal", "iron", "gathered"]
+    },
+    {
+        "name": "Rough Stone",
+        "id": "roughStone",
+        "stackSize": 99,
+        "description": "A jagged chunk of stone broken free while mining.",
+        "icon": "Procedurally generated rough stone shard",
+        "tags": ["crafting", "stone", "ore", "gathered"]
     }
 ]

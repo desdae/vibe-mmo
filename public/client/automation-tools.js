@@ -104,6 +104,7 @@
       const questInteractionState = deps.questInteractionState || {};
       const vendorInteractionState = deps.vendorInteractionState || {};
       const lootPickupState = deps.lootPickupState || {};
+      const resourceInteractionState = deps.resourceInteractionState || {};
       const activeAreaEffectsById = deps.activeAreaEffectsById || new Map();
       const getQuestStateSnapshot =
         typeof deps.getQuestStateSnapshot === "function" ? deps.getQuestStateSnapshot : () => ({ active: [], completed: [] });
@@ -127,6 +128,10 @@
               isAdmin: !!(deps.selfStatic && deps.selfStatic.isAdmin),
               level: entityRuntime.self ? Number(entityRuntime.self.level) || 0 : 0,
               copper: entityRuntime.self ? Number(entityRuntime.self.copper) || 0 : 0,
+              skills:
+                entityRuntime.self && entityRuntime.self.skills && typeof entityRuntime.self.skills === "object"
+                  ? { ...entityRuntime.self.skills }
+                  : {},
               abilityLevels:
                 entityRuntime.self && entityRuntime.self.abilityLevels && typeof entityRuntime.self.abilityLevels === "object"
                   ? { ...entityRuntime.self.abilityLevels }
@@ -171,6 +176,18 @@
               items: Array.isArray(bag.items) ? bag.items.map((entry) => ({ ...entry })) : []
             }))
           : [],
+        resourceNodes: Array.isArray(gameState.resourceNodes)
+          ? gameState.resourceNodes.map((node) => ({
+              id: String(node.id || ""),
+              resourceId: String(node.resourceId || ""),
+              family: String(node.family || ""),
+              skillId: String(node.skillId || ""),
+              requiredLevel: Math.max(1, Math.floor(Number(node.requiredLevel) || 1)),
+              x: Number(node.x) || 0,
+              y: Number(node.y) || 0,
+              items: Array.isArray(node.items) ? node.items.map((entry) => ({ ...entry })) : []
+            }))
+          : [],
         areaEffects: Array.from(
           activeAreaEffectsById && typeof activeAreaEffectsById.values === "function" ? activeAreaEffectsById.values() : []
         ).map((effect) => ({
@@ -201,7 +218,8 @@
           stopDistance: Number(autoMoveTarget.stopDistance) || 0,
           questNpcId: String(questInteractionState.npcId || ""),
           vendorNpcId: String(vendorInteractionState.npcId || ""),
-          lootBagId: String(lootPickupState.bagId || "")
+          lootBagId: String(lootPickupState.bagId || ""),
+          resourceNodeId: String(resourceInteractionState.resourceNodeId || "")
         },
         questState: getQuestStateSnapshot(),
         dialogue: getDialogueSnapshot(),

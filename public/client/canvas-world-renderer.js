@@ -14,6 +14,7 @@
       mobs: 0,
       projectiles: 0,
       lootBags: 0,
+      resources: 0,
       areaEffects: 0
     };
 
@@ -34,6 +35,7 @@
         mobs: Array.isArray(frameViewModel.mobViews) ? frameViewModel.mobViews.length : 0,
         projectiles: Array.isArray(frameViewModel.projectileViews) ? frameViewModel.projectileViews.length : 0,
         lootBags: Array.isArray(frameViewModel.lootBagViews) ? frameViewModel.lootBagViews.length : 0,
+        resources: Array.isArray(frameViewModel.resourceNodeViews) ? frameViewModel.resourceNodeViews.length : 0,
         areaEffects: Array.isArray(frameViewModel.areaEffects) ? frameViewModel.areaEffects.length : 0
       };
 
@@ -64,6 +66,9 @@
       deps.drawAreaEffects(cameraX, cameraY, frameNow, "underlay");
       deps.drawVendorNpc(cameraX, cameraY, frameNow);
       deps.drawQuestNpcs(cameraX, cameraY, frameNow);
+      for (const entry of Array.isArray(frameViewModel.resourceNodeViews) ? frameViewModel.resourceNodeViews : []) {
+        deps.drawResourceNode(entry.node, cameraX, cameraY, frameNow);
+      }
 
       for (const entry of frameViewModel.lootBagViews) {
         deps.drawLootBag(entry.bag, cameraX, cameraY, frameNow);
@@ -125,6 +130,9 @@
       }
       if (frameViewModel.hoveredBag) {
         deps.drawLootBagTooltip(frameViewModel.hoveredBag.bag, frameViewModel.hoveredBag.p);
+      }
+      if (frameViewModel.hoveredResourceNode) {
+        deps.drawResourceTooltip(frameViewModel.hoveredResourceNode.node, frameViewModel.hoveredResourceNode.p);
       }
       if (frameViewModel.hoveredVendor) {
         deps.drawVendorTooltip(frameViewModel.hoveredVendor.vendor, frameViewModel.hoveredVendor.p);

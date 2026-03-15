@@ -12,6 +12,7 @@ function createWorldState(options = {}) {
   let nextSpawnerId = 1;
   let nextMobId = 1;
   let nextLootBagId = 1;
+  let nextResourceNodeId = 1;
   let nextAreaEffectId = 1;
   let nextItemInstanceId = 1;
 
@@ -20,6 +21,7 @@ function createWorldState(options = {}) {
   const mobSpawners = new Map();
   const mobs = new Map();
   const lootBags = new Map();
+  const resourceNodes = new Map();
   const activeAreaEffects = new Map();
 
   // Spatial indexes for efficient range queries
@@ -61,6 +63,14 @@ function createWorldState(options = {}) {
     return mapHas(lootBags, lootBagId);
   }
 
+  function getResourceNode(resourceNodeId) {
+    return mapGet(resourceNodes, resourceNodeId);
+  }
+
+  function hasResourceNode(resourceNodeId) {
+    return mapHas(resourceNodes, resourceNodeId);
+  }
+
   function getAreaEffect(areaEffectId) {
     return mapGet(activeAreaEffects, areaEffectId);
   }
@@ -91,6 +101,10 @@ function createWorldState(options = {}) {
 
   function allocateAreaEffectId() {
     return String(nextAreaEffectId++);
+  }
+
+  function allocateResourceNodeId() {
+    return String(nextResourceNodeId++);
   }
 
   function allocateItemInstanceId() {
@@ -254,6 +268,7 @@ function createWorldState(options = {}) {
     mobSpawners,
     mobs,
     lootBags,
+    resourceNodes,
     activeAreaEffects,
     // Type-safe lookup helpers
     getPlayer,
@@ -264,6 +279,8 @@ function createWorldState(options = {}) {
     hasProjectile,
     getLootBag,
     hasLootBag,
+    getResourceNode,
+    hasResourceNode,
     getAreaEffect,
     hasAreaEffect,
     // ID allocation
@@ -272,6 +289,7 @@ function createWorldState(options = {}) {
     allocateSpawnerId,
     allocateMobId,
     allocateLootBagId,
+    allocateResourceNodeId,
     allocateAreaEffectId,
     allocateItemInstanceId,
     // Spatial query functions

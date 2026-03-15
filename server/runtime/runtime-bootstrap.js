@@ -36,6 +36,9 @@ function createRuntimeBootstrap({
       tickHandlers.tickAreaEffects(now);
       tickHandlers.tickMobs();
       tickHandlers.tickProjectiles();
+      if (typeof tickHandlers.tickResources === "function") {
+        tickHandlers.tickResources(now);
+      }
       tickHandlers.tickLootBags(now);
       broadcastState(now);
     }

@@ -1,0 +1,158 @@
+{
+  "families": [
+    {
+      "id": "tree",
+      "name": "Tree",
+      "defaultInteractRange": 1.85,
+      "defaultRespawnSecondsMin": 80,
+      "defaultRespawnSecondsMax": 150
+    },
+    {
+      "id": "ore_vein",
+      "name": "Ore Vein",
+      "defaultInteractRange": 1.75,
+      "defaultRespawnSecondsMin": 110,
+      "defaultRespawnSecondsMax": 200
+    }
+  ],
+  "resources": [
+    {
+      "id": "oak_tree",
+      "name": "Oak Tree",
+      "family": "tree",
+      "skillId": "woodcutting",
+      "requiredLevel": 1,
+      "xp": 12,
+      "spawnWeight": 1,
+      "density": 0.44,
+      "bandTagsAny": ["starter_ring", "midlands"],
+      "biomeTagsAny": ["forest", "temperate", "river", "fertile"],
+      "yields": [
+        { "itemId": "oakLog", "qtyMin": 1, "qtyMax": 3, "chance": 1 },
+        { "itemId": "sap", "qtyMin": 1, "qtyMax": 1, "chance": 0.24 }
+      ],
+      "visual": {
+        "kind": "tree",
+        "trunkColor": "#6d4727",
+        "leafColor": "#4f8d3c",
+        "accentColor": "#7fb861",
+        "sizeScale": 1
+      }
+    },
+    {
+      "id": "birch_tree",
+      "name": "Birch Tree",
+      "family": "tree",
+      "skillId": "woodcutting",
+      "requiredLevel": 1,
+      "xp": 13,
+      "spawnWeight": 0.82,
+      "density": 0.34,
+      "bandTagsAny": ["starter_ring", "midlands"],
+      "biomeTagsAny": ["forest", "grassland", "river", "fertile"],
+      "yields": [
+        { "itemId": "birchLog", "qtyMin": 1, "qtyMax": 3, "chance": 1 },
+        { "itemId": "sap", "qtyMin": 1, "qtyMax": 1, "chance": 0.18 }
+      ],
+      "visual": {
+        "kind": "tree",
+        "trunkColor": "#e9e7df",
+        "leafColor": "#78a64f",
+        "accentColor": "#b8d99b",
+        "sizeScale": 0.96
+      }
+    },
+    {
+      "id": "pine_tree",
+      "name": "Pine Tree",
+      "family": "tree",
+      "skillId": "woodcutting",
+      "requiredLevel": 4,
+      "xp": 18,
+      "spawnWeight": 0.9,
+      "density": 0.26,
+      "bandTagsAny": ["midlands", "frontier"],
+      "biomeTagsAny": ["pine", "hills", "highlands"],
+      "yields": [
+        { "itemId": "pineLog", "qtyMin": 1, "qtyMax": 3, "chance": 1 },
+        { "itemId": "resin", "qtyMin": 1, "qtyMax": 1, "chance": 0.22 }
+      ],
+      "visual": {
+        "kind": "tree",
+        "trunkColor": "#5c3d1f",
+        "leafColor": "#2e6942",
+        "accentColor": "#5f9770",
+        "sizeScale": 1.08
+      }
+    },
+    {
+      "id": "copper_vein",
+      "name": "Copper Vein",
+      "family": "ore_vein",
+      "skillId": "mining",
+      "requiredLevel": 1,
+      "xp": 14,
+      "spawnWeight": 1,
+      "density": 0.34,
+      "bandTagsAny": ["starter_ring", "midlands"],
+      "biomeTagsAny": ["rocky", "hills", "highlands"],
+      "yields": [
+        { "itemId": "copperOre", "qtyMin": 1, "qtyMax": 3, "chance": 1 },
+        { "itemId": "roughStone", "qtyMin": 1, "qtyMax": 2, "chance": 0.34 }
+      ],
+      "visual": {
+        "kind": "ore",
+        "rockColor": "#5f6874",
+        "oreColor": "#cf8452",
+        "accentColor": "#9da9b7",
+        "sizeScale": 1
+      }
+    },
+    {
+      "id": "tin_vein",
+      "name": "Tin Vein",
+      "family": "ore_vein",
+      "skillId": "mining",
+      "requiredLevel": 3,
+      "xp": 16,
+      "spawnWeight": 0.82,
+      "density": 0.22,
+      "bandTagsAny": ["midlands", "frontier"],
+      "biomeTagsAny": ["rocky", "hills", "dry", "scrub"],
+      "yields": [
+        { "itemId": "tinOre", "qtyMin": 1, "qtyMax": 2, "chance": 1 },
+        { "itemId": "roughStone", "qtyMin": 1, "qtyMax": 2, "chance": 0.42 }
+      ],
+      "visual": {
+        "kind": "ore",
+        "rockColor": "#58616b",
+        "oreColor": "#aeb7c0",
+        "accentColor": "#dae0e8",
+        "sizeScale": 0.96
+      }
+    },
+    {
+      "id": "iron_vein",
+      "name": "Iron Vein",
+      "family": "ore_vein",
+      "skillId": "mining",
+      "requiredLevel": 6,
+      "xp": 22,
+      "spawnWeight": 0.74,
+      "density": 0.18,
+      "bandTagsAny": ["frontier", "wilds"],
+      "biomeTagsAny": ["rocky", "hills", "highlands", "badlands"],
+      "yields": [
+        { "itemId": "ironOre", "qtyMin": 1, "qtyMax": 2, "chance": 1 },
+        { "itemId": "roughStone", "qtyMin": 1, "qtyMax": 2, "chance": 0.46 }
+      ],
+      "visual": {
+        "kind": "ore",
+        "rockColor": "#4d5560",
+        "oreColor": "#8e95a3",
+        "accentColor": "#c8d1dd",
+        "sizeScale": 1.06
+      }
+    }
+  ]
+}

@@ -66,7 +66,8 @@
         players: blendEntityList(previous.players, current.players, alpha),
         projectiles: blendEntityList(previous.projectiles, current.projectiles, alpha),
         mobs: blendEntityList(previous.mobs, current.mobs, alpha),
-        lootBags: blendEntityList(previous.lootBags, current.lootBags, alpha)
+        lootBags: blendEntityList(previous.lootBags, current.lootBags, alpha),
+        resourceNodes: blendEntityList(previous.resourceNodes, current.resourceNodes, alpha)
       };
     }
 

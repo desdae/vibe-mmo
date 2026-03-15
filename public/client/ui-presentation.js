@@ -79,9 +79,54 @@
       }
     }
 
+    function drawResourceTooltip(node, p) {
+      const lines = [
+        String(node && node.name || "Resource"),
+        `${String(node && node.skillId || "skill")} ${Math.max(1, Math.floor(Number(node && node.requiredLevel) || 1))}+`
+      ];
+      const items = Array.isArray(node && node.items) ? node.items : [];
+      for (const entry of items) {
+        if (!entry) {
+          continue;
+        }
+        const qty = Math.max(0, Math.floor(Number(entry.qty) || 0));
+        const name = String(entry.name || entry.itemId || "").trim();
+        if (!qty || !name) {
+          continue;
+        }
+        lines.push(`${name} x${qty}`);
+      }
+
+      ctx.font = "12px Segoe UI";
+      ctx.textAlign = "left";
+      const paddingX = 8;
+      const lineHeight = 15;
+      let width = 108;
+      for (const line of lines) {
+        width = Math.max(width, Math.ceil(ctx.measureText(line).width) + paddingX * 2);
+      }
+
+      const height = 8 + lines.length * lineHeight;
+      const x = deps.clamp(Math.round(p.x + 12), 4, Math.max(4, canvas.width - width - 4));
+      const y = deps.clamp(Math.round(p.y - height - 8), 4, Math.max(4, canvas.height - height - 4));
+
+      ctx.fillStyle = "rgba(8, 12, 18, 0.9)";
+      deps.drawRoundedRect(ctx, x, y, width, height, 6);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(184, 212, 236, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      for (let i = 0; i < lines.length; i += 1) {
+        ctx.fillStyle = i === 0 ? "#dff4ca" : i === 1 ? "#a8d48c" : "#eaf6ff";
+        ctx.fillText(lines[i], x + paddingX, y + 14 + i * lineHeight);
+      }
+    }
+
     return {
       drawMobTooltip,
-      drawLootBagTooltip
+      drawLootBagTooltip,
+      drawResourceTooltip
     };
   }
 

@@ -534,7 +534,8 @@
           players: gameState.players,
           projectiles: gameState.projectiles,
           mobs: gameState.mobs,
-          lootBags: gameState.lootBags
+          lootBags: gameState.lootBags,
+          resourceNodes: gameState.resourceNodes
         });
       }
     }

@@ -63,6 +63,8 @@ const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { createMobLifecycleTools } = require("./server/gameplay/mob-lifecycle");
 const { createMobScalingTools } = require("./server/gameplay/mob-scaling");
 const { createBiomeResolver } = require("./server/gameplay/biome-resolver");
+const { createResourceRegistry } = require("./server/gameplay/resource-registry");
+const { createResourceGenerationTools } = require("./server/gameplay/resource-generation");
 const { pickClusterDef } = require("./server/gameplay/cluster-spawn");
 const { createSpatialTools } = require("./server/gameplay/spatial-tools");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
@@ -129,6 +131,7 @@ const EQUIPMENT_CONFIG_PATH = path.join(__dirname, "data", "equipment.json");
 const TALENT_CONFIG_PATH = path.join(__dirname, "data", "talents.json");
 const SKILL_CONFIG_PATH = path.join(__dirname, "data", "skills.json");
 const BIOME_CONFIG_PATH = path.join(__dirname, "data", "biomes.json");
+const RESOURCE_CONFIG_PATH = path.join(__dirname, "data", "resources.json");
 
 const gameplayRuntime = loadGameplayRuntimeConfig(GAMEPLAY_CONFIG_PATH);
 const GAMEPLAY_CONFIG = gameplayRuntime.gameplayConfig;
@@ -360,6 +363,10 @@ const biomeResolver = createBiomeResolver({
   mapHeight: MAP_HEIGHT,
   townLayout: TOWN_LAYOUT
 });
+const resourceRegistry = createResourceRegistry({
+  resourceDataPath: RESOURCE_CONFIG_PATH,
+  itemDefsProvider: () => ITEM_CONFIG.itemDefs
+});
 
 let MOB_CONFIG = loadMobConfigFromDisk(
   MOB_CONFIG_PATH,
@@ -407,12 +414,14 @@ const projectiles = worldState.projectiles;
 const mobSpawners = worldState.mobSpawners;
 const mobs = worldState.mobs;
 const lootBags = worldState.lootBags;
+const resourceNodes = worldState.resourceNodes;
 const activeAreaEffects = worldState.activeAreaEffects;
 const allocatePlayerId = worldState.allocatePlayerId;
 const allocateProjectileId = worldState.allocateProjectileId;
 const allocateSpawnerId = worldState.allocateSpawnerId;
 const allocateMobId = worldState.allocateMobId;
 const allocateLootBagId = worldState.allocateLootBagId;
+const allocateResourceNodeId = worldState.allocateResourceNodeId;
 const allocateAreaEffectId = worldState.allocateAreaEffectId;
 const allocateItemInstanceId = worldState.allocateItemInstanceId;
 
@@ -771,6 +780,25 @@ const lootBagTools = createLootBagTools({
 });
 const createLootBag = lootBagTools.createLootBag;
 const tickLootBags = lootBagTools.tickLootBags;
+
+const resourceGenerationTools = createResourceGenerationTools({
+  resourceNodes,
+  allocateResourceNodeId,
+  resourceRegistry,
+  biomeResolver,
+  skillTools,
+  addItemsToInventory,
+  sendInventoryState,
+  sendJson,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  townLayout: TOWN_LAYOUT
+});
+const initializeResourceNodes = resourceGenerationTools.initializeResourceNodes;
+const getVisibleResourceNodesForPlayer = resourceGenerationTools.getVisibleResourceNodesForPlayer;
+const serializeResourceNode = resourceGenerationTools.serializeResourceNode;
+const interactWithResourceNode = resourceGenerationTools.interactWithResourceNode;
+const tickResources = resourceGenerationTools.tickResourceNodes;
 
 const mobScalingTools = createMobScalingTools({
   baseLevel: MOB_BASE_LEVEL,
@@ -1365,6 +1393,9 @@ const runtimeBootstrap = createRuntimeBootstrap({
     consumeInventoryItem,
     addHealOverTimeEffect,
     addManaOverTimeEffect,
+    interactWithResourceNode,
+    getVisibleResourceNodesForPlayer,
+    serializeResourceNode,
     broadcastChatMessage,
     // Quest system
     questTools,
@@ -1393,6 +1424,8 @@ const runtimeBootstrap = createRuntimeBootstrap({
     inVisibilityRange,
     serializePlayer,
     serializeMob,
+    getVisibleResourceNodesForPlayer,
+    serializeResourceNode,
     buildPlayerSwingEventsForRecipient,
     buildPlayerCastEventsForRecipient,
     buildPlayerEffectEventsForRecipient,
@@ -1431,9 +1464,16 @@ const runtimeBootstrap = createRuntimeBootstrap({
     tickAreaEffects,
     tickMobs,
     tickProjectiles,
+    tickResources,
     tickLootBags
   },
-  initializeMobSpawners,
+  initializeMobSpawners: () => {
+    const resourceInit = initializeResourceNodes();
+    initializeMobSpawners();
+    console.log(
+      `[resources] Spawned ${Math.max(0, Number(resourceInit && resourceInit.total) || 0)} resource nodes`
+    );
+  },
   server,
   port: PORT,
   onServerListening: () => {

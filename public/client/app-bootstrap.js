@@ -40,6 +40,7 @@
           getFloatingDamageViews: deps.getFloatingDamageViews,
           getHoveredMob: deps.getHoveredMob,
           getHoveredLootBag: deps.getHoveredLootBag,
+          getHoveredResourceNode: deps.getHoveredResourceNode,
           getHoveredVendor: deps.getHoveredVendor,
           getHoveredQuestNpc: deps.getHoveredQuestNpc
         })
@@ -65,6 +66,7 @@
           drawVendorNpc: deps.drawVendorNpc,
           drawQuestNpcs: deps.drawQuestNpcs,
           drawLootBag: deps.drawLootBag,
+          drawResourceNode: deps.drawResourceNode,
           drawMob: deps.drawMob,
           drawSkeletonSwordSwing: deps.drawSkeletonSwordSwing,
           drawSkeletonArcherBowShot: deps.drawSkeletonArcherBowShot,
@@ -90,6 +92,7 @@
           drawPlayerCastBar: deps.drawPlayerCastBar,
           drawMobTooltip: deps.drawMobTooltip,
           drawLootBagTooltip: deps.drawLootBagTooltip,
+          drawResourceTooltip: deps.drawResourceTooltip,
           drawVendorTooltip: deps.drawVendorTooltip,
           drawQuestNpcTooltip: deps.drawQuestNpcTooltip
         })
@@ -120,6 +123,7 @@
           getTownTileSprite: deps.getTownTileSprite,
           getVendorNpcSprite: deps.getVendorNpcSprite,
           getQuestNpcSprite: deps.getQuestNpcSprite,
+          getResourceNodeSprite: deps.getResourceNodeSprite,
           mobSpriteSize: deps.mobSpriteSize,
           getCreeperWalkSprite: deps.getCreeperWalkSprite,
           getSpiderWalkSprite: deps.getSpiderWalkSprite,
@@ -218,13 +222,16 @@
           executeBoundAction: deps.executeBoundAction,
           tryContextVendorInteraction: deps.tryContextVendorInteraction,
           tryContextQuestNpcInteraction: deps.tryContextQuestNpcInteraction,
+          tryContextResourceInteraction: deps.tryContextResourceInteraction,
           tryContextLootPickup: deps.tryContextLootPickup,
           sendMove: deps.sendMove,
           cancelAutoVendorInteraction: deps.cancelAutoVendorInteraction,
           cancelAutoQuestInteraction: deps.cancelAutoQuestInteraction,
+          cancelAutoResourceInteraction: deps.cancelAutoResourceInteraction,
           cancelAutoLootPickup: deps.cancelAutoLootPickup,
           updateAutoVendorInteraction: deps.updateAutoVendorInteraction,
           updateAutoQuestInteraction: deps.updateAutoQuestInteraction,
+          updateAutoResourceInteraction: deps.updateAutoResourceInteraction,
           updateAutoLootPickup: deps.updateAutoLootPickup,
           clearDragState: deps.clearDragState,
           resetAbilityChanneling: deps.resetAbilityChanneling,

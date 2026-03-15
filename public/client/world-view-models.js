@@ -27,6 +27,7 @@
       const projectiles = Array.isArray(interpolatedState.projectiles) ? interpolatedState.projectiles : [];
       const players = Array.isArray(interpolatedState.players) ? interpolatedState.players : [];
       const lootBags = Array.isArray(interpolatedState.lootBags) ? interpolatedState.lootBags : [];
+      const resourceNodes = Array.isArray(interpolatedState.resourceNodes) ? interpolatedState.resourceNodes : [];
 
       const mobViews = mobs.map((mob) => ({
         mob,
@@ -81,6 +82,7 @@
         playerViews,
         selfView,
         lootBagViews: lootBags.map((bag) => ({ bag })),
+        resourceNodeViews: resourceNodes.map((node) => ({ node })),
         areaEffects: Array.isArray(getAreaEffects()) ? getAreaEffects() : [],
         explosionViews,
         floatingDamageViews: typeof deps.getFloatingDamageViews === "function" ? deps.getFloatingDamageViews(frameNow) : [],
@@ -88,6 +90,8 @@
         townQuestGivers: getTownQuestGivers(),
         hoveredMob: typeof deps.getHoveredMob === "function" ? deps.getHoveredMob(mobs, cameraX, cameraY) : null,
         hoveredBag: typeof deps.getHoveredLootBag === "function" ? deps.getHoveredLootBag(lootBags, cameraX, cameraY) : null,
+        hoveredResourceNode:
+          typeof deps.getHoveredResourceNode === "function" ? deps.getHoveredResourceNode(resourceNodes, cameraX, cameraY) : null,
         hoveredVendor: typeof deps.getHoveredVendor === "function" ? deps.getHoveredVendor(cameraX, cameraY) : null,
         hoveredQuestNpc: typeof deps.getHoveredQuestNpc === "function" ? deps.getHoveredQuestNpc(cameraX, cameraY) : null
       };
