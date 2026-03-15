@@ -1,0 +1,35 @@
+{
+  "xpCurves": {
+    "gather_basic": {
+      "baseExpToNext": 40,
+      "growthFactor": 1.18,
+      "maxLevel": 100
+    }
+  },
+  "skills": [
+    {
+      "id": "woodcutting",
+      "name": "Woodcutting",
+      "category": "gathering",
+      "curveId": "gather_basic",
+      "toolTagsAny": ["axe"],
+      "gatherFamilies": ["tree"]
+    },
+    {
+      "id": "mining",
+      "name": "Mining",
+      "category": "gathering",
+      "curveId": "gather_basic",
+      "toolTagsAny": ["pickaxe"],
+      "gatherFamilies": ["ore_vein"]
+    },
+    {
+      "id": "hunting",
+      "name": "Hunting",
+      "category": "gathering",
+      "curveId": "gather_basic",
+      "toolTagsAny": ["bow", "spear", "knife"],
+      "gatherFamilies": ["huntable"]
+    }
+  ]
+}

@@ -3,6 +3,7 @@ const { createNormalizeItemEntries, createDropRollTools } = require("../gameplay
 const { createInventoryTools } = require("../gameplay/inventory");
 const { createPlayerResourceTools } = require("../gameplay/player-resources");
 const { createProgressionTools } = require("../gameplay/progression");
+const { createSkillTools } = require("../gameplay/skills");
 const { loadTalentConfigFromDisk, createTalentSystem } = require("../config/talent-config");
 
 function createCoreServices({
@@ -24,7 +25,8 @@ function createCoreServices({
   mapWidth,
   mapHeight,
   talentConfigPath,
-  classConfig
+  classConfig,
+  skillDataPath
 }) {
   const normalizeItemEntries = createNormalizeItemEntries({
     itemDefs
@@ -38,7 +40,12 @@ function createCoreServices({
     inventoryRows,
     inventorySlotCount
   });
-  const sendSelfProgress = playerMessageTools.sendSelfProgress;
+  const skillTools = createSkillTools({
+    skillDataPath,
+    sendSelfProgress: (player) => playerMessageTools.sendSelfProgress(player, skillTools.serializePlayerSkills(player))
+  });
+  const sendSelfProgress = (player) =>
+    playerMessageTools.sendSelfProgress(player, skillTools.serializePlayerSkills(player));
   const sendInventoryState = playerMessageTools.sendInventoryState;
   const sendEquipmentState = playerMessageTools.sendEquipmentState;
   const serializeBagItemsForMeta = (items) =>
@@ -112,6 +119,7 @@ function createCoreServices({
     consumeInventoryItem,
     getInventoryItemCount,
     syncPlayerCopperFromInventory,
+    skillTools,
     expNeededForLevel,
     grantPlayerExp,
     getPendingHealAmount,

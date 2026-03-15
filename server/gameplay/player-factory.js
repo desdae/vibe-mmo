@@ -59,6 +59,8 @@ function createPlayerFactory(options = {}) {
     typeof options.syncPlayerCopperFromInventory === "function" ? options.syncPlayerCopperFromInventory : () => {};
   const expNeededForLevel =
     typeof options.expNeededForLevel === "function" ? options.expNeededForLevel : () => 20;
+  const ensurePlayerSkillsState =
+    typeof options.ensurePlayerSkillsState === "function" ? options.ensurePlayerSkillsState : () => ({});
   const sanitizeSpawn = typeof options.sanitizeSpawn === "function" ? options.sanitizeSpawn : (spawn) => spawn;
   const defaultVisibilityRange = Math.max(1, Number(options.defaultVisibilityRange) || 20);
   const players = options.players instanceof Map ? options.players : null;
@@ -174,6 +176,7 @@ function createPlayerFactory(options = {}) {
       skillPoints: 0,
       talentPoints: 0,
       talents: {},
+      skills: {},
       abilityLevels: new Map(classDef.abilities.map((entry) => [entry.id, entry.level])),
       abilityLastUsedAt: new Map(),
       activeCast: null,
@@ -219,6 +222,7 @@ function createPlayerFactory(options = {}) {
     }
     recomputePlayerDerivedStats(player);
     syncPlayerCopperFromInventory(player, false);
+    ensurePlayerSkillsState(player);
 
     if (params.overrides && typeof params.overrides === "object") {
       Object.assign(player, params.overrides);

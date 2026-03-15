@@ -27,7 +27,8 @@ function createJoinedPlayer(ws, msg, deps) {
       classType: player.classType,
       isAdmin: !!player.isAdmin,
       mana: player.mana,
-      maxMana: player.maxMana
+      maxMana: player.maxMana,
+      skills: player.skills && typeof player.skills === "object" ? { ...player.skills } : {}
     },
     map: { width: deps.MAP_WIDTH, height: deps.MAP_HEIGHT },
     visibilityRange: viewportState ? Math.max(1, viewportState.x, viewportState.y) : deps.VISIBILITY_RANGE,

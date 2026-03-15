@@ -1,0 +1,160 @@
+{
+  "origin": {
+    "mode": "town_center"
+  },
+  "bands": [
+    {
+      "id": "starter_ring",
+      "distanceMin": 0,
+      "distanceMax": 180,
+      "tags": ["starter_ring", "civilized"],
+      "biomeWeights": {
+        "temperate_forest": 0.34,
+        "meadow": 0.32,
+        "riverland": 0.18,
+        "rocky_hills": 0.16
+      }
+    },
+    {
+      "id": "midlands",
+      "distanceMin": 180,
+      "distanceMax": 340,
+      "tags": ["midlands"],
+      "biomeWeights": {
+        "temperate_forest": 0.24,
+        "meadow": 0.22,
+        "pine_hills": 0.18,
+        "dry_scrub": 0.18,
+        "rocky_hills": 0.18
+      }
+    },
+    {
+      "id": "frontier",
+      "distanceMin": 340,
+      "distanceMax": 520,
+      "tags": ["frontier"],
+      "biomeWeights": {
+        "pine_hills": 0.24,
+        "dry_scrub": 0.22,
+        "rocky_hills": 0.22,
+        "swamp": 0.14,
+        "deep_forest": 0.18
+      }
+    },
+    {
+      "id": "wilds",
+      "distanceMin": 520,
+      "distanceMax": 99999,
+      "tags": ["wilds"],
+      "biomeWeights": {
+        "deep_forest": 0.22,
+        "pine_hills": 0.2,
+        "badlands": 0.22,
+        "swamp": 0.18,
+        "highlands": 0.18
+      }
+    }
+  ],
+  "sectors": [
+    {
+      "id": "north",
+      "angleMinDeg": 337.5,
+      "angleMaxDeg": 22.5,
+      "tags": ["north"],
+      "biomeWeights": {
+        "pine_hills": 0.18,
+        "highlands": 0.16,
+        "rocky_hills": 0.12
+      }
+    },
+    {
+      "id": "north_east",
+      "angleMinDeg": 22.5,
+      "angleMaxDeg": 67.5,
+      "tags": ["north_east"],
+      "biomeWeights": {
+        "rocky_hills": 0.18,
+        "badlands": 0.14,
+        "dry_scrub": 0.12
+      }
+    },
+    {
+      "id": "east",
+      "angleMinDeg": 67.5,
+      "angleMaxDeg": 112.5,
+      "tags": ["east"],
+      "biomeWeights": {
+        "dry_scrub": 0.2,
+        "badlands": 0.18,
+        "rocky_hills": 0.08
+      }
+    },
+    {
+      "id": "south_east",
+      "angleMinDeg": 112.5,
+      "angleMaxDeg": 157.5,
+      "tags": ["south_east"],
+      "biomeWeights": {
+        "meadow": 0.16,
+        "riverland": 0.12,
+        "dry_scrub": 0.08
+      }
+    },
+    {
+      "id": "south",
+      "angleMinDeg": 157.5,
+      "angleMaxDeg": 202.5,
+      "tags": ["south"],
+      "biomeWeights": {
+        "riverland": 0.2,
+        "meadow": 0.18,
+        "swamp": 0.1
+      }
+    },
+    {
+      "id": "south_west",
+      "angleMinDeg": 202.5,
+      "angleMaxDeg": 247.5,
+      "tags": ["south_west"],
+      "biomeWeights": {
+        "swamp": 0.18,
+        "deep_forest": 0.16,
+        "riverland": 0.08
+      }
+    },
+    {
+      "id": "west",
+      "angleMinDeg": 247.5,
+      "angleMaxDeg": 292.5,
+      "tags": ["west"],
+      "biomeWeights": {
+        "temperate_forest": 0.2,
+        "deep_forest": 0.18,
+        "meadow": 0.08
+      }
+    },
+    {
+      "id": "north_west",
+      "angleMinDeg": 292.5,
+      "angleMaxDeg": 337.5,
+      "tags": ["north_west"],
+      "biomeWeights": {
+        "temperate_forest": 0.14,
+        "pine_hills": 0.18,
+        "highlands": 0.12
+      }
+    }
+  ],
+  "biomes": [
+    { "id": "temperate_forest", "tags": ["forest", "temperate"], "resourceWeights": { "tree": 1, "ore_vein": 0.45, "huntable": 0.7 } },
+    { "id": "deep_forest", "tags": ["forest", "dense"], "resourceWeights": { "tree": 1, "ore_vein": 0.35, "huntable": 0.9 } },
+    { "id": "pine_hills", "tags": ["pine", "hills"], "resourceWeights": { "tree": 0.78, "ore_vein": 0.75, "huntable": 0.65 } },
+    { "id": "meadow", "tags": ["grassland"], "resourceWeights": { "tree": 0.35, "ore_vein": 0.2, "huntable": 0.85 } },
+    { "id": "riverland", "tags": ["river", "fertile"], "resourceWeights": { "tree": 0.55, "ore_vein": 0.18, "huntable": 0.75 } },
+    { "id": "rocky_hills", "tags": ["rocky", "hills"], "resourceWeights": { "tree": 0.28, "ore_vein": 1, "huntable": 0.4 } },
+    { "id": "dry_scrub", "tags": ["dry", "scrub"], "resourceWeights": { "tree": 0.18, "ore_vein": 0.55, "huntable": 0.5 } },
+    { "id": "badlands", "tags": ["dry", "badlands"], "resourceWeights": { "tree": 0.05, "ore_vein": 0.82, "huntable": 0.25 } },
+    { "id": "swamp", "tags": ["wet", "swamp"], "resourceWeights": { "tree": 0.62, "ore_vein": 0.15, "huntable": 0.58 } },
+    { "id": "highlands", "tags": ["highlands"], "resourceWeights": { "tree": 0.22, "ore_vein": 0.88, "huntable": 0.42 } }
+  ]
+}

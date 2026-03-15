@@ -15,6 +15,7 @@
     "test:coverage": "jest --coverage",
     "test:equipment:affixes": "node scripts/test-equipment-affixes.js",
     "test:equipment:smoke": "node scripts/playwright-equipment-smoke.js",
+    "test:skills:biomes": "node scripts/test-skills-biomes.js",
     "test:quests:unit": "node scripts/test-procedural-quests.js",
     "test:quests:smoke": "node scripts/playwright-quest-smoke.js",
     "test:talents:smoke": "node scripts/playwright-talent-smoke.js"

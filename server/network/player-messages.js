@@ -81,7 +81,7 @@ function createPlayerMessageTools(options = {}) {
     return result;
   }
 
-  function sendSelfProgress(player) {
+  function sendSelfProgress(player, playerSkills = null) {
     if (!player) {
       return;
     }
@@ -93,7 +93,8 @@ function createPlayerMessageTools(options = {}) {
       expToNext: player.expToNext,
       skillPoints: clamp(Math.floor(Number(player.skillPoints) || 0), 0, 65535),
       talentPoints: clamp(Math.floor(Number(player.talentPoints) || 0), 0, 65535),
-      abilityLevels: serializePlayerAbilityLevels(player)
+      abilityLevels: serializePlayerAbilityLevels(player),
+      skills: Array.isArray(playerSkills) ? playerSkills : []
     });
   }
 

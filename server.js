@@ -62,6 +62,7 @@ const { createMobBehaviorTools } = require("./server/gameplay/mob-behavior");
 const { createMobCombatTools } = require("./server/gameplay/mob-combat");
 const { createMobLifecycleTools } = require("./server/gameplay/mob-lifecycle");
 const { createMobScalingTools } = require("./server/gameplay/mob-scaling");
+const { createBiomeResolver } = require("./server/gameplay/biome-resolver");
 const { pickClusterDef } = require("./server/gameplay/cluster-spawn");
 const { createSpatialTools } = require("./server/gameplay/spatial-tools");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
@@ -126,6 +127,8 @@ const CLASS_CONFIG_PATH = path.join(__dirname, "data", "classes.json");
 const ABILITY_CONFIG_PATH = path.join(__dirname, "data", "abilities.json");
 const EQUIPMENT_CONFIG_PATH = path.join(__dirname, "data", "equipment.json");
 const TALENT_CONFIG_PATH = path.join(__dirname, "data", "talents.json");
+const SKILL_CONFIG_PATH = path.join(__dirname, "data", "skills.json");
+const BIOME_CONFIG_PATH = path.join(__dirname, "data", "biomes.json");
 
 const gameplayRuntime = loadGameplayRuntimeConfig(GAMEPLAY_CONFIG_PATH);
 const GAMEPLAY_CONFIG = gameplayRuntime.gameplayConfig;
@@ -324,7 +327,8 @@ const coreServices = createCoreServices({
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,
   talentConfigPath: TALENT_CONFIG_PATH,
-  classConfig: CLASS_CONFIG.classDefs
+  classConfig: CLASS_CONFIG.classDefs,
+  skillDataPath: SKILL_CONFIG_PATH
 });
 const sendSelfProgress = coreServices.sendSelfProgress;
 const sendInventoryState = coreServices.sendInventoryState;
@@ -348,6 +352,14 @@ const rollDropRules = coreServices.rollDropRules;
 const getDistanceFromCenter = coreServices.getDistanceFromCenter;
 const rollGlobalDropsForPlayer = coreServices.rollGlobalDropsForPlayer;
 const rollMobDrops = coreServices.rollMobDrops;
+const skillTools = coreServices.skillTools;
+
+const biomeResolver = createBiomeResolver({
+  biomeDataPath: BIOME_CONFIG_PATH,
+  mapWidth: MAP_WIDTH,
+  mapHeight: MAP_HEIGHT,
+  townLayout: TOWN_LAYOUT
+});
 
 let MOB_CONFIG = loadMobConfigFromDisk(
   MOB_CONFIG_PATH,
@@ -526,6 +538,7 @@ const playerFactory = createPlayerFactory({
   createEquipmentEntryFromBaseItem,
   recomputePlayerDerivedStats: equipmentTools.recomputePlayerDerivedStats,
   syncPlayerCopperFromInventory,
+  ensurePlayerSkillsState: skillTools.ensurePlayerSkillsState,
   expNeededForLevel,
   sanitizeSpawn: (spawn) => {
     if (!isPointBlockedByTownWall(TOWN_LAYOUT, spawn && spawn.x, spawn && spawn.y)) {
