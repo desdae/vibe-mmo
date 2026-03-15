@@ -1905,148 +1905,42 @@ function getTownVendor() {
 }
 
 function getNearbyQuestNpc() {
-  const mobsVal = mobs;
-  if (!mobsVal) {
-    return null;
-  }
-  const self = getCurrentSelf();
-  if (!self) {
-    return null;
-  }
-  const range = 2;
-  return mobsVal.find((m) => m && m.npcType === "quest" && 
-    Math.abs((m.x || 0) - (self.x || 0)) <= range && 
-    Math.abs((m.y || 0) - (self.y || 0)) <= range);
+  return questRuntimeTools ? questRuntimeTools.getNearbyQuestNpc() : null;
 }
 
 function getHoveredQuestNpc(cameraX, cameraY) {
-  return getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseState.sx, mouseState.sy);
+  return questRuntimeTools ? questRuntimeTools.getHoveredQuestNpc(cameraX, cameraY) : null;
 }
 
 function isPlayerNearQuestNpc(npc, self = null) {
-  const actor = self || getCurrentSelf();
-  if (!actor || !npc) {
-    return false;
-  }
-  const targetX = Number(npc.x) + 0.5;
-  const targetY = Number(npc.y) + 0.5;
-  const interactRange = Math.max(0.5, Number(npc.interactRange) || 2.5);
-  return Math.hypot(targetX - Number(actor.x), targetY - Number(actor.y)) <= interactRange;
+  return questRuntimeTools ? questRuntimeTools.isPlayerNearQuestNpc(npc, self) : false;
 }
 
 function clearAutoQuestNpcInteraction(sendStopMove = false) {
-  const wasActive = questInteractionState.active || autoMoveTarget.active;
-  questInteractionState.active = false;
-  questInteractionState.npcId = "";
-  questInteractionState.x = 0;
-  questInteractionState.y = 0;
-  questInteractionState.interactRange = 0;
-  questInteractionState.nextAttemptAt = 0;
-  clearAutoMoveTarget();
-  if (sendStopMove && wasActive) {
-    sendMove();
+  if (questRuntimeTools) {
+    questRuntimeTools.clearAutoQuestNpcInteraction(sendStopMove);
   }
 }
 
 function startAutoQuestNpcInteraction(npc) {
-  if (!npc) {
-    return false;
-  }
-  clearAutoVendorInteraction(false, false);
-  clearAutoLootPickup(false);
-  questInteractionState.active = true;
-  questInteractionState.npcId = String(npc.id || "");
-  questInteractionState.x = Number(npc.x) || 0;
-  questInteractionState.y = Number(npc.y) || 0;
-  questInteractionState.interactRange = Math.max(0.5, Number(npc.interactRange) || 2.5);
-  questInteractionState.nextAttemptAt = 0;
-  setAutoMoveTarget(
-    questInteractionState.x + 0.5,
-    questInteractionState.y + 0.5,
-    Math.max(0.2, questInteractionState.interactRange - 0.35)
-  );
-  sendMove();
-  return true;
+  return questRuntimeTools ? questRuntimeTools.startAutoQuestNpcInteraction(npc) : false;
 }
 
 function sendQuestNpcInteraction(npcId) {
-  const normalizedNpcId = String(npcId || "").trim();
-  if (!normalizedNpcId) {
-    return false;
-  }
-  return sendJsonMessage({
-    type: "quest_interact",
-    npcId: normalizedNpcId
-  });
+  return questRuntimeTools ? questRuntimeTools.sendQuestNpcInteraction(npcId) : false;
 }
 
 function notifyQuestTalkToNpc(npcId) {
-  const normalizedNpcId = String(npcId || "").trim();
-  if (!normalizedNpcId) {
-    return false;
-  }
-  return sendJsonMessage({
-    type: "talk_to_npc",
-    npcId: normalizedNpcId
-  });
+  return questRuntimeTools ? questRuntimeTools.notifyQuestTalkToNpc(npcId) : false;
 }
 
 function tryContextQuestNpcInteraction() {
-  const self = getCurrentSelf();
-  if (!self) {
-    return false;
-  }
-  const cameraX = self.x + 0.5;
-  const cameraY = self.y + 0.5;
-  const hovered = getHoveredQuestNpc(cameraX, cameraY);
-  if (!hovered || !hovered.npc) {
-    return false;
-  }
-  clearAutoVendorInteraction(false, false);
-  clearAutoLootPickup(false);
-  if (isPlayerNearQuestNpc(hovered.npc, self)) {
-    clearAutoQuestNpcInteraction(false);
-    return sendQuestNpcInteraction(hovered.npc.id);
-  }
-  return startAutoQuestNpcInteraction(hovered.npc);
+  return questRuntimeTools ? questRuntimeTools.tryContextQuestNpcInteraction() : false;
 }
 
 function updateAutoQuestNpcInteraction(now = performance.now()) {
-  if (!questInteractionState.active) {
-    return;
-  }
-  const self = getCurrentSelf();
-  if (!self || self.hp <= 0) {
-    clearAutoQuestNpcInteraction(true);
-    return;
-  }
-  const manualMove = getCurrentInputVector();
-  if (manualMove.dx || manualMove.dy) {
-    clearAutoQuestNpcInteraction(false);
-    return;
-  }
-  const npc = getTownQuestGivers().find((entry) => String(entry && entry.id || "") === questInteractionState.npcId);
-  if (!npc) {
-    clearAutoQuestNpcInteraction(true);
-    return;
-  }
-  questInteractionState.x = Number(npc.x) || 0;
-  questInteractionState.y = Number(npc.y) || 0;
-  questInteractionState.interactRange = Math.max(0.5, Number(npc.interactRange) || 2.5);
-  setAutoMoveTarget(
-    questInteractionState.x + 0.5,
-    questInteractionState.y + 0.5,
-    Math.max(0.2, questInteractionState.interactRange - 0.35)
-  );
-  if (isPlayerNearQuestNpc(npc, self)) {
-    const targetNpcId = questInteractionState.npcId;
-    clearAutoQuestNpcInteraction(true);
-    sendQuestNpcInteraction(targetNpcId);
-    return;
-  }
-  if (now >= questInteractionState.nextAttemptAt) {
-    questInteractionState.nextAttemptAt = now + 90;
-    sendMove();
+  if (questRuntimeTools) {
+    questRuntimeTools.updateAutoQuestNpcInteraction(now);
   }
 }
 
@@ -7245,33 +7139,47 @@ const uiPanelTools = sharedCreateUiPanelTools
     })
   : null;
 
-// Quest UI Tools
+const sharedClientApp = globalThis.VibeClientApp && typeof globalThis.VibeClientApp === "object" ? globalThis.VibeClientApp : null;
 const sharedCreateQuestUiTools = globalThis.__vibemmoCreateQuestUiTools || null;
+const sharedCreateQuestRuntimeTools =
+  sharedClientApp &&
+  sharedClientApp.questRuntime &&
+  typeof sharedClientApp.questRuntime.createQuestRuntimeTools === "function"
+    ? sharedClientApp.questRuntime.createQuestRuntimeTools
+    : null;
+let questRuntimeTools = null;
 let questUiTools = null;
-if (sharedCreateQuestUiTools) {
-  questUiTools = sharedCreateQuestUiTools({
+if (sharedCreateQuestRuntimeTools) {
+  questRuntimeTools = sharedCreateQuestRuntimeTools({
+    questInteractionState,
+    autoMoveTarget,
+    mouseState,
     itemDefsById,
+    createQuestUiTools: sharedCreateQuestUiTools,
     sendJson: (msg) => sendJsonMessage(msg),
+    sendJsonMessage,
     abandonQuest: (questId) => {
       sendJsonMessage({ type: "abandon_quest", questId });
-    }
-  });
-  
-  // Initialize quest panels
-  questUiTools.initPanels({
+    },
+    setStatus,
+    getCurrentSelf: () => getCurrentSelf(),
+    getCurrentInputVector: () => getCurrentInputVector(),
+    getMobs: () => mobs,
+    getTownQuestGivers: () => getTownQuestGivers(),
+    worldToScreen,
+    getQuestNpcSprite,
+    clearAutoVendorInteraction,
+    clearAutoLootPickup,
+    clearAutoMoveTarget,
+    setAutoMoveTarget,
+    sendMove,
     questPanel: document.getElementById("quest-panel"),
     questTrackerPanel: document.getElementById("quest-tracker-panel"),
     dialoguePanel: document.getElementById("dialogue-panel"),
-    notificationPanel: document.getElementById("notification-panel")
+    notificationPanel: document.getElementById("notification-panel"),
+    questCloseButton: document.getElementById("quest-close-btn")
   });
-  
-  // Set up quest close button
-  const questCloseBtn = document.getElementById("quest-close-btn");
-  if (questCloseBtn) {
-    questCloseBtn.addEventListener("click", () => {
-      questUiTools.setQuestPanelVisible(false);
-    });
-  }
+  questUiTools = questRuntimeTools.initQuestUi();
 }
 
 function isMobilePanelMode() {
@@ -10986,30 +10894,36 @@ const serverMessageHandlers = {
   },
   // Quest message handlers
   quest_dialogue: (msg) => {
-    if (!msg || !questUiTools) return;
-    questUiTools.showDialogue(msg);
+    if (questRuntimeTools) {
+      questRuntimeTools.handleQuestPacket("quest_dialogue", msg);
+    }
   },
   quest_accepted: (msg) => {
-    if (!msg || !questUiTools) return;
-    questUiTools.handleQuestAccepted(msg);
+    if (questRuntimeTools) {
+      questRuntimeTools.handleQuestPacket("quest_accepted", msg);
+    }
   },
   quest_completed: (msg) => {
-    if (!msg || !questUiTools) return;
-    questUiTools.handleQuestCompleted(msg);
+    if (questRuntimeTools) {
+      questRuntimeTools.handleQuestPacket("quest_completed", msg);
+    }
   },
   quest_dialogue_error: (msg) => {
-    setStatus(msg && msg.message ? msg.message : "Quest dialogue failed.");
+    if (questRuntimeTools) {
+      questRuntimeTools.handleQuestPacket("quest_dialogue_error", msg);
+    } else {
+      setStatus(msg && msg.message ? msg.message : "Quest dialogue failed.");
+    }
   },
   quest_abandoned: (msg) => {
-    if (!msg || !questUiTools) return;
-    questUiTools.handleQuestAbandoned(msg);
+    if (questRuntimeTools) {
+      questRuntimeTools.handleQuestPacket("quest_abandoned", msg);
+    }
   },
   quest_state_update: (msg) => {
-    if (!msg || !questUiTools) return;
-    questUiTools.updateQuestState({
-      active: msg.active || [],
-      completed: msg.completed || []
-    });
+    if (questRuntimeTools) {
+      questRuntimeTools.handleQuestPacket("quest_state_update", msg);
+    }
   },
   admin_bot_list: (msg) => {
     adminBotState.bots = Array.isArray(msg && msg.bots) ? msg.bots.map((entry) => ({ ...entry })) : [];
@@ -15371,35 +15285,6 @@ function drawQuestNpcs(cameraX, cameraY, frameNow) {
   }
 }
 
-// Get hovered quest NPC
-function getHoveredQuestNpc(cameraX, cameraY) {
-  return getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseState.sx, mouseState.sy);
-}
-
-function getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseX, mouseY) {
-  const questGivers = getTownQuestGivers();
-  if (!questGivers || questGivers.length === 0) {
-    return null;
-  }
-  // Use larger radius for easier clicking on the taller NPC
-  const radius = 1.8;
-  for (const questGiver of questGivers) {
-    if (!questGiver) continue;
-    const p = worldToScreen(Number(questGiver.x) + 0.5, Number(questGiver.y) + 0.5, cameraX, cameraY);
-    const sprite = getQuestNpcSprite();
-    // Check against the sprite's bounding box (centered on sprite)
-    const spriteCenterX = p.x;
-    const spriteTopY = p.y - sprite.height;
-    const dx = mouseX - spriteCenterX;
-    const dy = mouseY - (spriteTopY + sprite.height / 2);
-    // Check if within sprite bounds with some padding
-    if (Math.abs(dx) < sprite.width / 2 + 10 && Math.abs(dy) < sprite.height / 2 + 10) {
-      return { npc: questGiver, p };
-    }
-  }
-  return null;
-}
-
 function drawVendorTooltip(vendor, p) {
   const title = String(vendor && vendor.name ? vendor.name : "Quartermaster");
   const subtitle = isTouchJoystickEnabled()
@@ -16428,7 +16313,7 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       toggleSpellbookPanel,
       toggleTalentPanel,
       toggleDpsPanel,
-      toggleQuestPanel: () => questUiTools && questUiTools.toggleQuestPanel && questUiTools.toggleQuestPanel(),
+      toggleQuestPanel: () => (questRuntimeTools ? questRuntimeTools.toggleQuestPanel() : false),
       questUiTools,
       executeBoundAction,
       tryContextVendorInteraction,
@@ -16552,10 +16437,10 @@ function dispatchCanvasMouseEventAtWorld(eventType, worldX, worldY, options = {}
 }
 
 function buildAutomationSnapshot() {
-  const questStateSnapshot =
-    questUiTools && typeof questUiTools.getQuestState === "function" ? questUiTools.getQuestState() : { active: [], completed: [] };
-  const dialogueSnapshot =
-    questUiTools && typeof questUiTools.getCurrentDialogue === "function" ? questUiTools.getCurrentDialogue() : null;
+  const questStateSnapshot = questRuntimeTools
+    ? questRuntimeTools.getQuestStateSnapshot()
+    : { active: [], completed: [] };
+  const dialogueSnapshot = questRuntimeTools ? questRuntimeTools.getDialogueSnapshot() : null;
   return {
     rendererMode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas",
     debugMetrics: getAutomationDebugMetricsSnapshot(),
@@ -16696,11 +16581,7 @@ function installAutomationApi() {
       return true;
     },
     toggleQuestPanel() {
-      if (questUiTools && typeof questUiTools.toggleQuestPanel === "function") {
-        questUiTools.toggleQuestPanel();
-        return true;
-      }
-      return false;
+      return questRuntimeTools ? questRuntimeTools.toggleQuestPanel() : false;
     },
     dispatchContextMenuAtWorld(worldX, worldY) {
       return dispatchCanvasMouseEventAtWorld("contextmenu", worldX, worldY, {
