@@ -47,12 +47,36 @@ async function getState(page) {
   return page.evaluate(() => window.__vibemmoTest.getState());
 }
 
+async function getDialogueLayoutSnapshot(page) {
+  return page.evaluate(() => {
+    const dialoguePanel = document.getElementById("dialogue-panel");
+    const dialogueContent = dialoguePanel ? dialoguePanel.querySelector(".dialogue-content") : null;
+    const actionUi = document.getElementById("action-ui");
+    if (!dialoguePanel || !actionUi) {
+      return null;
+    }
+    const panelRect = dialoguePanel.getBoundingClientRect();
+    const actionRect = actionUi.getBoundingClientRect();
+    return {
+      top: Math.round(panelRect.top),
+      bottom: Math.round(panelRect.bottom),
+      height: Math.round(panelRect.height),
+      width: Math.round(panelRect.width),
+      viewportHeight: window.innerHeight,
+      actionTop: Math.round(actionRect.top),
+      overlapPx: Math.max(0, Math.round(panelRect.bottom - actionRect.top)),
+      contentScrollable: !!(dialogueContent && dialogueContent.scrollHeight > dialogueContent.clientHeight + 2),
+      contentClientHeight: dialogueContent ? Math.round(dialogueContent.clientHeight) : 0,
+      contentScrollHeight: dialogueContent ? Math.round(dialogueContent.scrollHeight) : 0
+    };
+  });
+}
+
 async function getQuestGiverTapPoint(page) {
   return page.evaluate(() => {
     const state = window.__vibemmoTest.getState();
     const questGiver = Array.isArray(state && state.town && state.town.questGivers) ? state.town.questGivers[0] : null;
-    const self = state && state.self ? state.self : null;
-    return questGiver && self ? { questGiver, self } : null;
+    return questGiver ? { questGiver } : null;
   });
 }
 
@@ -77,18 +101,31 @@ async function main() {
     }
 
     await page.evaluate((tapState) => {
-      return window.__vibemmoTest.dispatchTouchTapAtWorld(Number(tapState.self.x), Number(tapState.self.y));
+      return window.__vibemmoTest.dispatchTouchTapAtWorld(
+        Number(tapState.questGiver.x) + 0.5,
+        Number(tapState.questGiver.y) + 0.5
+      );
     }, tapPoint);
 
     await page.waitForFunction(() => {
       const state = window.__vibemmoTest.getState();
       return !!(state && state.dialogue && state.dialogue.visible);
-    }, null, { timeout: 12000 });
+    }, null, { timeout: 20000 });
 
     const finalState = await getState(page);
     const dialogue = finalState && finalState.dialogue ? finalState.dialogue : null;
     if (!dialogue || !dialogue.visible) {
       throw new Error(`Expected mobile tap to open quest dialogue. Final state=${JSON.stringify(finalState)}`);
+    }
+    const layout = await getDialogueLayoutSnapshot(page);
+    if (!layout) {
+      throw new Error("Failed to capture mobile quest dialogue layout.");
+    }
+    if (layout.top < 0) {
+      throw new Error(`Expected mobile quest dialogue to stay on-screen. Layout=${JSON.stringify(layout)}`);
+    }
+    if (layout.overlapPx > 0) {
+      throw new Error(`Expected mobile quest dialogue to clear action UI. Layout=${JSON.stringify(layout)}`);
     }
 
     console.log(JSON.stringify({
@@ -96,9 +133,10 @@ async function main() {
       questGiverId: String(tapPoint.questGiver && tapPoint.questGiver.id || ""),
       dialogueNpcName: String(dialogue.npcName || ""),
       dialogueType: String(dialogue.dialogueType || ""),
+      layout,
       tappedWorld: {
-        x: Number(tapPoint.self && tapPoint.self.x) || 0,
-        y: Number(tapPoint.self && tapPoint.self.y) || 0
+        x: Number(tapPoint.questGiver && tapPoint.questGiver.x) + 0.5 || 0,
+        y: Number(tapPoint.questGiver && tapPoint.questGiver.y) + 0.5 || 0
       },
       playerPosition: finalState && finalState.self
         ? {

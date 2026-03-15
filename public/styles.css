@@ -2303,7 +2303,7 @@ body {
 
   #chat-panel.mobile-collapsed {
     right: auto;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 164px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 172px);
     width: min(184px, calc(100vw - 16px));
     max-height: none;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
@@ -2506,13 +2506,19 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: 450px;
+  max-width: calc(100vw - 24px);
   background: #1a1a2e;
   border: 2px solid #ffd700;
   border-radius: 8px;
   padding: 16px;
+  box-sizing: border-box;
   color: #e0e0e0;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   z-index: 1000;
+}
+
+#dialogue-panel.hidden {
+  display: none !important;
 }
 
 .dialogue-header {
@@ -2542,6 +2548,7 @@ body {
 .dialogue-content {
   margin-bottom: 16px;
   line-height: 1.5;
+  min-width: 0;
 }
 
 .dialogue-text {
@@ -2566,6 +2573,75 @@ body {
 
 .dialogue-option-btn:hover {
   background: #5a5a7a;
+}
+
+@media (pointer: coarse) {
+  #dialogue-panel {
+    left: 8px;
+    right: 8px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 186px);
+    transform: none;
+    width: auto;
+    max-width: none;
+    max-height: min(54vh, calc(100vh - env(safe-area-inset-top, 0px) - 264px));
+    padding: 12px;
+    border-radius: 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.38);
+  }
+
+  .dialogue-header {
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    flex: 0 0 auto;
+  }
+
+  .dialogue-title {
+    min-width: 0;
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  .dialogue-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    margin-bottom: 12px;
+    padding-right: 2px;
+    overscroll-behavior: contain;
+  }
+
+  .dialogue-text {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .dialogue-options {
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .dialogue-option-btn {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .dialogue-option-btn.dialogue-primary-btn,
+  .dialogue-option-btn.dialogue-leave-btn:only-child,
+  .dialogue-options .dialogue-option-btn:first-child:nth-last-child(1),
+  .dialogue-options .dialogue-option-btn:first-child:nth-last-child(3),
+  .dialogue-options .dialogue-option-btn:first-child:nth-last-child(3) ~ .dialogue-option-btn {
+    grid-column: 1 / -1;
+  }
+
+  .dialogue-rewards,
+  .quest-rewards {
+    margin-top: 10px;
+  }
 }
 
 /* Quest Tracker Panel */

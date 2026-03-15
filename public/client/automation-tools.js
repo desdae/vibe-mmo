@@ -51,8 +51,22 @@
       }
       const screen = worldToScreen(Number(worldX) || 0, Number(worldY) || 0, self.x + 0.5, self.y + 0.5);
       const rect = canvas.getBoundingClientRect();
-      const scaleX = canvas.width > 0 ? rect.width / canvas.width : 1;
-      const scaleY = canvas.height > 0 ? rect.height / canvas.height : 1;
+      const computedStyle =
+        typeof globalScope.getComputedStyle === "function" ? globalScope.getComputedStyle(canvas) : null;
+      const rectWidth =
+        Number(rect.width) ||
+        Number(canvas.clientWidth) ||
+        Number.parseFloat(computedStyle && computedStyle.width) ||
+        Number(canvas.width) ||
+        1;
+      const rectHeight =
+        Number(rect.height) ||
+        Number(canvas.clientHeight) ||
+        Number.parseFloat(computedStyle && computedStyle.height) ||
+        Number(canvas.height) ||
+        1;
+      const scaleX = canvas.width > 0 ? rectWidth / canvas.width : 1;
+      const scaleY = canvas.height > 0 ? rectHeight / canvas.height : 1;
       return {
         clientX: rect.left + screen.x * scaleX,
         clientY: rect.top + screen.y * scaleY
