@@ -1,5 +1,6 @@
 const { createEffectEngine } = require("../gameplay/effects/effect-engine");
 const { buildItemUseEffectDefsFromItemDef } = require("../gameplay/effects/item-use-effect-defs");
+const { sanitizeChatText } = require("./chat-sanitization");
 
 function createJoinedPlayer(ws, msg, deps) {
   const joinResult = deps.createPlayer({
@@ -723,11 +724,11 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     if (player.hp <= 0) {
       return { player };
     }
-    const text = String(msg.text || "").trim();
-    if (!text || text.length > 200) {
+    const text = sanitizeChatText(msg.text, 200);
+    if (!text) {
       return { player };
     }
-    
+
     // Broadcast chat message to all players
     deps.broadcastChatMessage(player, text);
     return { player };

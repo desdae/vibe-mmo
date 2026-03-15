@@ -38,6 +38,7 @@ const {
   loadServerConfigFromDisk,
   formatServerConfigForLog
 } = require("./server/config/server-config");
+const { sanitizeChatText, sanitizeChatSender } = require("./server/network/chat-sanitization");
 const { loadGameplayRuntimeConfig } = require("./server/config/gameplay-runtime");
 const { loadItemConfigFromDisk } = require("./server/config/item-config");
 const { loadEquipmentConfigFromDisk } = require("./server/config/equipment-config");
@@ -433,10 +434,15 @@ const allocateAreaEffectId = worldState.allocateAreaEffectId;
 const allocateItemInstanceId = worldState.allocateItemInstanceId;
 
 function broadcastChatMessage(sender, text) {
+  const senderName = sanitizeChatSender(sender && sender.name, "System");
+  const safeText = sanitizeChatText(text, 200);
+  if (!safeText) {
+    return;
+  }
   const message = {
     type: "chat_message",
-    sender: sender.name,
-    text: text,
+    sender: senderName,
+    text: safeText,
     isAdmin: !!sender.isAdmin
   };
   players.forEach(p => {
