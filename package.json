@@ -18,6 +18,7 @@
     "test:crafting:smoke": "node scripts/playwright-crafting-smoke.js",
     "test:crafting:unit": "node scripts/test-crafting-system.js",
     "test:damage:smoke": "node scripts/playwright-damage-smoke.js",
+    "test:bots:unit": "node scripts/test-bot-system.js",
     "test:hunting:smoke": "node scripts/playwright-hunting-smoke.js",
     "test:hunting:unit": "node scripts/test-hunting-system.js",
     "test:mobile:chat": "node scripts/playwright-mobile-chat-smoke.js",

@@ -50,6 +50,57 @@ function createBotTickSystem(options = {}) {
     divine: 6
   });
   let nextBotIndex = 1;
+  const botNamePools = Object.freeze({
+    mage: Object.freeze([
+      "Aeris",
+      "Ilya",
+      "Nyra",
+      "Seldo",
+      "Veyn",
+      "Liora",
+      "Corin",
+      "Tamsin"
+    ]),
+    ranger: Object.freeze([
+      "Bram",
+      "Kestrel",
+      "Rowan",
+      "Sable",
+      "Thorne",
+      "Mira",
+      "Garrick",
+      "Nessa"
+    ]),
+    warrior: Object.freeze([
+      "Borin",
+      "Kael",
+      "Rhea",
+      "Torren",
+      "Maeve",
+      "Doran",
+      "Brakka",
+      "Iris"
+    ]),
+    default: Object.freeze([
+      "Alden",
+      "Piper",
+      "Cato",
+      "Elara",
+      "Jorin",
+      "Vera",
+      "Milo",
+      "Talia"
+    ])
+  });
+
+  function buildBotName(classType, botNumber) {
+    const normalizedClass = String(classType || "").trim().toLowerCase();
+    const pool = botNamePools[normalizedClass] || botNamePools.default;
+    const poolIndex = Math.max(0, (Math.max(1, botNumber) - 1) % pool.length);
+    const cycle = Math.floor(Math.max(0, Math.max(1, botNumber) - 1) / pool.length);
+    const baseName = String(pool[poolIndex] || botNamePools.default[0]);
+    return cycle > 0 ? `${baseName} ${cycle + 1}` : baseName;
+  }
 
   function getCompatibleEquipmentSlots(slotId) {
     const normalized = String(slotId || "").trim();
@@ -1010,11 +1061,10 @@ function createBotTickSystem(options = {}) {
 
     const spawn = randomPointInRadius(centerX, centerY, spawnRadius);
     const botNumber = nextBotIndex++;
-    const classDef = classConfig && classConfig.classDefs instanceof Map ? classConfig.classDefs.get(classType) || null : null;
-    const baseName = classDef ? classDef.name : classType;
+    const generatedName = buildBotName(classType, botNumber);
     const result = createPlayer({
       ws: null,
-      name: `${baseName} Bot ${botNumber}`,
+      name: generatedName,
       classType,
       spawn,
       isBot: true,
@@ -1029,6 +1079,7 @@ function createBotTickSystem(options = {}) {
   }
 
   return {
+    buildBotName,
     createBotPlayer,
     tickBots,
     listBots,

@@ -9,7 +9,7 @@ function run() {
   sendEntityMeta(
     { ws },
     {
-      playerMeta: [],
+      playerMeta: [{ id: 3, name: "Aeris", classType: "mage", appearance: { mainHand: { itemId: "staff", slot: "mainHand" } } }],
       mobMeta: [{ id: 7, name: "Zombie", level: 3, renderStyle: { spriteType: "zombie" } }],
       projectileMeta: [{ id: 11, abilityId: "frostbolt" }],
       lootBagMeta: [{ id: 13, items: [{ itemId: "bone_fragment", qty: 2, name: "Bone Fragment" }] }]
@@ -29,11 +29,19 @@ function run() {
   );
 
   assert.deepStrictEqual(sendBinaryCalls, [
+    { ws, payload: "player" },
     { ws, payload: "mob" },
     { ws, payload: "projectile" },
     { ws, payload: "loot" }
   ]);
   assert.deepStrictEqual(sendJsonCalls, [
+    {
+      ws,
+      payload: {
+        type: "player_meta",
+        players: [{ id: 3, name: "Aeris", classType: "mage", appearance: { mainHand: { itemId: "staff", slot: "mainHand" } } }]
+      }
+    },
     {
       ws,
       payload: {

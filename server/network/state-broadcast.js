@@ -125,6 +125,17 @@ function sendEntityMeta(player, entityUpdate, deps) {
   } = deps;
   if (entityUpdate.playerMeta.length) {
     sendBinary(player.ws, encodePlayerMetaPacket(entityUpdate.playerMeta));
+    if (typeof sendJson === "function") {
+      sendJson(player.ws, {
+        type: "player_meta",
+        players: entityUpdate.playerMeta.map((meta) => ({
+          id: meta.id,
+          name: String(meta.name || `P${meta.id}`),
+          classType: String(meta.classType || ""),
+          appearance: meta.appearance && typeof meta.appearance === "object" ? { ...meta.appearance } : null
+        }))
+      });
+    }
   }
   if (entityUpdate.mobMeta.length) {
     sendBinary(player.ws, encodeMobMetaPacket(entityUpdate.mobMeta));
