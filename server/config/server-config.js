@@ -1,5 +1,5 @@
 const fs = require("fs");
-const { parseMultiplier } = require("../gameplay/number-utils");
+const { parseMultiplier, parseGameplayInt } = require("../gameplay/number-utils");
 
 function buildServerConfig(parsed) {
   return {
@@ -9,7 +9,11 @@ function buildServerConfig(parsed) {
     mobSpeedMultiplier: parseMultiplier(parsed?.mobSpeedMultiplier, 1),
     mobRespawnMultiplier: parseMultiplier(parsed?.mobRespawnMultiplier, 1),
     dropChanceMultiplier: parseMultiplier(parsed?.dropChanceMultiplier ?? parsed?.dropchanceMultiplier, 1),
-    mobSpawnMultiplier: parseMultiplier(parsed?.mobSpawnMultiplier, 1)
+    mobSpawnMultiplier: parseMultiplier(parsed?.mobSpawnMultiplier, 1),
+    wsConnectionRateLimitWindowMs: parseGameplayInt(parsed?.wsConnectionRateLimitWindowMs, 30000, 1000, 600000),
+    wsConnectionRateLimitMax: parseGameplayInt(parsed?.wsConnectionRateLimitMax, 12, 1, 1000),
+    wsMessageRateLimitWindowMs: parseGameplayInt(parsed?.wsMessageRateLimitWindowMs, 1000, 100, 60000),
+    wsMessageRateLimitMax: parseGameplayInt(parsed?.wsMessageRateLimitMax, 120, 10, 5000)
   };
 }
 
@@ -30,7 +34,11 @@ function formatServerConfigForLog(config) {
     `mobSpeedMultiplier=${config.mobSpeedMultiplier}`,
     `mobRespawnMultiplier=${config.mobRespawnMultiplier}`,
     `dropChanceMultiplier=${config.dropChanceMultiplier}`,
-    `mobSpawnMultiplier=${config.mobSpawnMultiplier}`
+    `mobSpawnMultiplier=${config.mobSpawnMultiplier}`,
+    `wsConnectionRateLimitWindowMs=${config.wsConnectionRateLimitWindowMs}`,
+    `wsConnectionRateLimitMax=${config.wsConnectionRateLimitMax}`,
+    `wsMessageRateLimitWindowMs=${config.wsMessageRateLimitWindowMs}`,
+    `wsMessageRateLimitMax=${config.wsMessageRateLimitMax}`
   ].join(", ");
 }
 

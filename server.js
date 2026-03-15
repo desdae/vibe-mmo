@@ -1380,6 +1380,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     setBotFollow,
     clearBotFollow,
     sendJson,
+    getServerConfig: () => SERVER_CONFIG,
     players,
     mapWidth: MAP_WIDTH,
     mapHeight: MAP_HEIGHT,

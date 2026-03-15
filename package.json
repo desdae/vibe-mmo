@@ -26,6 +26,7 @@
     "test:mobile:quest": "node scripts/playwright-mobile-quest-smoke.js",
     "test:resources:smoke": "node scripts/playwright-resource-smoke.js",
     "test:resources:unit": "node scripts/test-resource-system.js",
+    "test:security:ws": "node scripts/test-ws-rate-limit.js",
     "test:skills:biomes": "node scripts/test-skills-biomes.js",
     "test:quests:unit": "node scripts/test-procedural-quests.js",
     "test:quests:smoke": "node scripts/playwright-quest-smoke.js",

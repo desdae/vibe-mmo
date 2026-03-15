@@ -13,6 +13,7 @@ function createWsConnectionDeps({
   setBotFollow,
   clearBotFollow,
   sendJson,
+  getServerConfig,
   players,
   mapWidth,
   mapHeight,
@@ -67,6 +68,7 @@ function createWsConnectionDeps({
 }) {
   return {
     sendJson,
+    getServerConfig,
     players,
     get CLASS_CONFIG() {
       return getClassConfig();

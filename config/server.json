@@ -5,5 +5,9 @@
     "mobSpeedMultiplier": 1.0,
     "mobRespawnMultiplier": 1.0,
     "dropchanceMultiplier": 10,
-    "mobSpawnMultiplier": 1.0
+    "mobSpawnMultiplier": 1.0,
+    "wsConnectionRateLimitWindowMs": 30000,
+    "wsConnectionRateLimitMax": 12,
+    "wsMessageRateLimitWindowMs": 1000,
+    "wsMessageRateLimitMax": 120
 }
