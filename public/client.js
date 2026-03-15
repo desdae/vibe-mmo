@@ -16108,19 +16108,32 @@ function drawLootBag(bag, cameraX, cameraY, frameNow = performance.now()) {
   }
 }
 
-const sharedClientRenderLoop = globalThis.VibeClientRenderLoop || null;
-const sharedCreateRenderLoopTools =
-  sharedClientRenderLoop && typeof sharedClientRenderLoop.createRenderLoopTools === "function"
-    ? sharedClientRenderLoop.createRenderLoopTools
+const sharedCreateAppBootstrapTools =
+  sharedClientApp &&
+  sharedClientApp.bootstrap &&
+  typeof sharedClientApp.bootstrap.createAppBootstrapTools === "function"
+    ? sharedClientApp.bootstrap.createAppBootstrapTools
     : null;
-const sharedClientWorldViewModels = globalThis.VibeClientWorldViewModels || null;
-const sharedCreateWorldViewModelTools =
-  sharedClientWorldViewModels && typeof sharedClientWorldViewModels.createWorldViewModelTools === "function"
-    ? sharedClientWorldViewModels.createWorldViewModelTools
-    : null;
-const worldViewModelTools = sharedCreateWorldViewModelTools
-  ? sharedCreateWorldViewModelTools({
+const appBootstrapTools = sharedCreateAppBootstrapTools
+  ? sharedCreateAppBootstrapTools({
+      windowObject: window,
+      documentObject: document,
+      ctx,
+      canvas,
+      tileSize: TILE_SIZE,
+      townClientState,
+      mouseState,
       gameState,
+      classDefsById,
+      joinForm,
+      gameUI,
+      keys,
+      hudName,
+      hudClass,
+      hudPos,
+      abilityChannel,
+      lootBagSparkleConfig: LOOT_BAG_SPARKLE_PARTICLE_CONFIG,
+      mobSpriteSize: MOB_SPRITE_SIZE,
       getAreaEffects: () => Array.from(activeAreaEffectsById.values()),
       getExplosionViews,
       getTownVendor,
@@ -16150,18 +16163,7 @@ const worldViewModelTools = sharedCreateWorldViewModelTools
       getHoveredMob,
       getHoveredLootBag,
       getHoveredVendor,
-      getHoveredQuestNpc
-    })
-  : null;
-const sharedClientCanvasWorldRenderer = globalThis.VibeClientCanvasWorldRenderer || null;
-const sharedCreateCanvasWorldRenderer =
-  sharedClientCanvasWorldRenderer && typeof sharedClientCanvasWorldRenderer.createCanvasWorldRenderer === "function"
-    ? sharedClientCanvasWorldRenderer.createCanvasWorldRenderer
-    : null;
-const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
-  ? sharedCreateCanvasWorldRenderer({
-      ctx,
-      canvas,
+      getHoveredQuestNpc,
       updateActionBarUI,
       updateMobCastSpatialAudio,
       updateProjectileSpatialAudio,
@@ -16199,112 +16201,33 @@ const canvasWorldRenderer = sharedCreateCanvasWorldRenderer
       drawMobTooltip,
       drawLootBagTooltip,
       drawVendorTooltip,
-      drawQuestNpcTooltip
-    })
-  : null;
-const sharedClientPixiWorldRenderer = globalThis.VibeClientPixiWorldRenderer || null;
-const sharedCreatePixiWorldRenderer =
-  sharedClientPixiWorldRenderer && typeof sharedClientPixiWorldRenderer.createPixiWorldRenderer === "function"
-    ? sharedClientPixiWorldRenderer.createPixiWorldRenderer
-    : null;
-const pixiWorldRenderer = sharedCreatePixiWorldRenderer
-  ? sharedCreatePixiWorldRenderer({
-      PIXI: globalThis.PIXI || null,
-      windowObject: window,
-      canvasElement: canvas,
-      tileSize: TILE_SIZE,
-      townClientState,
+      drawQuestNpcTooltip,
       hashString,
       sanitizeCssColor,
-      mouseState,
       screenToWorld,
       getCurrentSelf,
       getClassRenderStyle,
       getPlayerVisualEquipment,
       getMobRenderStyle,
-      lootBagSparkleConfig: LOOT_BAG_SPARKLE_PARTICLE_CONFIG,
       getLootBagSprite,
       getTownTileSprite,
       getVendorNpcSprite,
       getQuestNpcSprite,
-      mobSpriteSize: MOB_SPRITE_SIZE,
       getCreeperWalkSprite,
       getSpiderWalkSprite,
-      getActionDefById,
       findAbilityDefById,
       getAbilityEffectiveRangeForSelf,
       getAbilityPreviewState: getCurrentAbilityPreviewState,
-      getAbilityVisualHook,
-      abilityChannel,
       getCurrentMovementVector,
-      isTouchJoystickEnabled,
-      getProjectileSpriteFrame: projectileRenderTools && typeof projectileRenderTools.getProjectileSpriteFrame === "function"
-        ? (projectile, frameNow) => projectileRenderTools.getProjectileSpriteFrame(projectile, frameNow)
-        : null
-    })
-  : null;
-const sharedClientRendererBootstrap = globalThis.VibeClientRendererBootstrap || null;
-const sharedCreateRendererBootstrap =
-  sharedClientRendererBootstrap && typeof sharedClientRendererBootstrap.createRendererBootstrap === "function"
-    ? sharedClientRendererBootstrap.createRendererBootstrap
-    : null;
-const rendererBootstrap = sharedCreateRendererBootstrap
-  ? sharedCreateRendererBootstrap({
-      windowObject: window,
-      canvasElement: canvas,
-      canvasWorldRenderer,
-      pixiWorldRenderer
-    })
-  : null;
-globalThis.__vibemmoGetRendererDebugStats = () =>
-  rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function" ? rendererBootstrap.getDebugStats() : null;
-const renderLoopTools = sharedCreateRenderLoopTools
-  ? sharedCreateRenderLoopTools({
-      ctx,
-      canvas,
-      gameState,
       requestAnimationFrame,
       reportFrame,
       updateAbilityChannel,
       updateResourceBars,
       getInterpolatedState,
-      updateActionBarUI,
-      buildWorldFrameViewModel: (interpolatedState, frameNow) =>
-        worldViewModelTools ? worldViewModelTools.buildWorldFrameViewModel(interpolatedState, frameNow) : null,
-      renderWorldFrame: (frameViewModel) => {
-        if (rendererBootstrap) {
-          return rendererBootstrap.renderWorldFrame(frameViewModel);
-        }
-        if (canvasWorldRenderer) {
-          return canvasWorldRenderer.renderWorldFrame(frameViewModel);
-        }
-        return null;
-      },
       setLastRenderState: (state) => {
         lastRenderState = state;
       },
-      hudName,
-      hudClass,
-      hudPos,
-      getMyId: () => myId
-    })
-  : null;
-const sharedClientInputBootstrap = globalThis.VibeClientInputBootstrap || null;
-const sharedCreateInputBootstrap =
-  sharedClientInputBootstrap && typeof sharedClientInputBootstrap.createInputBootstrap === "function"
-    ? sharedClientInputBootstrap.createInputBootstrap
-    : null;
-const inputBootstrapTools = sharedCreateInputBootstrap
-  ? sharedCreateInputBootstrap({
-      windowObject: window,
-      document,
-      canvas,
-      joinForm,
-      gameUI,
-      keys,
-      mouseState,
-      classDefsById,
-      requestAnimationFrame,
+      getMyId: () => myId,
       resizeCanvas,
       resumeSpatialAudioContext,
       toggleDebugPanel,
@@ -16346,16 +16269,16 @@ const inputBootstrapTools = sharedCreateInputBootstrap
       updateDpsPanel,
       refreshAdminBotList: () => requestAdminBotList(false),
       initializeDpsPanel,
-      loadInitialGameConfig,
-      render
+      loadInitialGameConfig
     })
   : null;
+const rendererBootstrap = appBootstrapTools ? appBootstrapTools.rendererBootstrap : null;
+const inputBootstrapTools = appBootstrapTools ? appBootstrapTools.inputBootstrapTools : null;
 
 function render() {
-  if (!renderLoopTools) {
-    return;
+  if (appBootstrapTools) {
+    appBootstrapTools.render();
   }
-  renderLoopTools.renderFrame();
 }
 
 const sharedCreateAutomationTools =
