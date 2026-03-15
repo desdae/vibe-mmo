@@ -106,6 +106,8 @@
       const lootPickupState = deps.lootPickupState || {};
       const resourceInteractionState = deps.resourceInteractionState || {};
       const activeAreaEffectsById = deps.activeAreaEffectsById || new Map();
+      const getFloatingDamageCount =
+        typeof deps.getFloatingDamageCount === "function" ? deps.getFloatingDamageCount : () => 0;
       const getQuestStateSnapshot =
         typeof deps.getQuestStateSnapshot === "function" ? deps.getQuestStateSnapshot : () => ({ active: [], completed: [] });
       const getDialogueSnapshot =
@@ -115,6 +117,7 @@
         rendererMode: deps.rendererBootstrap ? deps.rendererBootstrap.getRendererMode() : "canvas",
         debugMetrics: getAutomationDebugMetricsSnapshot(),
         rendererStats: getAutomationRendererStatsSnapshot(),
+        floatingDamageCount: Math.max(0, Math.floor(Number(getFloatingDamageCount()) || 0)),
         self: gameState.self
           ? {
               id: deps.myId,

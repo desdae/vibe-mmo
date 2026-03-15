@@ -16851,6 +16851,7 @@ const automationTools = sharedCreateAutomationTools
       vendorInteractionState,
       lootPickupState,
       resourceInteractionState,
+      getFloatingDamageCount: () => floatingDamageNumbers.length,
       selfStatic,
       myId,
       statusEl,

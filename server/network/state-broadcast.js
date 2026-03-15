@@ -243,7 +243,7 @@ function sendAreaEffectEvents(player, now, deps) {
 }
 
 function sendVisibleDamageEvents(player, deps) {
-  const { pendingDamageEvents, sendBinary, encodeDamageEventPacket } = deps;
+  const { pendingDamageEvents, sendBinary, sendJson, encodeDamageEventPacket } = deps;
   if (!pendingDamageEvents.length) {
     return;
   }
@@ -260,7 +260,14 @@ function sendVisibleDamageEvents(player, deps) {
     }
   }
   if (visibleDamageEvents.length) {
-    sendBinary(player.ws, encodeDamageEventPacket(visibleDamageEvents));
+    if (typeof sendJson === "function") {
+      sendJson(player.ws, {
+        type: "damage_events",
+        events: visibleDamageEvents.map((event) => ({ ...event }))
+      });
+    } else {
+      sendBinary(player.ws, encodeDamageEventPacket(visibleDamageEvents));
+    }
   }
 }
 
@@ -420,6 +427,7 @@ function createStateBroadcaster(deps) {
 
 module.exports = {
   sendEntityMeta,
+  sendVisibleDamageEvents,
   broadcastStateToPlayers,
   createStateBroadcaster
 };
