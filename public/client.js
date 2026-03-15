@@ -16854,6 +16854,7 @@ const automationTools = sharedCreateAutomationTools
       debugState,
       trafficWindowMs: TRAFFIC_WINDOW_MS,
       gameState,
+      mouseState,
       entityRuntime,
       townClientState,
       inventoryState,

@@ -254,8 +254,11 @@
         return;
       }
       const point = getCanvasTouchPoint(touch);
+      const useJoystick = shouldStartTouchJoystick(point);
       deps.resumeSpatialAudioContext();
-      deps.updateMouseScreenPosition(touch);
+      if (!useJoystick) {
+        deps.updateMouseScreenPosition(touch);
+      }
       deps.cancelAutoVendorInteraction();
       if (typeof deps.cancelAutoQuestInteraction === "function") {
         deps.cancelAutoQuestInteraction();
@@ -265,7 +268,7 @@
       }
       deps.cancelAutoLootPickup();
       resetTouchTapState();
-      if (shouldStartTouchJoystick(point) && typeof deps.beginTouchJoystick === "function") {
+      if (useJoystick && typeof deps.beginTouchJoystick === "function") {
         deps.beginTouchJoystick(touch.identifier, point.x, point.y);
         deps.sendMove();
         event.preventDefault();

@@ -131,6 +131,32 @@
       return true;
     }
 
+    function dispatchCanvasTouchEventAtClient(eventType, clientX, clientY, identifier = 1) {
+      const canvas = deps.canvasElement || null;
+      if (!canvas || typeof globalScope.Touch !== "function" || typeof globalScope.TouchEvent !== "function") {
+        return false;
+      }
+      const touch = new globalScope.Touch({
+        identifier: Math.max(1, Math.floor(Number(identifier) || 1)),
+        target: canvas,
+        clientX: Number(clientX) || 0,
+        clientY: Number(clientY) || 0,
+        radiusX: 10,
+        radiusY: 10,
+        rotationAngle: 0,
+        force: 1
+      });
+      const isEnd = eventType === "touchend" || eventType === "touchcancel";
+      canvas.dispatchEvent(new globalScope.TouchEvent(eventType, {
+        bubbles: true,
+        cancelable: true,
+        touches: isEnd ? [] : [touch],
+        targetTouches: isEnd ? [] : [touch],
+        changedTouches: [touch]
+      }));
+      return true;
+    }
+
     function buildAutomationSnapshot() {
       const gameState = deps.gameState || {};
       const entityRuntime = deps.entityRuntime || {};
@@ -262,6 +288,13 @@
           lootBagId: String(lootPickupState.bagId || ""),
           resourceNodeId: String(resourceInteractionState.resourceNodeId || "")
         },
+        mouse: deps.mouseState
+          ? {
+              sx: Number(deps.mouseState.sx) || 0,
+              sy: Number(deps.mouseState.sy) || 0,
+              leftDown: !!deps.mouseState.leftDown
+            }
+          : { sx: 0, sy: 0, leftDown: false },
         questState: getQuestStateSnapshot(),
         dialogue: getDialogueSnapshot(),
         status: deps.statusEl ? String(deps.statusEl.textContent || "") : "",
@@ -344,6 +377,9 @@
         },
         dispatchTouchTapAtWorld(worldX, worldY) {
           return dispatchCanvasTouchTapAtWorld(worldX, worldY);
+        },
+        dispatchTouchEventAtClient(eventType, clientX, clientY, identifier = 1) {
+          return dispatchCanvasTouchEventAtClient(eventType, clientX, clientY, identifier);
         },
         dispatchMouseDownAtWorld(worldX, worldY, button = 0) {
           return dispatchCanvasMouseEventAtWorld("mousedown", worldX, worldY, { button });
