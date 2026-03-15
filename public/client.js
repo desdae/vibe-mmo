@@ -10,12 +10,20 @@ const chatPanel = document.getElementById("chat-panel");
 const chatMessages = document.getElementById("chat-messages");
 const chatInput = document.getElementById("chat-input");
 const chatSendButton = document.getElementById("chat-send");
+const chatToggleButton = document.getElementById("chat-toggle");
+const chatToggleLabel = document.getElementById("chat-toggle-label");
+const chatUnreadBadge = document.getElementById("chat-unread-badge");
 const ctx = canvas.getContext("2d");
 const hudName = document.getElementById("hud-name");
 const hudClass = document.getElementById("hud-class");
 const hudPos = document.getElementById("hud-pos");
 const classTypeSelect = document.getElementById("classType");
 const actionUi = document.getElementById("action-ui");
+const mobileChatState = {
+  inMobileLayout: false,
+  expanded: true,
+  unreadCount: 0
+};
 const resourceBars = document.getElementById("resource-bars");
 const buffIcons = document.getElementById("buff-icons");
 const debuffIcons = document.getElementById("debuff-icons");
@@ -11250,6 +11258,7 @@ const serverMessageHandlers = {
     }
     // Ensure chat panel is visible
     chatPanel.style.display = 'flex';
+    syncMobileChatLayout();
     
     const sender = String(msg.sender || "").trim();
     const text = String(msg.text || "").trim();
@@ -11278,6 +11287,10 @@ const serverMessageHandlers = {
       chatMessages.removeChild(chatMessages.firstChild);
     }
     chatMessages.scrollTop = chatMessages.scrollHeight;
+    if (isMobileChatLayout() && !mobileChatState.expanded) {
+      mobileChatState.unreadCount += 1;
+      updateChatUnreadBadge();
+    }
   }
 };
 
@@ -11321,6 +11334,7 @@ function resizeCanvas() {
   sendViewportToServer();
   updateInventoryUI();
   updateEquipmentUI();
+  syncMobileChatLayout();
 }
 
 const sharedClientPlayerControls = globalThis.VibeClientPlayerControls || null;
@@ -16879,6 +16893,62 @@ if (inputBootstrapTools) {
   inputBootstrapTools.bind();
 }
 
+function isMobileChatLayout() {
+  return !!(
+    chatPanel &&
+    isTouchJoystickEnabled() &&
+    window.matchMedia &&
+    window.matchMedia("(max-width: 760px)").matches
+  );
+}
+
+function updateChatUnreadBadge() {
+  if (!chatUnreadBadge || !chatToggleButton) {
+    return;
+  }
+  const unreadCount = Math.max(0, Math.floor(Number(mobileChatState.unreadCount) || 0));
+  chatUnreadBadge.textContent = String(unreadCount);
+  chatUnreadBadge.classList.toggle("hidden", unreadCount <= 0);
+  chatToggleButton.classList.toggle("attention", unreadCount > 0);
+}
+
+function setMobileChatExpanded(expanded) {
+  if (!chatPanel) {
+    return;
+  }
+  const mobileLayout = isMobileChatLayout();
+  const nextExpanded = mobileLayout ? !!expanded : true;
+  mobileChatState.expanded = nextExpanded;
+  chatPanel.classList.toggle("mobile-collapsed", mobileLayout && !nextExpanded);
+  if (chatToggleButton) {
+    chatToggleButton.setAttribute("aria-expanded", nextExpanded ? "true" : "false");
+  }
+  if (chatToggleLabel) {
+    chatToggleLabel.textContent = nextExpanded ? "Hide" : "Open";
+  }
+  if (nextExpanded) {
+    mobileChatState.unreadCount = 0;
+  }
+  updateChatUnreadBadge();
+}
+
+function syncMobileChatLayout() {
+  if (!chatPanel) {
+    return;
+  }
+  const mobileLayout = isMobileChatLayout();
+  if (mobileLayout !== mobileChatState.inMobileLayout) {
+    mobileChatState.inMobileLayout = mobileLayout;
+    if (mobileLayout) {
+      mobileChatState.expanded = false;
+    } else {
+      mobileChatState.expanded = true;
+      mobileChatState.unreadCount = 0;
+    }
+  }
+  setMobileChatExpanded(mobileChatState.expanded);
+}
+
 // Chat functionality
 function sendChatMessage() {
   if (!chatInput || !socket || socket.readyState !== WebSocket.OPEN) {
@@ -16893,6 +16963,20 @@ function sendChatMessage() {
     text: text
   });
   chatInput.value = "";
+  setMobileChatExpanded(true);
+}
+
+if (chatToggleButton) {
+  chatToggleButton.addEventListener("click", () => {
+    if (!isMobileChatLayout()) {
+      return;
+    }
+    const nextExpanded = !mobileChatState.expanded;
+    setMobileChatExpanded(nextExpanded);
+    if (!nextExpanded && document.activeElement === chatInput) {
+      chatInput.blur();
+    }
+  });
 }
 
 if (chatSendButton) {
@@ -16909,6 +16993,7 @@ if (chatInput) {
   
   // Prevent game input when typing in chat
   chatInput.addEventListener("focus", () => {
+    setMobileChatExpanded(true);
     if (typeof keys === "object") {
       for (const key in keys) {
         keys[key] = false;
@@ -16916,3 +17001,5 @@ if (chatInput) {
     }
   });
 }
+
+syncMobileChatLayout();

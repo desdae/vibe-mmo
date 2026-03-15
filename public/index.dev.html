@@ -107,7 +107,13 @@
         <div id="dps-value" class="dps-value">0.00 DPS</div>
       </div>
       <div id="chat-panel">
-        <div class="chat-header">Chat</div>
+        <div class="chat-header">
+          <span class="chat-header-title">Chat</span>
+          <button id="chat-toggle" class="chat-toggle-button" type="button" aria-expanded="true" aria-controls="chat-panel">
+            <span id="chat-toggle-label">Hide</span>
+            <span id="chat-unread-badge" class="chat-unread-badge hidden">0</span>
+          </button>
+        </div>
         <div id="chat-messages"></div>
         <div id="chat-input-container">
           <input id="chat-input" type="text" placeholder="Type a message..." maxlength="200" />

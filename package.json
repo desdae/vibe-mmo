@@ -20,6 +20,7 @@
     "test:damage:smoke": "node scripts/playwright-damage-smoke.js",
     "test:hunting:smoke": "node scripts/playwright-hunting-smoke.js",
     "test:hunting:unit": "node scripts/test-hunting-system.js",
+    "test:mobile:chat": "node scripts/playwright-mobile-chat-smoke.js",
     "test:resources:smoke": "node scripts/playwright-resource-smoke.js",
     "test:resources:unit": "node scripts/test-resource-system.js",
     "test:skills:biomes": "node scripts/test-skills-biomes.js",
