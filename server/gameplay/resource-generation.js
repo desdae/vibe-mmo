@@ -5,6 +5,8 @@ function createResourceGenerationTools(options = {}) {
   const resourceRegistry = options.resourceRegistry || null;
   const biomeResolver = options.biomeResolver || null;
   const skillTools = options.skillTools || null;
+  const getToolTierForPlayer =
+    typeof options.getToolTierForPlayer === "function" ? options.getToolTierForPlayer : () => 0;
   const addItemsToInventory =
     typeof options.addItemsToInventory === "function"
       ? options.addItemsToInventory
@@ -148,6 +150,10 @@ function createResourceGenerationTools(options = {}) {
     if (!items.length) {
       return null;
     }
+    return buildNodeFromCandidate(candidate, centerX, centerY, biomeInfo, items);
+  }
+
+  function buildNodeFromCandidate(candidate, x, y, biomeInfo, items) {
     return {
       id: String(allocateResourceNodeId()),
       resourceId: candidate.id,
@@ -155,8 +161,9 @@ function createResourceGenerationTools(options = {}) {
       family: candidate.family,
       skillId: candidate.skillId,
       requiredLevel: candidate.requiredLevel,
-      x: centerX,
-      y: centerY,
+      requiredToolTier: Math.max(0, Math.floor(Number(candidate.requiredToolTier) || 0)),
+      x: Number(x) || 0,
+      y: Number(y) || 0,
       interactRange: candidate.interactRange,
       xp: candidate.xp,
       items,
@@ -189,30 +196,28 @@ function createResourceGenerationTools(options = {}) {
     if (!items.length) {
       return null;
     }
-    return {
-      id: String(allocateResourceNodeId()),
-      resourceId: candidate.id,
-      name: candidate.name,
-      family: candidate.family,
-      skillId: candidate.skillId,
-      requiredLevel: candidate.requiredLevel,
-      x: clampedX,
-      y: clampedY,
-      interactRange: candidate.interactRange,
-      xp: candidate.xp,
-      items,
-      visual: candidate.visual ? { ...candidate.visual } : {},
-      biome: {
-        bandId: normalizeId(biomeInfo && biomeInfo.bandId),
-        sectorId: normalizeId(biomeInfo && biomeInfo.sectorId),
-        primaryBiomeId: normalizeId(biomeInfo && biomeInfo.primaryBiomeId)
-      },
-      available: true,
-      depletedUntil: 0,
-      metaVersion: 1,
-      respawnSecondsMin: candidate.respawnSecondsMin,
-      respawnSecondsMax: candidate.respawnSecondsMax
-    };
+    return buildNodeFromCandidate(candidate, clampedX, clampedY, biomeInfo, items);
+  }
+
+  function createSpecificNodeAtPoint(resourceId, x, y, seedSuffix = "manual") {
+    const candidate =
+      resourceRegistry && typeof resourceRegistry.getResourceDef === "function"
+        ? resourceRegistry.getResourceDef(resourceId)
+        : null;
+    if (!candidate) {
+      return null;
+    }
+    const clampedX = clamp(Number(x) || 0, 0, mapWidth - 1);
+    const clampedY = clamp(Number(y) || 0, 0, mapHeight - 1);
+    if (isPointExcludedByTown(clampedX, clampedY)) {
+      return null;
+    }
+    const biomeInfo = biomeResolver.resolveBiomeAt(clampedX, clampedY);
+    const items = rollNodeItems(candidate, `${candidate.id}:${seedSuffix}:${clampedX}:${clampedY}`);
+    if (!items.length) {
+      return null;
+    }
+    return buildNodeFromCandidate(candidate, clampedX, clampedY, biomeInfo, items);
   }
 
   function hasNearbyFamilyNode(x, y, familyId, maxDistance) {
@@ -244,30 +249,20 @@ function createResourceGenerationTools(options = {}) {
         Math.abs((Number(townLayout.maxTileY) || centerY) - centerY)
       ) + 6
     );
-    const offsetsByFamily = {
-      tree: [
-        { x: -ringDistance, y: -2 },
-        { x: ringDistance, y: 2 },
-        { x: -3, y: ringDistance }
-      ],
-      ore_vein: [
-        { x: ringDistance, y: -3 },
-        { x: -ringDistance, y: 3 },
-        { x: 4, y: -ringDistance }
-      ]
-    };
-    for (const [familyId, offsets] of Object.entries(offsetsByFamily)) {
-      for (let index = 0; index < offsets.length; index += 1) {
-        const offset = offsets[index];
-        const x = centerX + Number(offset.x || 0);
-        const y = centerY + Number(offset.y || 0);
-        if (hasNearbyFamilyNode(x, y, familyId, 7)) {
-          continue;
-        }
-        const node = createNodeAtPoint(x, y, familyId, `starter:${familyId}:${index}`);
-        if (node) {
-          resourceNodes.set(node.id, node);
-        }
+    const starterNodes = [
+      { resourceId: "oak_tree", familyId: "tree", x: centerX - ringDistance, y: centerY - 2 },
+      { resourceId: "birch_tree", familyId: "tree", x: centerX + ringDistance, y: centerY + 2 },
+      { resourceId: "copper_vein", familyId: "ore_vein", x: centerX + ringDistance, y: centerY - 3 },
+      { resourceId: "copper_vein", familyId: "ore_vein", x: centerX - ringDistance, y: centerY + 3 }
+    ];
+    for (let index = 0; index < starterNodes.length; index += 1) {
+      const entry = starterNodes[index];
+      if (hasNearbyFamilyNode(entry.x, entry.y, entry.familyId, 7)) {
+        continue;
+      }
+      const node = createSpecificNodeAtPoint(entry.resourceId, entry.x, entry.y, `starter:${entry.resourceId}:${index}`);
+      if (node) {
+        resourceNodes.set(node.id, node);
       }
     }
   }
@@ -331,6 +326,7 @@ function createResourceGenerationTools(options = {}) {
       family: String(node.family || ""),
       skillId: String(node.skillId || ""),
       requiredLevel: Math.max(1, Math.floor(Number(node.requiredLevel) || 1)),
+      requiredToolTier: Math.max(0, Math.floor(Number(node.requiredToolTier) || 0)),
       x: Number(node.x) || 0,
       y: Number(node.y) || 0,
       interactRange: Math.max(0.5, Number(node.interactRange) || 1.75),
@@ -388,6 +384,17 @@ function createResourceGenerationTools(options = {}) {
         message: `${String(node.skillId || "skill")} ${Math.max(1, Number(node.requiredLevel) || 1)} required.`,
         node
       };
+    }
+    const requiredToolTier = Math.max(0, Math.floor(Number(node.requiredToolTier) || 0));
+    if (requiredToolTier > 0) {
+      const playerToolTier = Math.max(0, Math.floor(Number(getToolTierForPlayer(player, node.skillId)) || 0));
+      if (playerToolTier < requiredToolTier) {
+        return {
+          ok: false,
+          message: `A tier ${requiredToolTier} ${String(node.skillId || "gathering")} tool is required.`,
+          node
+        };
+      }
     }
     const transfer = addItemsToInventory(player, node.items);
     if (!transfer || !Array.isArray(transfer.added) || !transfer.added.length) {

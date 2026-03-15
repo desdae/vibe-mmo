@@ -736,7 +736,8 @@ body {
   font-size: 16px;
 }
 
-#vendor-panel {
+#vendor-panel,
+#crafting-panel {
   position: fixed;
   left: 50%;
   bottom: 170px;
@@ -751,6 +752,10 @@ body {
   backdrop-filter: blur(2px);
   overflow: hidden;
   z-index: 7;
+}
+
+#crafting-panel {
+  left: calc(50% + 220px);
 }
 
 .vendor-header-row {
@@ -864,7 +869,8 @@ body {
   #inventory-panel,
   #equipment-panel,
   #spellbook-panel,
-  #vendor-panel {
+  #vendor-panel,
+  #crafting-panel {
     left: 8px;
     right: 8px;
     bottom: calc(env(safe-area-inset-bottom, 0px) + 194px);
@@ -876,7 +882,8 @@ body {
     z-index: 8;
   }
 
-  #vendor-panel {
+  #vendor-panel,
+  #crafting-panel {
     padding-bottom: 12px;
   }
 
@@ -1058,6 +1065,45 @@ body {
   font-weight: 700;
   color: #f0cc79;
   white-space: nowrap;
+}
+
+.crafting-item-entry {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  cursor: default;
+}
+
+.crafting-requirements {
+  margin-top: 3px;
+  font-size: 11px;
+  color: rgba(223, 227, 232, 0.72);
+  line-height: 1.35;
+}
+
+.crafting-action-shell {
+  display: grid;
+  gap: 6px;
+  justify-items: end;
+}
+
+.crafting-reward-line {
+  font-size: 11px;
+  color: #b6d789;
+  text-align: right;
+  max-width: 136px;
+}
+
+.crafting-action-button {
+  border: 1px solid rgba(178, 145, 74, 0.42);
+  background: rgba(28, 21, 14, 0.94);
+  color: #f1dcaa;
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.crafting-action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 #spellbook-grid {

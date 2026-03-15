@@ -217,6 +217,7 @@
           toggleSpellbookPanel: deps.toggleSpellbookPanel,
           toggleTalentPanel: deps.toggleTalentPanel,
           toggleDpsPanel: deps.toggleDpsPanel,
+          toggleCraftingPanel: deps.toggleCraftingPanel,
           toggleQuestPanel: deps.toggleQuestPanel,
           questUiTools: deps.questUiTools,
           executeBoundAction: deps.executeBoundAction,

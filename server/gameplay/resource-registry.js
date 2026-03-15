@@ -101,6 +101,7 @@ function createResourceRegistry(options = {}) {
           family: familyId,
           skillId: normalizeId(entry.skillId),
           requiredLevel: Math.max(1, Math.floor(Number(entry.requiredLevel) || 1)),
+          requiredToolTier: Math.max(0, Math.floor(Number(entry.requiredToolTier) || 0)),
           xp: Math.max(1, Math.floor(Number(entry.xp) || 1)),
           spawnWeight: Math.max(0.01, Number(entry.spawnWeight) || 1),
           density: Math.max(0, Math.min(1, Number(entry.density) || 0)),

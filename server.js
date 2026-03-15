@@ -65,6 +65,7 @@ const { createMobScalingTools } = require("./server/gameplay/mob-scaling");
 const { createBiomeResolver } = require("./server/gameplay/biome-resolver");
 const { createResourceRegistry } = require("./server/gameplay/resource-registry");
 const { createResourceGenerationTools } = require("./server/gameplay/resource-generation");
+const { createCraftingTools } = require("./server/gameplay/crafting");
 const { pickClusterDef } = require("./server/gameplay/cluster-spawn");
 const { createSpatialTools } = require("./server/gameplay/spatial-tools");
 const { createPlayerAbilityTools } = require("./server/gameplay/player-abilities");
@@ -132,6 +133,7 @@ const TALENT_CONFIG_PATH = path.join(__dirname, "data", "talents.json");
 const SKILL_CONFIG_PATH = path.join(__dirname, "data", "skills.json");
 const BIOME_CONFIG_PATH = path.join(__dirname, "data", "biomes.json");
 const RESOURCE_CONFIG_PATH = path.join(__dirname, "data", "resources.json");
+const RECIPE_CONFIG_PATH = path.join(__dirname, "data", "recipes.json");
 
 const gameplayRuntime = loadGameplayRuntimeConfig(GAMEPLAY_CONFIG_PATH);
 const GAMEPLAY_CONFIG = gameplayRuntime.gameplayConfig;
@@ -388,6 +390,8 @@ GLOBAL_DROP_CONFIG = loadGlobalDropTableConfigFromDisk(
   MAP_HEIGHT
 );
 
+let craftingTools = null;
+
 const server = createGameHttpServer({
   http,
   publicDir,
@@ -400,7 +404,10 @@ const server = createGameHttpServer({
     gameplay: {
       audio: GAMEPLAY_CONFIG.audio,
       loot: GAMEPLAY_CONFIG.loot,
-      town: serializeTownLayout(TOWN_LAYOUT)
+      town: serializeTownLayout(TOWN_LAYOUT),
+      crafting: {
+        recipes: craftingTools ? craftingTools.serializeRecipeDefs() : []
+      }
     },
     sounds: buildSoundManifest()
   })
@@ -781,12 +788,24 @@ const lootBagTools = createLootBagTools({
 const createLootBag = lootBagTools.createLootBag;
 const tickLootBags = lootBagTools.tickLootBags;
 
+craftingTools = createCraftingTools({
+  recipeDataPath: RECIPE_CONFIG_PATH,
+  itemDefsProvider: () => ITEM_CONFIG.itemDefs,
+  skillTools,
+  getInventoryItemCount,
+  consumeInventoryItem,
+  addItemsToInventory,
+  sendInventoryState,
+  sendJson
+});
+
 const resourceGenerationTools = createResourceGenerationTools({
   resourceNodes,
   allocateResourceNodeId,
   resourceRegistry,
   biomeResolver,
   skillTools,
+  getToolTierForPlayer: (player, skillId) => craftingTools.getBestToolTierForPlayer(player, skillId),
   addItemsToInventory,
   sendInventoryState,
   sendJson,
@@ -1394,8 +1413,9 @@ const runtimeBootstrap = createRuntimeBootstrap({
     rollEquipmentItemAt,
     consumeInventoryItem,
     addHealOverTimeEffect,
-    addManaOverTimeEffect,
-    interactWithResourceNode,
+  addManaOverTimeEffect,
+  craftRecipe: (player, recipeId, times) => craftingTools.craftRecipe(player, recipeId, times),
+  interactWithResourceNode,
     getVisibleResourceNodesForPlayer,
     serializeResourceNode,
     broadcastChatMessage,

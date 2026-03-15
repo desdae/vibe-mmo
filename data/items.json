@@ -192,5 +192,99 @@
         "description": "A sharp boar tusk that can be carved into fittings or charms.",
         "icon": "Procedurally generated boar tusk",
         "tags": ["crafting", "hunting", "animal", "bone", "trophy", "gathered"]
+    },
+    {
+        "name": "Oak Plank",
+        "id": "oakPlank",
+        "stackSize": 99,
+        "description": "A cut oak plank ready for rough carpentry.",
+        "icon": "Procedurally generated oak plank bundle",
+        "tags": ["crafting", "wood", "plank", "oak", "processed"],
+        "vendorValue": 3
+    },
+    {
+        "name": "Birch Plank",
+        "id": "birchPlank",
+        "stackSize": 99,
+        "description": "A clean birch plank used for light woodworking.",
+        "icon": "Procedurally generated birch plank bundle",
+        "tags": ["crafting", "wood", "plank", "birch", "processed"],
+        "vendorValue": 3
+    },
+    {
+        "name": "Pine Plank",
+        "id": "pinePlank",
+        "stackSize": 99,
+        "description": "A resin-rich pine plank suited for tool hafts and frames.",
+        "icon": "Procedurally generated pine plank bundle",
+        "tags": ["crafting", "wood", "plank", "pine", "processed"],
+        "vendorValue": 4
+    },
+    {
+        "name": "Crude Hatchet",
+        "id": "crudeHatchet",
+        "stackSize": 1,
+        "description": "A rough hand-made hatchet good enough for starter woodcutting.",
+        "icon": "Procedurally generated crude hatchet",
+        "tags": ["tool", "axe", "woodcutting", "crafted"],
+        "toolTagsAny": ["axe"],
+        "toolTier": 1,
+        "vendorValue": 12
+    },
+    {
+        "name": "Crude Pickaxe",
+        "id": "crudePickaxe",
+        "stackSize": 1,
+        "description": "A rough hand-made pickaxe for beginner mining.",
+        "icon": "Procedurally generated crude pickaxe",
+        "tags": ["tool", "pickaxe", "mining", "crafted"],
+        "toolTagsAny": ["pickaxe"],
+        "toolTier": 1,
+        "vendorValue": 12
+    },
+    {
+        "name": "Bronze Hatchet",
+        "id": "bronzeHatchet",
+        "stackSize": 1,
+        "description": "A sturdier hatchet that can bite into tougher timber.",
+        "icon": "Procedurally generated bronze hatchet",
+        "tags": ["tool", "axe", "woodcutting", "crafted", "bronze"],
+        "toolTagsAny": ["axe"],
+        "toolTier": 2,
+        "vendorValue": 30
+    },
+    {
+        "name": "Bronze Pickaxe",
+        "id": "bronzePickaxe",
+        "stackSize": 1,
+        "description": "A bronze pickaxe able to crack harder ore deposits.",
+        "icon": "Procedurally generated bronze pickaxe",
+        "tags": ["tool", "pickaxe", "mining", "crafted", "bronze"],
+        "toolTagsAny": ["pickaxe"],
+        "toolTier": 2,
+        "vendorValue": 30
+    },
+    {
+        "name": "Hide Wraps",
+        "id": "hideWraps",
+        "stackSize": 99,
+        "description": "Simple hide wrappings used for grips, bindings, and light armor repairs.",
+        "icon": "Procedurally generated hide wrap spool",
+        "tags": ["crafting", "hide", "processed", "crafted"],
+        "vendorValue": 9
+    },
+    {
+        "name": "Trail Rations",
+        "id": "trailRations",
+        "stackSize": 99,
+        "description": "Preserved meat and sap glaze packed for the road.",
+        "icon": "Procedurally generated trail ration pack",
+        "tags": ["food", "consumable", "crafted"],
+        "vendorValue": 8,
+        "effect": {
+            "type": "heal",
+            "value": 12,
+            "duration": 4
+        }
     }
 ]

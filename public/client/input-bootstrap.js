@@ -69,6 +69,12 @@
         return;
       }
 
+      if (event.code === "KeyO" && !deps.gameUI.classList.contains("hidden") && typeof deps.toggleCraftingPanel === "function") {
+        deps.toggleCraftingPanel();
+        event.preventDefault();
+        return;
+      }
+
       if (event.code === "KeyQ" && !deps.gameUI.classList.contains("hidden")) {
         if (deps.questUiTools && typeof deps.questUiTools.toggleQuestPanel === "function") {
           deps.questUiTools.toggleQuestPanel();

@@ -50,6 +50,11 @@ const vendorTitle = document.getElementById("vendor-title");
 const vendorSubtitle = document.getElementById("vendor-subtitle");
 const vendorItemList = document.getElementById("vendor-item-list");
 const vendorCloseButton = document.getElementById("vendor-close");
+const craftingPanel = document.getElementById("crafting-panel");
+const craftingTitle = document.getElementById("crafting-title");
+const craftingSubtitle = document.getElementById("crafting-subtitle");
+const craftingItemList = document.getElementById("crafting-item-list");
+const craftingCloseButton = document.getElementById("crafting-close");
 const equipmentPanel = document.getElementById("equipment-panel");
 const equipmentGrid = document.getElementById("equipment-grid");
 const debugPanel = document.getElementById("debug-panel");
@@ -703,6 +708,10 @@ const vendorInteractionState = {
   x: 0,
   y: 0,
   nextAttemptAt: 0,
+  panelOpen: false
+};
+const craftingClientState = {
+  recipes: [],
   panelOpen: false
 };
 const questInteractionState = {
@@ -1882,6 +1891,7 @@ function applyGameplayClientConfig(payload) {
   const audio = gameplay.audio && typeof gameplay.audio === "object" ? gameplay.audio : {};
   const loot = gameplay.loot && typeof gameplay.loot === "object" ? gameplay.loot : {};
   const town = gameplay.town && typeof gameplay.town === "object" ? gameplay.town : null;
+  const crafting = gameplay.crafting && typeof gameplay.crafting === "object" ? gameplay.crafting : {};
   spatialAudioConfig.abilitySpatialMaxDistance = clamp(
     Number(audio.abilitySpatialMaxDistance) || DEFAULT_SPATIAL_AUDIO_CONFIG.abilitySpatialMaxDistance,
     1,
@@ -1907,9 +1917,17 @@ function applyGameplayClientConfig(payload) {
     vendor: town.vendor ? { ...town.vendor } : null,
     questGivers: town.questGivers ? town.questGivers.map(qg => ({ ...qg })) : []
   } : null;
+  craftingClientState.recipes = Array.isArray(crafting.recipes)
+    ? crafting.recipes.map((recipe) => ({
+        ...recipe,
+        inputs: Array.isArray(recipe.inputs) ? recipe.inputs.map((entry) => ({ ...entry })) : [],
+        outputs: Array.isArray(recipe.outputs) ? recipe.outputs.map((entry) => ({ ...entry })) : []
+      }))
+    : [];
   townClientState.wallTiles =
     townClientState.layout && sharedGetTownWallTiles ? sharedGetTownWallTiles(townClientState.layout) : [];
   updateVendorPanelUI();
+  updateCraftingPanelUI();
 }
 
 function getTownVendor() {
@@ -6696,6 +6714,7 @@ function updateInventoryUI() {
 
     inventoryGrid.appendChild(slotEl);
   }
+  updateCraftingPanelUI();
 }
 
 function updateEquipmentUI() {
@@ -6903,6 +6922,146 @@ function handleMobileVendorSellTap(index) {
     return false;
   }
   return true;
+}
+
+function getInventoryItemCountClient(itemId) {
+  const targetId = String(itemId || "");
+  if (!targetId) {
+    return 0;
+  }
+  return inventoryState.slots.reduce((sum, slot) => {
+    if (!slot || String(slot.itemId || "") !== targetId) {
+      return sum;
+    }
+    return sum + Math.max(0, Math.floor(Number(slot.qty) || 0));
+  }, 0);
+}
+
+function getSelfSkillLevelClient(skillId) {
+  const self = entityRuntime.self && entityRuntime.self.skills ? entityRuntime.self : null;
+  const state = self && self.skills && self.skills[skillId] ? self.skills[skillId] : null;
+  return Math.max(1, Math.floor(Number(state && state.level) || 1));
+}
+
+function sendCraftRecipe(recipeId) {
+  if (!recipeId) {
+    return false;
+  }
+  return sendJsonMessage({
+    type: "craft_recipe",
+    recipeId: String(recipeId)
+  });
+}
+
+function createCraftingRecipeEntry(recipe) {
+  const entry = document.createElement("div");
+  entry.className = "vendor-item-entry crafting-item-entry";
+  const output = Array.isArray(recipe.outputs) && recipe.outputs.length ? recipe.outputs[0] : null;
+  const outputDef = output ? itemDefsById.get(String(output.itemId || "")) || null : null;
+  const iconShell = document.createElement("div");
+  iconShell.className = "vendor-item-icon";
+  const icon = document.createElement("div");
+  icon.className = "inv-icon";
+  icon.style.backgroundImage = `url(${getItemIconUrl(outputDef || output || { itemId: String(output && output.itemId || "") })})`;
+  iconShell.appendChild(icon);
+
+  const meta = document.createElement("div");
+  meta.className = "vendor-item-meta";
+  const nameEl = document.createElement("div");
+  nameEl.className = "vendor-item-name";
+  nameEl.textContent = String(recipe.name || "Recipe");
+  const extraEl = document.createElement("div");
+  extraEl.className = "vendor-item-extra";
+  extraEl.textContent = `${String(recipe.category || "misc")} | ${String(recipe.skillId || "crafting")} ${Math.max(1, Number(recipe.requiredLevel) || 1)}`;
+  const requirementsEl = document.createElement("div");
+  requirementsEl.className = "crafting-requirements";
+  requirementsEl.textContent = (Array.isArray(recipe.inputs) ? recipe.inputs : [])
+    .map((input) => {
+      const owned = getInventoryItemCountClient(input.itemId);
+      const needed = Math.max(1, Math.floor(Number(input.qty) || 1));
+      const inputName = itemDefsById.get(String(input.itemId || ""))?.name || String(input.itemId || "");
+      return `${owned}/${needed} ${inputName}`;
+    })
+    .join(" | ");
+  meta.appendChild(nameEl);
+  meta.appendChild(extraEl);
+  meta.appendChild(requirementsEl);
+
+  const actionShell = document.createElement("div");
+  actionShell.className = "crafting-action-shell";
+  const outputLine = document.createElement("div");
+  outputLine.className = "crafting-reward-line";
+  outputLine.textContent = Array.isArray(recipe.outputs)
+    ? recipe.outputs
+        .map((result) => {
+          const qty = Math.max(1, Math.floor(Number(result.qty) || 1));
+          const resultName = itemDefsById.get(String(result.itemId || ""))?.name || String(result.itemId || "");
+          return `+${qty} ${resultName}`;
+        })
+        .join(", ")
+    : "";
+  const craftButton = document.createElement("button");
+  craftButton.type = "button";
+  craftButton.className = "crafting-action-button";
+  const meetsLevel = getSelfSkillLevelClient(String(recipe.skillId || "")) >= Math.max(1, Number(recipe.requiredLevel) || 1);
+  const hasMaterials = (Array.isArray(recipe.inputs) ? recipe.inputs : []).every(
+    (input) => getInventoryItemCountClient(input.itemId) >= Math.max(1, Math.floor(Number(input.qty) || 1))
+  );
+  const craftable = meetsLevel && hasMaterials;
+  craftButton.disabled = !craftable;
+  craftButton.textContent = craftable ? "Craft" : !meetsLevel ? "Locked" : "Missing";
+  craftButton.addEventListener("click", () => {
+    if (!sendCraftRecipe(recipe.id)) {
+      setStatus("Could not craft that item.");
+    }
+  });
+  actionShell.appendChild(outputLine);
+  actionShell.appendChild(craftButton);
+
+  entry.appendChild(iconShell);
+  entry.appendChild(meta);
+  entry.appendChild(actionShell);
+  return entry;
+}
+
+function updateCraftingPanelUI() {
+  if (!craftingTitle || !craftingSubtitle || !craftingItemList) {
+    return;
+  }
+  craftingTitle.textContent = "Crafting (O)";
+  craftingSubtitle.textContent = "Gather materials, then turn them into tools and supplies.";
+  craftingItemList.innerHTML = "";
+  const recipes = Array.isArray(craftingClientState.recipes) ? craftingClientState.recipes.slice() : [];
+  recipes.sort((left, right) => {
+    const categoryCompare = String(left.category || "").localeCompare(String(right.category || ""));
+    if (categoryCompare !== 0) {
+      return categoryCompare;
+    }
+    return String(left.name || "").localeCompare(String(right.name || ""));
+  });
+  if (!recipes.length) {
+    const empty = document.createElement("div");
+    empty.className = "vendor-item-entry empty";
+    empty.textContent = "No recipes available yet.";
+    craftingItemList.appendChild(empty);
+    return;
+  }
+  for (const recipe of recipes) {
+    craftingItemList.appendChild(createCraftingRecipeEntry(recipe));
+  }
+}
+
+function toggleCraftingPanel(forceVisible = null) {
+  if (!craftingPanel) {
+    return false;
+  }
+  const nextVisible = forceVisible === null ? craftingPanel.classList.contains("hidden") : !!forceVisible;
+  craftingClientState.panelOpen = nextVisible;
+  craftingPanel.classList.toggle("hidden", !nextVisible);
+  if (nextVisible) {
+    updateCraftingPanelUI();
+  }
+  return nextVisible;
 }
 
 function createVendorItemEntry(slotData, index) {
@@ -7127,6 +7286,11 @@ function updateAutoVendorInteraction(now = performance.now()) {
 if (vendorCloseButton) {
   vendorCloseButton.addEventListener("click", () => {
     setVendorPanelVisible(false);
+  });
+}
+if (craftingCloseButton) {
+  craftingCloseButton.addEventListener("click", () => {
+    toggleCraftingPanel(false);
   });
 }
 
@@ -9423,12 +9587,16 @@ function applyItemDefs(items) {
       weaponClass: String(entry.weaponClass || ""),
       baseStats: entry.baseStats && typeof entry.baseStats === "object" ? { ...entry.baseStats } : null,
       itemLevelRange: Array.isArray(entry.itemLevelRange) ? entry.itemLevelRange.map((value) => Number(value) || 0) : null,
-      tags: Array.isArray(entry.tags) ? entry.tags.map((value) => String(value || "")).filter(Boolean) : []
+      tags: Array.isArray(entry.tags) ? entry.tags.map((value) => String(value || "")).filter(Boolean) : [],
+      vendorValue: Math.max(0, Math.floor(Number(entry.vendorValue) || 0)),
+      toolTagsAny: Array.isArray(entry.toolTagsAny) ? entry.toolTagsAny.map((value) => String(value || "")).filter(Boolean) : [],
+      toolTier: Math.max(0, Math.floor(Number(entry.toolTier) || 0))
     });
   }
   updateInventoryUI();
   updateEquipmentUI();
   updateActionBarUI(getCurrentSelf());
+  updateCraftingPanelUI();
 }
 
 function resolveAbilityIdHash(hashValue) {
@@ -10753,6 +10921,7 @@ function handleServerSelfProgress(msg) {
     }
   }
   syncSelfToGameState();
+  updateCraftingPanelUI();
 }
 
 function handleServerLootPicked(msg) {
@@ -10993,6 +11162,22 @@ const serverMessageHandlers = {
       setStatus(String(msg.message));
     }
     updateVendorPanelUI();
+  },
+  craft_result: (msg) => {
+    if (!msg) {
+      return;
+    }
+    if (msg.ok) {
+      const summary = Array.isArray(msg.produced)
+        ? msg.produced
+            .map((entry) => `${String(entry && (entry.name || entry.itemId) || "")} x${Math.max(0, Math.floor(Number(entry && entry.qty) || 0))}`)
+            .join(", ")
+        : "";
+      setStatus(summary ? `Crafted ${summary}.` : "Crafting complete.");
+    } else if (msg.message) {
+      setStatus(String(msg.message));
+    }
+    updateCraftingPanelUI();
   },
   // Quest message handlers
   quest_dialogue: (msg) => {
@@ -16591,6 +16776,7 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       toggleSpellbookPanel,
       toggleTalentPanel,
       toggleDpsPanel,
+      toggleCraftingPanel,
       toggleQuestPanel: () => (questRuntimeTools ? questRuntimeTools.toggleQuestPanel() : false),
       questUiTools,
       executeBoundAction,

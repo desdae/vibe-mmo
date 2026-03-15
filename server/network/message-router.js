@@ -385,6 +385,24 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     return { player };
   }
 
+  if (msg.type === "craft_recipe") {
+    const recipeId = String(msg.recipeId || "").trim();
+    const times = Math.max(1, Math.floor(Number(msg.times) || 1));
+    if (!recipeId || typeof deps.craftRecipe !== "function") {
+      return { player };
+    }
+    const result = deps.craftRecipe(player, recipeId, times);
+    if (!result || !result.ok) {
+      deps.sendJson(player.ws, {
+        type: "craft_result",
+        ok: false,
+        recipeId,
+        message: result && result.message ? result.message : "Could not craft that item."
+      });
+    }
+    return { player };
+  }
+
   if (msg.type === "sell_inventory_item") {
     const inventoryIndex = Math.floor(Number(msg.inventoryIndex));
     const vendorId = String(msg.vendorId || "").trim();
@@ -499,6 +517,33 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     deps.sendJson(player.ws, {
       type: "admin_action_result",
       message: `Granted ${String(rolled.name || rolled.itemId || "equipment")}.`
+    });
+    return { player };
+  }
+
+  if (msg.type === "admin_grant_item") {
+    if (!player.isAdmin) {
+      deps.sendJson(player.ws, { type: "error", message: "Admin rights required." });
+      return { player };
+    }
+    const itemId = String(msg.itemId || "").trim();
+    const qty = Math.max(1, Math.floor(Number(msg.qty) || 1));
+    const itemDef = deps.ITEM_CONFIG && deps.ITEM_CONFIG.itemDefs instanceof Map
+      ? deps.ITEM_CONFIG.itemDefs.get(itemId)
+      : null;
+    if (!itemDef) {
+      deps.sendJson(player.ws, { type: "error", message: "Unknown item." });
+      return { player };
+    }
+    const result = deps.addItemsToInventory(player, [{ itemId, qty }]);
+    deps.sendInventoryState(player);
+    deps.syncPlayerCopperFromInventory(player, true);
+    deps.sendJson(player.ws, {
+      type: "admin_action_result",
+      ok: !!(result && Array.isArray(result.added) && result.added.length > 0),
+      action: "grant_item",
+      itemId,
+      qty
     });
     return { player };
   }

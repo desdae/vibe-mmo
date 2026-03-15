@@ -1,0 +1,116 @@
+{
+  "recipes": [
+    {
+      "id": "oak_planks",
+      "name": "Cut Oak Planks",
+      "category": "materials",
+      "skillId": "woodcutting",
+      "requiredLevel": 1,
+      "description": "Turn fresh oak into usable planks.",
+      "inputs": [{ "itemId": "oakLog", "qty": 2 }],
+      "outputs": [{ "itemId": "oakPlank", "qty": 2 }]
+    },
+    {
+      "id": "birch_planks",
+      "name": "Cut Birch Planks",
+      "category": "materials",
+      "skillId": "woodcutting",
+      "requiredLevel": 1,
+      "description": "Cut birch into clean planks.",
+      "inputs": [{ "itemId": "birchLog", "qty": 2 }],
+      "outputs": [{ "itemId": "birchPlank", "qty": 2 }]
+    },
+    {
+      "id": "pine_planks",
+      "name": "Cut Pine Planks",
+      "category": "materials",
+      "skillId": "woodcutting",
+      "requiredLevel": 4,
+      "description": "Cut tougher pine into sturdy planks.",
+      "inputs": [{ "itemId": "pineLog", "qty": 2 }],
+      "outputs": [{ "itemId": "pinePlank", "qty": 2 }]
+    },
+    {
+      "id": "crude_hatchet",
+      "name": "Crude Hatchet",
+      "category": "tools",
+      "skillId": "woodcutting",
+      "requiredLevel": 1,
+      "description": "Assemble a basic hatchet for starter woodcutting routes.",
+      "inputs": [
+        { "itemId": "oakLog", "qty": 3 },
+        { "itemId": "sap", "qty": 1 },
+        { "itemId": "roughStone", "qty": 2 }
+      ],
+      "outputs": [{ "itemId": "crudeHatchet", "qty": 1 }]
+    },
+    {
+      "id": "crude_pickaxe",
+      "name": "Crude Pickaxe",
+      "category": "tools",
+      "skillId": "mining",
+      "requiredLevel": 1,
+      "description": "Assemble a basic pickaxe for starter mines.",
+      "inputs": [
+        { "itemId": "oakLog", "qty": 3 },
+        { "itemId": "sap", "qty": 1 },
+        { "itemId": "roughStone", "qty": 2 }
+      ],
+      "outputs": [{ "itemId": "crudePickaxe", "qty": 1 }]
+    },
+    {
+      "id": "bronze_hatchet",
+      "name": "Bronze Hatchet",
+      "category": "tools",
+      "skillId": "woodcutting",
+      "requiredLevel": 4,
+      "description": "Upgrade to a stronger hatchet for tougher timber.",
+      "inputs": [
+        { "itemId": "oakPlank", "qty": 2 },
+        { "itemId": "copperOre", "qty": 2 },
+        { "itemId": "tinOre", "qty": 1 }
+      ],
+      "outputs": [{ "itemId": "bronzeHatchet", "qty": 1 }]
+    },
+    {
+      "id": "bronze_pickaxe",
+      "name": "Bronze Pickaxe",
+      "category": "tools",
+      "skillId": "mining",
+      "requiredLevel": 3,
+      "description": "Upgrade to a bronze pickaxe for harder ore.",
+      "inputs": [
+        { "itemId": "oakPlank", "qty": 2 },
+        { "itemId": "copperOre", "qty": 2 },
+        { "itemId": "tinOre", "qty": 1 }
+      ],
+      "outputs": [{ "itemId": "bronzePickaxe", "qty": 1 }]
+    },
+    {
+      "id": "hide_wraps",
+      "name": "Hide Wraps",
+      "category": "supplies",
+      "skillId": "hunting",
+      "requiredLevel": 1,
+      "description": "Bind fresh hide into usable wraps.",
+      "inputs": [
+        { "itemId": "rabbitPelt", "qty": 2 },
+        { "itemId": "lightHide", "qty": 1 }
+      ],
+      "outputs": [{ "itemId": "hideWraps", "qty": 1 }]
+    },
+    {
+      "id": "trail_rations",
+      "name": "Trail Rations",
+      "category": "supplies",
+      "skillId": "hunting",
+      "requiredLevel": 1,
+      "description": "Pack fresh meat into something that will keep on the road.",
+      "inputs": [
+        { "itemId": "rawMeat", "qty": 2 },
+        { "itemId": "sap", "qty": 1 }
+      ],
+      "outputs": [{ "itemId": "trailRations", "qty": 1 }]
+    }
+  ]
+}
