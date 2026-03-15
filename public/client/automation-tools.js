@@ -42,7 +42,7 @@
       };
     }
 
-    function getClientPointForWorld(worldX, worldY) {
+    function getClientPointForWorldCoords(worldX, worldY) {
       const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : null;
       const canvas = deps.canvasElement || null;
       const worldToScreen = typeof deps.worldToScreen === "function" ? deps.worldToScreen : null;
@@ -64,7 +64,7 @@
       if (!canvas || typeof globalScope.MouseEvent !== "function") {
         return false;
       }
-      const point = getClientPointForWorld(worldX, worldY);
+      const point = getClientPointForWorldCoords(worldX, worldY);
       if (!point) {
         return false;
       }
@@ -89,6 +89,44 @@
         clientY: point.clientY,
         button,
         buttons
+      }));
+      return true;
+    }
+
+    function dispatchCanvasTouchTapAtWorld(worldX, worldY) {
+      const canvas = deps.canvasElement || null;
+      if (!canvas || typeof globalScope.Touch !== "function" || typeof globalScope.TouchEvent !== "function") {
+        return false;
+      }
+      const point = getClientPointForWorldCoords(worldX, worldY);
+      if (!point) {
+        return false;
+      }
+      const touchInit = {
+        identifier: 1,
+        target: canvas,
+        clientX: point.clientX,
+        clientY: point.clientY,
+        radiusX: 10,
+        radiusY: 10,
+        rotationAngle: 0,
+        force: 1
+      };
+      const touchStart = new globalScope.Touch(touchInit);
+      canvas.dispatchEvent(new globalScope.TouchEvent("touchstart", {
+        bubbles: true,
+        cancelable: true,
+        touches: [touchStart],
+        targetTouches: [touchStart],
+        changedTouches: [touchStart]
+      }));
+      const touchEnd = new globalScope.Touch(touchInit);
+      canvas.dispatchEvent(new globalScope.TouchEvent("touchend", {
+        bubbles: true,
+        cancelable: true,
+        touches: [],
+        targetTouches: [],
+        changedTouches: [touchEnd]
       }));
       return true;
     }
@@ -242,6 +280,10 @@
       windowObject.__vibemmoTest = Object.freeze({
         getState: () => buildAutomationSnapshot(),
         getRendererMode: () => (deps.rendererBootstrap ? deps.rendererBootstrap.getRendererMode() : "canvas"),
+        getClientPointForWorld(worldX, worldY) {
+          const point = getClientPointForWorldCoords(worldX, worldY);
+          return point ? { ...point } : null;
+        },
         setRendererMode(mode) {
           if (!deps.rendererBootstrap) {
             return "canvas";
@@ -300,6 +342,9 @@
             buttons: 2
           });
         },
+        dispatchTouchTapAtWorld(worldX, worldY) {
+          return dispatchCanvasTouchTapAtWorld(worldX, worldY);
+        },
         dispatchMouseDownAtWorld(worldX, worldY, button = 0) {
           return dispatchCanvasMouseEventAtWorld("mousedown", worldX, worldY, { button });
         },
@@ -345,7 +390,7 @@
     return {
       getAutomationDebugMetricsSnapshot,
       getAutomationRendererStatsSnapshot,
-      getClientPointForWorld,
+      getClientPointForWorld: getClientPointForWorldCoords,
       dispatchCanvasMouseEventAtWorld,
       buildAutomationSnapshot,
       installAutomationApi

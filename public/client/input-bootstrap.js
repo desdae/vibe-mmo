@@ -15,6 +15,47 @@
       };
     }
 
+    const touchTapState = {
+      active: false,
+      touchId: null,
+      startX: 0,
+      startY: 0,
+      moved: false
+    };
+
+    function resetTouchTapState() {
+      touchTapState.active = false;
+      touchTapState.touchId = null;
+      touchTapState.startX = 0;
+      touchTapState.startY = 0;
+      touchTapState.moved = false;
+    }
+
+    function shouldStartTouchJoystick(point) {
+      const width = Math.max(1, Number(deps.canvas.clientWidth) || Number(deps.canvas.width) || 1);
+      const height = Math.max(1, Number(deps.canvas.clientHeight) || Number(deps.canvas.height) || 1);
+      const zoneMaxX = width * 0.44;
+      const zoneMinY = height * 0.4;
+      return Number(point.x) <= zoneMaxX && Number(point.y) >= zoneMinY;
+    }
+
+    function tryTouchWorldInteraction() {
+      if (deps.tryContextVendorInteraction()) {
+        return true;
+      }
+      if (deps.tryContextQuestNpcInteraction()) {
+        return true;
+      }
+      if (typeof deps.tryContextResourceInteraction === "function" && deps.tryContextResourceInteraction()) {
+        return true;
+      }
+      if (deps.tryContextLootPickup()) {
+        return true;
+      }
+      deps.tryPrimaryAutoAction(true);
+      return true;
+    }
+
     function onKeyDown(event) {
       deps.resumeSpatialAudioContext();
       if (event.repeat) {
@@ -146,6 +187,7 @@
       deps.clearDragState();
       deps.resetAbilityChanneling();
       deps.stopAllSpatialLoops();
+      resetTouchTapState();
     }
 
     function onMouseMove(event) {
@@ -213,6 +255,7 @@
       }
       const point = getCanvasTouchPoint(touch);
       deps.resumeSpatialAudioContext();
+      deps.updateMouseScreenPosition(touch);
       deps.cancelAutoVendorInteraction();
       if (typeof deps.cancelAutoQuestInteraction === "function") {
         deps.cancelAutoQuestInteraction();
@@ -221,16 +264,44 @@
         deps.cancelAutoResourceInteraction();
       }
       deps.cancelAutoLootPickup();
-      if (typeof deps.beginTouchJoystick === "function") {
+      resetTouchTapState();
+      if (shouldStartTouchJoystick(point) && typeof deps.beginTouchJoystick === "function") {
         deps.beginTouchJoystick(touch.identifier, point.x, point.y);
         deps.sendMove();
         event.preventDefault();
+        return;
       }
+      touchTapState.active = true;
+      touchTapState.touchId = touch.identifier;
+      touchTapState.startX = Number(point.x) || 0;
+      touchTapState.startY = Number(point.y) || 0;
+      touchTapState.moved = false;
+      event.preventDefault();
     }
 
     function onTouchMove(event) {
       if (typeof deps.hasActiveMobileAbilityAim === "function" && deps.hasActiveMobileAbilityAim()) {
         return;
+      }
+      if (touchTapState.active) {
+        const touches = event.changedTouches || [];
+        for (let index = 0; index < touches.length; index += 1) {
+          const touch = touches[index];
+          if (touch.identifier !== touchTapState.touchId) {
+            continue;
+          }
+          const point = getCanvasTouchPoint(touch);
+          deps.updateMouseScreenPosition(touch);
+          const moveDistance = Math.hypot(
+            (Number(point.x) || 0) - touchTapState.startX,
+            (Number(point.y) || 0) - touchTapState.startY
+          );
+          if (moveDistance > 14) {
+            touchTapState.moved = true;
+          }
+          event.preventDefault();
+          return;
+        }
       }
       if (typeof deps.hasActiveTouchJoystick !== "function" || !deps.hasActiveTouchJoystick()) {
         return;
@@ -258,6 +329,23 @@
     function onTouchEnd(event) {
       if (typeof deps.hasActiveMobileAbilityAim === "function" && deps.hasActiveMobileAbilityAim()) {
         return;
+      }
+      if (touchTapState.active) {
+        const touches = event.changedTouches || [];
+        for (let index = 0; index < touches.length; index += 1) {
+          const touch = touches[index];
+          if (touch.identifier !== touchTapState.touchId) {
+            continue;
+          }
+          deps.updateMouseScreenPosition(touch);
+          const shouldInteract = !touchTapState.moved && event.type !== "touchcancel";
+          resetTouchTapState();
+          if (shouldInteract) {
+            tryTouchWorldInteraction();
+          }
+          event.preventDefault();
+          return;
+        }
       }
       if (typeof deps.hasActiveTouchJoystick !== "function" || !deps.hasActiveTouchJoystick()) {
         return;
