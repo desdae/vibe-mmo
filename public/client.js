@@ -24,6 +24,10 @@ const mobileChatState = {
   expanded: true,
   unreadCount: 0
 };
+const mobileQuestTrackerState = {
+  inMobileLayout: false,
+  visible: true
+};
 const resourceBars = document.getElementById("resource-bars");
 const buffIcons = document.getElementById("buff-icons");
 const debuffIcons = document.getElementById("debuff-icons");
@@ -115,6 +119,12 @@ const mobileUiElements = (() => {
   skillsButton.className = "mobile-utility-button";
   skillsButton.textContent = "Skills";
 
+  const trackerButton = document.createElement("button");
+  trackerButton.id = "mobile-tracker-button";
+  trackerButton.type = "button";
+  trackerButton.className = "mobile-utility-button hidden";
+  trackerButton.textContent = "Track";
+
   const bagButton = document.createElement("button");
   bagButton.id = "mobile-bag-button";
   bagButton.type = "button";
@@ -125,6 +135,7 @@ const mobileUiElements = (() => {
   utilityBar.appendChild(editButton);
   utilityBar.appendChild(vendorButton);
   utilityBar.appendChild(skillsButton);
+  utilityBar.appendChild(trackerButton);
   utilityBar.appendChild(bagButton);
   if (actionUi) {
     actionUi.insertBefore(utilityBar, actionUi.firstChild);
@@ -168,6 +179,7 @@ const mobileUiElements = (() => {
     editButton,
     vendorButton,
     skillsButton,
+    trackerButton,
     bagButton,
     panelTabs,
     inventoryTabButton,
@@ -181,6 +193,7 @@ const mobileLootButton = mobileUiElements.lootButton;
 const mobileActionEditButton = mobileUiElements.editButton;
 const mobileVendorButton = mobileUiElements.vendorButton;
 const mobileSkillsButton = mobileUiElements.skillsButton;
+const mobileTrackerButton = mobileUiElements.trackerButton;
 const mobileBagButton = mobileUiElements.bagButton;
 const mobilePanelTabs = mobileUiElements.panelTabs;
 const mobileInventoryTabButton = mobileUiElements.inventoryTabButton;
@@ -7192,6 +7205,40 @@ function startAutoVendorInteraction(vendor) {
   return true;
 }
 
+function getQuestUiTools() {
+  return questRuntimeTools && typeof questRuntimeTools.getQuestUiTools === "function"
+    ? questRuntimeTools.getQuestUiTools()
+    : null;
+}
+
+function setQuestTrackerVisible(visible) {
+  const questUiTools = getQuestUiTools();
+  if (!questUiTools || typeof questUiTools.setQuestTrackerVisible !== "function") {
+    return false;
+  }
+  questUiTools.setQuestTrackerVisible(visible);
+  mobileQuestTrackerState.visible = !!visible;
+  return true;
+}
+
+function toggleQuestTrackerVisible() {
+  const questUiTools = getQuestUiTools();
+  if (!questUiTools || typeof questUiTools.toggleQuestTrackerVisible !== "function") {
+    return false;
+  }
+  const nextVisible = questUiTools.toggleQuestTrackerVisible();
+  mobileQuestTrackerState.visible = !!nextVisible;
+  return nextVisible;
+}
+
+function isQuestTrackerVisible() {
+  const questUiTools = getQuestUiTools();
+  if (!questUiTools || typeof questUiTools.isQuestTrackerVisible !== "function") {
+    return mobileQuestTrackerState.visible;
+  }
+  return !!questUiTools.isQuestTrackerVisible();
+}
+
 function handleMobileVendorButtonPress() {
   const self = getCurrentSelf();
   const vendor = getTownVendor();
@@ -7370,6 +7417,7 @@ if (sharedCreateQuestRuntimeTools) {
     questCloseButton: document.getElementById("quest-close-btn")
   });
   questUiTools = questRuntimeTools.initQuestUi();
+  syncMobileQuestTrackerLayout();
 }
 
 function isMobilePanelMode() {
@@ -8032,11 +8080,29 @@ function toggleMobileActionBarEditMode() {
   return setMobileActionBarEditMode(!mobileActionBarEditState.active);
 }
 
+function syncMobileQuestTrackerLayout() {
+  const mobileLayout = isMobilePanelMode();
+  if (mobileLayout === mobileQuestTrackerState.inMobileLayout) {
+    return;
+  }
+  mobileQuestTrackerState.inMobileLayout = mobileLayout;
+  setQuestTrackerVisible(!mobileLayout);
+}
+
 function updateMobileUtilityBar(self = null) {
-  if (!mobileUtilityBar || !mobileLootButton || !mobileActionEditButton || !mobileVendorButton || !mobileSkillsButton || !mobileBagButton) {
+  if (
+    !mobileUtilityBar ||
+    !mobileLootButton ||
+    !mobileActionEditButton ||
+    !mobileVendorButton ||
+    !mobileSkillsButton ||
+    !mobileTrackerButton ||
+    !mobileBagButton
+  ) {
     return;
   }
 
+  syncMobileQuestTrackerLayout();
   const mobileActive = isMobilePanelMode() && !!self;
   mobileUtilityBar.classList.toggle("hidden", !mobileActive);
   if (!mobileActive) {
@@ -8050,6 +8116,9 @@ function updateMobileUtilityBar(self = null) {
     mobileVendorButton.textContent = "Sell";
     mobileSkillsButton.classList.remove("active", "attention");
     mobileSkillsButton.textContent = "Skills";
+    mobileTrackerButton.classList.remove("active", "attention");
+    mobileTrackerButton.classList.add("hidden");
+    mobileTrackerButton.textContent = "Track";
     mobileBagButton.classList.remove("active");
   }
   if (!mobileActive) {
@@ -8064,6 +8133,11 @@ function updateMobileUtilityBar(self = null) {
   const sellableCount = countSellableInventoryItems();
   const canSellNow = hasVendor && canInteractWithVendor(self);
   const showVendorButton = vendorInteractionState.panelOpen || canSellNow;
+  const questState = getQuestUiTools() && typeof getQuestUiTools().getQuestState === "function"
+    ? getQuestUiTools().getQuestState()
+    : { active: [] };
+  const activeQuestCount = Array.isArray(questState && questState.active) ? questState.active.length : 0;
+  const trackerVisible = isQuestTrackerVisible();
   mobileLootButton.classList.toggle("hidden", lootCount <= 0);
   mobileLootButton.textContent = lootCount > 1 ? `Loot x${lootCount}` : "Loot";
   mobileActionEditButton.classList.toggle("active", mobileActionBarEditState.active);
@@ -8080,6 +8154,10 @@ function updateMobileUtilityBar(self = null) {
   mobileSkillsButton.classList.toggle("active", mobilePanelState.open && mobilePanelState.activeTab === "spellbook");
   mobileSkillsButton.classList.toggle("attention", skillPoints > 0 && !(mobilePanelState.open && mobilePanelState.activeTab === "spellbook"));
   mobileSkillsButton.textContent = skillPoints > 0 ? `Skills ${skillPoints}` : "Skills";
+  mobileTrackerButton.classList.toggle("hidden", activeQuestCount <= 0 && !trackerVisible);
+  mobileTrackerButton.classList.toggle("active", trackerVisible);
+  mobileTrackerButton.classList.toggle("attention", activeQuestCount > 0 && !trackerVisible);
+  mobileTrackerButton.textContent = activeQuestCount > 0 ? `Track ${activeQuestCount}` : "Track";
   mobileBagButton.classList.toggle("active", mobilePanelState.open);
 }
 
@@ -8226,6 +8304,15 @@ if (mobileSkillsButton) {
     event.preventDefault();
     resumeSpatialAudioContext();
     toggleSpellbookPanel();
+  });
+}
+
+if (mobileTrackerButton) {
+  mobileTrackerButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    resumeSpatialAudioContext();
+    toggleQuestTrackerVisible();
+    updateMobileUtilityBar(getCurrentSelf());
   });
 }
 

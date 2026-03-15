@@ -21,6 +21,7 @@
     "test:hunting:smoke": "node scripts/playwright-hunting-smoke.js",
     "test:hunting:unit": "node scripts/test-hunting-system.js",
     "test:mobile:chat": "node scripts/playwright-mobile-chat-smoke.js",
+    "test:mobile:tracker": "node scripts/playwright-mobile-tracker-smoke.js",
     "test:mobile:movement": "node scripts/playwright-mobile-movement-smoke.js",
     "test:mobile:quest": "node scripts/playwright-mobile-quest-smoke.js",
     "test:resources:smoke": "node scripts/playwright-resource-smoke.js",

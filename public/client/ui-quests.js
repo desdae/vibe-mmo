@@ -12,6 +12,7 @@
 
     let currentDialogue = null;
     let currentQuestState = { active: [], completed: [] };
+    let trackerVisible = true;
 
     function initPanels(panels) {
       questPanel = panels.questPanel || document.getElementById("quest-panel");
@@ -42,6 +43,16 @@
         return;
       }
       setQuestPanelVisible(questPanel.classList.contains("hidden"));
+    }
+
+    function setQuestTrackerVisible(visible) {
+      trackerVisible = !!visible;
+      renderQuestTracker();
+    }
+
+    function toggleQuestTrackerVisible() {
+      setQuestTrackerVisible(!trackerVisible);
+      return trackerVisible;
     }
 
     function renderQuestLog() {
@@ -355,7 +366,7 @@
 
       const displayQuests = Array.isArray(currentQuestState.active) ? currentQuestState.active : [];
       questTrackerPanel.innerHTML = "";
-      questTrackerPanel.classList.toggle("hidden", displayQuests.length === 0);
+      questTrackerPanel.classList.toggle("hidden", displayQuests.length === 0 || !trackerVisible);
 
       for (const quest of displayQuests) {
         const trackerItem = document.createElement("div");
@@ -411,6 +422,8 @@
       initPanels,
       setQuestPanelVisible,
       toggleQuestPanel,
+      setQuestTrackerVisible,
+      toggleQuestTrackerVisible,
       showDialogue,
       closeDialogue,
       selectDialogueOption,
@@ -424,6 +437,7 @@
         active: Array.isArray(currentQuestState.active) ? currentQuestState.active.map((quest) => ({ ...quest })) : [],
         completed: Array.isArray(currentQuestState.completed) ? currentQuestState.completed.slice() : []
       }),
+      isQuestTrackerVisible: () => trackerVisible,
       getCurrentDialogue: () => {
         if (!currentDialogue) {
           return null;
