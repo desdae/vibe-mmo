@@ -3250,10 +3250,31 @@
     function updateTooltip(frameViewModel) {
       tooltipGraphics.clear();
       tooltipText.text = "";
+      const hoveredLootBag = frameViewModel.hoveredBag && frameViewModel.hoveredBag.bag ? frameViewModel.hoveredBag.bag : null;
+      const lootBagLines = ["Loot Bag"];
+      if (hoveredLootBag) {
+        const items = Array.isArray(hoveredLootBag.items) ? hoveredLootBag.items : [];
+        if (!items.length) {
+          lootBagLines.push("(empty)");
+        } else {
+          for (const entry of items) {
+            if (!entry) {
+              continue;
+            }
+            const itemId = String(entry.itemId || "");
+            const qty = Math.max(0, Math.floor(Number(entry.qty) || 0));
+            const name = String(entry.name || itemId);
+            if (!itemId || !name || qty <= 0) {
+              continue;
+            }
+            lootBagLines.push(`${name} x${qty}`);
+          }
+        }
+      }
       const hovered = frameViewModel.hoveredMob
         ? { label: `${frameViewModel.hoveredMob.mob.name} [${Math.max(1, Math.floor(Number(frameViewModel.hoveredMob.mob.level) || 1))}]`, p: frameViewModel.hoveredMob.p }
         : frameViewModel.hoveredBag
-          ? { label: "Loot Bag", p: frameViewModel.hoveredBag.p }
+          ? { label: lootBagLines.join("\n"), p: frameViewModel.hoveredBag.p }
           : frameViewModel.hoveredVendor
             ? { label: String(frameViewModel.hoveredVendor.vendor && frameViewModel.hoveredVendor.vendor.name || "Quartermaster"), p: frameViewModel.hoveredVendor.p }
             : null;

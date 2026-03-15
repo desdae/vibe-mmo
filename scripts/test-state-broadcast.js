@@ -12,7 +12,7 @@ function run() {
       playerMeta: [],
       mobMeta: [{ id: 7, name: "Zombie", level: 3, renderStyle: { spriteType: "zombie" } }],
       projectileMeta: [{ id: 11, abilityId: "frostbolt" }],
-      lootBagMeta: []
+      lootBagMeta: [{ id: 13, items: [{ itemId: "bone_fragment", qty: 2, name: "Bone Fragment" }] }]
     },
     {
       sendBinary(targetWs, payload) {
@@ -30,7 +30,8 @@ function run() {
 
   assert.deepStrictEqual(sendBinaryCalls, [
     { ws, payload: "mob" },
-    { ws, payload: "projectile" }
+    { ws, payload: "projectile" },
+    { ws, payload: "loot" }
   ]);
   assert.deepStrictEqual(sendJsonCalls, [
     {
@@ -45,6 +46,13 @@ function run() {
       payload: {
         type: "projectile_meta",
         projectiles: [{ id: 11, abilityId: "frostbolt" }]
+      }
+    },
+    {
+      ws,
+      payload: {
+        type: "lootbag_meta",
+        bags: [{ id: 13, items: [{ itemId: "bone_fragment", qty: 2, name: "Bone Fragment" }] }]
       }
     }
   ]);

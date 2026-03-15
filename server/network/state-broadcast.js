@@ -121,6 +121,15 @@ function sendEntityMeta(player, entityUpdate, deps) {
   }
   if (entityUpdate.lootBagMeta.length) {
     sendBinary(player.ws, encodeLootBagMetaPacket(entityUpdate.lootBagMeta));
+    if (typeof sendJson === "function") {
+      sendJson(player.ws, {
+        type: "lootbag_meta",
+        bags: entityUpdate.lootBagMeta.map((meta) => ({
+          id: meta.id,
+          items: Array.isArray(meta.items) ? meta.items.map((entry) => ({ ...entry })) : []
+        }))
+      });
+    }
   }
 }
 
