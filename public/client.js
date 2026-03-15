@@ -16358,277 +16358,53 @@ function render() {
   renderLoopTools.renderFrame();
 }
 
-function getAutomationDebugMetricsSnapshot() {
-  const now = performance.now();
-  const upKbps = (Math.max(0, Number(debugState.upBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
-  const downKbps = (Math.max(0, Number(debugState.downBytesWindow) || 0) * 8) / (TRAFFIC_WINDOW_MS / 1000) / 1000;
-  let fps = 0;
-  if (uiPanelTools && typeof uiPanelTools.getFps === "function") {
-    fps = Number(uiPanelTools.getFps(now)) || 0;
-  } else if (Array.isArray(debugState.frameSamples) && debugState.frameSamples.length > 1) {
-    const first = Number(debugState.frameSamples[0]) || now;
-    const elapsedMs = Math.max(1, now - first);
-    fps = ((debugState.frameSamples.length - 1) * 1000) / elapsedMs;
-  }
-  return {
-    upKbps,
-    downKbps,
-    fps,
-    mobCount: Math.max(0, Math.floor(Number(debugState.totalMobCount) || 0))
-  };
-}
-
-function getAutomationRendererStatsSnapshot() {
-  if (rendererBootstrap && typeof rendererBootstrap.getDebugStats === "function") {
-    const stats = rendererBootstrap.getDebugStats();
-    return stats && typeof stats === "object" ? { ...stats } : { mode: rendererBootstrap.getRendererMode() };
-  }
-  return {
-    mode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"
-  };
-}
-
-function getClientPointForWorld(worldX, worldY) {
-  const self = getCurrentSelf();
-  if (!self || !canvas) {
-    return null;
-  }
-  const screen = worldToScreen(Number(worldX) || 0, Number(worldY) || 0, self.x + 0.5, self.y + 0.5);
-  const rect = canvas.getBoundingClientRect();
-  const scaleX = canvas.width > 0 ? rect.width / canvas.width : 1;
-  const scaleY = canvas.height > 0 ? rect.height / canvas.height : 1;
-  return {
-    clientX: rect.left + screen.x * scaleX,
-    clientY: rect.top + screen.y * scaleY
-  };
-}
-
-function dispatchCanvasMouseEventAtWorld(eventType, worldX, worldY, options = {}) {
-  if (!canvas) {
-    return false;
-  }
-  const point = getClientPointForWorld(worldX, worldY);
-  if (!point) {
-    return false;
-  }
-  const button = Math.max(0, Math.floor(Number(options.button) || 0));
-  const buttons = Number.isFinite(Number(options.buttons))
-    ? Number(options.buttons)
-    : button === 2
-      ? 2
-      : 1;
-  canvas.dispatchEvent(new MouseEvent("mousemove", {
-    bubbles: true,
-    cancelable: true,
-    clientX: point.clientX,
-    clientY: point.clientY,
-    button,
-    buttons
-  }));
-  canvas.dispatchEvent(new MouseEvent(eventType, {
-    bubbles: true,
-    cancelable: true,
-    clientX: point.clientX,
-    clientY: point.clientY,
-    button,
-    buttons
-  }));
-  return true;
-}
-
-function buildAutomationSnapshot() {
-  const questStateSnapshot = questRuntimeTools
-    ? questRuntimeTools.getQuestStateSnapshot()
-    : { active: [], completed: [] };
-  const dialogueSnapshot = questRuntimeTools ? questRuntimeTools.getDialogueSnapshot() : null;
-  return {
-    rendererMode: rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas",
-    debugMetrics: getAutomationDebugMetricsSnapshot(),
-    rendererStats: getAutomationRendererStatsSnapshot(),
-    self: gameState.self
-      ? {
-          id: myId,
-          x: Number(gameState.self.x) || 0,
-          y: Number(gameState.self.y) || 0,
-          hp: Number(gameState.self.hp) || 0,
-          maxHp: Number(gameState.self.maxHp) || 0,
-          mana: Number(gameState.self.mana) || 0,
-          maxMana: Number(gameState.self.maxMana) || 0,
-          classType: selfStatic ? selfStatic.classType : "",
-          isAdmin: !!(selfStatic && selfStatic.isAdmin),
-          level: entityRuntime.self ? Number(entityRuntime.self.level) || 0 : 0,
-          copper: entityRuntime.self ? Number(entityRuntime.self.copper) || 0 : 0,
-          abilityLevels:
-            entityRuntime.self && entityRuntime.self.abilityLevels && typeof entityRuntime.self.abilityLevels === "object"
-              ? { ...entityRuntime.self.abilityLevels }
-              : {}
-        }
-      : null,
-    players: gameState.players.map((player) => ({
-      id: player.id,
-      x: Number(player.x) || 0,
-      y: Number(player.y) || 0,
-      hp: Number(player.hp) || 0,
-      maxHp: Number(player.maxHp) || 0,
-      name: String(player.name || ""),
-      classType: String(player.classType || "")
-    })),
-    mobs: gameState.mobs.map((mob) => ({
-      id: mob.id,
-      x: Number(mob.x) || 0,
-      y: Number(mob.y) || 0,
-      hp: Number(mob.hp) || 0,
-      maxHp: Number(mob.maxHp) || 0,
-      name: String(mob.type || mob.name || ""),
-      level: Math.max(1, Math.floor(Number(mob.level) || 1))
-    })),
-    projectiles: gameState.projectiles.map((projectile) => ({
-      id: projectile.id,
-      x: Number(projectile.x) || 0,
-      y: Number(projectile.y) || 0,
-      abilityId: String(projectile.abilityId || "")
-    })),
-    lootBags: gameState.lootBags.map((bag) => ({
-      id: bag.id,
-      x: Number(bag.x) || 0,
-      y: Number(bag.y) || 0,
-      items: Array.isArray(bag.items) ? bag.items.map((entry) => ({ ...entry })) : []
-    })),
-    areaEffects: Array.from(activeAreaEffectsById.values()).map((effect) => ({
-      id: String(effect.id || ""),
-      abilityId: String(effect.abilityId || ""),
-      kind: String(effect.kind || ""),
-      x: Number(effect.x) || 0,
-      y: Number(effect.y) || 0,
-      radius: Number(effect.radius) || 0,
-      summonCount: Math.max(1, Math.round(Number(effect.summonCount) || 1)),
-      formationRadius: Math.max(0, Number(effect.formationRadius) || 0)
-    })),
-    inventory: inventoryState.slots.map((slot) => (slot ? { ...slot } : null)),
-    equipment: { ...equipmentState.slots },
-    town: townClientState.layout
-      ? {
-          vendor: townClientState.layout.vendor ? { ...townClientState.layout.vendor } : null,
-          questGivers: getTownQuestGivers().map((npc) => ({ ...npc }))
-        }
-      : null,
-    autoMove: {
-      active: !!autoMoveTarget.active,
-      x: Number(autoMoveTarget.x) || 0,
-      y: Number(autoMoveTarget.y) || 0,
-      stopDistance: Number(autoMoveTarget.stopDistance) || 0,
-      questNpcId: String(questInteractionState.npcId || ""),
-      vendorNpcId: String(vendorInteractionState.npcId || ""),
-      lootBagId: String(lootPickupState.bagId || "")
-    },
-    questState: questStateSnapshot,
-    dialogue: dialogueSnapshot,
-    status: statusEl ? String(statusEl.textContent || "") : "",
-    equipmentVisible: equipmentPanel ? !equipmentPanel.classList.contains("hidden") : false,
-    adminBotPanelVisible: botListPanel ? !botListPanel.classList.contains("hidden") : false,
-    adminBots: adminBotState.bots.map((bot) => ({ ...bot })),
-    adminBotInspect: adminBotState.inspectBot ? { ...adminBotState.inspectBot } : null
-  };
-}
-
-function installAutomationApi() {
-  if (!window || !["localhost", "127.0.0.1"].includes(String(window.location.hostname || ""))) {
-    return;
-  }
-  window.__vibemmoTest = Object.freeze({
-    getState: () => buildAutomationSnapshot(),
-    getRendererMode: () => (rendererBootstrap ? rendererBootstrap.getRendererMode() : "canvas"),
-    setRendererMode(mode) {
-      if (!rendererBootstrap) {
-        return "canvas";
-      }
-      return rendererBootstrap.setRendererMode(mode);
-    },
-    connectAndJoin,
-    send: (payload) => sendJsonMessage(payload),
-    setMove(dx, dy) {
-      sendJsonMessage({
-        type: "move",
-        dx,
-        dy
-      });
-    },
-    stopMove() {
-      sendJsonMessage({
-        type: "move",
-        dx: 0,
-        dy: 0
-      });
-    },
-    castAtWorld(abilityId, targetX, targetY) {
-      const self = getCurrentSelf();
-      if (!self) {
-        return false;
-      }
-      const dx = Number(targetX) - Number(self.x);
-      const dy = Number(targetY) - Number(self.y);
-      const dir = normalizeDirection(dx, dy);
-      if (!dir) {
-        return false;
-      }
-      sendJsonMessage({
-        type: "use_ability",
-        abilityId,
-        dx: dir.dx,
-        dy: dir.dy,
-        distance: Math.hypot(dx, dy)
-      });
-      return true;
-    },
-    toggleQuestPanel() {
-      return questRuntimeTools ? questRuntimeTools.toggleQuestPanel() : false;
-    },
-    dispatchContextMenuAtWorld(worldX, worldY) {
-      return dispatchCanvasMouseEventAtWorld("contextmenu", worldX, worldY, {
-        button: 2,
-        buttons: 2
-      });
-    },
-    dispatchMouseDownAtWorld(worldX, worldY, button = 0) {
-      return dispatchCanvasMouseEventAtWorld("mousedown", worldX, worldY, { button });
-    },
-    pickupNearestBag() {
-      const self = getCurrentSelf();
-      if (!self || !gameState.lootBags.length) {
-        return false;
-      }
-      let best = null;
-      let bestDist = Infinity;
-      for (const bag of gameState.lootBags) {
-        const dist = Math.hypot(bag.x - self.x, bag.y - self.y);
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = bag;
-        }
-      }
-      if (!best) {
-        return false;
-      }
-      sendJsonMessage({
-        type: "pickup_bag",
-        x: best.x,
-        y: best.y
-      });
-      return true;
-    },
-    equipInventoryIndex(index, slot) {
-      sendJsonMessage({
-        type: "equip_item",
-        inventoryIndex: index,
-        slot
-      });
-    },
-    toggleEquipmentPanel
-  });
-}
+const sharedCreateAutomationTools =
+  sharedClientApp &&
+  sharedClientApp.automation &&
+  typeof sharedClientApp.automation.createAutomationTools === "function"
+    ? sharedClientApp.automation.createAutomationTools
+    : null;
+const automationTools = sharedCreateAutomationTools
+  ? sharedCreateAutomationTools({
+      windowObject: window,
+      canvasElement: canvas,
+      rendererBootstrap,
+      uiPanelTools,
+      debugState,
+      trafficWindowMs: TRAFFIC_WINDOW_MS,
+      gameState,
+      entityRuntime,
+      townClientState,
+      inventoryState,
+      equipmentState,
+      adminBotState,
+      activeAreaEffectsById,
+      autoMoveTarget,
+      questInteractionState,
+      vendorInteractionState,
+      lootPickupState,
+      selfStatic,
+      myId,
+      statusEl,
+      equipmentPanel,
+      botListPanel,
+      getCurrentSelf: () => getCurrentSelf(),
+      getTownQuestGivers: () => getTownQuestGivers(),
+      getQuestStateSnapshot: () => (questRuntimeTools ? questRuntimeTools.getQuestStateSnapshot() : { active: [], completed: [] }),
+      getDialogueSnapshot: () => (questRuntimeTools ? questRuntimeTools.getDialogueSnapshot() : null),
+      toggleQuestPanel: () => (questRuntimeTools ? questRuntimeTools.toggleQuestPanel() : false),
+      worldToScreen,
+      normalizeDirection,
+      connectAndJoin,
+      sendJsonMessage,
+      toggleEquipmentPanel
+    })
+  : null;
 
 initializeDebugAdminControls();
-installAutomationApi();
+if (automationTools) {
+  automationTools.installAutomationApi();
+}
 
 if (inputBootstrapTools) {
   inputBootstrapTools.bind();
