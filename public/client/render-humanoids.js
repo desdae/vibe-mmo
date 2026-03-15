@@ -7,6 +7,7 @@
     if (!ctx) {
       return null;
     }
+    const getActionDefById = typeof deps.getActionDefById === "function" ? deps.getActionDefById : () => null;
 
     const clamp = typeof deps.clamp === "function" ? deps.clamp : (value, min, max) => Math.max(min, Math.min(max, value));
     const lerp = typeof deps.lerp === "function" ? deps.lerp : (a, b, t) => a + (b - a) * t;

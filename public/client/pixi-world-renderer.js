@@ -909,7 +909,8 @@
         clamp,
         lerp,
         hashString,
-        sanitizeCssColor
+        sanitizeCssColor,
+        getActionDefById
       });
       if (!tools || typeof tools.drawHumanoid !== "function") {
         return null;

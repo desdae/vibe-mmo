@@ -1056,7 +1056,8 @@ const humanoidRenderTools = sharedCreateHumanoidRenderTools
       clamp,
       lerp,
       hashString,
-      sanitizeCssColor
+      sanitizeCssColor,
+      getActionDefById
     })
   : null;
 
