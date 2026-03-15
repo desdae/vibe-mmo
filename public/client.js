@@ -1976,6 +1976,10 @@ function tryContextQuestNpcInteraction() {
   return questRuntimeTools ? questRuntimeTools.tryContextQuestNpcInteraction() : false;
 }
 
+function tryNearbyQuestNpcInteraction() {
+  return questRuntimeTools ? questRuntimeTools.tryNearbyQuestNpcInteraction() : false;
+}
+
 function updateAutoQuestNpcInteraction(now = performance.now()) {
   if (questRuntimeTools) {
     questRuntimeTools.updateAutoQuestNpcInteraction(now);
@@ -16796,6 +16800,7 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       executeBoundAction,
       tryContextVendorInteraction,
       tryContextQuestNpcInteraction,
+      tryNearbyQuestNpcInteraction,
       tryContextResourceInteraction,
       tryContextLootPickup,
       sendMove,

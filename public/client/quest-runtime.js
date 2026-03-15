@@ -55,6 +55,27 @@
       return Math.hypot(targetX - Number(actor.x), targetY - Number(actor.y)) <= interactRange;
     }
 
+    function getClosestNearbyQuestNpc(self = null) {
+      const actor = self || getCurrentSelf();
+      const questGivers = getTownQuestGivers();
+      if (!actor || !Array.isArray(questGivers) || !questGivers.length) {
+        return null;
+      }
+      let bestNpc = null;
+      let bestDist = Infinity;
+      for (const npc of questGivers) {
+        if (!npc || !isPlayerNearQuestNpc(npc, actor)) {
+          continue;
+        }
+        const dist = Math.hypot(Number(npc.x) + 0.5 - Number(actor.x), Number(npc.y) + 0.5 - Number(actor.y));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestNpc = npc;
+        }
+      }
+      return bestNpc;
+    }
+
     function getHoveredQuestNpcAtPosition(cameraX, cameraY, mouseX, mouseY) {
       const questGivers = getTownQuestGivers();
       if (!Array.isArray(questGivers) || questGivers.length === 0) {
@@ -176,6 +197,25 @@
         return sendQuestNpcInteraction(hovered.npc.id);
       }
       return startAutoQuestNpcInteraction(hovered.npc);
+    }
+
+    function tryNearbyQuestNpcInteraction() {
+      const self = getCurrentSelf();
+      if (!self) {
+        return false;
+      }
+      const nearbyNpc = getClosestNearbyQuestNpc(self);
+      if (!nearbyNpc) {
+        return false;
+      }
+      if (typeof deps.clearAutoVendorInteraction === "function") {
+        deps.clearAutoVendorInteraction(false, false);
+      }
+      if (typeof deps.clearAutoLootPickup === "function") {
+        deps.clearAutoLootPickup(false);
+      }
+      clearAutoQuestNpcInteraction(false);
+      return sendQuestNpcInteraction(nearbyNpc.id);
     }
 
     function updateAutoQuestNpcInteraction(now = performance.now()) {
@@ -325,11 +365,13 @@
       getHoveredQuestNpc,
       getHoveredQuestNpcAtPosition,
       isPlayerNearQuestNpc,
+      getClosestNearbyQuestNpc,
       clearAutoQuestNpcInteraction,
       startAutoQuestNpcInteraction,
       sendQuestNpcInteraction,
       notifyQuestTalkToNpc,
       tryContextQuestNpcInteraction,
+      tryNearbyQuestNpcInteraction,
       updateAutoQuestNpcInteraction,
       initQuestUi,
       getQuestUiTools,

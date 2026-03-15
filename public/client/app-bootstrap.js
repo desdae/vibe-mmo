@@ -223,6 +223,7 @@
           executeBoundAction: deps.executeBoundAction,
           tryContextVendorInteraction: deps.tryContextVendorInteraction,
           tryContextQuestNpcInteraction: deps.tryContextQuestNpcInteraction,
+          tryNearbyQuestNpcInteraction: deps.tryNearbyQuestNpcInteraction,
           tryContextResourceInteraction: deps.tryContextResourceInteraction,
           tryContextLootPickup: deps.tryContextLootPickup,
           sendMove: deps.sendMove,

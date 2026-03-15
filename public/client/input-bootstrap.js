@@ -46,6 +46,9 @@
       if (deps.tryContextQuestNpcInteraction()) {
         return true;
       }
+      if (typeof deps.tryNearbyQuestNpcInteraction === "function" && deps.tryNearbyQuestNpcInteraction()) {
+        return true;
+      }
       if (typeof deps.tryContextResourceInteraction === "function" && deps.tryContextResourceInteraction()) {
         return true;
       }

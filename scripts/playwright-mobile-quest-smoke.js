@@ -51,7 +51,8 @@ async function getQuestGiverTapPoint(page) {
   return page.evaluate(() => {
     const state = window.__vibemmoTest.getState();
     const questGiver = Array.isArray(state && state.town && state.town.questGivers) ? state.town.questGivers[0] : null;
-    return questGiver ? { questGiver } : null;
+    const self = state && state.self ? state.self : null;
+    return questGiver && self ? { questGiver, self } : null;
   });
 }
 
@@ -75,9 +76,9 @@ async function main() {
       throw new Error("Failed to resolve mobile tap point for the quest giver.");
     }
 
-    await page.evaluate((questGiver) => {
-      return window.__vibemmoTest.dispatchTouchTapAtWorld(Number(questGiver.x) + 0.5, Number(questGiver.y) + 0.5);
-    }, tapPoint.questGiver);
+    await page.evaluate((tapState) => {
+      return window.__vibemmoTest.dispatchTouchTapAtWorld(Number(tapState.self.x), Number(tapState.self.y));
+    }, tapPoint);
 
     await page.waitForFunction(() => {
       const state = window.__vibemmoTest.getState();
@@ -95,6 +96,10 @@ async function main() {
       questGiverId: String(tapPoint.questGiver && tapPoint.questGiver.id || ""),
       dialogueNpcName: String(dialogue.npcName || ""),
       dialogueType: String(dialogue.dialogueType || ""),
+      tappedWorld: {
+        x: Number(tapPoint.self && tapPoint.self.x) || 0,
+        y: Number(tapPoint.self && tapPoint.self.y) || 0
+      },
       playerPosition: finalState && finalState.self
         ? {
             x: Number(finalState.self.x) || 0,
