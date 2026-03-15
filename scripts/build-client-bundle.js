@@ -5,69 +5,38 @@ const esbuild = require("esbuild");
 const projectRoot = path.resolve(__dirname, "..");
 const publicDir = path.join(projectRoot, "public");
 const indexDevPath = path.join(publicDir, "index.dev.html");
+const clientEntryPath = path.join(publicDir, "client-entry.js");
 const bundlePath = path.join(publicDir, "app.bundle.min.js");
 const indexProdPath = path.join(publicDir, "index.prod.html");
-
-function extractScriptSources(indexHtml) {
-  const sources = [];
-  const scriptRegex = /<script\s+src="([^"]+)"\s*><\/script>/gi;
-  let match = scriptRegex.exec(indexHtml);
-  while (match) {
-    const src = String(match[1] || "").trim();
-    if (src.toLowerCase().endsWith(".js")) {
-      sources.push(src);
-    }
-    match = scriptRegex.exec(indexHtml);
-  }
-  return sources;
-}
-
-function toLocalScriptPath(src) {
-  const withoutQuery = String(src || "").split("?")[0];
-  const relative = withoutQuery.replace(/^[/\\]+/, "");
-  const abs = path.resolve(publicDir, relative);
-  if (abs !== publicDir && !abs.startsWith(publicDir + path.sep)) {
-    throw new Error(`Refusing to bundle script outside public directory: ${src}`);
-  }
-  return abs;
-}
 
 function build() {
   if (!fs.existsSync(indexDevPath)) {
     throw new Error(`Missing ${indexDevPath}.`);
   }
-
-  const indexDevHtml = fs.readFileSync(indexDevPath, "utf8");
-  const scripts = extractScriptSources(indexDevHtml).filter((src) => src !== "/app.bundle.min.js");
-  if (!scripts.length) {
-    throw new Error("No JS script tags found in public/index.dev.html.");
+  if (!fs.existsSync(clientEntryPath)) {
+    throw new Error(`Missing ${clientEntryPath}.`);
   }
 
-  const concatenated = scripts
-    .map((src) => {
-      const abs = toLocalScriptPath(src);
-      if (!fs.existsSync(abs)) {
-        throw new Error(`Script referenced in index.dev.html not found: ${src}`);
-      }
-      const content = fs.readFileSync(abs, "utf8");
-      return `/* ${src} */\n${content}\n`;
-    })
-    .join("\n;\n");
+  const indexDevHtml = fs.readFileSync(indexDevPath, "utf8");
 
-  const transformed = esbuild.transformSync(concatenated, {
-    loader: "js",
+  const result = esbuild.buildSync({
+    entryPoints: [clientEntryPath],
+    outfile: bundlePath,
+    bundle: true,
+    platform: "browser",
+    format: "iife",
     minify: true,
     target: "es2018",
-    legalComments: "none"
+    legalComments: "none",
+    logLevel: "silent"
   });
-
-  fs.writeFileSync(bundlePath, transformed.code, "utf8");
+  void result;
 
   const bundleScriptTag = "    <script src=\"/app.bundle.min.js\"></script>";
-  const scriptBlockRegex = /(\s*<script\s+src="[^"]+"\s*><\/script>\s*)+(?=\s*<\/body>)/i;
+  const moduleEntryRegex = /\s*<script\s+type="module"\s+src="\/client-entry\.js"\s*><\/script>\s*/i;
   let indexProdHtml;
-  if (scriptBlockRegex.test(indexDevHtml)) {
-    indexProdHtml = indexDevHtml.replace(scriptBlockRegex, `${bundleScriptTag}\n`);
+  if (moduleEntryRegex.test(indexDevHtml)) {
+    indexProdHtml = indexDevHtml.replace(moduleEntryRegex, `${bundleScriptTag}\n`);
   } else if (indexDevHtml.includes("</body>")) {
     indexProdHtml = indexDevHtml.replace("</body>", `${bundleScriptTag}\n  </body>`);
   } else {
@@ -75,7 +44,7 @@ function build() {
   }
   fs.writeFileSync(indexProdPath, indexProdHtml, "utf8");
 
-  console.log(`[build] Bundled ${scripts.length} scripts -> public/app.bundle.min.js`);
+  console.log("[build] Bundled public/client-entry.js -> public/app.bundle.min.js");
   console.log("[build] Wrote public/index.prod.html");
 }
 

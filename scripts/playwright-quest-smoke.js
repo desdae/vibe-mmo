@@ -183,7 +183,12 @@ async function closeVendorPanelIfOpen(page) {
       return !panel || panel.classList.contains("hidden");
     });
     if (!hidden) {
-      await closeButton.click();
+      await page.evaluate(() => {
+        const button = document.getElementById("vendor-close");
+        if (button) {
+          button.click();
+        }
+      });
       await page.waitForFunction(() => {
         const panel = document.getElementById("vendor-panel");
         return !panel || panel.classList.contains("hidden");
