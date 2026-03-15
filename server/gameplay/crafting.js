@@ -16,6 +16,8 @@ function createCraftingTools(options = {}) {
     typeof options.addItemsToInventory === "function" ? options.addItemsToInventory : () => ({ added: [], leftover: [] });
   const sendInventoryState =
     typeof options.sendInventoryState === "function" ? options.sendInventoryState : () => {};
+  const sendSelfProgress =
+    typeof options.sendSelfProgress === "function" ? options.sendSelfProgress : () => {};
   const sendJson = typeof options.sendJson === "function" ? options.sendJson : () => {};
   let loadedData = null;
 
@@ -184,6 +186,7 @@ function createCraftingTools(options = {}) {
     }
     const result = addItemsToInventory(player, outputs);
     sendInventoryState(player);
+    sendSelfProgress(player);
     sendJson(player.ws, {
       type: "craft_result",
       ok: true,

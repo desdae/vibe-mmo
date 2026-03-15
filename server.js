@@ -796,6 +796,7 @@ craftingTools = createCraftingTools({
   consumeInventoryItem,
   addItemsToInventory,
   sendInventoryState,
+  sendSelfProgress: sendSelfProgressWithQuests,
   sendJson
 });
 
@@ -808,6 +809,7 @@ const resourceGenerationTools = createResourceGenerationTools({
   getToolTierForPlayer: (player, skillId) => craftingTools.getBestToolTierForPlayer(player, skillId),
   addItemsToInventory,
   sendInventoryState,
+  sendSelfProgress: sendSelfProgressWithQuests,
   sendJson,
   mapWidth: MAP_WIDTH,
   mapHeight: MAP_HEIGHT,

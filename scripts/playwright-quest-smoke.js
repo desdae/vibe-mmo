@@ -137,6 +137,10 @@ async function getDialogueChoiceTexts(page) {
   });
 }
 
+function findChoiceByPattern(choices, pattern) {
+  return (Array.isArray(choices) ? choices : []).find((label) => pattern.test(String(label || ""))) || null;
+}
+
 async function getDialoguePanelText(page) {
   return page.evaluate(() => {
     const panel = document.getElementById("dialogue-panel");
@@ -580,6 +584,61 @@ async function run() {
         !state.questState.active.some((entry) => String(entry && entry.questId || "") === questId);
     }, generatedQuest.questId);
 
+    await openQuestNpcDialogue(page, herald);
+    await page.waitForFunction(() => {
+      const state = window.__vibemmoTest.getState();
+      const node = state.dialogue && state.dialogue.node;
+      return !!(node && Array.isArray(node.choices) && node.choices.length >= 4);
+    });
+    const replenishedChoices = await getDialogueChoiceTexts(page);
+    const stockpileChoice = findChoiceByPattern(replenishedChoices, /stockpile|materials|work crews/i);
+    if (!stockpileChoice) {
+      throw new Error(`Expected a gathered-material quest choice, got: ${JSON.stringify(replenishedChoices)}`);
+    }
+    await clickDialogueButton(page, stockpileChoice);
+    await clickDialogueButton(page, "I'll take this one.");
+    await clickDialogueButton(page, "Accept Quest");
+    await page.waitForFunction((expectedTitle) => {
+      const state = window.__vibemmoTest.getState();
+      return Array.isArray(state.questState && state.questState.active) &&
+        state.questState.active.some((quest) => String(quest && quest.title || "") === expectedTitle);
+    }, stockpileChoice);
+    const stockpileQuest = await getActiveQuestByTitle(page, stockpileChoice);
+    if (!stockpileQuest || !stockpileQuest.questId) {
+      throw new Error(`Failed to find accepted gathered-material quest: ${JSON.stringify(stockpileQuest)}`);
+    }
+
+    await page.evaluate(() => {
+      window.__vibemmoTest.send({ type: "admin_grant_item", itemId: "oakLog", qty: 20 });
+      window.__vibemmoTest.send({ type: "admin_grant_item", itemId: "birchLog", qty: 20 });
+      window.__vibemmoTest.send({ type: "admin_grant_item", itemId: "copperOre", qty: 20 });
+    });
+    await page.waitForFunction((questId) => {
+      const state = window.__vibemmoTest.getState();
+      const quest = Array.isArray(state.questState && state.questState.active)
+        ? state.questState.active.find((entry) => String(entry && entry.questId || "") === questId)
+        : null;
+      return !!(quest && Array.isArray(quest.objectives) && quest.objectives.every((objective) => objective.complete));
+    }, stockpileQuest.questId);
+
+    await openQuestNpcDialogue(page, herald);
+    await page.waitForFunction((questId) => {
+      const state = window.__vibemmoTest.getState();
+      return !!(
+        state.dialogue &&
+        state.dialogue.visible &&
+        state.dialogue.questId === questId &&
+        state.dialogue.node &&
+        state.dialogue.node.questComplete
+      );
+    }, stockpileQuest.questId);
+    await clickDialogueButton(page, "Complete Quest");
+    await page.waitForFunction((questId) => {
+      const state = window.__vibemmoTest.getState();
+      return Array.isArray(state.questState && state.questState.active) &&
+        !state.questState.active.some((entry) => String(entry && entry.questId || "") === questId);
+    }, stockpileQuest.questId);
+
     const visibleMob = await findVisibleMobWithRealName(page);
     const visibleMobName = String(visibleMob && visibleMob.name || "");
     if (!visibleMobName || /^mob\s+\d+$/i.test(visibleMobName)) {
@@ -603,6 +662,7 @@ async function run() {
       activeQuestCount: Array.isArray(finalState.questState.active) ? finalState.questState.active.length : 0,
       generatedQuestChoiceCount: questChoiceTexts.length,
       generatedQuestTitle: generatedQuest.title,
+      gatheredQuestTitle: stockpileQuest.title,
       visibleMobName: visibleMob.name,
       visibleProjectileAbilityIds: Array.isArray(finalState.projectiles) ? finalState.projectiles.map((entry) => entry.abilityId) : [],
       generatedQuestDialogueText: await getDialoguePanelText(page).catch(() => ""),

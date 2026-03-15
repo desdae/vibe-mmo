@@ -538,6 +538,7 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     const result = deps.addItemsToInventory(player, [{ itemId, qty }]);
     deps.sendInventoryState(player);
     deps.syncPlayerCopperFromInventory(player, true);
+    deps.sendSelfProgress(player);
     deps.sendJson(player.ws, {
       type: "admin_action_result",
       ok: !!(result && Array.isArray(result.added) && result.added.length > 0),

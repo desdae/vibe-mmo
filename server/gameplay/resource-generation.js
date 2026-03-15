@@ -13,6 +13,8 @@ function createResourceGenerationTools(options = {}) {
       : () => ({ added: [], leftover: [], changed: false });
   const sendInventoryState =
     typeof options.sendInventoryState === "function" ? options.sendInventoryState : () => {};
+  const sendSelfProgress =
+    typeof options.sendSelfProgress === "function" ? options.sendSelfProgress : () => {};
   const sendJson = typeof options.sendJson === "function" ? options.sendJson : () => {};
   const mapWidth = Math.max(64, Math.floor(Number(options.mapWidth) || 1000));
   const mapHeight = Math.max(64, Math.floor(Number(options.mapHeight) || 1000));
@@ -404,11 +406,12 @@ function createResourceGenerationTools(options = {}) {
         node
       };
     }
-    sendInventoryState(player);
     const skillResult =
       skillTools && typeof skillTools.grantPlayerSkillExp === "function"
         ? skillTools.grantPlayerSkillExp(player, node.skillId, Math.max(1, Number(node.xp) || 1))
         : { changed: false, skill: null, leveledUp: false };
+    sendInventoryState(player);
+    sendSelfProgress(player);
     node.available = false;
     node.metaVersion = (Number(node.metaVersion) || 0) + 1;
     const respawnMin = Math.max(5, Number(node.respawnSecondsMin) || 60);
