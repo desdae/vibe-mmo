@@ -144,5 +144,53 @@
         "description": "A jagged chunk of stone broken free while mining.",
         "icon": "Procedurally generated rough stone shard",
         "tags": ["crafting", "stone", "ore", "gathered"]
+    },
+    {
+        "name": "Raw Meat",
+        "id": "rawMeat",
+        "stackSize": 99,
+        "description": "Fresh meat taken from a hunted animal.",
+        "icon": "Procedurally generated raw meat cut",
+        "tags": ["crafting", "food", "hunting", "animal", "gathered"]
+    },
+    {
+        "name": "Rabbit Pelt",
+        "id": "rabbitPelt",
+        "stackSize": 99,
+        "description": "A soft pelt from a rabbit, useful for light leatherwork.",
+        "icon": "Procedurally generated rabbit pelt",
+        "tags": ["crafting", "hunting", "animal", "hide", "fur", "gathered"]
+    },
+    {
+        "name": "Light Hide",
+        "id": "lightHide",
+        "stackSize": 99,
+        "description": "A supple hide from a deer or similar game.",
+        "icon": "Procedurally generated light hide roll",
+        "tags": ["crafting", "hunting", "animal", "hide", "leather", "gathered"]
+    },
+    {
+        "name": "Deer Antler",
+        "id": "deerAntler",
+        "stackSize": 99,
+        "description": "A sturdy antler prized for carving and tool grips.",
+        "icon": "Procedurally generated deer antler",
+        "tags": ["crafting", "hunting", "animal", "bone", "trophy", "gathered"]
+    },
+    {
+        "name": "Thick Hide",
+        "id": "thickHide",
+        "stackSize": 99,
+        "description": "A coarse hide taken from a tougher beast.",
+        "icon": "Procedurally generated thick hide bundle",
+        "tags": ["crafting", "hunting", "animal", "hide", "leather", "gathered"]
+    },
+    {
+        "name": "Boar Tusk",
+        "id": "boarTusk",
+        "stackSize": 99,
+        "description": "A sharp boar tusk that can be carved into fittings or charms.",
+        "icon": "Procedurally generated boar tusk",
+        "tags": ["crafting", "hunting", "animal", "bone", "trophy", "gathered"]
     }
 ]

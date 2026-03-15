@@ -43,6 +43,8 @@ function createConfigOrchestrator({
     mob.respawnMinMs = Math.max(1000, Math.floor(Number(mobDef.respawnMinMs) || 1000));
     mob.respawnMaxMs = Math.max(mob.respawnMinMs, Math.floor(Number(mobDef.respawnMaxMs) || mob.respawnMinMs));
     mob.dropRules = Array.isArray(mobDef.dropRules) ? mobDef.dropRules.map((entry) => ({ ...entry })) : [];
+    mob.tags = Array.isArray(mobDef.tags) ? mobDef.tags.slice() : [];
+    mob.skillRewards = Array.isArray(mobDef.skillRewards) ? mobDef.skillRewards.map((entry) => ({ ...entry })) : [];
     mob.renderStyle = mobDef.renderStyle ? JSON.parse(JSON.stringify(mobDef.renderStyle)) : null;
     mob.combat = mobDef.combat ? JSON.parse(JSON.stringify(mobDef.combat)) : null;
 

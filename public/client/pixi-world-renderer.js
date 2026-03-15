@@ -292,6 +292,15 @@
       if (lower.includes("spider")) {
         return "spider";
       }
+      if (lower.includes("rabbit")) {
+        return "rabbit";
+      }
+      if (lower.includes("deer")) {
+        return "deer";
+      }
+      if (lower.includes("boar")) {
+        return "boar";
+      }
       if (lower.includes("creeper")) {
         return "creeper";
       }
@@ -2379,7 +2388,10 @@
       const fillColor = sanitizeCssColor(
         kind === "zombie" ? "#79bf56" :
         kind === "skeleton" || kind === "skeleton_archer" ? "#e7edf5" :
-        kind === "orc" ? "#5fa24a" : "#c2d3df"
+        kind === "orc" ? "#5fa24a" :
+        kind === "rabbit" ? "#d9d4c8" :
+        kind === "deer" ? "#a57649" :
+        kind === "boar" ? "#6f5746" : "#c2d3df"
       ) || "#c2d3df";
       ctx.fillStyle = "rgba(16,24,39,0.40)";
       ctx.beginPath();
@@ -2388,15 +2400,49 @@
       ctx.strokeStyle = "#0d1621";
       ctx.lineWidth = 2;
       ctx.fillStyle = fillColor;
-      ctx.beginPath();
-      ctx.arc(22, 15, kind === "orc" ? 8 : 7, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(16, 24); ctx.lineTo(28, 24);
-      ctx.moveTo(19, 24); ctx.lineTo(16, 34);
-      ctx.moveTo(25, 24); ctx.lineTo(28, 34);
-      ctx.stroke();
+      if (kind === "rabbit" || kind === "deer" || kind === "boar") {
+        ctx.beginPath();
+        ctx.ellipse(21, 24, kind === "rabbit" ? 8 : kind === "deer" ? 10 : 11, kind === "rabbit" ? 6 : 7, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(kind === "deer" ? 31 : 30, 18, kind === "boar" ? 5.5 : 4.5, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = "#f8fafc";
+        ctx.beginPath();
+        ctx.arc(31, 17, 1, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = kind === "rabbit" ? "#f3eadf" : "#d9c1a2";
+        if (kind === "rabbit") {
+          ctx.beginPath();
+          ctx.roundRect(28, 8, 2.8, 8.5, 2);
+          ctx.roundRect(32, 9, 2.6, 7.8, 2);
+          ctx.fillStyle = "#efe7db";
+          ctx.fill();
+        } else if (kind === "deer") {
+          ctx.beginPath();
+          ctx.moveTo(31, 13); ctx.lineTo(34, 7);
+          ctx.moveTo(34, 7); ctx.lineTo(37, 11);
+          ctx.moveTo(34, 7); ctx.lineTo(31, 4);
+          ctx.stroke();
+        } else if (kind === "boar") {
+          ctx.beginPath();
+          ctx.moveTo(34, 19); ctx.lineTo(38, 21);
+          ctx.moveTo(34, 21); ctx.lineTo(38, 23);
+          ctx.stroke();
+        }
+      } else {
+        ctx.beginPath();
+        ctx.arc(22, 15, kind === "orc" ? 8 : 7, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(16, 24); ctx.lineTo(28, 24);
+        ctx.moveTo(19, 24); ctx.lineTo(16, 34);
+        ctx.moveTo(25, 24); ctx.lineTo(28, 34);
+        ctx.stroke();
+      }
       if (kind === "skeleton_archer") {
         ctx.strokeStyle = "#8d6d48";
         ctx.beginPath();

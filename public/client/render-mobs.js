@@ -20,6 +20,15 @@
       if (lower.includes("spider")) {
         return "spider";
       }
+      if (lower.includes("rabbit")) {
+        return "rabbit";
+      }
+      if (lower.includes("deer")) {
+        return "deer";
+      }
+      if (lower.includes("boar")) {
+        return "boar";
+      }
       if (lower.includes("zombie")) {
         return "zombie";
       }
@@ -50,6 +59,9 @@
         normalized === "skeleton_archer" ||
         normalized === "creeper" ||
         normalized === "spider" ||
+        normalized === "rabbit" ||
+        normalized === "deer" ||
+        normalized === "boar" ||
         normalized === "orc" ||
         normalized === "basic"
       ) {
@@ -254,7 +266,15 @@
       const outlineColor = getMobStyleNumber(style, "outlineLightness", 22, 0, 70);
       const accentColor = getMobStyleNumber(style, "accentHue", 50, 0, 360);
 
-      const basePalette = {
+      const paletteSeed =
+        normalizedType === "rabbit"
+          ? { body: "#d9d4c8", outline: "#342a24", accent: "#f4eee4", eye: "#110f0d" }
+          : normalizedType === "deer"
+            ? { body: "#a57649", outline: "#342217", accent: "#dec4a4", eye: "#110f0d" }
+            : normalizedType === "boar"
+              ? { body: "#6f5746", outline: "#2a1e17", accent: "#ccb8a5", eye: "#110f0d" }
+              : null;
+      const basePalette = paletteSeed || {
         body: `hsl(95 20% ${bodyColor}%)`,
         outline: `hsl(210 20% ${outlineColor}%)`,
         accent: `hsl(${accentColor} 70% 58%)`,
@@ -268,28 +288,62 @@
       sctx.fillStyle = palette.body;
       sctx.strokeStyle = palette.outline;
       sctx.lineWidth = Math.max(1.5, spriteSize * 0.06);
-      deps.drawRoundedRect(sctx, -10, -10, 20, 20, 6);
-      sctx.fill();
-      sctx.stroke();
+      if (normalizedType === "rabbit" || normalizedType === "deer" || normalizedType === "boar") {
+        sctx.beginPath();
+        sctx.ellipse(0, 2, normalizedType === "rabbit" ? 8 : normalizedType === "deer" ? 9 : 10, normalizedType === "rabbit" ? 6 : 7, 0, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.stroke();
+        sctx.beginPath();
+        sctx.ellipse(normalizedType === "deer" ? 8 : 7, -3, normalizedType === "boar" ? 5.5 : 4.5, 4, 0, 0, Math.PI * 2);
+        sctx.fill();
+        sctx.stroke();
+        sctx.fillStyle = palette.accent;
+        if (normalizedType === "rabbit") {
+          deps.drawRoundedRect(sctx, 3, -15, 2.6, 9, 2);
+          deps.drawRoundedRect(sctx, 7, -14, 2.4, 8, 2);
+          sctx.fill();
+        } else if (normalizedType === "deer") {
+          sctx.strokeStyle = palette.accent;
+          sctx.beginPath();
+          sctx.moveTo(9, -8); sctx.lineTo(12, -15);
+          sctx.moveTo(12, -15); sctx.lineTo(14, -11);
+          sctx.moveTo(12, -15); sctx.lineTo(9, -18);
+          sctx.stroke();
+        } else if (normalizedType === "boar") {
+          sctx.strokeStyle = palette.accent;
+          sctx.beginPath();
+          sctx.moveTo(11, -1); sctx.lineTo(15, 1);
+          sctx.moveTo(11, 1); sctx.lineTo(15, 3);
+          sctx.stroke();
+        }
+        sctx.fillStyle = palette.eye;
+        sctx.beginPath();
+        sctx.arc(9, -4, 1.1, 0, Math.PI * 2);
+        sctx.fill();
+      } else {
+        deps.drawRoundedRect(sctx, -10, -10, 20, 20, 6);
+        sctx.fill();
+        sctx.stroke();
 
-      sctx.fillStyle = palette.eye;
-      sctx.beginPath();
-      sctx.arc(-3.2, -2.5, 1.8, 0, Math.PI * 2);
-      sctx.arc(3.2, -2.5, 1.8, 0, Math.PI * 2);
-      sctx.fill();
+        sctx.fillStyle = palette.eye;
+        sctx.beginPath();
+        sctx.arc(-3.2, -2.5, 1.8, 0, Math.PI * 2);
+        sctx.arc(3.2, -2.5, 1.8, 0, Math.PI * 2);
+        sctx.fill();
 
-      sctx.fillStyle = palette.outline;
-      sctx.beginPath();
-      sctx.arc(-3.2, -2.5, 0.8, 0, Math.PI * 2);
-      sctx.arc(3.2, -2.5, 0.8, 0, Math.PI * 2);
-      sctx.fill();
+        sctx.fillStyle = palette.outline;
+        sctx.beginPath();
+        sctx.arc(-3.2, -2.5, 0.8, 0, Math.PI * 2);
+        sctx.arc(3.2, -2.5, 0.8, 0, Math.PI * 2);
+        sctx.fill();
 
-      sctx.strokeStyle = palette.accent;
-      sctx.lineWidth = Math.max(1, spriteSize * 0.05);
-      sctx.beginPath();
-      sctx.moveTo(-5, 4);
-      sctx.lineTo(5, 4);
-      sctx.stroke();
+        sctx.strokeStyle = palette.accent;
+        sctx.lineWidth = Math.max(1, spriteSize * 0.05);
+        sctx.beginPath();
+        sctx.moveTo(-5, 4);
+        sctx.lineTo(5, 4);
+        sctx.stroke();
+      }
 
       sctx.restore();
       deps.mobSpriteCache.set(cacheKey, sprite);

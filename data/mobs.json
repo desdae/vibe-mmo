@@ -395,6 +395,114 @@
           "boot": "#352520"
         }
       }
+    },
+    {
+      "name": "Rabbit",
+      "tags": ["starter", "animal", "passive", "huntable", "rabbit", "fur", "meat"],
+      "health": 10,
+      "damage": [0, 0],
+      "speed": 1.55,
+      "respawnTime": [18, 36],
+      "drops": [{ "rawMeat": [0.28], "rabbitPelt": [0.26] }],
+      "skillRewards": [{ "skillId": "hunting", "xp": 10 }],
+      "combat": {
+        "behavior": "flee",
+        "aggroRange": 6.5,
+        "preferredRange": 7.5,
+        "leashRange": 14,
+        "panicDuration": 5,
+        "fleeSpeedMultiplier": 1.2,
+        "basicAttack": {
+          "type": "melee",
+          "damage": 0,
+          "cooldown": 2,
+          "range": 0.6
+        },
+        "abilities": []
+      },
+      "renderStyle": {
+        "spriteType": "rabbit",
+        "sizeScale": 0.8,
+        "attackVisual": "none",
+        "palette": {
+          "body": "#d7d3c8",
+          "outline": "#302923",
+          "accent": "#f6f1e8",
+          "eye": "#120f0d"
+        }
+      }
+    },
+    {
+      "name": "Deer",
+      "tags": ["starter", "animal", "passive", "huntable", "deer", "hide", "meat", "antler"],
+      "health": 18,
+      "damage": [0, 0],
+      "speed": 1.35,
+      "respawnTime": [26, 50],
+      "drops": [{ "rawMeat": [0.3], "lightHide": [0.24], "deerAntler": [0.1] }],
+      "skillRewards": [{ "skillId": "hunting", "xp": 16 }],
+      "combat": {
+        "behavior": "flee",
+        "aggroRange": 7.5,
+        "preferredRange": 9,
+        "leashRange": 18,
+        "panicDuration": 6,
+        "fleeSpeedMultiplier": 1.12,
+        "basicAttack": {
+          "type": "melee",
+          "damage": 0,
+          "cooldown": 2,
+          "range": 0.75
+        },
+        "abilities": []
+      },
+      "renderStyle": {
+        "spriteType": "deer",
+        "sizeScale": 0.95,
+        "attackVisual": "none",
+        "palette": {
+          "body": "#9d7147",
+          "outline": "#2f2015",
+          "accent": "#dbc3a5",
+          "eye": "#120f0d"
+        }
+      }
+    },
+    {
+      "name": "Boar",
+      "tags": ["mid", "animal", "passive", "huntable", "boar", "hide", "meat", "tusk"],
+      "health": 28,
+      "damage": [0, 0],
+      "speed": 1.18,
+      "respawnTime": [32, 60],
+      "drops": [{ "rawMeat": [0.3], "thickHide": [0.23], "boarTusk": [0.11] }],
+      "skillRewards": [{ "skillId": "hunting", "xp": 22 }],
+      "combat": {
+        "behavior": "flee",
+        "aggroRange": 7,
+        "preferredRange": 8.5,
+        "leashRange": 18,
+        "panicDuration": 6,
+        "fleeSpeedMultiplier": 1.08,
+        "basicAttack": {
+          "type": "melee",
+          "damage": 0,
+          "cooldown": 2,
+          "range": 0.9
+        },
+        "abilities": []
+      },
+      "renderStyle": {
+        "spriteType": "boar",
+        "sizeScale": 0.98,
+        "attackVisual": "none",
+        "palette": {
+          "body": "#6e5444",
+          "outline": "#241a14",
+          "accent": "#ccb8a5",
+          "eye": "#120f0d"
+        }
+      }
     }
   ],
   "mobClusters": [
@@ -480,6 +588,63 @@
         }
       ],
       "maxSize": 7
+    },
+    {
+      "name": "Rabbit Warren",
+      "mobs": ["Rabbit"],
+      "spawnRanges": [
+        {
+          "range": [20, 170],
+          "chance": 0.18,
+          "curve": "linear"
+        },
+        {
+          "range": [120, 280],
+          "chance": 0.1,
+          "curve": "linear"
+        }
+      ],
+      "biomeTagsAny": ["meadow", "riverland", "temperate_forest"],
+      "bandTagsAny": ["starter_ring", "midlands"],
+      "maxSize": 6
+    },
+    {
+      "name": "Deer Herd",
+      "mobs": ["Deer"],
+      "spawnRanges": [
+        {
+          "range": [40, 220],
+          "chance": 0.16,
+          "curve": "linear"
+        },
+        {
+          "range": [160, 340],
+          "chance": 0.13,
+          "curve": "linear"
+        }
+      ],
+      "biomeTagsAny": ["meadow", "riverland", "temperate_forest", "deep_forest"],
+      "bandTagsAny": ["starter_ring", "midlands"],
+      "maxSize": 4
+    },
+    {
+      "name": "Boar Sounder",
+      "mobs": ["Boar"],
+      "spawnRanges": [
+        {
+          "range": [120, 320],
+          "chance": 0.14,
+          "curve": "linear"
+        },
+        {
+          "range": [260, 500],
+          "chance": 0.11,
+          "curve": "linear"
+        }
+      ],
+      "biomeTagsAny": ["deep_forest", "pine_hills", "swamp", "riverland"],
+      "bandTagsAny": ["midlands", "frontier"],
+      "maxSize": 3
     }
   ]
 }

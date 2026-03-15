@@ -32,11 +32,48 @@ function getClusterSpawnWeightAtDistance(clusterDef, distanceFromCenter) {
   return total;
 }
 
-function pickClusterDef(config, distanceFromCenter = null) {
+function matchesAnyTag(requiredTags, actualTags) {
+  const required = Array.isArray(requiredTags) ? requiredTags.filter(Boolean) : [];
+  if (!required.length) {
+    return true;
+  }
+  const actual = new Set(Array.isArray(actualTags) ? actualTags.filter(Boolean) : []);
+  for (const tag of required) {
+    if (actual.has(String(tag))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getClusterBiomeWeight(clusterDef, biomeInfo) {
+  if (!biomeInfo || typeof biomeInfo !== "object") {
+    return 1;
+  }
+  const tags = Array.isArray(biomeInfo.tags) ? biomeInfo.tags.map((tag) => String(tag || "").trim().toLowerCase()) : [];
+  if (!matchesAnyTag(clusterDef && clusterDef.biomeTagsAny, tags)) {
+    return 0;
+  }
+  if (!matchesAnyTag(clusterDef && clusterDef.bandTagsAny, tags)) {
+    return 0;
+  }
+  if (!matchesAnyTag(clusterDef && clusterDef.sectorTagsAny, tags)) {
+    return 0;
+  }
+  return 1;
+}
+
+function pickClusterDef(config, distanceOrContext = null) {
   if (!config.clusterDefs.length) {
     return null;
   }
 
+  const context =
+    distanceOrContext && typeof distanceOrContext === "object" && !Array.isArray(distanceOrContext)
+      ? distanceOrContext
+      : { distanceFromCenter: distanceOrContext };
+  const distanceFromCenter = context.distanceFromCenter;
+  const biomeInfo = context.biomeInfo || null;
   const useDistanceWeighting = Number.isFinite(Number(distanceFromCenter));
   if (!useDistanceWeighting && config.totalSpawnChance <= 0) {
     return config.clusterDefs[randomInt(0, config.clusterDefs.length - 1)];
@@ -45,9 +82,14 @@ function pickClusterDef(config, distanceFromCenter = null) {
   const weightedClusters = [];
   let totalWeight = 0;
   for (const clusterDef of config.clusterDefs) {
-    const weight = useDistanceWeighting
-      ? getClusterSpawnWeightAtDistance(clusterDef, distanceFromCenter)
-      : Math.max(0, Number(clusterDef.totalSpawnChance) || 0);
+    const biomeWeight = getClusterBiomeWeight(clusterDef, biomeInfo);
+    if (biomeWeight <= 0) {
+      continue;
+    }
+    const weight =
+      (useDistanceWeighting
+        ? getClusterSpawnWeightAtDistance(clusterDef, distanceFromCenter)
+        : Math.max(0, Number(clusterDef.totalSpawnChance) || 0)) * biomeWeight;
     if (weight <= 0) {
       continue;
     }
@@ -71,5 +113,6 @@ function pickClusterDef(config, distanceFromCenter = null) {
 
 module.exports = {
   getClusterSpawnWeightAtDistance,
+  getClusterBiomeWeight,
   pickClusterDef
 };

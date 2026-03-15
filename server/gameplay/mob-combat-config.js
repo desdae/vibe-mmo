@@ -4,7 +4,12 @@ const { getObjectPath, firstFiniteNumber } = require("./object-utils");
 function parseMobCombatConfig(rawCombat, abilityDefs, fallbackDamageMin, fallbackDamageMax, defaults) {
   const raw = rawCombat && typeof rawCombat === "object" ? rawCombat : {};
   const behaviorRaw = String(raw.behavior || "").trim().toLowerCase();
-  const behavior = behaviorRaw === "ranged" ? "ranged" : "melee";
+  const behavior =
+    behaviorRaw === "ranged"
+      ? "ranged"
+      : behaviorRaw === "flee" || behaviorRaw === "passive_flee" || behaviorRaw === "flee_passive"
+        ? "flee"
+        : "melee";
   const aggroRange = clamp(Number(raw.aggroRange) || defaults.mobAggroRange, 0.5, 100);
   const preferredRange = clamp(
     Number(raw.preferredRange) ||
@@ -13,6 +18,11 @@ function parseMobCombatConfig(rawCombat, abilityDefs, fallbackDamageMin, fallbac
     100
   );
   const leashRange = clamp(Number(raw.leashRange) || defaults.mobWanderRadius, 1, 500);
+  const panicDurationMs = Math.max(
+    0,
+    Math.round((Number(raw.panicDuration) || Number(raw.panicDurationSec) || 0) * 1000)
+  );
+  const fleeSpeedMultiplier = clamp(Number(raw.fleeSpeedMultiplier) || 1.1, 0.5, 4);
 
   const basicRaw = raw.basicAttack && typeof raw.basicAttack === "object" ? raw.basicAttack : {};
   const [basicDamageMinParsed, basicDamageMaxParsed] = parseNumericRange(
@@ -116,6 +126,8 @@ function parseMobCombatConfig(rawCombat, abilityDefs, fallbackDamageMin, fallbac
     aggroRange,
     preferredRange,
     leashRange,
+    panicDurationMs,
+    fleeSpeedMultiplier,
     basicAttack: {
       type: basicAttackType,
       abilityId: hasBasicAbility ? basicAbilityId : "",

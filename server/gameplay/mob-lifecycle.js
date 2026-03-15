@@ -14,10 +14,12 @@ function createMobLifecycleTools({
   createLootBag,
   normalizeItemEntries,
   grantPlayerExp,
+  skillTools,
   allocateMobId,
   allocateSpawnerId,
   getServerConfig,
   getMobConfig,
+  biomeResolver,
   townLayout,
   mapWidth,
   mapHeight,
@@ -159,6 +161,8 @@ function createMobLifecycleTools({
       respawnMinMs: mobDef.respawnMinMs,
       respawnMaxMs: mobDef.respawnMaxMs,
       dropRules: Array.isArray(mobDef.dropRules) ? mobDef.dropRules.map((entry) => ({ ...entry })) : [],
+      tags: Array.isArray(mobDef.tags) ? mobDef.tags.slice() : [],
+      skillRewards: Array.isArray(mobDef.skillRewards) ? mobDef.skillRewards.map((entry) => ({ ...entry })) : [],
       renderStyle: mobDef.renderStyle ? { ...mobDef.renderStyle } : null,
       combat: mobDef.combat
         ? {
@@ -182,10 +186,12 @@ function createMobLifecycleTools({
       chaseTargetPlayerId: null,
       chaseUntil: 0,
       stunnedUntil: 0,
+      panicUntil: 0,
       slowUntil: 0,
       slowMultiplier: 1,
       burningUntil: 0,
       activeDots: new Map(),
+      lastThreatPosition: null,
       returningHome: false,
       abilityCooldowns: new Map(),
       distanceFromCenter: spawnDistanceFromCenter,
@@ -264,6 +270,10 @@ function createMobLifecycleTools({
       y: spawnPosition.y,
       clusterName: clusterDef.name,
       clusterDef,
+      biomeInfo:
+        biomeResolver && typeof biomeResolver.resolveBiomeAt === "function"
+          ? biomeResolver.resolveBiomeAt(spawnPosition.x, spawnPosition.y)
+          : null,
       distanceFromCenter: spawnPosition.distanceFromCenter,
       cellKey: `${cellX},${cellY}`,
       mobIds: []
@@ -274,6 +284,41 @@ function createMobLifecycleTools({
       createMob(spawner);
     }
     return spawner;
+  }
+
+  function ensureStarterOutskirtsSpawners(now = Date.now()) {
+    const mobConfig = getMobConfig();
+    if (!mobConfig || !Array.isArray(mobConfig.clusterDefs) || !mobConfig.clusterDefs.length) {
+      return 0;
+    }
+    const preferred = [
+      { clusterName: "Rabbit Warren", offsets: [{ x: 26, y: 18 }, { x: 24, y: -16 }] },
+      { clusterName: "Deer Herd", offsets: [{ x: -30, y: 22 }, { x: -24, y: -20 }] }
+    ];
+    let created = 0;
+    for (const entry of preferred) {
+      const clusterDef = mobConfig.clusterDefs.find((cluster) => String(cluster && cluster.name || "") === entry.clusterName);
+      if (!clusterDef) {
+        continue;
+      }
+      for (const offset of entry.offsets) {
+        const x = clamp(centerX + Number(offset.x || 0), 0, mapWidth - 1);
+        const y = clamp(centerY + Number(offset.y || 0), 0, mapHeight - 1);
+        if (isPointExcludedByTown(x, y) || getDistanceFromCenter(x, y) < minSpawnRadiusFromCenter) {
+          continue;
+        }
+        const cellX = Math.floor(x / clusterAreaSize);
+        const cellY = Math.floor(y / clusterAreaSize);
+        createSpawnerInCell(cellX, cellY, clusterDef, {
+          x,
+          y,
+          distanceFromCenter: getDistanceFromCenter(x, y)
+        }, now);
+        created += 1;
+        break;
+      }
+    }
+    return created;
   }
 
   function initializeCellSpawners(cellX, cellY, now = Date.now()) {
@@ -306,7 +351,13 @@ function createMobLifecycleTools({
       if (!spawnPosition) {
         continue;
       }
-      const clusterDef = pickClusterDef(mobConfig, spawnPosition.distanceFromCenter);
+      const clusterDef = pickClusterDef(mobConfig, {
+        distanceFromCenter: spawnPosition.distanceFromCenter,
+        biomeInfo:
+          biomeResolver && typeof biomeResolver.resolveBiomeAt === "function"
+            ? biomeResolver.resolveBiomeAt(spawnPosition.x, spawnPosition.y)
+            : null
+      });
       if (!clusterDef) {
         continue;
       }
@@ -396,6 +447,7 @@ function createMobLifecycleTools({
     if (mobs.size > 0) {
       mobs.clear();
     }
+    ensureStarterOutskirtsSpawners();
     logger.log("[mobs] Using observed-area dynamic spawning.");
   }
 
@@ -411,10 +463,12 @@ function createMobLifecycleTools({
     mob.chaseTargetPlayerId = null;
     mob.chaseUntil = 0;
     mob.stunnedUntil = 0;
+    mob.panicUntil = 0;
     mob.slowUntil = 0;
     mob.slowMultiplier = 1;
     mob.burningUntil = 0;
     mob.activeDots = new Map();
+    mob.lastThreatPosition = null;
     mob.abilityCooldowns = new Map();
     mob.lastObservedAt = Date.now();
     clearMobCast(mob);
@@ -435,6 +489,14 @@ function createMobLifecycleTools({
       const manaOnKill = Math.max(0, Math.floor(Number(killer.manaOnKill) || 0));
       if (manaOnKill > 0) {
         killer.mana = clamp(killer.mana + manaOnKill, 0, killer.maxMana);
+      }
+      if (skillTools && typeof skillTools.grantPlayerSkillExp === "function" && Array.isArray(mob.skillRewards)) {
+        for (const reward of mob.skillRewards) {
+          if (!reward || !reward.skillId || !reward.xp) {
+            continue;
+          }
+          skillTools.grantPlayerSkillExp(killer, reward.skillId, reward.xp);
+        }
       }
       
       // Quest objective: kill mob
@@ -466,15 +528,19 @@ function createMobLifecycleTools({
     mob.chaseTargetPlayerId = null;
     mob.chaseUntil = 0;
     mob.stunnedUntil = 0;
+    mob.panicUntil = 0;
     mob.slowUntil = 0;
     mob.slowMultiplier = 1;
     mob.burningUntil = 0;
     mob.activeDots = new Map();
+    mob.lastThreatPosition = null;
     mob.returningHome = false;
     mob.abilityCooldowns = new Map();
     mob.lastObservedAt = Date.now();
     if (mobDef) {
       applyScaledStatsToMob(mob, mobDef, Number(mob.level) || 1, { keepHpRatio: false });
+      mob.tags = Array.isArray(mobDef.tags) ? mobDef.tags.slice() : [];
+      mob.skillRewards = Array.isArray(mobDef.skillRewards) ? mobDef.skillRewards.map((entry) => ({ ...entry })) : [];
     } else {
       mob.hp = mob.maxHp;
     }

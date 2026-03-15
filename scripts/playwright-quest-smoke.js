@@ -581,7 +581,8 @@ async function run() {
     }, generatedQuest.questId);
 
     const visibleMob = await findVisibleMobWithRealName(page);
-    if (!/zombie|skeleton|orc|spider|creeper/i.test(String(visibleMob.name || ""))) {
+    const visibleMobName = String(visibleMob && visibleMob.name || "");
+    if (!visibleMobName || /^mob\s+\d+$/i.test(visibleMobName)) {
       throw new Error(`Expected a real mob name, received: ${JSON.stringify(visibleMob)}`);
     }
 
