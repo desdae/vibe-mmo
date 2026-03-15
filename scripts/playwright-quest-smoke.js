@@ -338,6 +338,47 @@ async function completeZombieObjective(page, questId) {
   );
 }
 
+async function findVisibleMobWithRealName(page) {
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const state = await getState(page);
+    const realMob = Array.isArray(state.mobs)
+      ? state.mobs.find((mob) => {
+          const name = String(mob && mob.name || "");
+          return name && !/^mob\s+\d+$/i.test(name);
+        }) || null
+      : null;
+    if (realMob) {
+      return realMob;
+    }
+
+    const searchDirections = [
+      { dx: 1, dy: 0 },
+      { dx: 1, dy: 0.35 },
+      { dx: 1, dy: -0.35 },
+      { dx: 0.8, dy: 0.6 },
+      { dx: 0.8, dy: -0.6 },
+      { dx: 0, dy: 1 },
+      { dx: 0, dy: -1 }
+    ];
+    const sweepDir = searchDirections[attempt % searchDirections.length];
+    await page.evaluate((moveDir) => window.__vibemmoTest.setMove(moveDir.dx, moveDir.dy), sweepDir);
+    await sleep(500);
+    await stopMove(page);
+    await sleep(150);
+  }
+
+  const state = await getState(page);
+  throw new Error(`Failed to find a visible mob with synced metadata. Final mobs: ${JSON.stringify(state.mobs, null, 2)}`);
+}
+
+async function ensureProjectileMetaVisible(page, abilityId) {
+  await page.waitForFunction((expectedAbilityId) => {
+    const state = window.__vibemmoTest.getState();
+    return Array.isArray(state.projectiles) &&
+      state.projectiles.some((projectile) => String(projectile && projectile.abilityId || "") === expectedAbilityId);
+  }, abilityId);
+}
+
 async function run() {
   const server = startServer();
   let browser;
@@ -539,6 +580,17 @@ async function run() {
         !state.questState.active.some((entry) => String(entry && entry.questId || "") === questId);
     }, generatedQuest.questId);
 
+    const visibleMob = await findVisibleMobWithRealName(page);
+    if (!/zombie|skeleton|orc|spider|creeper/i.test(String(visibleMob.name || ""))) {
+      throw new Error(`Expected a real mob name, received: ${JSON.stringify(visibleMob)}`);
+    }
+
+    await page.evaluate((target) => window.__vibemmoTest.castAtWorld("frostbolt", target.x, target.y), {
+      x: visibleMob.x,
+      y: visibleMob.y
+    });
+    await ensureProjectileMetaVisible(page, "frostbolt");
+
     if (consoleErrors.length > 0) {
       throw new Error(`Browser console errors detected:\n${consoleErrors.join("\n")}`);
     }
@@ -550,6 +602,8 @@ async function run() {
       activeQuestCount: Array.isArray(finalState.questState.active) ? finalState.questState.active.length : 0,
       generatedQuestChoiceCount: questChoiceTexts.length,
       generatedQuestTitle: generatedQuest.title,
+      visibleMobName: visibleMob.name,
+      visibleProjectileAbilityIds: Array.isArray(finalState.projectiles) ? finalState.projectiles.map((entry) => entry.abilityId) : [],
       generatedQuestDialogueText: await getDialoguePanelText(page).catch(() => ""),
       finalQuestPanelText: await getQuestPanelText(page).catch(() => "")
     }, null, 2));

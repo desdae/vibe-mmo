@@ -92,6 +92,7 @@ function collectNearbyEntitiesForPlayer(player, deps) {
 function sendEntityMeta(player, entityUpdate, deps) {
   const {
     sendBinary,
+    sendJson,
     encodePlayerMetaPacket,
     encodeMobMetaPacket,
     encodeProjectileMetaPacket,
@@ -102,9 +103,21 @@ function sendEntityMeta(player, entityUpdate, deps) {
   }
   if (entityUpdate.mobMeta.length) {
     sendBinary(player.ws, encodeMobMetaPacket(entityUpdate.mobMeta));
+    if (typeof sendJson === "function") {
+      sendJson(player.ws, {
+        type: "mob_meta",
+        mobs: entityUpdate.mobMeta.map((meta) => ({ ...meta }))
+      });
+    }
   }
   if (entityUpdate.projectileMeta.length) {
     sendBinary(player.ws, encodeProjectileMetaPacket(entityUpdate.projectileMeta));
+    if (typeof sendJson === "function") {
+      sendJson(player.ws, {
+        type: "projectile_meta",
+        projectiles: entityUpdate.projectileMeta.map((meta) => ({ ...meta }))
+      });
+    }
   }
   if (entityUpdate.lootBagMeta.length) {
     sendBinary(player.ws, encodeLootBagMetaPacket(entityUpdate.lootBagMeta));
@@ -371,6 +384,7 @@ function createStateBroadcaster(deps) {
 }
 
 module.exports = {
+  sendEntityMeta,
   broadcastStateToPlayers,
   createStateBroadcaster
 };
