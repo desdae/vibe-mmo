@@ -908,6 +908,11 @@ body {
     height: 40px;
   }
 
+  .crafting-item-icon .crafting-item-entry-icon {
+    width: 30px;
+    height: 30px;
+  }
+
   .vendor-item-name {
     font-size: 13px;
   }
@@ -1069,7 +1074,21 @@ body {
 
 .crafting-item-entry {
   grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
   cursor: default;
+}
+
+.crafting-item-icon {
+  align-self: center;
+}
+
+.crafting-item-icon .crafting-item-entry-icon {
+  inset: auto;
+  width: 26px;
+  height: 26px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 }
 
 .crafting-requirements {
@@ -1082,6 +1101,7 @@ body {
 .crafting-action-shell {
   display: grid;
   gap: 6px;
+  align-self: center;
   justify-items: end;
 }
 

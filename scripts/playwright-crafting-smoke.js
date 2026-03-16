@@ -166,6 +166,54 @@ async function main() {
       const panel = document.getElementById("crafting-panel");
       return !!(panel && !panel.classList.contains("hidden"));
     });
+    await page.waitForFunction(() => document.querySelectorAll("#crafting-item-list .crafting-item-entry").length >= 5);
+
+    const iconInspection = await page.evaluate(() => {
+      const recipeNames = ["Trail Rations", "Crude Hatchet", "Crude Pickaxe", "Bronze Hatchet", "Bronze Pickaxe"];
+      return recipeNames.map((recipeName) => {
+        const entry = Array.from(document.querySelectorAll("#crafting-item-list .crafting-item-entry")).find(
+          (node) => node.textContent && node.textContent.includes(recipeName)
+        );
+        if (!entry) {
+          return { recipeName, found: false };
+        }
+        const iconShell = entry.querySelector(".crafting-item-icon");
+        const icon = entry.querySelector(".crafting-item-entry-icon");
+        if (!iconShell || !icon) {
+          return { recipeName, found: true, hasIcon: false };
+        }
+        const shellRect = iconShell.getBoundingClientRect();
+        const iconRect = icon.getBoundingClientRect();
+        return {
+          recipeName,
+          found: true,
+          hasIcon: true,
+          backgroundImage: getComputedStyle(icon).backgroundImage,
+          centerDx: Math.abs((iconRect.left + iconRect.width / 2) - (shellRect.left + shellRect.width / 2)),
+          centerDy: Math.abs((iconRect.top + iconRect.height / 2) - (shellRect.top + shellRect.height / 2))
+        };
+      });
+    });
+
+    const missingRecipe = iconInspection.find((entry) => !entry.found);
+    if (missingRecipe) {
+      throw new Error(`Missing crafting recipe entry for ${missingRecipe.recipeName}.`);
+    }
+    const missingIcon = iconInspection.find((entry) => !entry.hasIcon);
+    if (missingIcon) {
+      throw new Error(`Missing crafting icon for ${missingIcon.recipeName}.`);
+    }
+    const offCenterIcon = iconInspection.find((entry) => entry.centerDx > 1.5 || entry.centerDy > 1.5);
+    if (offCenterIcon) {
+      throw new Error(
+        `Crafting icon for ${offCenterIcon.recipeName} is misaligned (dx=${offCenterIcon.centerDx}, dy=${offCenterIcon.centerDy}).`
+      );
+    }
+    const distinctBackgrounds = new Set(iconInspection.map((entry) => entry.backgroundImage).filter(Boolean));
+    if (distinctBackgrounds.size < iconInspection.length) {
+      throw new Error(`Expected unique crafting icons, but only found ${distinctBackgrounds.size} distinct backgrounds.`);
+    }
+
     const recipeEntry = page.locator("#crafting-item-list .crafting-item-entry").filter({ hasText: "Crude Pickaxe" }).first();
     await recipeEntry.locator("button", { hasText: "Craft" }).click();
 

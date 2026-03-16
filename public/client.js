@@ -3020,7 +3020,7 @@ function getItemAffixThemes(itemData) {
 
 function getItemPresentationData(itemInput) {
   const itemData = itemInput && typeof itemInput === "object" ? itemInput : null;
-  const itemId = String(itemData ? itemData.itemId || "" : itemInput || "").trim();
+  const itemId = String(itemData ? itemData.itemId || itemData.id || "" : itemInput || "").trim();
   const itemDef = itemDefsById.get(itemId) || null;
   const slot = String((itemData && itemData.slot) || (itemDef && itemDef.slot) || "").trim();
   const rarity = String((itemData && itemData.rarity) || "normal").trim().toLowerCase() || "normal";
@@ -3207,7 +3207,7 @@ function buildAbilityTooltip(abilityId) {
 
 function buildItemTooltip(itemInput, qty = null) {
   const itemData = itemInput && typeof itemInput === "object" ? itemInput : null;
-  const itemId = itemData ? String(itemData.itemId || "") : String(itemInput || "");
+  const itemId = itemData ? String(itemData.itemId || itemData.id || "") : String(itemInput || "");
   const def = itemDefsById.get(itemId);
   if (!def) {
     return itemId || "Item";
@@ -5786,6 +5786,395 @@ function drawPotionIcon(iconCtx, size, liquidColor) {
   iconCtx.fillRect(mid - 4.5, mid - 13, 9, 5);
 }
 
+function getItemTagSet(itemInput, presentation = getItemPresentationData(itemInput)) {
+  const tags = new Set();
+  const sources = [
+    Array.isArray(itemInput && itemInput.tags) ? itemInput.tags : [],
+    Array.isArray(presentation && presentation.itemDef && presentation.itemDef.tags) ? presentation.itemDef.tags : []
+  ];
+  for (const source of sources) {
+    for (const value of source) {
+      const tag = String(value || "").trim().toLowerCase();
+      if (tag) {
+        tags.add(tag);
+      }
+    }
+  }
+  return tags;
+}
+
+function drawLogBundleIcon(iconCtx, size, colors) {
+  const mid = size / 2;
+  const bark = colors.bark;
+  const wood = colors.wood;
+  const logPositions = [
+    { x: mid - 6, y: mid + 4, len: 18, rot: -0.2 },
+    { x: mid + 5, y: mid + 2, len: 17, rot: 0.18 },
+    { x: mid - 1, y: mid - 4, len: 16, rot: -0.04 }
+  ];
+  iconCtx.lineCap = "round";
+  for (const log of logPositions) {
+    iconCtx.save();
+    iconCtx.translate(log.x, log.y);
+    iconCtx.rotate(log.rot);
+    iconCtx.strokeStyle = bark;
+    iconCtx.lineWidth = 7.5;
+    iconCtx.beginPath();
+    iconCtx.moveTo(-log.len * 0.5, 0);
+    iconCtx.lineTo(log.len * 0.5, 0);
+    iconCtx.stroke();
+    iconCtx.fillStyle = wood;
+    iconCtx.strokeStyle = "rgba(255, 238, 215, 0.5)";
+    iconCtx.lineWidth = 1;
+    iconCtx.beginPath();
+    iconCtx.arc(-log.len * 0.5, 0, 3.1, 0, Math.PI * 2);
+    iconCtx.arc(log.len * 0.5, 0, 3.1, 0, Math.PI * 2);
+    iconCtx.fill();
+    iconCtx.stroke();
+    iconCtx.restore();
+  }
+}
+
+function drawPlankBundleIcon(iconCtx, size, colors) {
+  const mid = size / 2;
+  const offsets = [-6, -1, 4];
+  iconCtx.lineWidth = 1.3;
+  for (let i = 0; i < offsets.length; i += 1) {
+    const y = mid + offsets[i];
+    const width = 19 - i;
+    const height = 6;
+    iconCtx.fillStyle = i === 0 ? colors.primary : i === 1 ? colors.secondary : colors.detail;
+    iconCtx.strokeStyle = "rgba(247, 232, 205, 0.42)";
+    drawRoundedRect(iconCtx, mid - width * 0.5, y - height * 0.5, width, height, 2);
+    iconCtx.fill();
+    iconCtx.stroke();
+    iconCtx.strokeStyle = "rgba(62, 35, 18, 0.35)";
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - width * 0.34, y - 1.2);
+    iconCtx.lineTo(mid + width * 0.34, y - 1.2);
+    iconCtx.moveTo(mid - width * 0.28, y + 1.2);
+    iconCtx.lineTo(mid + width * 0.28, y + 1.2);
+    iconCtx.stroke();
+  }
+}
+
+function drawOreChunkIcon(iconCtx, size, colors) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "#4e5661";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 12, mid + 7);
+  iconCtx.lineTo(mid - 9, mid - 8);
+  iconCtx.lineTo(mid + 2, mid - 13);
+  iconCtx.lineTo(mid + 12, mid - 5);
+  iconCtx.lineTo(mid + 9, mid + 10);
+  iconCtx.lineTo(mid - 2, mid + 12);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.strokeStyle = "rgba(225, 234, 245, 0.34)";
+  iconCtx.lineWidth = 1.3;
+  iconCtx.stroke();
+  const veins = [
+    { x: mid - 4, y: mid - 2, r: 4.2 },
+    { x: mid + 3, y: mid - 5, r: 3.5 },
+    { x: mid + 4, y: mid + 4, r: 3.8 }
+  ];
+  iconCtx.fillStyle = colors.primary;
+  iconCtx.strokeStyle = colors.secondary;
+  iconCtx.lineWidth = 1;
+  for (const vein of veins) {
+    iconCtx.beginPath();
+    iconCtx.arc(vein.x, vein.y, vein.r, 0, Math.PI * 2);
+    iconCtx.fill();
+    iconCtx.stroke();
+  }
+}
+
+function drawStoneChunkIcon(iconCtx, size) {
+  const mid = size / 2;
+  iconCtx.fillStyle = "#798492";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 11, mid + 7);
+  iconCtx.lineTo(mid - 7, mid - 8);
+  iconCtx.lineTo(mid + 3, mid - 11);
+  iconCtx.lineTo(mid + 12, mid - 3);
+  iconCtx.lineTo(mid + 8, mid + 10);
+  iconCtx.lineTo(mid - 3, mid + 12);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.strokeStyle = "rgba(234, 241, 247, 0.46)";
+  iconCtx.lineWidth = 1.1;
+  iconCtx.stroke();
+  iconCtx.strokeStyle = "rgba(55, 66, 78, 0.55)";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 5, mid - 4);
+  iconCtx.lineTo(mid + 2, mid + 2);
+  iconCtx.moveTo(mid - 1, mid - 8);
+  iconCtx.lineTo(mid + 5, mid - 1);
+  iconCtx.stroke();
+}
+
+function drawSapIcon(iconCtx, size, colors) {
+  const mid = size / 2;
+  const gradient = iconCtx.createRadialGradient(mid - 2, mid - 5, 2, mid, mid, 13);
+  gradient.addColorStop(0, colors.secondary);
+  gradient.addColorStop(1, colors.primary);
+  iconCtx.fillStyle = gradient;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid, mid - 12);
+  iconCtx.bezierCurveTo(mid + 9, mid - 6, mid + 10, mid + 4, mid, mid + 12);
+  iconCtx.bezierCurveTo(mid - 10, mid + 4, mid - 9, mid - 6, mid, mid - 12);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.strokeStyle = "rgba(255, 237, 176, 0.72)";
+  iconCtx.lineWidth = 1.2;
+  iconCtx.stroke();
+}
+
+function drawBoneIcon(iconCtx, size, colors, variant = "bone") {
+  const mid = size / 2;
+  iconCtx.strokeStyle = colors.primary;
+  iconCtx.lineWidth = variant === "fragment" ? 5 : 4.5;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  if (variant === "antler") {
+    iconCtx.moveTo(mid - 1, mid + 11);
+    iconCtx.lineTo(mid - 1, mid - 10);
+    iconCtx.moveTo(mid - 1, mid - 4);
+    iconCtx.lineTo(mid - 8, mid - 10);
+    iconCtx.moveTo(mid - 1, mid + 1);
+    iconCtx.lineTo(mid - 9, mid - 3);
+    iconCtx.moveTo(mid - 1, mid - 4);
+    iconCtx.lineTo(mid + 7, mid - 11);
+    iconCtx.moveTo(mid - 1, mid + 1);
+    iconCtx.lineTo(mid + 8, mid - 4);
+  } else if (variant === "tusk") {
+    iconCtx.moveTo(mid - 8, mid + 8);
+    iconCtx.quadraticCurveTo(mid + 3, mid + 3, mid + 7, mid - 10);
+  } else if (variant === "fragment") {
+    iconCtx.moveTo(mid - 9, mid + 7);
+    iconCtx.lineTo(mid - 1, mid - 10);
+    iconCtx.lineTo(mid + 8, mid + 4);
+  } else {
+    iconCtx.moveTo(mid - 8, mid + 7);
+    iconCtx.lineTo(mid + 8, mid - 7);
+  }
+  iconCtx.stroke();
+  iconCtx.fillStyle = colors.secondary;
+  const knobs = variant === "antler"
+    ? [{ x: mid - 1, y: mid + 11, r: 2.4 }]
+    : variant === "tusk"
+      ? [{ x: mid - 8, y: mid + 8, r: 2.2 }]
+      : variant === "fragment"
+        ? [{ x: mid - 9, y: mid + 7, r: 2.1 }, { x: mid + 8, y: mid + 4, r: 2.1 }]
+        : [{ x: mid - 9, y: mid + 8, r: 2.5 }, { x: mid + 9, y: mid - 8, r: 2.5 }];
+  for (const knob of knobs) {
+    iconCtx.beginPath();
+    iconCtx.arc(knob.x, knob.y, knob.r, 0, Math.PI * 2);
+    iconCtx.fill();
+  }
+}
+
+function drawHideBundleIcon(iconCtx, size, colors, variant = "hide") {
+  const mid = size / 2;
+  iconCtx.fillStyle = colors.primary;
+  iconCtx.strokeStyle = colors.secondary;
+  iconCtx.lineWidth = 1.2;
+  if (variant === "wraps") {
+    drawRoundedRect(iconCtx, mid - 11, mid - 6, 22, 14, 6);
+    iconCtx.fill();
+    iconCtx.stroke();
+    iconCtx.strokeStyle = "rgba(250, 240, 220, 0.58)";
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 6, mid - 6);
+    iconCtx.lineTo(mid - 2, mid + 8);
+    iconCtx.moveTo(mid + 1, mid - 6);
+    iconCtx.lineTo(mid + 5, mid + 8);
+    iconCtx.stroke();
+    return;
+  }
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 11, mid + 6);
+  iconCtx.quadraticCurveTo(mid - 14, mid - 5, mid - 6, mid - 10);
+  iconCtx.quadraticCurveTo(mid, mid - 13, mid + 7, mid - 8);
+  iconCtx.quadraticCurveTo(mid + 14, mid - 2, mid + 11, mid + 8);
+  iconCtx.quadraticCurveTo(mid + 2, mid + 13, mid - 8, mid + 10);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.stroke();
+}
+
+function drawFoodIcon(iconCtx, size, colors, variant = "meat") {
+  const mid = size / 2;
+  if (variant === "rations") {
+    iconCtx.fillStyle = colors.primary;
+    drawRoundedRect(iconCtx, mid - 11, mid - 8, 22, 17, 4);
+    iconCtx.fill();
+    iconCtx.strokeStyle = colors.secondary;
+    iconCtx.lineWidth = 1.2;
+    iconCtx.stroke();
+    iconCtx.strokeStyle = "rgba(242, 221, 170, 0.7)";
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 7, mid - 2);
+    iconCtx.lineTo(mid + 7, mid - 2);
+    iconCtx.moveTo(mid - 5, mid + 2.5);
+    iconCtx.lineTo(mid + 5, mid + 2.5);
+    iconCtx.stroke();
+    return;
+  }
+  iconCtx.fillStyle = colors.primary;
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 10, mid + 1);
+  iconCtx.bezierCurveTo(mid - 12, mid - 8, mid - 3, mid - 12, mid + 7, mid - 8);
+  iconCtx.bezierCurveTo(mid + 14, mid - 2, mid + 11, mid + 9, mid, mid + 11);
+  iconCtx.bezierCurveTo(mid - 8, mid + 9, mid - 12, mid + 4, mid - 10, mid + 1);
+  iconCtx.closePath();
+  iconCtx.fill();
+  iconCtx.strokeStyle = colors.secondary;
+  iconCtx.lineWidth = 1.2;
+  iconCtx.stroke();
+  iconCtx.fillStyle = "rgba(255, 219, 207, 0.94)";
+  iconCtx.beginPath();
+  iconCtx.arc(mid + 4, mid - 1, 2.8, 0, Math.PI * 2);
+  iconCtx.fill();
+}
+
+function drawToolIcon(iconCtx, size, colors, variant = "hatchet") {
+  const mid = size / 2;
+  iconCtx.strokeStyle = colors.handle;
+  iconCtx.lineWidth = 4;
+  iconCtx.lineCap = "round";
+  iconCtx.beginPath();
+  iconCtx.moveTo(mid - 8, mid + 10);
+  iconCtx.lineTo(mid + 8, mid - 10);
+  iconCtx.stroke();
+  iconCtx.fillStyle = colors.head;
+  iconCtx.strokeStyle = colors.edge;
+  iconCtx.lineWidth = 1.2;
+  if (variant === "pickaxe") {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 8, mid - 10);
+    iconCtx.quadraticCurveTo(mid - 1, mid - 16, mid + 7, mid - 9);
+    iconCtx.quadraticCurveTo(mid, mid - 11, mid - 8, mid - 10);
+    iconCtx.closePath();
+  } else {
+    iconCtx.beginPath();
+    iconCtx.moveTo(mid - 11, mid - 7);
+    iconCtx.quadraticCurveTo(mid - 1, mid - 15, mid + 2, mid - 4);
+    iconCtx.lineTo(mid - 2, mid + 4);
+    iconCtx.quadraticCurveTo(mid - 7, mid - 1, mid - 11, mid - 7);
+    iconCtx.closePath();
+  }
+  iconCtx.fill();
+  iconCtx.stroke();
+}
+
+function getCraftingRecipeIconUrl(itemInput, itemIdOverride = "") {
+  const itemData = itemInput && typeof itemInput === "object" ? itemInput : null;
+  const resolvedItemId = String(itemIdOverride || (itemData && (itemData.itemId || itemData.id)) || itemInput || "").trim();
+  if (!resolvedItemId) {
+    return "";
+  }
+  return createIconUrl(`craft_recipe_icon:${resolvedItemId}`, (iconCtx, size) => {
+    const rarity = String(itemData && itemData.rarity || "normal").trim().toLowerCase() || "normal";
+    const lowerItemId = resolvedItemId.toLowerCase();
+    const tags = new Set(
+      Array.isArray(itemData && itemData.tags)
+        ? itemData.tags.map((value) => String(value || "").trim().toLowerCase()).filter(Boolean)
+        : []
+    );
+    drawItemIconBackdrop(iconCtx, size, getItemRarityColor(rarity), {
+      primary: rarity === "rare" ? "#7fd0ff" : rarity === "uncommon" ? "#8fd989" : "#8ea7bf",
+      secondary: "#f1f6ff"
+    });
+
+    if (resolvedItemId === "trailRations") {
+      drawFoodIcon(iconCtx, size, { primary: "#8d6f48", secondary: "#e7c98f" }, "rations");
+      return;
+    }
+    if (resolvedItemId === "rawMeat" || tags.has("food")) {
+      drawFoodIcon(iconCtx, size, { primary: "#b95757", secondary: "#ffd0c8" }, "meat");
+      return;
+    }
+    if (tags.has("log") || lowerItemId.includes("log")) {
+      const woodColors = lowerItemId.includes("birch")
+        ? { bark: "#d9d1bb", wood: "#f0e4c6" }
+        : lowerItemId.includes("pine")
+          ? { bark: "#7e5f33", wood: "#d7b579" }
+          : { bark: "#7a4c2b", wood: "#d9b07f" };
+      drawLogBundleIcon(iconCtx, size, woodColors);
+      return;
+    }
+    if (tags.has("plank") || lowerItemId.includes("plank")) {
+      const plankColors = lowerItemId.includes("birch")
+        ? { primary: "#e3d6b5", secondary: "#f2e8d2", detail: "#cfbe98" }
+        : lowerItemId.includes("pine")
+          ? { primary: "#aa7d48", secondary: "#d8b179", detail: "#8d673a" }
+          : { primary: "#9a6b3e", secondary: "#c79663", detail: "#7b542f" };
+      drawPlankBundleIcon(iconCtx, size, plankColors);
+      return;
+    }
+    if (tags.has("ore") || lowerItemId.includes("ore")) {
+      const oreColors = lowerItemId.includes("tin")
+        ? { primary: "#b9d0de", secondary: "#e8f5ff" }
+        : lowerItemId.includes("iron")
+          ? { primary: "#97a4b4", secondary: "#dce4ee" }
+          : { primary: "#d58a55", secondary: "#ffd3a2" };
+      drawOreChunkIcon(iconCtx, size, oreColors);
+      return;
+    }
+    if (resolvedItemId === "roughStone" || tags.has("stone") || lowerItemId.includes("stone")) {
+      drawStoneChunkIcon(iconCtx, size);
+      return;
+    }
+    if (resolvedItemId === "sap" || resolvedItemId === "resin" || tags.has("resin")) {
+      drawSapIcon(iconCtx, size, {
+        primary: resolvedItemId === "resin" ? "#c48934" : "#d8a33a",
+        secondary: resolvedItemId === "resin" ? "#ffe09b" : "#ffe79d"
+      });
+      return;
+    }
+    if (lowerItemId.includes("tusk")) {
+      drawBoneIcon(iconCtx, size, { primary: "#efe7d4", secondary: "#fff8ea" }, "tusk");
+      return;
+    }
+    if (lowerItemId.includes("antler")) {
+      drawBoneIcon(iconCtx, size, { primary: "#d2bf9a", secondary: "#f4e7c8" }, "antler");
+      return;
+    }
+    if (tags.has("bone") || lowerItemId.includes("bone")) {
+      drawBoneIcon(
+        iconCtx,
+        size,
+        { primary: "#ece3cd", secondary: "#fff9ea" },
+        lowerItemId.includes("fragment") ? "fragment" : "bone"
+      );
+      return;
+    }
+    if (tags.has("hide") || tags.has("fur") || tags.has("leather") || lowerItemId.includes("hide") || lowerItemId.includes("pelt") || lowerItemId.includes("fur")) {
+      const hideColors = resolvedItemId === "rabbitPelt"
+        ? { primary: "#bcb7c8", secondary: "#f2eff9" }
+        : resolvedItemId === "lightHide"
+          ? { primary: "#b78a5f", secondary: "#eecba8" }
+          : resolvedItemId === "thickHide"
+            ? { primary: "#845e3c", secondary: "#d6b38b" }
+            : { primary: "#9a7a55", secondary: "#ecd1ad" };
+      drawHideBundleIcon(iconCtx, size, hideColors, resolvedItemId === "hideWraps" ? "wraps" : "hide");
+      return;
+    }
+    if (tags.has("tool") || lowerItemId.includes("hatchet") || lowerItemId.includes("pickaxe")) {
+      const toolColors = lowerItemId.includes("bronze")
+        ? { handle: "#8a6136", head: "#b67636", edge: "#f5d08a" }
+        : { handle: "#7d5a34", head: "#8e949d", edge: "#dfe6f0" };
+      drawToolIcon(iconCtx, size, toolColors, tags.has("pickaxe") || lowerItemId.includes("pickaxe") ? "pickaxe" : "hatchet");
+      return;
+    }
+    iconCtx.fillStyle = "#8fa3b8";
+    iconCtx.beginPath();
+    iconCtx.arc(size / 2, size / 2, 10, 0, Math.PI * 2);
+    iconCtx.fill();
+  });
+}
+
 function resolveHeadArmorIconStyle(itemInput, presentation) {
   const text = `${String(presentation?.itemId || "")} ${String(itemInput?.name || "")}`.toLowerCase();
   const tags = new Set(Array.isArray(itemInput?.tags) ? itemInput.tags.map((value) => String(value || "").toLowerCase()) : []);
@@ -6450,6 +6839,7 @@ function drawItemIcon(itemInput, iconCtx, size) {
   const presentation = getItemPresentationData(itemInput);
   const mid = size / 2;
   const accentPalette = getItemAccentPalette(itemInput);
+  const tags = getItemTagSet(itemInput, presentation);
   drawItemIconBackdrop(iconCtx, size, presentation.rarityColor, accentPalette);
 
   if (presentation.itemId === "copperCoin") {
@@ -6489,6 +6879,96 @@ function drawItemIcon(itemInput, iconCtx, size) {
       drawWeaponOrOffhandIcon(iconCtx, size, presentation, accentPalette);
     }
     drawItemAffixDecorations(iconCtx, size, presentation.affixThemes);
+    return;
+  }
+
+  if (tags.has("log")) {
+    const woodColors = presentation.itemId.includes("birch")
+      ? { bark: "#d9d1bb", wood: "#f0e4c6" }
+      : presentation.itemId.includes("pine")
+        ? { bark: "#7e5f33", wood: "#d7b579" }
+        : { bark: "#7a4c2b", wood: "#d9b07f" };
+    drawLogBundleIcon(iconCtx, size, woodColors);
+    return;
+  }
+
+  if (tags.has("plank")) {
+    const plankColors = presentation.itemId.includes("birch")
+      ? { primary: "#e3d6b5", secondary: "#f2e8d2", detail: "#cfbe98" }
+      : presentation.itemId.includes("pine")
+        ? { primary: "#aa7d48", secondary: "#d8b179", detail: "#8d673a" }
+        : { primary: "#9a6b3e", secondary: "#c79663", detail: "#7b542f" };
+    drawPlankBundleIcon(iconCtx, size, plankColors);
+    return;
+  }
+
+  if (tags.has("ore")) {
+    const oreColors = presentation.itemId.includes("tin")
+      ? { primary: "#b9d0de", secondary: "#e8f5ff" }
+      : presentation.itemId.includes("iron")
+        ? { primary: "#97a4b4", secondary: "#dce4ee" }
+        : { primary: "#d58a55", secondary: "#ffd3a2" };
+    drawOreChunkIcon(iconCtx, size, oreColors);
+    return;
+  }
+
+  if (presentation.itemId === "roughStone" || tags.has("stone")) {
+    drawStoneChunkIcon(iconCtx, size);
+    return;
+  }
+
+  if (presentation.itemId === "sap" || presentation.itemId === "resin" || tags.has("resin")) {
+    drawSapIcon(iconCtx, size, {
+      primary: presentation.itemId === "resin" ? "#c48934" : "#d8a33a",
+      secondary: presentation.itemId === "resin" ? "#ffe09b" : "#ffe79d"
+    });
+    return;
+  }
+
+  if (presentation.itemId.includes("tusk")) {
+    drawBoneIcon(iconCtx, size, { primary: "#efe7d4", secondary: "#fff8ea" }, "tusk");
+    return;
+  }
+  if (presentation.itemId.includes("antler")) {
+    drawBoneIcon(iconCtx, size, { primary: "#d2bf9a", secondary: "#f4e7c8" }, "antler");
+    return;
+  }
+  if (tags.has("bone")) {
+    drawBoneIcon(
+      iconCtx,
+      size,
+      { primary: "#ece3cd", secondary: "#fff9ea" },
+      presentation.itemId.includes("fragment") ? "fragment" : "bone"
+    );
+    return;
+  }
+
+  if (presentation.itemId === "trailRations") {
+    drawFoodIcon(iconCtx, size, { primary: "#8d6f48", secondary: "#e7c98f" }, "rations");
+    return;
+  }
+  if (presentation.itemId === "rawMeat" || tags.has("food")) {
+    drawFoodIcon(iconCtx, size, { primary: "#b95757", secondary: "#ffd0c8" }, "meat");
+    return;
+  }
+
+  if (tags.has("hide") || tags.has("fur") || tags.has("leather")) {
+    const hideColors = presentation.itemId === "rabbitPelt"
+      ? { primary: "#bcb7c8", secondary: "#f2eff9" }
+      : presentation.itemId === "lightHide"
+        ? { primary: "#b78a5f", secondary: "#eecba8" }
+        : presentation.itemId === "thickHide"
+          ? { primary: "#845e3c", secondary: "#d6b38b" }
+          : { primary: "#9a7a55", secondary: "#ecd1ad" };
+    drawHideBundleIcon(iconCtx, size, hideColors, presentation.itemId === "hideWraps" ? "wraps" : "hide");
+    return;
+  }
+
+  if (tags.has("tool")) {
+    const toolColors = presentation.itemId.includes("bronze")
+      ? { handle: "#8a6136", head: "#b67636", edge: "#f5d08a" }
+      : { handle: "#7d5a34", head: "#8e949d", edge: "#dfe6f0" };
+    drawToolIcon(iconCtx, size, toolColors, tags.has("pickaxe") ? "pickaxe" : "hatchet");
     return;
   }
 
@@ -7001,12 +7481,13 @@ function createCraftingRecipeEntry(recipe) {
   const entry = document.createElement("div");
   entry.className = "vendor-item-entry crafting-item-entry";
   const output = Array.isArray(recipe.outputs) && recipe.outputs.length ? recipe.outputs[0] : null;
+  const outputItemId = String(output && output.itemId || "");
   const outputDef = output ? itemDefsById.get(String(output.itemId || "")) || null : null;
   const iconShell = document.createElement("div");
-  iconShell.className = "vendor-item-icon";
+  iconShell.className = "vendor-item-icon crafting-item-icon";
   const icon = document.createElement("div");
-  icon.className = "inv-icon";
-  icon.style.backgroundImage = `url(${getItemIconUrl(outputDef || output || { itemId: String(output && output.itemId || "") })})`;
+  icon.className = "inv-icon crafting-item-entry-icon";
+  icon.style.backgroundImage = outputItemId ? `url(${getCraftingRecipeIconUrl(outputDef || output || null, outputItemId)})` : "";
   iconShell.appendChild(icon);
 
   const meta = document.createElement("div");
