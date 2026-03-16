@@ -2,6 +2,20 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function cloneSerializableValue(value) {
+  if (Array.isArray(value)) {
+    return value.map(cloneSerializableValue);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const clone = {};
+  for (const [key, entryValue] of Object.entries(value)) {
+    clone[key] = cloneSerializableValue(entryValue);
+  }
+  return clone;
+}
+
 function createPlayerMessageTools(options = {}) {
   const sendJson = options.sendJson;
   const itemDefs = options.itemDefs;
@@ -9,6 +23,8 @@ function createPlayerMessageTools(options = {}) {
   const inventoryCols = Math.max(1, Number(options.inventoryCols) || 1);
   const inventoryRows = Math.max(1, Number(options.inventoryRows) || 1);
   const inventorySlotCount = Math.max(1, Number(options.inventorySlotCount) || inventoryCols * inventoryRows);
+  const inventorySnapshots = new WeakMap();
+  const equipmentSnapshots = new WeakMap();
 
   if (typeof sendJson !== "function") {
     throw new Error("createPlayerMessageTools requires sendJson function");
@@ -47,21 +63,54 @@ function createPlayerMessageTools(options = {}) {
       entry.itemLevel = Math.max(1, Math.floor(Number(slot.itemLevel)));
     }
     if (slot.baseStats && typeof slot.baseStats === "object") {
-      entry.baseStats = slot.baseStats;
+      entry.baseStats = cloneSerializableValue(slot.baseStats);
     }
     if (Array.isArray(slot.tags)) {
-      entry.tags = slot.tags;
+      entry.tags = cloneSerializableValue(slot.tags);
     }
     if (Array.isArray(slot.affixes)) {
-      entry.affixes = slot.affixes;
+      entry.affixes = cloneSerializableValue(slot.affixes);
     }
     if (Array.isArray(slot.prefixes)) {
-      entry.prefixes = slot.prefixes;
+      entry.prefixes = cloneSerializableValue(slot.prefixes);
     }
     if (Array.isArray(slot.suffixes)) {
-      entry.suffixes = slot.suffixes;
+      entry.suffixes = cloneSerializableValue(slot.suffixes);
     }
     return entry;
+  }
+
+  function buildInventorySnapshot(player) {
+    const slots = Array.isArray(player?.inventorySlots) ? player.inventorySlots : [];
+    const serialized = [];
+    const signatures = [];
+    for (let i = 0; i < inventorySlotCount; i += 1) {
+      const entry = serializeItemEntry(slots[i]);
+      serialized.push(entry);
+      signatures.push(entry ? JSON.stringify(entry) : "");
+    }
+    return {
+      cols: inventoryCols,
+      rows: inventoryRows,
+      serialized,
+      signatures
+    };
+  }
+
+  function buildEquipmentSnapshot(player) {
+    const equipmentSlots = player && player.equipmentSlots && typeof player.equipmentSlots === "object" ? player.equipmentSlots : {};
+    const serialized = {};
+    const signatures = {};
+    for (const slotId of equipmentSlotIds) {
+      const entry = serializeItemEntry(equipmentSlots[slotId]);
+      serialized[slotId] = entry;
+      signatures[slotId] = entry ? JSON.stringify(entry) : "";
+    }
+    return {
+      itemSlots: [...equipmentSlotIds],
+      serialized,
+      signatures
+    };
   }
 
   function serializePlayerAbilityLevels(player) {
@@ -99,40 +148,91 @@ function createPlayerMessageTools(options = {}) {
   }
 
   function serializeInventorySlots(player) {
-    const slots = Array.isArray(player?.inventorySlots) ? player.inventorySlots : [];
-    const serialized = [];
-    for (let i = 0; i < inventorySlotCount; i += 1) {
-      serialized.push(serializeItemEntry(slots[i]));
-    }
-    return serialized;
+    return buildInventorySnapshot(player).serialized;
   }
 
   function sendInventoryState(player) {
     if (!player) {
       return;
     }
+    const snapshot = buildInventorySnapshot(player);
+    const previous = inventorySnapshots.get(player);
+    if (
+      !previous ||
+      previous.cols !== snapshot.cols ||
+      previous.rows !== snapshot.rows ||
+      !Array.isArray(previous.signatures) ||
+      previous.signatures.length !== snapshot.signatures.length
+    ) {
+      sendJson(player.ws, {
+        type: "inventory_state",
+        cols: snapshot.cols,
+        rows: snapshot.rows,
+        slots: snapshot.serialized
+      });
+      inventorySnapshots.set(player, snapshot);
+      return;
+    }
+
+    const changedSlots = [];
+    for (let index = 0; index < snapshot.signatures.length; index += 1) {
+      if (snapshot.signatures[index] === previous.signatures[index]) {
+        continue;
+      }
+      changedSlots.push({
+        index,
+        item: snapshot.serialized[index]
+      });
+    }
+    if (!changedSlots.length) {
+      return;
+    }
     sendJson(player.ws, {
-      type: "inventory_state",
-      cols: inventoryCols,
-      rows: inventoryRows,
-      slots: serializeInventorySlots(player)
+      type: "inventory_delta",
+      slots: changedSlots
     });
+    inventorySnapshots.set(player, snapshot);
   }
 
   function sendEquipmentState(player) {
     if (!player) {
       return;
     }
-    const equipmentSlots = player.equipmentSlots && typeof player.equipmentSlots === "object" ? player.equipmentSlots : {};
-    const serialized = {};
-    for (const slotId of equipmentSlotIds) {
-      serialized[slotId] = serializeItemEntry(equipmentSlots[slotId]);
+    const snapshot = buildEquipmentSnapshot(player);
+    const previous = equipmentSnapshots.get(player);
+    const slotIdsChanged =
+      !previous ||
+      !Array.isArray(previous.itemSlots) ||
+      previous.itemSlots.length !== snapshot.itemSlots.length ||
+      previous.itemSlots.some((slotId, index) => slotId !== snapshot.itemSlots[index]);
+    if (slotIdsChanged) {
+      sendJson(player.ws, {
+        type: "equipment_state",
+        itemSlots: snapshot.itemSlots,
+        slots: snapshot.serialized
+      });
+      equipmentSnapshots.set(player, snapshot);
+      return;
+    }
+
+    const changedSlots = [];
+    for (const slotId of snapshot.itemSlots) {
+      if (snapshot.signatures[slotId] === previous.signatures[slotId]) {
+        continue;
+      }
+      changedSlots.push({
+        slotId,
+        item: snapshot.serialized[slotId]
+      });
+    }
+    if (!changedSlots.length) {
+      return;
     }
     sendJson(player.ws, {
-      type: "equipment_state",
-      itemSlots: equipmentSlotIds,
-      slots: serialized
+      type: "equipment_delta",
+      slots: changedSlots
     });
+    equipmentSnapshots.set(player, snapshot);
   }
 
   function serializeBagItemsForMeta(items, normalizeItemEntries) {

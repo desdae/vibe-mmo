@@ -11187,6 +11187,25 @@ function applyInventoryState(msg) {
   updateVendorPanelUI();
 }
 
+function applyInventoryDelta(msg) {
+  const cols = Math.max(1, Math.min(12, Math.floor(Number(inventoryState.cols) || 5)));
+  const rows = Math.max(1, Math.min(12, Math.floor(Number(inventoryState.rows) || 2)));
+  const targetLength = cols * rows;
+  ensureInventorySlotsLength();
+  if (!Array.isArray(inventoryState.slots) || inventoryState.slots.length !== targetLength) {
+    inventoryState.slots = Array.from({ length: targetLength }, () => null);
+  }
+  for (const entry of Array.isArray(msg && msg.slots) ? msg.slots : []) {
+    const index = Math.floor(Number(entry && entry.index));
+    if (!Number.isInteger(index) || index < 0 || index >= targetLength) {
+      continue;
+    }
+    inventoryState.slots[index] = parseItemStateEntry(entry ? entry.item : null);
+  }
+  updateInventoryUI();
+  updateVendorPanelUI();
+}
+
 function applyEquipmentState(msg) {
   if (Array.isArray(msg && msg.itemSlots) && msg.itemSlots.length) {
     applyEquipmentConfig({ itemSlots: msg.itemSlots });
@@ -11195,6 +11214,23 @@ function applyEquipmentState(msg) {
   for (const slotId of equipmentConfigState.itemSlots) {
     const raw = msg && msg.slots && typeof msg.slots === "object" ? msg.slots[slotId] : null;
     nextSlots[slotId] = parseItemStateEntry(raw);
+  }
+  equipmentState.slots = nextSlots;
+  updateEquipmentUI();
+  updateVendorPanelUI();
+}
+
+function applyEquipmentDelta(msg) {
+  if (Array.isArray(msg && msg.itemSlots) && msg.itemSlots.length) {
+    applyEquipmentConfig({ itemSlots: msg.itemSlots });
+  }
+  const nextSlots = equipmentState.slots && typeof equipmentState.slots === "object" ? { ...equipmentState.slots } : {};
+  for (const entry of Array.isArray(msg && msg.slots) ? msg.slots : []) {
+    const slotId = String(entry && entry.slotId || "").trim();
+    if (!slotId) {
+      continue;
+    }
+    nextSlots[slotId] = parseItemStateEntry(entry ? entry.item : null);
   }
   equipmentState.slots = nextSlots;
   updateEquipmentUI();
@@ -11652,7 +11688,9 @@ const serverMessageHandlers = {
   item_defs: (msg) => applyItemDefs(msg.items),
   equipment_config: (msg) => applyEquipmentConfig(msg.equipment),
   inventory_state: (msg) => applyInventoryState(msg),
+  inventory_delta: (msg) => applyInventoryDelta(msg),
   equipment_state: (msg) => applyEquipmentState(msg),
+  equipment_delta: (msg) => applyEquipmentDelta(msg),
   player_meta: (msg) => {
     applyPlayerMeta(msg.players);
     syncEntityArraysToGameState();
