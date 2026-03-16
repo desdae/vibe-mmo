@@ -1,6 +1,7 @@
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
+const crypto = require("crypto");
 const { WebSocketServer } = require("ws");
 const { normalizeId, mapGet, mapHas } = require("./server/utils/id-utils");
 const townLayoutTools = require("./public/shared/town-layout");
@@ -251,6 +252,24 @@ if (IS_PROD_MODE && selectedIndexFileName !== preferredIndexFileName) {
   console.warn("[server] Missing public/index.prod.html, falling back to index.dev.html");
 }
 const buildSoundManifest = createSoundManifestBuilder({ publicDir });
+function buildStaticClientConfigSnapshot() {
+  const snapshot = {
+    classes: CLASS_CONFIG.clientClassDefs,
+    abilities: ABILITY_CONFIG.clientAbilityDefs,
+    items: ITEM_CONFIG.clientItemDefs,
+    equipment: ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] },
+    sounds: buildSoundManifest()
+  };
+  const version = crypto
+    .createHash("sha1")
+    .update(JSON.stringify(snapshot))
+    .digest("hex")
+    .slice(0, 16);
+  return {
+    version,
+    ...snapshot
+  };
+}
 const playerVisibilityTools = createPlayerVisibilityTools({
   defaultVisibilityRange: VISIBILITY_RANGE,
   maxViewportWidth: MAX_VIEWPORT_WIDTH,
@@ -401,21 +420,25 @@ const server = createGameHttpServer({
   http,
   publicDir,
   indexFileName: selectedIndexFileName,
-  getGameConfigPayload: () => ({
-    classes: CLASS_CONFIG.clientClassDefs,
-    abilities: ABILITY_CONFIG.clientAbilityDefs,
-    items: ITEM_CONFIG.clientItemDefs,
-    equipment: ITEM_CONFIG.clientEquipmentConfig,
-    gameplay: {
-      audio: GAMEPLAY_CONFIG.audio,
-      loot: GAMEPLAY_CONFIG.loot,
-      town: serializeTownLayout(TOWN_LAYOUT),
-      crafting: {
-        recipes: craftingTools ? craftingTools.serializeRecipeDefs() : []
-      }
-    },
-    sounds: buildSoundManifest()
-  })
+  getGameConfigPayload: () => {
+    const staticClientConfig = buildStaticClientConfigSnapshot();
+    return {
+      configVersion: staticClientConfig.version,
+      classes: staticClientConfig.classes,
+      abilities: staticClientConfig.abilities,
+      items: staticClientConfig.items,
+      equipment: staticClientConfig.equipment,
+      gameplay: {
+        audio: GAMEPLAY_CONFIG.audio,
+        loot: GAMEPLAY_CONFIG.loot,
+        town: serializeTownLayout(TOWN_LAYOUT),
+        crafting: {
+          recipes: craftingTools ? craftingTools.serializeRecipeDefs() : []
+        }
+      },
+      sounds: staticClientConfig.sounds
+    };
+  }
 });
 
 const wss = new WebSocketServer({
@@ -1400,6 +1423,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     mapHeight: MAP_HEIGHT,
     visibilityRange: VISIBILITY_RANGE,
     buildSoundManifest,
+    getStaticClientConfigSnapshot: buildStaticClientConfigSnapshot,
     randomSpawn,
     expNeededForLevel,
     createEmptyInventorySlots,

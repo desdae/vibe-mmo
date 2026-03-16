@@ -21,6 +21,14 @@ function createDeps(overrides = {}) {
   return {
     sendJson: jest.fn(),
     buildSoundManifest: jest.fn(() => []),
+    getStaticClientConfigSnapshot: jest.fn(() => ({
+      version: "cfg-1",
+      classes: [],
+      abilities: [],
+      items: [],
+      equipment: { itemSlots: [] },
+      sounds: []
+    })),
     CLASS_CONFIG: { clientClassDefs: [] },
     ABILITY_CONFIG: { clientAbilityDefs: [] },
     getServerConfig: () => ({
@@ -187,5 +195,28 @@ describe("registerWsConnections", () => {
     expect(ws1.close).not.toHaveBeenCalled();
     expect(ws2.close).not.toHaveBeenCalled();
     expect(ws3.close).toHaveBeenCalledWith(1008, "rate_limited");
+  });
+
+  test("sends a minimal hello payload with the current config version", () => {
+    const wss = new FakeWebSocketServer();
+    const deps = createDeps();
+    registerWsConnections({ wss, deps });
+
+    const ws = new FakeSocket();
+    wss.emit("connection", ws, {
+      headers: {},
+      socket: { remoteAddress: "127.0.0.1" }
+    });
+
+    const helloPayload = deps.sendJson.mock.calls.find(([, payload]) => payload && payload.type === "hello")[1];
+    expect(helloPayload).toEqual(
+      expect.objectContaining({
+        type: "hello",
+        configVersion: "cfg-1"
+      })
+    );
+    expect(helloPayload.classes).toBeUndefined();
+    expect(helloPayload.abilities).toBeUndefined();
+    expect(helloPayload.sounds).toBeUndefined();
   });
 });

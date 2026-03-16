@@ -15,14 +15,29 @@ function createJoinedPlayer(ws, msg, deps) {
     return joinResult;
   }
   const player = joinResult.player;
+  const staticClientConfig =
+    typeof deps.getStaticClientConfigSnapshot === "function"
+      ? deps.getStaticClientConfigSnapshot()
+      : {
+          version: "",
+          classes: deps.CLASS_CONFIG.clientClassDefs,
+          abilities: deps.ABILITY_CONFIG.clientAbilityDefs,
+          items: deps.ITEM_CONFIG.clientItemDefs,
+          equipment: deps.ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] },
+          sounds: deps.buildSoundManifest()
+        };
+  const configVersion = String(staticClientConfig && staticClientConfig.version || "").trim();
+  const clientConfigVersion = String(msg && msg.configVersion || "").trim();
+  const shouldSendStaticConfig = !configVersion || !clientConfigVersion || clientConfigVersion !== configVersion;
   const viewportState =
     typeof deps.updatePlayerViewport === "function"
       ? deps.updatePlayerViewport(player, msg.viewportWidth, msg.viewportHeight)
       : null;
 
-  deps.sendJson(ws, {
+  const welcomePayload = {
     type: "welcome",
     id: player.id,
+    configVersion,
     selfStatic: {
       id: player.id,
       name: player.name,
@@ -36,24 +51,30 @@ function createJoinedPlayer(ws, msg, deps) {
     visibilityRange: viewportState ? Math.max(1, viewportState.x, viewportState.y) : deps.VISIBILITY_RANGE,
     talentTree: typeof deps.getTalentTreeData === "function" ? deps.getTalentTreeData(player) : null,
     visibilityRangeX: viewportState ? viewportState.x : deps.VISIBILITY_RANGE,
-    visibilityRangeY: viewportState ? viewportState.y : deps.VISIBILITY_RANGE,
-    equipment: deps.ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] },
-    sounds: deps.buildSoundManifest()
-  });
+    visibilityRangeY: viewportState ? viewportState.y : deps.VISIBILITY_RANGE
+  };
+  if (shouldSendStaticConfig) {
+    welcomePayload.equipment = staticClientConfig.equipment || { itemSlots: [] };
+    welcomePayload.sounds = Array.isArray(staticClientConfig.sounds) ? staticClientConfig.sounds : [];
+  }
 
-  deps.sendJson(ws, {
-    type: "class_defs",
-    classes: deps.CLASS_CONFIG.clientClassDefs,
-    abilities: deps.ABILITY_CONFIG.clientAbilityDefs
-  });
-  deps.sendJson(ws, {
-    type: "item_defs",
-    items: deps.ITEM_CONFIG.clientItemDefs
-  });
-  deps.sendJson(ws, {
-    type: "equipment_config",
-    equipment: deps.ITEM_CONFIG.clientEquipmentConfig || { itemSlots: [] }
-  });
+  deps.sendJson(ws, welcomePayload);
+
+  if (shouldSendStaticConfig) {
+    deps.sendJson(ws, {
+      type: "class_defs",
+      classes: staticClientConfig.classes,
+      abilities: staticClientConfig.abilities
+    });
+    deps.sendJson(ws, {
+      type: "item_defs",
+      items: staticClientConfig.items
+    });
+    deps.sendJson(ws, {
+      type: "equipment_config",
+      equipment: staticClientConfig.equipment || { itemSlots: [] }
+    });
+  }
   deps.sendInventoryState(player);
   deps.sendEquipmentState(player);
   deps.sendSelfProgress(player);

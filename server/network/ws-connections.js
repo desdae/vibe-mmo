@@ -87,13 +87,13 @@ function registerWsConnections(params = {}) {
 
     const messageLimitKey = `${remoteAddress}#${nextConnectionId++}`;
     let player = null;
+    const staticClientConfig =
+      typeof deps.getStaticClientConfigSnapshot === "function" ? deps.getStaticClientConfigSnapshot() : null;
 
     deps.sendJson(ws, {
       type: "hello",
       message: "Send join message with name and classType.",
-      classes: deps.CLASS_CONFIG.clientClassDefs,
-      abilities: deps.ABILITY_CONFIG.clientAbilityDefs,
-      sounds: deps.buildSoundManifest()
+      configVersion: staticClientConfig ? String(staticClientConfig.version || "") : ""
     });
 
     ws.on("message", (rawMessage) => {

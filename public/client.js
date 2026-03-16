@@ -464,6 +464,7 @@ let myId = null;
 let lastRenderState = null;
 let selfStatic = null;
 let pendingJoinInfo = null;
+let clientStaticConfigVersion = "";
 const vfxIdState = {
   nextDamageFloatId: 1,
   nextExplosionFxId: 1
@@ -10360,6 +10361,8 @@ async function loadInitialGameConfig() {
       return false;
     }
     const payload = await response.json();
+    clientStaticConfigVersion =
+      payload && typeof payload.configVersion === "string" ? payload.configVersion.trim() : "";
     if (payload && typeof payload === "object" && payload.sounds) {
       applySoundManifest(payload.sounds);
     }
@@ -11583,6 +11586,7 @@ const serverMessageHandlers = {
       name,
       classType,
       isAdmin: !!isAdmin,
+      configVersion: clientStaticConfigVersion,
       viewportWidth: Math.max(1, Math.floor(Number(canvas.width) || 0)),
       viewportHeight: Math.max(1, Math.floor(Number(canvas.height) || 0))
     });
@@ -11604,10 +11608,15 @@ const serverMessageHandlers = {
     if (msg && typeof msg === "object" && msg.equipment) {
       applyEquipmentConfig(msg.equipment);
     }
-    applyClassAndAbilityDefs(msg.classes, msg.abilities);
+    if (Array.isArray(msg && msg.classes) || Array.isArray(msg && msg.abilities)) {
+      applyClassAndAbilityDefs(msg.classes, msg.abilities);
+    }
   },
   welcome: (msg) => {
     myId = msg.id;
+    if (msg && typeof msg === "object" && typeof msg.configVersion === "string") {
+      clientStaticConfigVersion = msg.configVersion.trim();
+    }
     selfStatic = msg.selfStatic || {
       id: msg.id,
       name: (pendingJoinInfo && pendingJoinInfo.name) || "You",
