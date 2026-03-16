@@ -140,4 +140,39 @@ describe("state-broadcast spatial queries", () => {
       [{ id: "bag-1", x: 10, y: 12 }]
     );
   });
+
+  test("sends entity metadata only over the binary transport", () => {
+    const deps = createDeps({
+      buildEntityUpdatePacket: jest.fn(() => ({
+        playerMeta: [{ id: 2, name: "Other", classType: "mage", appearance: { head: { itemId: "hat" } } }],
+        mobMeta: [{ id: 3, name: "Wolf", level: 2, renderStyle: { bodyColor: "#fff" } }],
+        projectileMeta: [{ id: 4, abilityId: "fireball" }],
+        lootBagMeta: [{ id: 5, items: [{ itemId: "wood", qty: 2 }] }],
+        packet: null
+      }))
+    });
+
+    broadcastStateToPlayers(deps, 1500);
+
+    expect(deps.encodePlayerMetaPacket).toHaveBeenCalledTimes(2);
+    expect(deps.encodeMobMetaPacket).toHaveBeenCalledTimes(2);
+    expect(deps.encodeProjectileMetaPacket).toHaveBeenCalledTimes(2);
+    expect(deps.encodeLootBagMetaPacket).toHaveBeenCalledTimes(2);
+    expect(deps.sendJson).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "player_meta" })
+    );
+    expect(deps.sendJson).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "mob_meta" })
+    );
+    expect(deps.sendJson).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "projectile_meta" })
+    );
+    expect(deps.sendJson).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ type: "lootbag_meta" })
+    );
+  });
 });

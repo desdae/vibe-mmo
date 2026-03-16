@@ -143,7 +143,6 @@ function sendVisibleResourceNodes(player, nearbyResourceNodes, deps) {
 function sendEntityMeta(player, entityUpdate, deps) {
   const {
     sendBinary,
-    sendJson,
     encodePlayerMetaPacket,
     encodeMobMetaPacket,
     encodeProjectileMetaPacket,
@@ -151,47 +150,15 @@ function sendEntityMeta(player, entityUpdate, deps) {
   } = deps;
   if (entityUpdate.playerMeta.length) {
     sendBinary(player.ws, encodePlayerMetaPacket(entityUpdate.playerMeta));
-    if (typeof sendJson === "function") {
-      sendJson(player.ws, {
-        type: "player_meta",
-        players: entityUpdate.playerMeta.map((meta) => ({
-          id: meta.id,
-          name: String(meta.name || `P${meta.id}`),
-          classType: String(meta.classType || ""),
-          appearance: meta.appearance && typeof meta.appearance === "object" ? { ...meta.appearance } : null
-        }))
-      });
-    }
   }
   if (entityUpdate.mobMeta.length) {
     sendBinary(player.ws, encodeMobMetaPacket(entityUpdate.mobMeta));
-    if (typeof sendJson === "function") {
-      sendJson(player.ws, {
-        type: "mob_meta",
-        mobs: entityUpdate.mobMeta.map((meta) => ({ ...meta }))
-      });
-    }
   }
   if (entityUpdate.projectileMeta.length) {
     sendBinary(player.ws, encodeProjectileMetaPacket(entityUpdate.projectileMeta));
-    if (typeof sendJson === "function") {
-      sendJson(player.ws, {
-        type: "projectile_meta",
-        projectiles: entityUpdate.projectileMeta.map((meta) => ({ ...meta }))
-      });
-    }
   }
   if (entityUpdate.lootBagMeta.length) {
     sendBinary(player.ws, encodeLootBagMetaPacket(entityUpdate.lootBagMeta));
-    if (typeof sendJson === "function") {
-      sendJson(player.ws, {
-        type: "lootbag_meta",
-        bags: entityUpdate.lootBagMeta.map((meta) => ({
-          id: meta.id,
-          items: Array.isArray(meta.items) ? meta.items.map((entry) => ({ ...entry })) : []
-        }))
-      });
-    }
   }
 }
 
