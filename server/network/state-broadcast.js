@@ -24,6 +24,32 @@ function isVisibleToPlayer(player, entity, deps, padX = 0, padY = padX) {
   });
 }
 
+function getSpatialQueryRadius(player, deps, padX = 0, padY = padX) {
+  const extents = getPlayerVisibilityExtents(player, deps);
+  const queryX = extents.x + Math.max(0, Number(padX) || 0);
+  const queryY = extents.y + Math.max(0, Number(padY) || 0);
+  return Math.max(1, Math.hypot(queryX, queryY));
+}
+
+function getNearbyEntityCandidates(player, deps, fallbackMap, queryFnName, padX = 0, padY = padX) {
+  const queryFn = deps && typeof deps[queryFnName] === "function" ? deps[queryFnName] : null;
+  if (queryFn && player) {
+    const candidates = queryFn(
+      Number(player.x) || 0,
+      Number(player.y) || 0,
+      getSpatialQueryRadius(player, deps, padX, padY)
+    );
+    if (candidates && typeof candidates[Symbol.iterator] === "function") {
+      return candidates;
+    }
+    return [];
+  }
+  if (fallbackMap && typeof fallbackMap.values === "function") {
+    return fallbackMap.values();
+  }
+  return [];
+}
+
 function collectNearbyEntitiesForPlayer(player, deps) {
   const {
     players,
@@ -46,7 +72,7 @@ function collectNearbyEntitiesForPlayer(player, deps) {
       ? getVisibleResourceNodesForPlayer(player, deps.inVisibilityRange, getPlayerVisibilityExtents(player, deps))
       : [];
 
-  for (const other of players.values()) {
+  for (const other of getNearbyEntityCandidates(player, deps, players, "getPlayersInRadius")) {
     if (other.id === player.id) {
       continue;
     }
@@ -56,7 +82,7 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     }
   }
 
-  for (const projectile of projectiles.values()) {
+  for (const projectile of getNearbyEntityCandidates(player, deps, projectiles, "getProjectilesInRadius")) {
     if (isVisibleToPlayer(player, projectile, deps)) {
       nearbyProjectiles.push({
         id: projectile.id,
@@ -68,7 +94,7 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     }
   }
 
-  for (const mob of mobs.values()) {
+  for (const mob of getNearbyEntityCandidates(player, deps, mobs, "getMobsInRadius")) {
     if (!mob.alive) {
       continue;
     }
@@ -78,7 +104,7 @@ function collectNearbyEntitiesForPlayer(player, deps) {
     }
   }
 
-  for (const bag of lootBags.values()) {
+  for (const bag of getNearbyEntityCandidates(player, deps, lootBags, "getLootBagsInRadius")) {
     if (isVisibleToPlayer(player, bag, deps)) {
       nearbyLootBags.push(bag);
     }
@@ -383,6 +409,10 @@ function broadcastStateToPlayers(deps, now = Date.now(), options = {}) {
   const { players, buildEntityUpdatePacket, sendBinary } = deps;
   const sendCosmeticBursts = options.sendCosmeticBursts !== false;
   const sendDamageBursts = options.sendDamageBursts !== false;
+
+  if (typeof deps.rebuildSpatialIndexes === "function") {
+    deps.rebuildSpatialIndexes();
+  }
 
   for (const player of players.values()) {
     if (!player || !player.ws) {
