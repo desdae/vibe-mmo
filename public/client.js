@@ -529,6 +529,13 @@ const townClientState = {
   layout: null,
   wallTiles: []
 };
+const sharedCanvasBackgroundCacheModule = globalThis.VibeClientCanvasBackgroundCache || null;
+const createCanvasBackgroundCache =
+  sharedCanvasBackgroundCacheModule &&
+  typeof sharedCanvasBackgroundCacheModule.createCanvasBackgroundCache === "function"
+    ? sharedCanvasBackgroundCacheModule.createCanvasBackgroundCache
+    : null;
+let canvasBackgroundCache = null;
 const abilityAudioRegistry = new Map();
 const availableSoundUrls = new Set();
 let soundManifestLoaded = false;
@@ -16328,7 +16335,31 @@ function getTownQuestGivers() {
   return townClientState.layout && townClientState.layout.questGivers ? townClientState.layout.questGivers : [];
 }
 
+function getCanvasBackgroundCache() {
+  if (canvasBackgroundCache || !createCanvasBackgroundCache) {
+    return canvasBackgroundCache;
+  }
+  canvasBackgroundCache = createCanvasBackgroundCache({
+    ctx,
+    canvas,
+    tileSize: TILE_SIZE,
+    worldToScreen,
+    getTownLayout: () => townClientState.layout,
+    getTownWallTiles: () => townClientState.wallTiles,
+    getTownTileSprite,
+    isTownGateTileAt,
+    getMapWidth: () => Number(gameState && gameState.map && gameState.map.width) || 0,
+    getMapHeight: () => Number(gameState && gameState.map && gameState.map.height) || 0
+  });
+  return canvasBackgroundCache;
+}
+
 function drawTown(cameraX, cameraY) {
+  const backgroundCache = getCanvasBackgroundCache();
+  if (backgroundCache && typeof backgroundCache.drawTown === "function") {
+    backgroundCache.drawTown(cameraX, cameraY);
+    return;
+  }
   const layout = townClientState.layout;
   if (!layout || layout.enabled === false) {
     return;
@@ -16453,6 +16484,11 @@ function drawQuestNpcTooltip(npc, p) {
 }
 
 function drawGrid(cameraX, cameraY) {
+  const backgroundCache = getCanvasBackgroundCache();
+  if (backgroundCache && typeof backgroundCache.drawGrid === "function") {
+    backgroundCache.drawGrid(cameraX, cameraY);
+    return;
+  }
   const tilesX = Math.ceil(canvas.width / TILE_SIZE) + 2;
   const tilesY = Math.ceil(canvas.height / TILE_SIZE) + 2;
   const startX = Math.floor(cameraX - tilesX / 2);

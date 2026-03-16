@@ -44,6 +44,7 @@ async function bootstrapClient() {
     () => import("./client/render-mobs.js"),
     () => import("./client/render-players.js"),
     () => import("./client/render-projectiles.js"),
+    () => import("./client/canvas-background-cache.js"),
     () => import("./client/canvas-world-renderer.js"),
     () => import("./client/pixi-particle-system.js"),
     () => import("./client/pixi-world-renderer.js"),
