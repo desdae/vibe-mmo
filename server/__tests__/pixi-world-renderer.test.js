@@ -1,6 +1,8 @@
 const path = require("path");
 
 function createPixiStub() {
+  const graphicsInstances = [];
+
   class Container {
     constructor() {
       this.children = [];
@@ -47,7 +49,17 @@ function createPixiStub() {
   }
 
   class Graphics extends Container {
-    clear() { return this; }
+    constructor() {
+      super();
+      this.clearCalls = 0;
+      graphicsInstances.push(this);
+    }
+
+    clear() {
+      this.clearCalls += 1;
+      return this;
+    }
+
     beginFill() { return this; }
     endFill() { return this; }
     lineStyle() { return this; }
@@ -141,7 +153,8 @@ function createPixiStub() {
         LINEAR: 1
       }
     },
-    applicationInstances
+    applicationInstances,
+    graphicsInstances
   };
 }
 
@@ -326,5 +339,87 @@ describe("VibeClientPixiWorldRenderer", () => {
     expect(applicationInstances).toHaveLength(1);
     expect(drawHumanoid).toHaveBeenCalledTimes(2);
     expect(applicationInstances[0].renderer.render).toHaveBeenCalledTimes(3);
+  });
+
+  test("skips overlay redraws when labeled sprite state is unchanged", () => {
+    require(modulePath);
+
+    const { PIXI, graphicsInstances } = createPixiStub();
+    globalThis.VibeClientRenderHumanoids = {
+      createHumanoidRenderTools: () => ({
+        drawHumanoid: () => {}
+      })
+    };
+    global.document = createMockDocument();
+    let now = 200;
+    jest.spyOn(global.performance, "now").mockImplementation(() => now);
+
+    const renderer = globalThis.VibeClientPixiWorldRenderer.createPixiWorldRenderer({
+      PIXI,
+      canvasElement: {
+        width: 800,
+        height: 600,
+        style: {},
+        parentNode: {
+          insertBefore: () => {}
+        }
+      },
+      windowObject: {
+        devicePixelRatio: 1
+      }
+    });
+
+    const baseSelf = {
+      id: "self",
+      x: 8,
+      y: 9,
+      classType: "warrior",
+      hp: 10,
+      maxHp: 12,
+      name: "Overlay Tester"
+    };
+    const createFrame = (player, frameNow) => ({
+      frameNow,
+      cameraX: 8.5,
+      cameraY: 9.5,
+      self: player,
+      selfView: {
+        player,
+        isSelf: true,
+        attackState: null,
+        castVisual: null,
+        statusVisual: null
+      },
+      playerViews: [],
+      mobViews: [],
+      projectileViews: [],
+      lootBagViews: [],
+      resourceNodeViews: [],
+      areaEffects: [],
+      explosionViews: [],
+      floatingDamageViews: [],
+      townVendor: null,
+      townQuestGivers: [],
+      hoveredMob: null,
+      hoveredBag: null,
+      hoveredResourceNode: null,
+      hoveredVendor: null,
+      hoveredQuestNpc: null
+    });
+    const getClearTotal = () => graphicsInstances.reduce((sum, entry) => sum + entry.clearCalls, 0);
+
+    renderer.renderWorldFrame(createFrame(baseSelf, 200));
+    const afterFirst = getClearTotal();
+    now = 230;
+    renderer.renderWorldFrame(createFrame(baseSelf, 230));
+    const afterSecond = getClearTotal();
+    now = 260;
+    renderer.renderWorldFrame(createFrame({ ...baseSelf, hp: 7 }, 260));
+    const afterThird = getClearTotal();
+
+    const unchangedDelta = afterSecond - afterFirst;
+    const changedDelta = afterThird - afterSecond;
+    expect(changedDelta).toBeGreaterThan(unchangedDelta);
+    expect(changedDelta - unchangedDelta).toBeGreaterThanOrEqual(5);
   });
 });

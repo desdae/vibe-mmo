@@ -787,7 +787,20 @@
       nameText.anchor.set(0.5, 1);
       markerText.anchor.set(0.5, 1);
       container.addChild(graphics, sprite, effectGraphics, hpBack, hpFill, castBack, castFill, markerText, nameText);
-      return { container, graphics, sprite, hpBack, hpFill, castBack, castFill, effectGraphics, markerText, nameText };
+      return {
+        container,
+        graphics,
+        sprite,
+        hpBack,
+        hpFill,
+        castBack,
+        castFill,
+        effectGraphics,
+        markerText,
+        nameText,
+        overlayStateKey: "",
+        labelStateKey: ""
+      };
     }
 
     function createSpriteNode() {
@@ -3065,6 +3078,51 @@
       }
     }
 
+    function buildLabeledSpriteLabelStateKey(label, overlayOptions) {
+      return stableStringify({
+        label: String(label || ""),
+        labelOffsetY: quantizeNumber(overlayOptions && overlayOptions.labelOffsetY, 0.5),
+        markerText: String(overlayOptions && overlayOptions.markerText || ""),
+        markerOffsetY: quantizeNumber(overlayOptions && overlayOptions.markerOffsetY, 0.5),
+        markerFill: Number(overlayOptions && overlayOptions.markerFill) || 0xffd700,
+        markerStroke: Number(overlayOptions && overlayOptions.markerStroke) || 0x0b1220
+      });
+    }
+
+    function buildStatusVisualOverlayKey(statusVisual, frameNow) {
+      if (!statusVisual || typeof statusVisual !== "object") {
+        return null;
+      }
+      const hasAnimatedStatus =
+        statusVisual.bloodWrathActive || statusVisual.slowActive || statusVisual.burnActive || statusVisual.stunActive;
+      return {
+        bloodWrathActive: statusVisual.bloodWrathActive === true,
+        slowActive: statusVisual.slowActive === true,
+        burnActive: statusVisual.burnActive === true,
+        stunActive: statusVisual.stunActive === true,
+        phaseSeed: quantizeNumber(statusVisual.phaseSeed, 0.01),
+        frameBucket: hasAnimatedStatus ? Math.floor((Number(frameNow) || 0) / 50) : null
+      };
+    }
+
+    function buildLabeledSpriteOverlayStateKey(hp, maxHp, overlayOptions) {
+      const castVisual = overlayOptions && overlayOptions.castVisual;
+      return stableStringify({
+        hp: quantizeNumber(hp, 0.01),
+        maxHp: quantizeNumber(maxHp, 0.01),
+        showHpBar: !!(overlayOptions && overlayOptions.showHpBar),
+        hpOffsetY: quantizeNumber(overlayOptions && overlayOptions.hpOffsetY, 0.5),
+        isPlayer: !!(overlayOptions && overlayOptions.isPlayer),
+        castVisual: castVisual
+          ? {
+              abilityId: String(castVisual.abilityId || ""),
+              ratio: quantizeNumber(castVisual.ratio, 0.05)
+            }
+          : null,
+        statusVisual: buildStatusVisualOverlayKey(overlayOptions && overlayOptions.statusVisual, overlayOptions && overlayOptions.frameNow)
+      });
+    }
+
     function updateLabeledSpriteNode(node, x, y, label, hp, maxHp, spriteFrame, drawFallback, overlayOptions = null) {
       node.container.position.set(x, y);
       if (spriteFrame && spriteFrame.canvas) {
@@ -3086,48 +3144,63 @@
         node.sprite.visible = false;
         drawFallback(node.graphics);
       }
-      node.nameText.text = label;
-      node.nameText.visible = !!label;
-      node.nameText.position.set(0, Number(overlayOptions && overlayOptions.labelOffsetY) || -18);
-      const markerText = String(overlayOptions && overlayOptions.markerText || "");
-      node.markerText.text = markerText;
-      node.markerText.visible = !!markerText;
-      node.markerText.position.set(0, Number(overlayOptions && overlayOptions.markerOffsetY) || -42);
-      if (node.markerText.style) {
-        node.markerText.style.fill = Number(overlayOptions && overlayOptions.markerFill) || 0xffd700;
-        node.markerText.style.stroke = Number(overlayOptions && overlayOptions.markerStroke) || 0x0b1220;
+      const labelStateKey = buildLabeledSpriteLabelStateKey(label, overlayOptions);
+      if (node.labelStateKey !== labelStateKey) {
+        const markerText = String(overlayOptions && overlayOptions.markerText || "");
+        node.nameText.text = label;
+        node.nameText.visible = !!label;
+        node.nameText.position.set(0, Number(overlayOptions && overlayOptions.labelOffsetY) || -18);
+        node.markerText.text = markerText;
+        node.markerText.visible = !!markerText;
+        node.markerText.position.set(0, Number(overlayOptions && overlayOptions.markerOffsetY) || -42);
+        if (node.markerText.style) {
+          node.markerText.style.fill = Number(overlayOptions && overlayOptions.markerFill) || 0xffd700;
+          node.markerText.style.stroke = Number(overlayOptions && overlayOptions.markerStroke) || 0x0b1220;
+        }
+        node.labelStateKey = labelStateKey;
       }
-      node.hpBack.clear();
-      node.hpFill.clear();
-      node.castBack.clear();
-      node.castFill.clear();
-      drawStatusEffectGraphics(node.effectGraphics, 0, 0, overlayOptions && overlayOptions.statusVisual, Number(overlayOptions && overlayOptions.frameNow) || 0, !!(overlayOptions && overlayOptions.isPlayer));
-      const currentHp = Number(hp) || 0;
-      const totalHp = Math.max(1, Number(maxHp) || 1);
-      if (overlayOptions && overlayOptions.showHpBar && currentHp < totalHp) {
-        const hpOffsetY = Number(overlayOptions && overlayOptions.hpOffsetY) || -30;
-        node.hpBack.beginFill(0x09111a, 0.84);
-        node.hpBack.drawRoundedRect(-11, hpOffsetY, 22, 4, 2);
-        node.hpBack.endFill();
-        node.hpFill.beginFill(0x64d37a, 1);
-        node.hpFill.drawRoundedRect(-11, hpOffsetY, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
-        node.hpFill.endFill();
-      }
-      const castVisual = overlayOptions && overlayOptions.castVisual;
-      if (castVisual && Number(castVisual.ratio) > 0) {
-        const width = overlayOptions && overlayOptions.isPlayer ? 34 : 30;
-        const height = overlayOptions && overlayOptions.isPlayer ? 5 : 4;
-        const x0 = -width / 2;
-        const y0 = overlayOptions && overlayOptions.isPlayer ? 20 : 17;
-        const fillWidth = Math.round(width * clamp(Number(castVisual.ratio) || 0, 0, 1));
-        node.castBack.beginFill(0x040a12, 0.9);
-        node.castBack.drawRect(x0, y0, width, height);
-        node.castBack.endFill();
-        node.castBack.lineStyle(1, 0xb5e4ff, overlayOptions && overlayOptions.isPlayer ? 0.7 : 0.76);
-        node.castBack.drawRect(x0 - 0.5, y0 - 0.5, width + 1, height + 1);
-        node.castFill.beginFill(overlayOptions && overlayOptions.isPlayer ? 0x3fadff : 0x75ccff, 0.95);
-        node.castFill.drawRect(x0, y0, fillWidth, height);
-        node.castFill.endFill();
+      const overlayStateKey = buildLabeledSpriteOverlayStateKey(hp, maxHp, overlayOptions);
+      if (node.overlayStateKey !== overlayStateKey) {
+        node.hpBack.clear();
+        node.hpFill.clear();
+        node.castBack.clear();
+        node.castFill.clear();
+        drawStatusEffectGraphics(
+          node.effectGraphics,
+          0,
+          0,
+          overlayOptions && overlayOptions.statusVisual,
+          Number(overlayOptions && overlayOptions.frameNow) || 0,
+          !!(overlayOptions && overlayOptions.isPlayer)
+        );
+        const currentHp = Number(hp) || 0;
+        const totalHp = Math.max(1, Number(maxHp) || 1);
+        if (overlayOptions && overlayOptions.showHpBar && currentHp < totalHp) {
+          const hpOffsetY = Number(overlayOptions && overlayOptions.hpOffsetY) || -30;
+          node.hpBack.beginFill(0x09111a, 0.84);
+          node.hpBack.drawRoundedRect(-11, hpOffsetY, 22, 4, 2);
+          node.hpBack.endFill();
+          node.hpFill.beginFill(0x64d37a, 1);
+          node.hpFill.drawRoundedRect(-11, hpOffsetY, Math.max(0, (currentHp / totalHp) * 22), 4, 2);
+          node.hpFill.endFill();
+        }
+        const castVisual = overlayOptions && overlayOptions.castVisual;
+        if (castVisual && Number(castVisual.ratio) > 0) {
+          const width = overlayOptions && overlayOptions.isPlayer ? 34 : 30;
+          const height = overlayOptions && overlayOptions.isPlayer ? 5 : 4;
+          const x0 = -width / 2;
+          const y0 = overlayOptions && overlayOptions.isPlayer ? 20 : 17;
+          const fillWidth = Math.round(width * clamp(Number(castVisual.ratio) || 0, 0, 1));
+          node.castBack.beginFill(0x040a12, 0.9);
+          node.castBack.drawRect(x0, y0, width, height);
+          node.castBack.endFill();
+          node.castBack.lineStyle(1, 0xb5e4ff, overlayOptions && overlayOptions.isPlayer ? 0.7 : 0.76);
+          node.castBack.drawRect(x0 - 0.5, y0 - 0.5, width + 1, height + 1);
+          node.castFill.beginFill(overlayOptions && overlayOptions.isPlayer ? 0x3fadff : 0x75ccff, 0.95);
+          node.castFill.drawRect(x0, y0, fillWidth, height);
+          node.castFill.endFill();
+        }
+        node.overlayStateKey = overlayStateKey;
       }
     }
 
