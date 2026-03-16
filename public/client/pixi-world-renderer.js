@@ -53,6 +53,8 @@
     const getTownTileSprite = typeof deps.getTownTileSprite === "function" ? deps.getTownTileSprite : null;
     const getVendorNpcSprite = typeof deps.getVendorNpcSprite === "function" ? deps.getVendorNpcSprite : null;
     const getQuestNpcSprite = typeof deps.getQuestNpcSprite === "function" ? deps.getQuestNpcSprite : null;
+    const getQuestNpcMarkerState =
+      typeof deps.getQuestNpcMarkerState === "function" ? deps.getQuestNpcMarkerState : () => null;
     const getResourceNodeSprite = typeof deps.getResourceNodeSprite === "function" ? deps.getResourceNodeSprite : null;
     const getCreeperWalkSprite = typeof deps.getCreeperWalkSprite === "function" ? deps.getCreeperWalkSprite : null;
     const getSpiderWalkSprite = typeof deps.getSpiderWalkSprite === "function" ? deps.getSpiderWalkSprite : null;
@@ -660,14 +662,23 @@
       const graphics = new PIXI.Graphics();
       const hpBack = new PIXI.Graphics();
       const hpFill = new PIXI.Graphics();
+      const markerText = new PIXI.Text("", {
+        fontFamily: "Segoe UI",
+        fontSize: 26,
+        fontWeight: "700",
+        fill: 0xffd700,
+        stroke: 0x0b1220,
+        strokeThickness: 4
+      });
       const nameText = new PIXI.Text("", {
         fontFamily: "Segoe UI",
         fontSize: 12,
         fill: 0xf5f7fa
       });
+      markerText.anchor.set(0.5, 1);
       nameText.anchor.set(0.5, 1);
-      container.addChild(graphics, hpBack, hpFill, nameText);
-      return { container, graphics, hpBack, hpFill, nameText };
+      container.addChild(graphics, hpBack, hpFill, markerText, nameText);
+      return { container, graphics, hpBack, hpFill, markerText, nameText };
     }
 
     function createSimpleNode() {
@@ -693,9 +704,18 @@
         fontSize: 12,
         fill: 0xf5f7fa
       });
+      const markerText = new PIXI.Text("", {
+        fontFamily: "Segoe UI",
+        fontSize: 26,
+        fontWeight: "700",
+        fill: 0xffd700,
+        stroke: 0x0b1220,
+        strokeThickness: 4
+      });
       nameText.anchor.set(0.5, 1);
-      container.addChild(graphics, sprite, effectGraphics, hpBack, hpFill, castBack, castFill, nameText);
-      return { container, graphics, sprite, hpBack, hpFill, castBack, castFill, effectGraphics, nameText };
+      markerText.anchor.set(0.5, 1);
+      container.addChild(graphics, sprite, effectGraphics, hpBack, hpFill, castBack, castFill, markerText, nameText);
+      return { container, graphics, sprite, hpBack, hpFill, castBack, castFill, effectGraphics, markerText, nameText };
     }
 
     function createSpriteNode() {
@@ -2842,6 +2862,14 @@
       node.nameText.text = label;
       node.nameText.visible = !!label;
       node.nameText.position.set(0, Number(overlayOptions && overlayOptions.labelOffsetY) || -18);
+      const markerText = String(overlayOptions && overlayOptions.markerText || "");
+      node.markerText.text = markerText;
+      node.markerText.visible = !!markerText;
+      node.markerText.position.set(0, Number(overlayOptions && overlayOptions.markerOffsetY) || -42);
+      if (node.markerText.style) {
+        node.markerText.style.fill = Number(overlayOptions && overlayOptions.markerFill) || 0xffd700;
+        node.markerText.style.stroke = Number(overlayOptions && overlayOptions.markerStroke) || 0x0b1220;
+      }
       node.hpBack.clear();
       node.hpFill.clear();
       const currentHp = Number(hp) || 0;
@@ -2966,6 +2994,14 @@
       node.nameText.text = label;
       node.nameText.visible = !!label;
       node.nameText.position.set(0, Number(overlayOptions && overlayOptions.labelOffsetY) || -18);
+      const markerText = String(overlayOptions && overlayOptions.markerText || "");
+      node.markerText.text = markerText;
+      node.markerText.visible = !!markerText;
+      node.markerText.position.set(0, Number(overlayOptions && overlayOptions.markerOffsetY) || -42);
+      if (node.markerText.style) {
+        node.markerText.style.fill = Number(overlayOptions && overlayOptions.markerFill) || 0xffd700;
+        node.markerText.style.stroke = Number(overlayOptions && overlayOptions.markerStroke) || 0x0b1220;
+      }
       node.hpBack.clear();
       node.hpFill.clear();
       node.castBack.clear();
@@ -3590,9 +3626,27 @@
         }
         const p = worldToScreen(Number(vendor.x) + 0.5, Number(vendor.y) + 0.5, cameraX, cameraY, width, height);
         const vendorBob = Math.sin(frameNow / 340) * 1.2;
-        updateLabeledSpriteNode(vendorNode, p.x, p.y - 4 + vendorBob, String(vendor.name || "Quartermaster"), 1, 1, getVendorSpriteFrame(), (graphics) => {
-          graphics.clear();
-        });
+        const vendorMarker = getQuestNpcMarkerState(vendor.id);
+        updateLabeledSpriteNode(
+          vendorNode,
+          p.x,
+          p.y - 4 + vendorBob,
+          String(vendor.name || "Quartermaster"),
+          1,
+          1,
+          getVendorSpriteFrame(),
+          (graphics) => {
+            graphics.clear();
+          },
+          {
+            markerText: vendorMarker && vendorMarker.hasCompletableQuest
+              ? "?"
+              : vendorMarker && vendorMarker.hasAvailableQuest
+                ? "!"
+                : "",
+            markerOffsetY: -52
+          }
+        );
         vendorNode.hpBack.clear();
         vendorNode.hpFill.clear();
       }
@@ -3606,6 +3660,7 @@
         (node, questNpc) => {
           const p = worldToScreen(Number(questNpc.x) + 0.5, Number(questNpc.y) + 0.5, cameraX, cameraY, width, height);
           const questBob = Math.sin(frameNow / 340) * 1.2;
+          const markerState = getQuestNpcMarkerState(questNpc.id);
           const spriteFrame = getQuestNpcSpriteFrame();
           const spriteHeight =
             spriteFrame && spriteFrame.canvas && Number(spriteFrame.canvas.height) > 0
@@ -3622,6 +3677,14 @@
             spriteFrame,
             (graphics) => {
               graphics.clear();
+            },
+            {
+              markerText: markerState && markerState.hasCompletableQuest
+                ? "?"
+                : markerState && markerState.hasAvailableQuest
+                  ? "!"
+                  : "",
+              markerOffsetY: -58
             }
           );
           node.hpBack.clear();
@@ -3811,6 +3874,7 @@
         questNpcSamples: Array.from(questNpcNodes.entries()).slice(0, 8).map(([id, node]) => ({
           id,
           label: String(node && node.nameText && node.nameText.text || ""),
+          marker: String(node && node.markerText && node.markerText.text || ""),
           visible: !!(node && node.container && node.container.visible),
           x: node && node.container ? Math.round(Number(node.container.position.x) || 0) : 0,
           y: node && node.container ? Math.round(Number(node.container.position.y) || 0) : 0,

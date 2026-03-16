@@ -164,6 +164,27 @@ async function getActiveQuestByTitle(page, title) {
   }, title);
 }
 
+async function waitForQuestNpcMarkerState(page, npcId, expectedKey) {
+  await page.waitForFunction(({ expectedNpcId, expectedKeyName }) => {
+    const state = window.__vibemmoTest.getState();
+    const markers = Array.isArray(state.questState && state.questState.questNpcMarkers)
+      ? state.questState.questNpcMarkers
+      : [];
+    const marker = markers.find((entry) => String(entry && entry.npcId || "") === expectedNpcId);
+    return !!(marker && marker[expectedKeyName]);
+  }, { expectedNpcId: npcId, expectedKeyName: expectedKey });
+}
+
+async function ensurePixiQuestNpcMarker(page, expectedNpcId, expectedMarker) {
+  await page.waitForFunction(({ targetNpcId, targetMarker }) => {
+    const state = window.__vibemmoTest.getState();
+    const stats = state && state.rendererStats ? state.rendererStats : null;
+    const samples = Array.isArray(stats && stats.questNpcSamples) ? stats.questNpcSamples : [];
+    const sample = samples.find((entry) => String(entry && entry.id || "") === targetNpcId);
+    return !!(sample && sample.visible && sample.onScreen && String(sample.marker || "") === targetMarker);
+  }, { targetNpcId: expectedNpcId, targetMarker: expectedMarker });
+}
+
 async function closeVendorPanelIfOpen(page) {
   const dialogueVisible = await page.evaluate(() => {
     const panel = document.getElementById("dialogue-panel");
@@ -402,6 +423,8 @@ async function run() {
 
     await joinGame(page);
     await ensurePixiQuestNpcVisible(page, "town_herald");
+    await waitForQuestNpcMarkerState(page, "town_herald", "hasAvailableQuest");
+    await ensurePixiQuestNpcMarker(page, "town_herald", "!");
 
     const initialState = await getState(page);
     const town = initialState.town;
@@ -483,6 +506,8 @@ async function run() {
         : null;
       return !!(quest && Array.isArray(quest.objectives) && quest.objectives.every((objective) => objective.complete));
     });
+    await waitForQuestNpcMarkerState(page, "town_herald", "hasCompletableQuest");
+    await ensurePixiQuestNpcMarker(page, "town_herald", "?");
 
     await moveNearWorld(page, Number(herald.x) + 0.5, Number(herald.y) + 0.5, 0.95);
     await page.evaluate((coords) => window.__vibemmoTest.dispatchContextMenuAtWorld(coords.x, coords.y), {

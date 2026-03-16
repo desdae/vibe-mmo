@@ -593,7 +593,8 @@ const sendSelfProgressWithQuests = (player) => {
     sendJson(player.ws, {
       type: "quest_state_update",
       active: activeQuests,
-      completed: questState.completed
+      completed: questState.completed,
+      questNpcMarkers: questTools.getQuestNpcMarkers(player)
     });
   }
 };

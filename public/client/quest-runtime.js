@@ -297,7 +297,13 @@
     function getQuestStateSnapshot() {
       return questUiTools && typeof questUiTools.getQuestState === "function"
         ? questUiTools.getQuestState()
-        : { active: [], completed: [] };
+        : { active: [], completed: [], questNpcMarkers: [] };
+    }
+
+    function getQuestNpcMarkerState(npcId) {
+      return questUiTools && typeof questUiTools.getQuestNpcMarkerState === "function"
+        ? questUiTools.getQuestNpcMarkerState(npcId)
+        : null;
     }
 
     function getDialogueSnapshot() {
@@ -352,7 +358,8 @@
         if (msg) {
           questUiTools.updateQuestState({
             active: msg.active || [],
-            completed: msg.completed || []
+            completed: msg.completed || [],
+            questNpcMarkers: msg.questNpcMarkers || []
           });
         }
         return true;
@@ -376,6 +383,7 @@
       initQuestUi,
       getQuestUiTools,
       getQuestStateSnapshot,
+      getQuestNpcMarkerState,
       getDialogueSnapshot,
       toggleQuestPanel,
       handleQuestPacket

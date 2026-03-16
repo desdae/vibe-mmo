@@ -11,7 +11,7 @@
     let notificationPanel = null;
 
     let currentDialogue = null;
-    let currentQuestState = { active: [], completed: [] };
+    let currentQuestState = { active: [], completed: [], questNpcMarkers: [] };
     let trackerVisible = true;
 
     function initPanels(panels) {
@@ -349,7 +349,11 @@
     }
 
     function updateQuestState(state) {
-      currentQuestState = state || { active: [], completed: [] };
+      currentQuestState = {
+        active: Array.isArray(state && state.active) ? state.active : [],
+        completed: Array.isArray(state && state.completed) ? state.completed : [],
+        questNpcMarkers: Array.isArray(state && state.questNpcMarkers) ? state.questNpcMarkers : []
+      };
 
       if (questPanel && !questPanel.classList.contains("hidden")) {
         renderQuestLog();
@@ -418,6 +422,24 @@
       showQuestNotification("Quest Abandoned", data.questId, "info");
     }
 
+    function getQuestNpcMarkerState(npcId) {
+      const targetId = String(npcId || "").trim();
+      if (!targetId) {
+        return null;
+      }
+      const marker = Array.isArray(currentQuestState.questNpcMarkers)
+        ? currentQuestState.questNpcMarkers.find((entry) => String(entry && entry.npcId || "") === targetId)
+        : null;
+      if (!marker) {
+        return null;
+      }
+      return {
+        npcId: targetId,
+        hasAvailableQuest: !!marker.hasAvailableQuest,
+        hasCompletableQuest: !!marker.hasCompletableQuest
+      };
+    }
+
     return {
       initPanels,
       setQuestPanelVisible,
@@ -435,8 +457,12 @@
       handleQuestAbandoned,
       getQuestState: () => ({
         active: Array.isArray(currentQuestState.active) ? currentQuestState.active.map((quest) => ({ ...quest })) : [],
-        completed: Array.isArray(currentQuestState.completed) ? currentQuestState.completed.slice() : []
+        completed: Array.isArray(currentQuestState.completed) ? currentQuestState.completed.slice() : [],
+        questNpcMarkers: Array.isArray(currentQuestState.questNpcMarkers)
+          ? currentQuestState.questNpcMarkers.map((marker) => ({ ...marker }))
+          : []
       }),
+      getQuestNpcMarkerState,
       isQuestTrackerVisible: () => trackerVisible,
       getCurrentDialogue: () => {
         if (!currentDialogue) {

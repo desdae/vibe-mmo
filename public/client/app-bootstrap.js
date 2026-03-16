@@ -123,6 +123,7 @@
           getTownTileSprite: deps.getTownTileSprite,
           getVendorNpcSprite: deps.getVendorNpcSprite,
           getQuestNpcSprite: deps.getQuestNpcSprite,
+          getQuestNpcMarkerState: deps.getQuestNpcMarkerState,
           getResourceNodeSprite: deps.getResourceNodeSprite,
           mobSpriteSize: deps.mobSpriteSize,
           getCreeperWalkSprite: deps.getCreeperWalkSprite,

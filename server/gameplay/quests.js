@@ -667,11 +667,49 @@ function createQuestTools(options = {}) {
     if (!npc) {
       return [];
     }
-    const staticQuests = getStaticAvailableQuestsForNpc(player, npc.id);
+    return getAvailableQuestsForNpc(player, npc.id);
+  }
+
+  function getAvailableQuestsForNpc(player, npcId) {
+    if (!player || !npcId) {
+      return [];
+    }
+    const staticQuests = getStaticAvailableQuestsForNpc(player, npcId);
     if (staticQuests.length > 0) {
       return staticQuests;
     }
-    return proceduralQuestTools.getAvailableQuestsForNpc(player, npc.id);
+    return proceduralQuestTools.getAvailableQuestsForNpc(player, npcId);
+  }
+
+  function getQuestNpcMarkers(player) {
+    if (!player) {
+      return [];
+    }
+    const state = getPlayerQuestState(player);
+    const markers = [];
+    for (const [npcId] of Object.entries(getQuestNpcData())) {
+      let hasCompletableQuest = false;
+      for (const questId of Object.keys(state.active || {})) {
+        const quest = getQuestById(questId, player);
+        if (!quest || String(quest.npcCompleteId || "") !== String(npcId || "")) {
+          continue;
+        }
+        if (canCompleteQuest(player, questId).canComplete) {
+          hasCompletableQuest = true;
+          break;
+        }
+      }
+      const hasAvailableQuest = getAvailableQuestsForNpc(player, npcId).length > 0;
+      if (!hasAvailableQuest && !hasCompletableQuest) {
+        continue;
+      }
+      markers.push({
+        npcId: String(npcId || ""),
+        hasAvailableQuest,
+        hasCompletableQuest
+      });
+    }
+    return markers;
   }
 
   function getTalkQuestForNpc(player, npcId) {
@@ -731,7 +769,9 @@ function createQuestTools(options = {}) {
     debugCompleteQuest,
     abandonQuest,
     getQuestProgress,
+    getAvailableQuestsForNpc,
     getAvailableQuestsForPlayer,
+    getQuestNpcMarkers,
     getTalkQuestForNpc
   };
 }

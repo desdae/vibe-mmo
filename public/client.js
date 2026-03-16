@@ -7239,6 +7239,12 @@ function isQuestTrackerVisible() {
   return !!questUiTools.isQuestTrackerVisible();
 }
 
+function getQuestNpcMarkerState(npcId) {
+  return questRuntimeTools && typeof questRuntimeTools.getQuestNpcMarkerState === "function"
+    ? questRuntimeTools.getQuestNpcMarkerState(npcId)
+    : null;
+}
+
 function handleMobileVendorButtonPress() {
   const self = getCurrentSelf();
   const vendor = getTownVendor();
@@ -15802,6 +15808,35 @@ function drawVendorNpc(cameraX, cameraY, frameNow) {
   const p = worldToScreen(Number(vendor.x) + 0.5, Number(vendor.y) + 0.5, cameraX, cameraY);
   const sprite = getVendorNpcSprite();
   ctx.drawImage(sprite, Math.round(p.x - sprite.width / 2), Math.round(p.y - sprite.height / 2 - 4 + bob));
+  drawQuestNpcMarker(vendor.id, p.x, p.y - sprite.height / 2 - 10 + bob);
+}
+
+function getQuestNpcMarkerSymbol(npcId) {
+  const markerState = getQuestNpcMarkerState(npcId);
+  if (!markerState) {
+    return "";
+  }
+  if (markerState.hasCompletableQuest) {
+    return "?";
+  }
+  return markerState.hasAvailableQuest ? "!" : "";
+}
+
+function drawQuestNpcMarker(npcId, centerX, baselineY) {
+  const symbol = getQuestNpcMarkerSymbol(npcId);
+  if (!symbol) {
+    return;
+  }
+  ctx.save();
+  ctx.font = "700 26px 'Segoe UI', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = "rgba(11, 18, 32, 0.96)";
+  ctx.fillStyle = "#ffd700";
+  ctx.strokeText(symbol, Math.round(centerX), Math.round(baselineY));
+  ctx.fillText(symbol, Math.round(centerX), Math.round(baselineY));
+  ctx.restore();
 }
 
 // Draw quest givers
@@ -15817,6 +15852,7 @@ function drawQuestNpcs(cameraX, cameraY, frameNow) {
     const sprite = getQuestNpcSprite();
     // Draw with anchor at bottom-center (like vendor)
     ctx.drawImage(sprite, Math.round(p.x - sprite.width / 2), Math.round(p.y - sprite.height + bob));
+    drawQuestNpcMarker(questGiver.id, p.x, p.y - sprite.height - 6 + bob);
   }
 }
 
@@ -16858,6 +16894,7 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       getTownTileSprite,
       getVendorNpcSprite,
       getQuestNpcSprite,
+      getQuestNpcMarkerState,
       getCreeperWalkSprite,
       getSpiderWalkSprite,
       findAbilityDefById,
@@ -16966,7 +17003,11 @@ const automationTools = sharedCreateAutomationTools
       botListPanel,
       getCurrentSelf: () => getCurrentSelf(),
       getTownQuestGivers: () => getTownQuestGivers(),
-      getQuestStateSnapshot: () => (questRuntimeTools ? questRuntimeTools.getQuestStateSnapshot() : { active: [], completed: [] }),
+      getQuestStateSnapshot: () => (
+        questRuntimeTools
+          ? questRuntimeTools.getQuestStateSnapshot()
+          : { active: [], completed: [], questNpcMarkers: [] }
+      ),
       getDialogueSnapshot: () => (questRuntimeTools ? questRuntimeTools.getDialogueSnapshot() : null),
       toggleQuestPanel: () => (questRuntimeTools ? questRuntimeTools.toggleQuestPanel() : false),
       worldToScreen,

@@ -104,9 +104,12 @@ function createDialogueTools(options = {}) {
     }
 
     const talkQuest = questTools.getTalkQuestForNpc(player, npcId);
-    const availableQuests = questTools.getAvailableQuestsForPlayer(player).filter(
-      (quest) => String(quest && quest.npcGiverId || "") === String(npcId || "")
-    );
+    const availableQuests =
+      questTools && typeof questTools.getAvailableQuestsForNpc === "function"
+        ? questTools.getAvailableQuestsForNpc(player, npcId)
+        : questTools.getAvailableQuestsForPlayer(player).filter(
+            (quest) => String(quest && quest.npcGiverId || "") === String(npcId || "")
+          );
 
     let dialogueType = "noQuest";
     let dialogueNodes = [];
