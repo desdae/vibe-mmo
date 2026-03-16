@@ -122,6 +122,8 @@
     let questNpcLayer = null;
     let questNpcNodes = new Map();
     let pixiParticleSystem = null;
+    let lastRendererWidth = 0;
+    let lastRendererHeight = 0;
     const floatingDamageTextPool = [];
     const activeFloatingDamageTexts = [];
     const canvasTextureCache = new WeakMap();
@@ -504,9 +506,11 @@
         return true;
       }
       try {
+        const initialWidth = Math.max(1, width | 0);
+        const initialHeight = Math.max(1, height | 0);
         app = new PIXI.Application({
-          width: Math.max(1, width | 0),
-          height: Math.max(1, height | 0),
+          width: initialWidth,
+          height: initialHeight,
           antialias: true,
           autoDensity: true,
           resolution: windowObject.devicePixelRatio || 1,
@@ -514,6 +518,8 @@
           backgroundColor: 0x0a1621,
           powerPreference: "high-performance"
         });
+        lastRendererWidth = initialWidth;
+        lastRendererHeight = initialHeight;
       } catch (_error) {
         app = null;
         return false;
@@ -654,7 +660,14 @@
       if (!ensureApp(width, height)) {
         return;
       }
-      app.renderer.resize(Math.max(1, width | 0), Math.max(1, height | 0));
+      const nextWidth = Math.max(1, width | 0);
+      const nextHeight = Math.max(1, height | 0);
+      if (nextWidth === lastRendererWidth && nextHeight === lastRendererHeight) {
+        return;
+      }
+      lastRendererWidth = nextWidth;
+      lastRendererHeight = nextHeight;
+      app.renderer.resize(nextWidth, nextHeight);
     }
 
     function createLabeledNode() {
