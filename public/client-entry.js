@@ -13,6 +13,7 @@ async function loadSharedGlobal(modulePath, globalName) {
 async function bootstrapClient() {
   await loadSharedGlobal("./shared/protocol.js", "VibeProtocol");
   await loadSharedGlobal("./shared/protocol-codecs.js", "VibeProtocolCodecs");
+  await loadSharedGlobal("./shared/ability-id-hash.js", "VibeAbilityIdHash");
   await loadSharedGlobal("./shared/ability-visuals.js", "VibeAbilityVisualRegistry");
   await loadSharedGlobal("./shared/vector-utils.js", "VibeVectorUtils");
   await loadSharedGlobal("./shared/number-utils.js", "VibeNumberUtils");

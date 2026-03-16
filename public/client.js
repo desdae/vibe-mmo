@@ -231,6 +231,11 @@ const sharedGetAbilityCooldownMsForLevel =
   sharedAbilityStats && typeof sharedAbilityStats.getAbilityCooldownMsForLevel === "function"
     ? sharedAbilityStats.getAbilityCooldownMsForLevel
     : null;
+const sharedAbilityIdHash = globalThis.VibeAbilityIdHash || null;
+const sharedRegisterAbilityIdHash =
+  sharedAbilityIdHash && typeof sharedAbilityIdHash.registerAbilityIdHash === "function"
+    ? sharedAbilityIdHash.registerAbilityIdHash
+    : null;
 const sharedSummonLayout = globalThis.VibeSummonLayout || null;
 const sharedGetSummonCountForLevel =
   sharedSummonLayout && typeof sharedSummonLayout.getSummonCountForLevel === "function"
@@ -1694,17 +1699,26 @@ function toAbilityVisualKey(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function registerAbilityHashMapping(abilityId, resolvedAbilityId = "") {
+  if (!abilityId) {
+    return false;
+  }
+  if (sharedRegisterAbilityIdHash) {
+    return sharedRegisterAbilityIdHash(abilityIdsByHash, abilityId, resolvedAbilityId || abilityId, hashString32);
+  }
+  const canonicalId = String(resolvedAbilityId || abilityId || "").trim();
+  const normalizedId = String(abilityId || "").trim().toLowerCase();
+  if (!canonicalId || !normalizedId) {
+    return false;
+  }
+  abilityIdsByHash.set(hashString32(normalizedId), canonicalId);
+  return true;
+}
+
 function registerStaticAbilityHashMappings() {
   const byId = abilityVisualRegistry && abilityVisualRegistry.byId ? abilityVisualRegistry.byId : {};
   for (const key of Object.keys(byId)) {
-    const id = toAbilityVisualKey(key);
-    if (!id) {
-      continue;
-    }
-    const hash = hashString32(id);
-    if (!abilityIdsByHash.has(hash)) {
-      abilityIdsByHash.set(hash, id);
-    }
+    registerAbilityHashMapping(key, toAbilityVisualKey(key));
   }
 }
 
@@ -10304,7 +10318,7 @@ function applyClassAndAbilityDefs(classes, abilities) {
     }
 
     abilityDefsById.set(id, normalizedAbility);
-    abilityIdsByHash.set(hashString32(id), id);
+    registerAbilityHashMapping(id, id);
   }
 
   const classOptions = [];

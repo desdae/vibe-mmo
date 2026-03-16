@@ -194,7 +194,7 @@ describe("VibeClientNetworkPackets", () => {
       abilityId: ""
     });
 
-    parsers.parseMobMetaBinaryPacket(toArrayBuffer(packetEncoders.encodeMobMetaPacket(entityUpdate.mobMeta)));
+    parsers.parseBinaryPacket(toArrayBuffer(packetEncoders.encodeMobMetaPacket(entityUpdate.mobMeta)));
 
     expect(pushSnapshot).toHaveBeenCalledTimes(2);
     expect(snapshots[1].mobs[0]).toMatchObject({
@@ -204,9 +204,7 @@ describe("VibeClientNetworkPackets", () => {
       renderStyle: { rigType: "humanoid", spriteType: "skeleton_archer" }
     });
 
-    parsers.parseProjectileMetaBinaryPacket(
-      toArrayBuffer(packetEncoders.encodeProjectileMetaPacket(entityUpdate.projectileMeta))
-    );
+    parsers.parseBinaryPacket(toArrayBuffer(packetEncoders.encodeProjectileMetaPacket(entityUpdate.projectileMeta)));
 
     expect(pushSnapshot).toHaveBeenCalledTimes(3);
     expect(snapshots[2].projectiles[0]).toMatchObject({

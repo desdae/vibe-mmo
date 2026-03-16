@@ -37,6 +37,8 @@
     const areaEffectKindArea = Number.isFinite(Number(deps.AREA_EFFECT_KIND_AREA)) ? Number(deps.AREA_EFFECT_KIND_AREA) : 0;
     const areaEffectKindBeam = Number.isFinite(Number(deps.AREA_EFFECT_KIND_BEAM)) ? Number(deps.AREA_EFFECT_KIND_BEAM) : 1;
     const areaEffectKindSummon = Number.isFinite(Number(deps.AREA_EFFECT_KIND_SUMMON)) ? Number(deps.AREA_EFFECT_KIND_SUMMON) : 2;
+    const castEventFlagCharge =
+      Number.isFinite(Number(deps.CAST_EVENT_FLAG_CHARGE)) ? Number(deps.CAST_EVENT_FLAG_CHARGE) : 1 << 1;
 
     const {
       ENTITY_PROTO_TYPE,
@@ -979,7 +981,7 @@
         const flags = view.getUint8(offset + 2);
         offset += 3;
         const active = !!(flags & CAST_EVENT_FLAG_ACTIVE);
-        const isCharge = !!(flags & CAST_EVENT_FLAG_CHARGE);
+        const isCharge = !!(flags & castEventFlagCharge);
         
         if (active && offset + 8 > view.byteLength) {
           break;
@@ -1262,7 +1264,7 @@
         parseMobEffectBinaryPacket(arrayBuffer);
         return;
       }
-      if (type === AREA_EFFECT_PROTO_TYPE) {
+      if (type === areaEffectProtoType) {
         parseAreaEffectBinaryPacket(arrayBuffer);
         return;
       }
