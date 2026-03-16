@@ -171,7 +171,7 @@ function createPlayerTickSystem({
 
         // Apply damage and stun to enemy players in impact radius
         for (const otherPlayer of players.values()) {
-          if (otherPlayer.id === player.id || !otherPlayer.alive || otherPlayer.hp <= 0) continue;
+          if (!otherPlayer || otherPlayer.id === player.id || otherPlayer.hp <= 0) continue;
           const playerDist = Math.hypot(otherPlayer.x - player.x, otherPlayer.y - player.y);
           if (playerDist > player.chargeData.impactRadius) continue;
           if (abilityHandlerContext.isPlayerEnemy(player, otherPlayer)) {
