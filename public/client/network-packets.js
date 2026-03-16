@@ -161,6 +161,20 @@
     const addMobDeathEvents =
       typeof deps.addMobDeathEvents === "function" ? deps.addMobDeathEvents : () => {};
 
+    function pushRenderableSnapshot() {
+      if (!gameState.self) {
+        return;
+      }
+      pushSnapshot({
+        self: gameState.self,
+        players: gameState.players,
+        projectiles: gameState.projectiles,
+        mobs: gameState.mobs,
+        lootBags: gameState.lootBags,
+        resourceNodes: gameState.resourceNodes
+      });
+    }
+
     function parseEntityBinaryPacket(arrayBuffer) {
       const view = new DataView(arrayBuffer);
       if (view.byteLength < 20) {
@@ -760,6 +774,7 @@
       }
 
       syncEntityArraysToGameState();
+      pushRenderableSnapshot();
     }
 
     function parseProjectileMetaBinaryPacket(arrayBuffer) {
@@ -818,6 +833,7 @@
       }
 
       syncEntityArraysToGameState();
+      pushRenderableSnapshot();
     }
 
     function parsePlayerMetaBinaryPacket(arrayBuffer) {
@@ -869,6 +885,7 @@
       if (players.length) {
         applyPlayerMetaEntries(players);
         syncEntityArraysToGameState();
+        pushRenderableSnapshot();
       }
     }
 
@@ -912,6 +929,7 @@
       if (bags.length) {
         applyLootBagMetaEntries(bags);
         syncEntityArraysToGameState();
+        pushRenderableSnapshot();
       }
     }
 

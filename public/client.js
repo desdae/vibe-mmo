@@ -9871,6 +9871,20 @@ function pushSnapshot(msg) {
   }
 }
 
+function pushRenderableSnapshot() {
+  if (!gameState.self) {
+    return;
+  }
+  pushSnapshot({
+    self: gameState.self,
+    players: gameState.players,
+    projectiles: gameState.projectiles,
+    mobs: gameState.mobs,
+    lootBags: gameState.lootBags,
+    resourceNodes: gameState.resourceNodes
+  });
+}
+
 function clearEntityRuntime() {
   resetTouchJoystick();
   resetMobileAbilityAim();
@@ -11701,10 +11715,12 @@ const serverMessageHandlers = {
   player_meta: (msg) => {
     applyPlayerMeta(msg.players);
     syncEntityArraysToGameState();
+    pushRenderableSnapshot();
   },
   lootbag_meta: (msg) => {
     applyLootBagMeta(msg.bags);
     syncEntityArraysToGameState();
+    pushRenderableSnapshot();
   },
   resource_nodes_state: (msg) => {
     const nextNodes = Array.isArray(msg && msg.nodes) ? msg.nodes : [];
@@ -11728,24 +11744,17 @@ const serverMessageHandlers = {
       });
     }
     syncEntityArraysToGameState();
-    if (gameState.self) {
-      pushSnapshot({
-        self: gameState.self,
-        players: gameState.players,
-        projectiles: gameState.projectiles,
-        mobs: gameState.mobs,
-        lootBags: gameState.lootBags,
-        resourceNodes: gameState.resourceNodes
-      });
-    }
+    pushRenderableSnapshot();
   },
   mob_meta: (msg) => {
     applyMobMeta(msg.mobs);
     syncEntityArraysToGameState();
+    pushRenderableSnapshot();
   },
   projectile_meta: (msg) => {
     applyProjectileMeta(msg.projectiles);
     syncEntityArraysToGameState();
+    pushRenderableSnapshot();
   },
   player_swings: (msg) => {
     if (!Array.isArray(msg.swings)) {
