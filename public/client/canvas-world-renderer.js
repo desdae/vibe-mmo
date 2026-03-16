@@ -8,6 +8,8 @@
     if (!ctx || !canvas) {
       return null;
     }
+    const spatialAudioIntervalMs = Math.max(0, Number(deps.spatialAudioIntervalMs) || 80);
+    const maintenanceIntervalMs = Math.max(0, Number(deps.maintenanceIntervalMs) || 250);
     let lastDebugStats = {
       mode: "canvas",
       players: 0,
@@ -17,6 +19,51 @@
       resources: 0,
       areaEffects: 0
     };
+    let lastSpatialAudioUpdateAt = -Infinity;
+    let lastMaintenanceAt = -Infinity;
+    const mobAudioScratch = [];
+    const projectileAudioScratch = [];
+
+    function reuseEntityScratch(entries, target, propertyName) {
+      const sourceEntries = Array.isArray(entries) ? entries : [];
+      target.length = sourceEntries.length;
+      for (let index = 0; index < sourceEntries.length; index += 1) {
+        target[index] = sourceEntries[index] ? sourceEntries[index][propertyName] : null;
+      }
+      return target;
+    }
+
+    function updateSpatialAudio(frameViewModel, frameNow) {
+      if (frameNow - lastSpatialAudioUpdateAt < spatialAudioIntervalMs) {
+        return;
+      }
+      lastSpatialAudioUpdateAt = frameNow;
+      if (typeof deps.updateMobCastSpatialAudio === "function") {
+        deps.updateMobCastSpatialAudio(reuseEntityScratch(frameViewModel.mobViews, mobAudioScratch, "mob"), frameNow);
+      }
+      if (typeof deps.updateProjectileSpatialAudio === "function") {
+        deps.updateProjectileSpatialAudio(
+          reuseEntityScratch(frameViewModel.projectileViews, projectileAudioScratch, "projectile"),
+          frameNow
+        );
+      }
+    }
+
+    function runMaintenance(frameNow) {
+      if (frameNow - lastMaintenanceAt < maintenanceIntervalMs) {
+        return;
+      }
+      lastMaintenanceAt = frameNow;
+      deps.pruneSkeletonWalkRuntime();
+      deps.pruneCreeperWalkRuntime();
+      deps.pruneZombieWalkRuntime();
+      deps.pruneSpiderWalkRuntime();
+      deps.pruneOrcWalkRuntime();
+      deps.pruneSkeletonArcherWalkRuntime();
+      deps.pruneWarriorAnimRuntime();
+      deps.pruneProjectileVisualRuntime(frameNow);
+      deps.pruneAmbientParticleEmitters(frameNow);
+    }
 
     function renderWorldFrame(frameViewModel) {
       if (!frameViewModel || !frameViewModel.self) {
@@ -43,18 +90,7 @@
       ctx.fillStyle = "#0a1621";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      if (typeof deps.updateMobCastSpatialAudio === "function") {
-        deps.updateMobCastSpatialAudio(
-          frameViewModel.mobViews.map((entry) => entry.mob),
-          frameNow
-        );
-      }
-      if (typeof deps.updateProjectileSpatialAudio === "function") {
-        deps.updateProjectileSpatialAudio(
-          frameViewModel.projectileViews.map((entry) => entry.projectile),
-          frameNow
-        );
-      }
+      updateSpatialAudio(frameViewModel, frameNow);
 
       deps.drawGrid(cameraX, cameraY);
       deps.drawAbilityCastPreview(frameViewModel.self, cameraX, cameraY, frameNow);
@@ -105,15 +141,7 @@
       }
       deps.drawAreaEffects(cameraX, cameraY, frameNow, "overlay");
       deps.drawFloatingDamageNumbers(cameraX, cameraY);
-      deps.pruneSkeletonWalkRuntime();
-      deps.pruneCreeperWalkRuntime();
-      deps.pruneZombieWalkRuntime();
-      deps.pruneSpiderWalkRuntime();
-      deps.pruneOrcWalkRuntime();
-      deps.pruneSkeletonArcherWalkRuntime();
-      deps.pruneWarriorAnimRuntime();
-      deps.pruneProjectileVisualRuntime(frameNow);
-      deps.pruneAmbientParticleEmitters(frameNow);
+      runMaintenance(frameNow);
 
       for (const entry of frameViewModel.playerViews) {
         deps.drawPlayer(entry.player, cameraX, cameraY, false);
