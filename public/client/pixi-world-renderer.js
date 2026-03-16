@@ -59,6 +59,7 @@
     const getCreeperWalkSprite = typeof deps.getCreeperWalkSprite === "function" ? deps.getCreeperWalkSprite : null;
     const getSpiderWalkSprite = typeof deps.getSpiderWalkSprite === "function" ? deps.getSpiderWalkSprite : null;
     const mobSpriteSize = Math.max(20, Number(deps.mobSpriteSize) || 36);
+    const humanoidFrameIntervalMs = Math.max(16, Number(deps.humanoidFrameIntervalMs) || 33);
     const sanitizeCssColor =
       typeof deps.sanitizeCssColor === "function"
         ? deps.sanitizeCssColor
@@ -346,6 +347,64 @@
       } catch {
         return "";
       }
+    }
+
+    function quantizeNumber(value, step) {
+      const numericValue = Number(value);
+      if (!Number.isFinite(numericValue)) {
+        return null;
+      }
+      const bucketSize = Math.max(Number(step) || 0.001, 0.001);
+      return Math.round(numericValue / bucketSize) * bucketSize;
+    }
+
+    function normalizeHumanoidAttackState(attackState) {
+      if (!attackState || typeof attackState !== "object") {
+        return null;
+      }
+      return {
+        active: attackState.active === true,
+        kind: String(attackState.kind || attackState.type || attackState.visualType || ""),
+        phase: String(attackState.phase || ""),
+        progress: quantizeNumber(attackState.progress, 0.125),
+        duration: quantizeNumber(attackState.durationMs || attackState.duration, 16)
+      };
+    }
+
+    function normalizeHumanoidCastState(castState) {
+      if (!castState || typeof castState !== "object") {
+        return null;
+      }
+      return {
+        active: castState.active === true,
+        abilityId: String(castState.abilityId || ""),
+        ratio: quantizeNumber(castState.ratio != null ? castState.ratio : castState.progress, 0.1),
+        isCharge: castState.isCharge === true,
+        chargeStartX: quantizeNumber(castState.chargeStartX, 0.1),
+        chargeStartY: quantizeNumber(castState.chargeStartY, 0.1),
+        chargeTargetX: quantizeNumber(castState.chargeTargetX, 0.1),
+        chargeTargetY: quantizeNumber(castState.chargeTargetY, 0.1)
+      };
+    }
+
+    function buildHumanoidRenderSignature(entityKey, renderOptions) {
+      const options = renderOptions && typeof renderOptions === "object" ? renderOptions : {};
+      const entity = options.entity && typeof options.entity === "object" ? options.entity : null;
+      return stableStringify({
+        entityKey: String(entityKey || ""),
+        entityId: entity && entity.id != null ? String(entity.id) : "",
+        classType: entity && entity.classType ? String(entity.classType) : "",
+        spriteType: entity && entity.spriteType ? String(entity.spriteType) : "",
+        style: options.style && typeof options.style === "object" ? options.style : null,
+        equipmentSlots: options.equipmentSlots && typeof options.equipmentSlots === "object" ? options.equipmentSlots : null,
+        useDefaultGearFallback: options.useDefaultGearFallback !== false,
+        attackState: normalizeHumanoidAttackState(options.attackState),
+        castState: normalizeHumanoidCastState(options.castState),
+        aimWorldX: quantizeNumber(options.aimWorldX, 0.125),
+        aimWorldY: quantizeNumber(options.aimWorldY, 0.125),
+        facingDx: quantizeNumber(options.facingDx, 0.1),
+        isSelf: options.isSelf === true
+      });
     }
 
     function createRuntimeCanvas(width, height) {
@@ -969,7 +1028,14 @@
         ctx: spriteCtx,
         tools,
         texture: getTextureFromCanvas(spriteCanvas),
-        lastSeenAt: performance.now()
+        lastSeenAt: performance.now(),
+        lastRenderAt: 0,
+        lastRenderSignature: "",
+        frame: {
+          canvas: spriteCanvas,
+          texture: getTextureFromCanvas(spriteCanvas),
+          rotation: 0
+        }
       };
       humanoidRuntimeByKey.set(key, runtime);
       return runtime;
@@ -980,7 +1046,16 @@
       if (!runtime || !runtime.tools || typeof runtime.tools.drawHumanoid !== "function") {
         return null;
       }
-      runtime.lastSeenAt = performance.now();
+      const now = performance.now();
+      const renderSignature = buildHumanoidRenderSignature(entityKey, renderOptions);
+      runtime.lastSeenAt = now;
+      if (
+        runtime.frame &&
+        runtime.lastRenderSignature === renderSignature &&
+        now - Number(runtime.lastRenderAt || 0) < humanoidFrameIntervalMs
+      ) {
+        return runtime.frame;
+      }
       runtime.ctx.clearRect(0, 0, runtime.canvas.width, runtime.canvas.height);
       runtime.tools.drawHumanoid({
         ...renderOptions,
@@ -995,7 +1070,14 @@
       } else if (runtime.texture && runtime.texture.baseTexture && typeof runtime.texture.baseTexture.update === "function") {
         runtime.texture.baseTexture.update();
       }
-      return { canvas: runtime.canvas, texture: runtime.texture, rotation: 0 };
+      runtime.lastRenderAt = now;
+      runtime.lastRenderSignature = renderSignature;
+      runtime.frame = {
+        canvas: runtime.canvas,
+        texture: runtime.texture,
+        rotation: 0
+      };
+      return runtime.frame;
     }
 
     function pruneHumanoidRuntimes(now) {
