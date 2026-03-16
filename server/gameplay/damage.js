@@ -1,3 +1,11 @@
+"use strict";
+
+const {
+  BLOCK_DAMAGE_REDUCTION,
+  CRIT_BASE_MULTIPLIER,
+  MAX_BLOCK_CHANCE
+} = require("../../config/game-constants");
+
 function createDamageTools(options = {}) {
   const queueDamageEvent = typeof options.queueDamageEvent === "function" ? options.queueDamageEvent : () => {};
   const markMobProvokedByPlayer =
@@ -41,7 +49,10 @@ function createDamageTools(options = {}) {
     if (ownerPlayer && extra.allowCrit !== false) {
       const critChance = clamp(Number(ownerPlayer.critChance) || 0, 0, 100);
       if (critChance > 0 && Math.random() * 100 < critChance) {
-        const critMultiplier = Math.max(1, 1.5 + Math.max(0, Number(ownerPlayer.critDamage) || 0) / 100);
+        const critMultiplier = Math.max(
+          1,
+          CRIT_BASE_MULTIPLIER + Math.max(0, Number(ownerPlayer.critDamage) || 0) / 100
+        );
         dmg = Math.max(1, Math.round(dmg * critMultiplier));
       }
     }
@@ -101,9 +112,9 @@ function createDamageTools(options = {}) {
       return 0;
     }
 
-    const blockChance = clamp(Number(player.blockChance) || 0, 0, 0.75);
+    const blockChance = clamp(Number(player.blockChance) || 0, 0, MAX_BLOCK_CHANCE);
     if (blockChance > 0 && Math.random() < blockChance) {
-      dmg = Math.max(0, Math.floor(dmg * 0.5));
+      dmg = Math.max(0, Math.floor(dmg * BLOCK_DAMAGE_REDUCTION));
     }
     const armor = Math.max(0, Number(player.armor) || 0);
     if (armor > 0) {

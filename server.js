@@ -38,6 +38,10 @@ const {
   loadServerConfigFromDisk,
   formatServerConfigForLog
 } = require("./server/config/server-config");
+const {
+  MAX_CHAT_MESSAGE_LENGTH,
+  TOWN_SPAWN_MAX_ATTEMPTS
+} = require("./config/game-constants");
 const { sanitizeChatText, sanitizeChatSender } = require("./server/network/chat-sanitization");
 const { loadGameplayRuntimeConfig } = require("./server/config/gameplay-runtime");
 const { loadItemConfigFromDisk } = require("./server/config/item-config");
@@ -206,7 +210,7 @@ function randomTownInteriorSpawn() {
   const maxTileX = Math.max(minTileX, TOWN_LAYOUT.maxTileX - inset);
   const minTileY = Math.min(TOWN_LAYOUT.maxTileY, TOWN_LAYOUT.minTileY + inset);
   const maxTileY = Math.max(minTileY, TOWN_LAYOUT.maxTileY - inset);
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  for (let attempt = 0; attempt < TOWN_SPAWN_MAX_ATTEMPTS; attempt += 1) {
     const tileX = minTileX + Math.floor(Math.random() * (maxTileX - minTileX + 1));
     const tileY = minTileY + Math.floor(Math.random() * (maxTileY - minTileY + 1));
     const spawn = {
@@ -435,7 +439,7 @@ const allocateItemInstanceId = worldState.allocateItemInstanceId;
 
 function broadcastChatMessage(sender, text) {
   const senderName = sanitizeChatSender(sender && sender.name, "System");
-  const safeText = sanitizeChatText(text, 200);
+  const safeText = sanitizeChatText(text, MAX_CHAT_MESSAGE_LENGTH);
   if (!safeText) {
     return;
   }

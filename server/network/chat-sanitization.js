@@ -1,5 +1,7 @@
 "use strict";
 
+const { MAX_CHAT_MESSAGE_LENGTH } = require("../../config/game-constants");
+
 function collapseWhitespace(value) {
   return String(value || "")
     .replace(/[\r\n\t]+/g, " ")
@@ -7,8 +9,8 @@ function collapseWhitespace(value) {
     .trim();
 }
 
-function sanitizeChatText(value, maxLength = 200) {
-  const normalizedMaxLength = Math.max(1, Math.floor(Number(maxLength) || 200));
+function sanitizeChatText(value, maxLength = MAX_CHAT_MESSAGE_LENGTH) {
+  const normalizedMaxLength = Math.max(1, Math.floor(Number(maxLength) || MAX_CHAT_MESSAGE_LENGTH));
   const sanitized = collapseWhitespace(
     String(value || "")
       .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")

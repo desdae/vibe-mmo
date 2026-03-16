@@ -19,6 +19,7 @@
     "test:crafting:unit": "node scripts/test-crafting-system.js",
     "test:damage:smoke": "node scripts/playwright-damage-smoke.js",
     "test:bots:unit": "node scripts/test-bot-system.js",
+    "test:constants:unit": "node scripts/test-game-constants.js",
     "test:hunting:smoke": "node scripts/playwright-hunting-smoke.js",
     "test:hunting:unit": "node scripts/test-hunting-system.js",
     "test:security:chat": "node scripts/test-chat-sanitization.js",

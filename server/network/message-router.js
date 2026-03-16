@@ -1,5 +1,6 @@
 const { createEffectEngine } = require("../gameplay/effects/effect-engine");
 const { buildItemUseEffectDefsFromItemDef } = require("../gameplay/effects/item-use-effect-defs");
+const { MAX_CHAT_MESSAGE_LENGTH, MAX_PLAYER_LEVEL } = require("../../config/game-constants");
 const { sanitizeChatText } = require("./chat-sanitization");
 
 function createJoinedPlayer(ws, msg, deps) {
@@ -556,7 +557,9 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
       return { player };
     }
     const requested = Math.floor(Number(msg.level) || 0);
-    const level = deps.clamp ? deps.clamp(requested, 1, 60) : Math.max(1, Math.min(60, requested));
+    const level = deps.clamp
+      ? deps.clamp(requested, 1, MAX_PLAYER_LEVEL)
+      : Math.max(1, Math.min(MAX_PLAYER_LEVEL, requested));
     player.level = level;
     player.exp = 0;
     if (typeof deps.expNeededForLevel === "function") {
@@ -724,7 +727,7 @@ function routeIncomingMessage({ rawMessage, ws, player, deps }) {
     if (player.hp <= 0) {
       return { player };
     }
-    const text = sanitizeChatText(msg.text, 200);
+    const text = sanitizeChatText(msg.text, MAX_CHAT_MESSAGE_LENGTH);
     if (!text) {
       return { player };
     }

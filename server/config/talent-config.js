@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { MAX_PLAYER_LEVEL } = require("../../config/game-constants");
 
 function loadTalentConfigFromDisk(configPath) {
   const raw = fs.readFileSync(configPath, "utf8");
@@ -301,8 +302,7 @@ function createTalentSystem(options = {}) {
   
   function getTotalTalentPoints(classType, playerLevel) {
     const pointsPerLevel = getTalentPointsPerLevel(classType);
-    const maxLevel = 60;
-    const effectiveLevel = Math.max(1, Math.min(maxLevel, Number(playerLevel) || 1));
+    const effectiveLevel = Math.max(1, Math.min(MAX_PLAYER_LEVEL, Number(playerLevel) || 1));
     return (effectiveLevel - 1) * pointsPerLevel;
   }
   

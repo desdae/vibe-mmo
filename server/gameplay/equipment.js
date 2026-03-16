@@ -1,3 +1,5 @@
+const { MAX_BLOCK_CHANCE } = require("../../config/game-constants");
+
 function cloneModifier(modifier) {
   if (!modifier || typeof modifier !== "object") {
     return null;
@@ -445,7 +447,7 @@ function createEquipmentTools(options = {}) {
       attackSpeedPercent: getEquippedStatTotal(player, "attackSpeed.percent") + (talentStats["attackSpeed.percent"] || 0) + (Number(player && player.buffAttackSpeedPercent) || 0),
       castSpeedPercent: getEquippedStatTotal(player, "castSpeed.percent") + (talentStats["castSpeed.percent"] || 0) + (Number(player && player.buffCastSpeedPercent) || 0),
       armor: Math.max(0, Math.round(baseArmor * (1 + armorPercent / 100))) + Math.round(talentStats["armor.flat"] || 0),
-      blockChance: clamp(baseBlockChance, 0, 0.75),
+      blockChance: clamp(baseBlockChance, 0, MAX_BLOCK_CHANCE),
       meleeDamagePercent: getEquippedStatTotal(player, "meleeDamage.percent") + (talentStats["meleeDamage.percent"] || 0) + (talentBuffStats["meleeDamage.percent"] || 0) + (Number(player && player.buffMeleeDamagePercent) || 0),
       spellPower: getEquippedStatTotal(player, "spellPower.flat") + (talentStats["spellPower.flat"] || 0),
       damageReductionPercent: (talentStats["damageReduction.percent"] || 0) + (talentBuffStats["damageReduction.percent"] || 0),
