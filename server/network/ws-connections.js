@@ -3,14 +3,7 @@ const { createSlidingWindowRateLimiter } = require("./ws-rate-limit");
 
 const WS_RATE_LIMIT_CLOSE_CODE = 1008;
 
-function getClientAddress(req, ws) {
-  const forwardedForHeader = req && req.headers ? req.headers["x-forwarded-for"] : "";
-  if (typeof forwardedForHeader === "string" && forwardedForHeader.trim()) {
-    const firstForwarded = forwardedForHeader.split(",")[0].trim();
-    if (firstForwarded) {
-      return firstForwarded;
-    }
-  }
+function getSocketAddress(req, ws) {
   const socketAddress =
     (req && req.socket && req.socket.remoteAddress) ||
     (ws && ws._socket && ws._socket.remoteAddress) ||
@@ -18,9 +11,24 @@ function getClientAddress(req, ws) {
   return String(socketAddress || "unknown");
 }
 
+function getClientAddress(req, ws, options = {}) {
+  if (options.trustProxyHeaders !== true) {
+    return getSocketAddress(req, ws);
+  }
+  const forwardedForHeader = req && req.headers ? req.headers["x-forwarded-for"] : "";
+  if (typeof forwardedForHeader === "string" && forwardedForHeader.trim()) {
+    const firstForwarded = forwardedForHeader.split(",")[0].trim();
+    if (firstForwarded) {
+      return firstForwarded;
+    }
+  }
+  return getSocketAddress(req, ws);
+}
+
 function getRateLimitConfig(deps) {
   const config = typeof deps.getServerConfig === "function" ? deps.getServerConfig() : null;
   return {
+    trustProxyHeaders: config && config.wsTrustProxyHeaders === true,
     connectionWindowMs: Number(config && config.wsConnectionRateLimitWindowMs) || 30000,
     connectionMax: Number(config && config.wsConnectionRateLimitMax) || 12,
     messageWindowMs: Number(config && config.wsMessageRateLimitWindowMs) || 1000,
@@ -59,8 +67,10 @@ function registerWsConnections(params = {}) {
   let nextConnectionId = 1;
 
   wss.on("connection", (ws, req) => {
-    const remoteAddress = getClientAddress(req, ws);
     const rateLimitConfig = getRateLimitConfig(deps);
+    const remoteAddress = getClientAddress(req, ws, {
+      trustProxyHeaders: rateLimitConfig.trustProxyHeaders
+    });
     const connectionCheck = connectionLimiter.check(remoteAddress, {
       windowMs: rateLimitConfig.connectionWindowMs,
       maxEvents: rateLimitConfig.connectionMax

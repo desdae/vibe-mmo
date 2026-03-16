@@ -24,6 +24,7 @@ function createDeps(overrides = {}) {
     CLASS_CONFIG: { clientClassDefs: [] },
     ABILITY_CONFIG: { clientAbilityDefs: [] },
     getServerConfig: () => ({
+      wsTrustProxyHeaders: false,
       wsConnectionRateLimitWindowMs: 1000,
       wsConnectionRateLimitMax: 2,
       wsMessageRateLimitWindowMs: 1000,
@@ -120,10 +121,11 @@ describe("registerWsConnections", () => {
     );
   });
 
-  test("uses forwarded addresses when available", () => {
+  test("ignores forwarded addresses unless trusted proxy mode is enabled", () => {
     const wss = new FakeWebSocketServer();
     const deps = createDeps({
       getServerConfig: () => ({
+        wsTrustProxyHeaders: false,
         wsConnectionRateLimitWindowMs: 1000,
         wsConnectionRateLimitMax: 1,
         wsMessageRateLimitWindowMs: 1000,
@@ -134,14 +136,56 @@ describe("registerWsConnections", () => {
 
     const ws1 = new FakeSocket();
     const ws2 = new FakeSocket();
-    const req = {
+    const req1 = {
+      headers: { "x-forwarded-for": "203.0.113.1, 10.0.0.1" },
+      socket: { remoteAddress: "127.0.0.1" }
+    };
+    const req2 = {
+      headers: { "x-forwarded-for": "198.51.100.2, 10.0.0.1" },
+      socket: { remoteAddress: "127.0.0.1" }
+    };
+
+    wss.emit("connection", ws1, req1);
+    wss.emit("connection", ws2, req2);
+
+    expect(ws2.close).toHaveBeenCalledWith(1008, "rate_limited");
+  });
+
+  test("uses forwarded addresses when trusted proxy mode is enabled", () => {
+    const wss = new FakeWebSocketServer();
+    const deps = createDeps({
+      getServerConfig: () => ({
+        wsTrustProxyHeaders: true,
+        wsConnectionRateLimitWindowMs: 1000,
+        wsConnectionRateLimitMax: 1,
+        wsMessageRateLimitWindowMs: 1000,
+        wsMessageRateLimitMax: 10
+      })
+    });
+    registerWsConnections({ wss, deps });
+
+    const ws1 = new FakeSocket();
+    const ws2 = new FakeSocket();
+    const ws3 = new FakeSocket();
+    const req1 = {
+      headers: { "x-forwarded-for": "203.0.113.1, 10.0.0.1" },
+      socket: { remoteAddress: "127.0.0.1" }
+    };
+    const req2 = {
+      headers: { "x-forwarded-for": "198.51.100.2, 10.0.0.1" },
+      socket: { remoteAddress: "127.0.0.1" }
+    };
+    const req3 = {
       headers: { "x-forwarded-for": "203.0.113.1, 10.0.0.1" },
       socket: { remoteAddress: "127.0.0.1" }
     };
 
-    wss.emit("connection", ws1, req);
-    wss.emit("connection", ws2, req);
+    wss.emit("connection", ws1, req1);
+    wss.emit("connection", ws2, req2);
+    wss.emit("connection", ws3, req3);
 
-    expect(ws2.close).toHaveBeenCalledWith(1008, "rate_limited");
+    expect(ws1.close).not.toHaveBeenCalled();
+    expect(ws2.close).not.toHaveBeenCalled();
+    expect(ws3.close).toHaveBeenCalledWith(1008, "rate_limited");
   });
 });
