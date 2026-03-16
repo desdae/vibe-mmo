@@ -1234,6 +1234,8 @@ const projectileRuntimeTools = createProjectileRuntimeTools({
   clamp,
   players,
   mobs,
+  getPlayersInRadius: worldState.getPlayersInRadius,
+  getMobsInRadius: worldState.getMobsInRadius,
   spawnProjectileFromTemplate,
   normalizeProjectileTargetType
 });
@@ -1259,11 +1261,16 @@ const projectileTickSystem = createProjectileTickSystem({
   applyProjectileHitEffects,
   emitProjectilesFromEmitter,
   getNearestProjectileTarget,
+  getPlayersInRadius: worldState.getPlayersInRadius,
+  getMobsInRadius: worldState.getMobsInRadius,
   normalizeDirection,
   steerDirectionTowards,
   isProjectileBlockedAt: (x, y) => isPointBlockedByTownWall(TOWN_LAYOUT, x, y)
 });
-const tickProjectiles = projectileTickSystem.tickProjectiles;
+const tickProjectiles = () => {
+  worldState.rebuildSpatialIndexes();
+  projectileTickSystem.tickProjectiles();
+};
 
 const playerTickSystem = createPlayerTickSystem({
   players,

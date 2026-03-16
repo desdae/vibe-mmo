@@ -17,11 +17,26 @@ function createProjectileTickSystem({
   applyProjectileHitEffects,
   emitProjectilesFromEmitter,
   getNearestProjectileTarget,
+  getPlayersInRadius,
+  getMobsInRadius,
   normalizeDirection,
   steerDirectionTowards,
   isProjectileBlockedAt
 }) {
   const isBlockedPoint = typeof isProjectileBlockedAt === "function" ? isProjectileBlockedAt : () => false;
+
+  function getTargetCandidates(projectileTargetType, x, y, radius) {
+    if (projectileTargetType === "player") {
+      if (typeof getPlayersInRadius === "function") {
+        return getPlayersInRadius(x, y, radius);
+      }
+      return players.values();
+    }
+    if (typeof getMobsInRadius === "function") {
+      return getMobsInRadius(x, y, radius);
+    }
+    return mobs.values();
+  }
 
   function tickProjectiles() {
     const now = Date.now();
@@ -59,7 +74,7 @@ function createProjectileTickSystem({
       let hitPlayer = null;
       const hitRadius = clamp(Number(projectile.hitRadius) || defaultProjectileHitRadius, 0.1, 8);
       if (projectileTargetType === "player") {
-        for (const player of players.values()) {
+        for (const player of getTargetCandidates("player", projectile.x, projectile.y, hitRadius)) {
           if (!player || player.hp <= 0) {
             continue;
           }
@@ -70,7 +85,7 @@ function createProjectileTickSystem({
           break;
         }
       } else {
-        for (const mob of mobs.values()) {
+        for (const mob of getTargetCandidates("mob", projectile.x, projectile.y, hitRadius)) {
           if (!mob.alive) {
             continue;
           }
@@ -100,7 +115,7 @@ function createProjectileTickSystem({
         if (explosionRadius > 0) {
           queueExplosionEvent(impactX, impactY, explosionRadius, projectile.abilityId);
           if (projectileTargetType === "player") {
-            for (const player of players.values()) {
+            for (const player of getTargetCandidates("player", impactX, impactY, explosionRadius)) {
               if (!player || player.hp <= 0) {
                 continue;
               }
@@ -115,7 +130,7 @@ function createProjectileTickSystem({
               applyProjectileHitEffectsToPlayer(player, projectile, dealt, now);
             }
           } else {
-            for (const mob of mobs.values()) {
+            for (const mob of getTargetCandidates("mob", impactX, impactY, explosionRadius)) {
               if (!mob.alive) {
                 continue;
               }
@@ -153,7 +168,7 @@ function createProjectileTickSystem({
         const baseDamage = randomInt(damageMin, damageMax);
         queueExplosionEvent(projectile.x, projectile.y, explosionRadius, projectile.abilityId);
         if (projectileTargetType === "player") {
-          for (const player of players.values()) {
+          for (const player of getTargetCandidates("player", projectile.x, projectile.y, explosionRadius)) {
             if (!player || player.hp <= 0) {
               continue;
             }
@@ -168,7 +183,7 @@ function createProjectileTickSystem({
             applyProjectileHitEffectsToPlayer(player, projectile, dealt, now);
           }
         } else {
-          for (const mob of mobs.values()) {
+          for (const mob of getTargetCandidates("mob", projectile.x, projectile.y, explosionRadius)) {
             if (!mob.alive) {
               continue;
             }

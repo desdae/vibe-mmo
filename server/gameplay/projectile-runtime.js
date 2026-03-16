@@ -8,6 +8,10 @@ function createProjectileRuntimeTools(options = {}) {
     typeof options.normalizeProjectileTargetType === "function"
       ? options.normalizeProjectileTargetType
       : (targetType, fallback = "mob") => fallback;
+  const getPlayersInRadius =
+    typeof options.getPlayersInRadius === "function" ? options.getPlayersInRadius : null;
+  const getMobsInRadius =
+    typeof options.getMobsInRadius === "function" ? options.getMobsInRadius : null;
 
   if (!(players instanceof Map)) {
     throw new Error("createProjectileRuntimeTools requires players map");
@@ -108,7 +112,10 @@ function createProjectileRuntimeTools(options = {}) {
     let bestDistSq = maxRange * maxRange;
 
     if (projectileTargetType === "player") {
-      for (const player of players.values()) {
+      const playerCandidates = getPlayersInRadius
+        ? getPlayersInRadius(projectile.x, projectile.y, maxRange)
+        : players.values();
+      for (const player of playerCandidates) {
         if (!player || player.hp <= 0) {
           continue;
         }
@@ -134,7 +141,10 @@ function createProjectileRuntimeTools(options = {}) {
       return best;
     }
 
-    for (const mob of mobs.values()) {
+    const mobCandidates = getMobsInRadius
+      ? getMobsInRadius(projectile.x, projectile.y, maxRange)
+      : mobs.values();
+    for (const mob of mobCandidates) {
       if (!mob.alive) {
         continue;
       }
