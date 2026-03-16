@@ -2696,6 +2696,25 @@ function getCastProgress(castState, now) {
   return abilityRuntimeTools.getCastProgress(castState, now);
 }
 
+function getCastChannelSnapshot() {
+  return {
+    active: !!abilityChannel.active,
+    abilityId: String(abilityChannel.abilityId || ""),
+    startedAt: Number(abilityChannel.startedAt) || 0,
+    durationMs: Math.max(0, Number(abilityChannel.durationMs) || 0)
+  };
+}
+
+function interruptLocalMovementChanneling() {
+  if (!abilityChannel.active) {
+    return false;
+  }
+  const previousSelfCast = captureCastStateSnapshot(abilityChannel);
+  resetAbilityChanneling();
+  syncLocalCastAudio(previousSelfCast, abilityChannel);
+  return true;
+}
+
 function findAbilityDefById(abilityId) {
   const id = String(abilityId || "");
   if (!id) {
@@ -11471,6 +11490,10 @@ function sendMove() {
   if (!playerControlTools) {
     return;
   }
+  const currentMove = getCurrentMovementVector();
+  if ((currentMove.dx || currentMove.dy) && abilityChannel.active) {
+    interruptLocalMovementChanneling();
+  }
   playerControlTools.sendMove(socket);
 }
 
@@ -17003,6 +17026,7 @@ const automationTools = sharedCreateAutomationTools
       botListPanel,
       getCurrentSelf: () => getCurrentSelf(),
       getTownQuestGivers: () => getTownQuestGivers(),
+      getCastChannelSnapshot,
       getQuestStateSnapshot: () => (
         questRuntimeTools
           ? questRuntimeTools.getQuestStateSnapshot()
@@ -17014,6 +17038,7 @@ const automationTools = sharedCreateAutomationTools
       normalizeDirection,
       connectAndJoin,
       sendJsonMessage,
+      useAbilityAt,
       toggleEquipmentPanel
     })
   : null;

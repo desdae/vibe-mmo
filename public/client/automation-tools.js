@@ -190,6 +190,10 @@
         typeof deps.getQuestStateSnapshot === "function" ? deps.getQuestStateSnapshot : () => ({ active: [], completed: [] });
       const getDialogueSnapshot =
         typeof deps.getDialogueSnapshot === "function" ? deps.getDialogueSnapshot : () => null;
+      const getCastChannelSnapshot =
+        typeof deps.getCastChannelSnapshot === "function"
+          ? deps.getCastChannelSnapshot
+          : () => ({ active: false, abilityId: "", durationMs: 0, startedAt: 0 });
 
       return {
         rendererMode: deps.rendererBootstrap ? deps.rendererBootstrap.getRendererMode() : "canvas",
@@ -309,6 +313,7 @@
               leftDown: !!deps.mouseState.leftDown
             }
           : { sx: 0, sy: 0, leftDown: false },
+        castChannel: getCastChannelSnapshot(),
         questState: getQuestStateSnapshot(),
         dialogue: getDialogueSnapshot(),
         status: deps.statusEl ? String(deps.statusEl.textContent || "") : "",
@@ -360,6 +365,9 @@
           });
         },
         castAtWorld(abilityId, targetX, targetY) {
+          if (typeof deps.useAbilityAt === "function") {
+            return !!deps.useAbilityAt(abilityId, targetX, targetY, { trackPointer: false });
+          }
           const self = typeof deps.getCurrentSelf === "function" ? deps.getCurrentSelf() : null;
           const normalizeDirection = typeof deps.normalizeDirection === "function" ? deps.normalizeDirection : null;
           if (!self || !normalizeDirection || typeof deps.sendJsonMessage !== "function") {
