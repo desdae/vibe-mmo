@@ -7,6 +7,7 @@
     "dropchanceMultiplier": 10,
     "mobSpawnMultiplier": 1.0,
     "wsTrustProxyHeaders": false,
+    "wsMaxPayloadBytes": 65536,
     "wsConnectionRateLimitWindowMs": 30000,
     "wsConnectionRateLimitMax": 12,
     "wsMessageRateLimitWindowMs": 1000,

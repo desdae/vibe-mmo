@@ -418,7 +418,10 @@ const server = createGameHttpServer({
   })
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  maxPayload: Math.max(1024, Number(SERVER_CONFIG?.wsMaxPayloadBytes) || 65536)
+});
 
 const worldState = createWorldState();
 const players = worldState.players;
