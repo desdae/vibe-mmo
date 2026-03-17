@@ -1101,6 +1101,12 @@
       }
     }
 
+    function getPlayerRenderKey(entry) {
+      const player = entry && entry.player ? entry.player : null;
+      const scope = entry && entry.isSelf ? "self" : "remote";
+      return `pixi-player:${scope}:${String(player && player.id != null ? player.id : "0")}`;
+    }
+
     function getPlayerSpriteFrame(entry) {
       const player = entry && entry.player ? entry.player : null;
       const isSelf = !!(entry && entry.isSelf);
@@ -1139,7 +1145,7 @@
           }
         }
       }
-      return renderHumanoidSpriteFrame(`pixi-player:${String(player.id ?? "0")}`, {
+      return renderHumanoidSpriteFrame(getPlayerRenderKey(entry), {
         entity: player,
         style,
         equipmentSlots,
@@ -3897,7 +3903,7 @@
       syncNodeMap(
         playerNodes,
         [...frameViewModel.playerViews, frameViewModel.selfView],
-        (entry) => entry.player.id,
+        (entry) => getPlayerRenderKey(entry),
         () => createLabeledSpriteNode(),
         (node, entry) => {
           const p = worldToScreen(Number(entry.player.x) + 0.5, Number(entry.player.y) + 0.5, cameraX, cameraY, width, height);

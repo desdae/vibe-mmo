@@ -219,6 +219,21 @@ function createMockDocument() {
   };
 }
 
+function collectTextNodes(root, target = []) {
+  if (!root || typeof root !== "object") {
+    return target;
+  }
+  if (Object.prototype.hasOwnProperty.call(root, "text")) {
+    target.push(root);
+  }
+  if (Array.isArray(root.children)) {
+    for (const child of root.children) {
+      collectTextNodes(child, target);
+    }
+  }
+  return target;
+}
+
 describe("VibeClientPixiWorldRenderer", () => {
   const modulePath = path.resolve(__dirname, "../../public/client/pixi-world-renderer.js");
 
@@ -339,6 +354,92 @@ describe("VibeClientPixiWorldRenderer", () => {
     expect(applicationInstances).toHaveLength(1);
     expect(drawHumanoid).toHaveBeenCalledTimes(2);
     expect(applicationInstances[0].renderer.render).toHaveBeenCalledTimes(3);
+  });
+
+  test("keeps self and remote player nodes distinct when ids collide", () => {
+    require(modulePath);
+
+    const { PIXI, applicationInstances } = createPixiStub();
+    globalThis.VibeClientRenderHumanoids = {
+      createHumanoidRenderTools: () => ({
+        drawHumanoid: () => {}
+      })
+    };
+    global.document = createMockDocument();
+
+    const renderer = globalThis.VibeClientPixiWorldRenderer.createPixiWorldRenderer({
+      PIXI,
+      canvasElement: {
+        width: 800,
+        height: 600,
+        style: {},
+        parentNode: {
+          insertBefore: () => {}
+        }
+      },
+      windowObject: {
+        devicePixelRatio: 1
+      }
+    });
+
+    const self = {
+      id: "1",
+      x: 4,
+      y: 6,
+      classType: "mage",
+      hp: 10,
+      maxHp: 10,
+      name: "Self"
+    };
+    const other = {
+      id: 1,
+      x: 6,
+      y: 6,
+      classType: "mage",
+      hp: 10,
+      maxHp: 10,
+      name: "Other"
+    };
+    renderer.renderWorldFrame({
+      frameNow: 100,
+      cameraX: 5,
+      cameraY: 6.5,
+      self,
+      selfView: {
+        player: self,
+        isSelf: true,
+        attackState: null,
+        castVisual: null,
+        statusVisual: null
+      },
+      playerViews: [
+        {
+          player: other,
+          isSelf: false,
+          attackState: null,
+          castVisual: null,
+          statusVisual: null
+        }
+      ],
+      mobViews: [],
+      projectileViews: [],
+      lootBagViews: [],
+      resourceNodeViews: [],
+      areaEffects: [],
+      explosionViews: [],
+      floatingDamageViews: [],
+      townVendor: null,
+      townQuestGivers: [],
+      hoveredMob: null,
+      hoveredBag: null,
+      hoveredResourceNode: null,
+      hoveredVendor: null,
+      hoveredQuestNpc: null
+    });
+
+    expect(applicationInstances).toHaveLength(1);
+    const textLabels = collectTextNodes(applicationInstances[0].stage).map((node) => node.text);
+    expect(textLabels).toEqual(expect.arrayContaining(["Self", "Other"]));
   });
 
   test("skips overlay redraws when labeled sprite state is unchanged", () => {
