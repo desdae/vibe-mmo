@@ -3,14 +3,6 @@
 
   function createPlayerControlTools(rawDeps) {
     const deps = rawDeps && typeof rawDeps === "object" ? rawDeps : {};
-    const sharedCanvasCoordinates = globalScope.VibeClientCanvasCoordinates || null;
-    const clientPointToCanvasPoint =
-      sharedCanvasCoordinates && typeof sharedCanvasCoordinates.clientPointToCanvasPoint === "function"
-        ? sharedCanvasCoordinates.clientPointToCanvasPoint
-        : (_canvas, clientX, clientY) => ({
-            x: Number(clientX) || 0,
-            y: Number(clientY) || 0
-          });
     const keys = deps.keys || {};
     const movementSync = deps.movementSync || { lastDx: 0, lastDy: 0, lastSentAt: 0 };
     const mouseState = deps.mouseState || { sx: 0, sy: 0 };
@@ -26,6 +18,20 @@
     const canvas = deps.canvas || null;
     const tileSize = Math.max(1, Number(deps.tileSize) || 32);
     const sendJsonMessage = typeof deps.sendJsonMessage === "function" ? deps.sendJsonMessage : () => false;
+
+    function clientPointToCanvasPoint(localCanvas, clientX, clientY) {
+      const sharedCanvasCoordinates = globalScope.VibeClientCanvasCoordinates || null;
+      if (
+        sharedCanvasCoordinates &&
+        typeof sharedCanvasCoordinates.clientPointToCanvasPoint === "function"
+      ) {
+        return sharedCanvasCoordinates.clientPointToCanvasPoint(localCanvas, clientX, clientY);
+      }
+      return {
+        x: Number(clientX) || 0,
+        y: Number(clientY) || 0
+      };
+    }
 
     function getCurrentInputVector() {
       const left = keys.ArrowLeft || keys.KeyA;
