@@ -30,6 +30,7 @@ function createGameHttpServer(options = {}) {
     http,
     publicDir,
     getGameConfigPayload,
+    getJoinConfigPayload,
     indexFileName = "index.html",
     contentTypes = DEFAULT_CONTENT_TYPES
   } = options;
@@ -47,6 +48,18 @@ function createGameHttpServer(options = {}) {
   return http.createServer((req, res) => {
     const reqPath = req.url || "/";
     const pathOnly = reqPath.split("?")[0];
+    if (pathOnly === "/api/join-config") {
+      const payload =
+        typeof getJoinConfigPayload === "function"
+          ? getJoinConfigPayload()
+          : { classes: [] };
+      res.writeHead(200, {
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "public, max-age=60"
+      });
+      res.end(JSON.stringify(payload));
+      return;
+    }
     if (pathOnly === "/api/game-config") {
       res.writeHead(200, {
         "Content-Type": "application/json; charset=utf-8",

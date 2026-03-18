@@ -433,8 +433,13 @@
       }
       globalScope.setInterval(deps.updateAutoLootPickup, 75);
       deps.initializeDpsPanel();
-      deps.loadInitialGameConfig();
+      if (typeof deps.primeJoinScreenConfig === "function") {
+        deps.primeJoinScreenConfig();
+      }
       requestFrame(deps.render);
+      deps.windowObject.setTimeout(() => {
+        deps.loadInitialGameConfig();
+      }, 0);
     }
 
     return {

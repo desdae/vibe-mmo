@@ -270,6 +270,36 @@ function buildStaticClientConfigSnapshot() {
     ...snapshot
   };
 }
+let staticClientConfigSnapshotCache = null;
+let joinClientConfigSnapshotCache = null;
+
+function invalidateStaticClientConfigSnapshots() {
+  staticClientConfigSnapshotCache = null;
+  joinClientConfigSnapshotCache = null;
+}
+
+function getStaticClientConfigSnapshot() {
+  if (!staticClientConfigSnapshotCache) {
+    staticClientConfigSnapshotCache = buildStaticClientConfigSnapshot();
+  }
+  return staticClientConfigSnapshotCache;
+}
+
+function buildJoinClientConfigSnapshot() {
+  return {
+    classes: (Array.isArray(CLASS_CONFIG.clientClassDefs) ? CLASS_CONFIG.clientClassDefs : []).map((entry) => ({
+      id: String(entry && entry.id || "").trim(),
+      name: String(entry && entry.name || entry && entry.id || "").trim()
+    })).filter((entry) => entry.id)
+  };
+}
+
+function getJoinClientConfigSnapshot() {
+  if (!joinClientConfigSnapshotCache) {
+    joinClientConfigSnapshotCache = buildJoinClientConfigSnapshot();
+  }
+  return joinClientConfigSnapshotCache;
+}
 const playerVisibilityTools = createPlayerVisibilityTools({
   defaultVisibilityRange: VISIBILITY_RANGE,
   maxViewportWidth: MAX_VIEWPORT_WIDTH,
@@ -420,8 +450,9 @@ const server = createGameHttpServer({
   http,
   publicDir,
   indexFileName: selectedIndexFileName,
+  getJoinConfigPayload: () => getJoinClientConfigSnapshot(),
   getGameConfigPayload: () => {
-    const staticClientConfig = buildStaticClientConfigSnapshot();
+    const staticClientConfig = getStaticClientConfigSnapshot();
     return {
       configVersion: staticClientConfig.version,
       classes: staticClientConfig.classes,
@@ -1195,9 +1226,11 @@ const configOrchestrator = createConfigOrchestrator({
     getAbilityConfig: () => ABILITY_CONFIG,
     setAbilityConfig: (nextConfig) => {
       ABILITY_CONFIG = nextConfig;
+      invalidateStaticClientConfigSnapshots();
     },
     setClassConfig: (nextConfig) => {
       CLASS_CONFIG = nextConfig;
+      invalidateStaticClientConfigSnapshots();
     },
     setMobConfig: (nextConfig) => {
       MOB_CONFIG = nextConfig;
@@ -1430,7 +1463,7 @@ const runtimeBootstrap = createRuntimeBootstrap({
     mapHeight: MAP_HEIGHT,
     visibilityRange: VISIBILITY_RANGE,
     buildSoundManifest,
-    getStaticClientConfigSnapshot: buildStaticClientConfigSnapshot,
+    getStaticClientConfigSnapshot,
     randomSpawn,
     expNeededForLevel,
     createEmptyInventorySlots,

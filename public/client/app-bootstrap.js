@@ -256,6 +256,7 @@
           updateDpsPanel: deps.updateDpsPanel,
           refreshAdminBotList: deps.refreshAdminBotList,
           initializeDpsPanel: deps.initializeDpsPanel,
+          primeJoinScreenConfig: deps.primeJoinScreenConfig,
           loadInitialGameConfig: deps.loadInitialGameConfig,
           render
         })

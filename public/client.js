@@ -869,6 +869,7 @@ const mobileActionTouchState = {
   holdTriggered: false,
   moveCanceled: false
 };
+let joinClassOptions = [];
 const LOOT_BAG_SPARKLE_PARTICLE_CONFIG = Object.freeze({
   maxParticles: 10,
   spawnRate: 6.4,
@@ -1697,6 +1698,48 @@ const abilityVisualRegistry = globalThis.VibeAbilityVisualRegistry || {
 
 function toAbilityVisualKey(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function populateClassTypeSelectFromOptions(classOptions) {
+  if (!classTypeSelect) {
+    return;
+  }
+  const previousValue = String(classTypeSelect.value || "");
+  let hasPreviousValue = false;
+  classTypeSelect.innerHTML = "";
+  for (const optionDef of Array.isArray(classOptions) ? classOptions : []) {
+    if (!optionDef || !optionDef.id) {
+      continue;
+    }
+    const option = document.createElement("option");
+    option.value = optionDef.id;
+    option.textContent = optionDef.name || optionDef.id;
+    classTypeSelect.appendChild(option);
+    if (optionDef.id === previousValue) {
+      hasPreviousValue = true;
+    }
+  }
+  if (previousValue && hasPreviousValue) {
+    classTypeSelect.value = previousValue;
+  } else if (classOptions.length) {
+    classTypeSelect.value = classOptions[0].id;
+  }
+}
+
+function applyJoinClassOptions(classes) {
+  joinClassOptions = (Array.isArray(classes) ? classes : [])
+    .map((classDef) => {
+      const id = String(classDef && classDef.id || "").trim();
+      if (!id) {
+        return null;
+      }
+      return {
+        id,
+        name: String(classDef.name || id)
+      };
+    })
+    .filter(Boolean);
+  populateClassTypeSelectFromOptions(joinClassOptions);
 }
 
 function registerAbilityHashMapping(abilityId, resolvedAbilityId = "") {
@@ -3765,6 +3808,12 @@ function getDefaultClassAbilityIds(classType) {
 function getDefaultClassId() {
   if (classDefsById.size) {
     return classDefsById.keys().next().value;
+  }
+  if (joinClassOptions.length) {
+    return joinClassOptions[0].id;
+  }
+  if (classTypeSelect && classTypeSelect.value) {
+    return String(classTypeSelect.value || "").trim() || "warrior";
   }
   return "warrior";
 }
@@ -10415,21 +10464,8 @@ function applyClassAndAbilityDefs(classes, abilities) {
     });
   }
 
-  if (classTypeSelect) {
-    const prevValue = String(classTypeSelect.value || "");
-    classTypeSelect.innerHTML = "";
-    for (const optionDef of classOptions) {
-      const option = document.createElement("option");
-      option.value = optionDef.id;
-      option.textContent = optionDef.name;
-      classTypeSelect.appendChild(option);
-    }
-    if (prevValue && classDefsById.has(prevValue)) {
-      classTypeSelect.value = prevValue;
-    } else if (classOptions.length) {
-      classTypeSelect.value = classOptions[0].id;
-    }
-  }
+  joinClassOptions = classOptions.map((entry) => ({ ...entry }));
+  populateClassTypeSelectFromOptions(classOptions);
 
   populateAdminBotClassOptions();
   updateAdminDebugControls();
@@ -10440,6 +10476,20 @@ function applyClassAndAbilityDefs(classes, abilities) {
   scheduleAbilityAudioPreload();
   spellbookState.signature = "";
   updateActionBarUI(getCurrentSelf());
+}
+
+async function fetchAndApplyJoinScreenConfig() {
+  try {
+    const response = await fetch("/api/join-config");
+    if (!response.ok) {
+      return false;
+    }
+    const payload = await response.json();
+    applyJoinClassOptions(payload && payload.classes);
+    return true;
+  } catch (_error) {
+    return false;
+  }
 }
 
 async function fetchAndApplyInitialGameConfig() {
@@ -10474,10 +10524,18 @@ async function fetchAndApplyInitialGameConfig() {
 
 clientConfigBootstrapTools = sharedCreateConfigBootstrapTools
   ? sharedCreateConfigBootstrapTools({
-      loadConfig: fetchAndApplyInitialGameConfig,
+      loadJoinConfig: fetchAndApplyJoinScreenConfig,
+      loadInitialConfig: fetchAndApplyInitialGameConfig,
       scheduleTask: scheduleDeferredClientTask
     })
   : null;
+
+function loadJoinScreenConfig() {
+  if (clientConfigBootstrapTools && typeof clientConfigBootstrapTools.ensureJoinConfig === "function") {
+    return clientConfigBootstrapTools.ensureJoinConfig();
+  }
+  return fetchAndApplyJoinScreenConfig();
+}
 
 function loadInitialGameConfig() {
   if (clientConfigBootstrapTools && typeof clientConfigBootstrapTools.ensureInitialGameConfig === "function") {
@@ -17637,13 +17695,12 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
       updateDpsPanel,
       refreshAdminBotList: () => requestAdminBotList(false),
       initializeDpsPanel,
+      primeJoinScreenConfig: loadJoinScreenConfig,
       loadInitialGameConfig
     })
   : null;
 const rendererBootstrap = appBootstrapTools ? appBootstrapTools.rendererBootstrap : null;
 const inputBootstrapTools = appBootstrapTools ? appBootstrapTools.inputBootstrapTools : null;
-
-loadInitialGameConfig();
 
 function render() {
   if (appBootstrapTools) {
@@ -17707,6 +17764,8 @@ initializeDebugAdminControls();
 if (automationTools) {
   automationTools.installAutomationApi();
 }
+
+loadJoinScreenConfig();
 
 if (inputBootstrapTools) {
   inputBootstrapTools.bind();

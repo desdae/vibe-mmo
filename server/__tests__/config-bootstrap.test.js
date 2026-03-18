@@ -12,26 +12,48 @@ describe("VibeClientConfigBootstrap", () => {
     delete globalThis.VibeClientConfigBootstrap;
   });
 
-  test("deduplicates concurrent initial config loads", async () => {
+  test("deduplicates concurrent join config loads", async () => {
     require(modulePath);
 
-    const loadConfig = jest.fn(async () => {
+    const loadJoinConfig = jest.fn(async () => {
       await Promise.resolve();
       return true;
     });
     const tools = globalThis.VibeClientConfigBootstrap.createConfigBootstrapTools({
-      loadConfig,
+      loadJoinConfig,
+      loadInitialConfig: async () => true,
+      scheduleTask: () => {}
+    });
+
+    const first = tools.ensureJoinConfig();
+    const second = tools.ensureJoinConfig();
+    const third = tools.ensureJoinConfig();
+
+    expect(first).toBe(second);
+    expect(second).toBe(third);
+    await expect(first).resolves.toBe(true);
+    expect(loadJoinConfig).toHaveBeenCalledTimes(1);
+  });
+
+  test("deduplicates concurrent initial config loads", async () => {
+    require(modulePath);
+
+    const loadInitialConfig = jest.fn(async () => {
+      await Promise.resolve();
+      return true;
+    });
+    const tools = globalThis.VibeClientConfigBootstrap.createConfigBootstrapTools({
+      loadJoinConfig: async () => true,
+      loadInitialConfig,
       scheduleTask: () => {}
     });
 
     const first = tools.ensureInitialGameConfig();
     const second = tools.ensureInitialGameConfig();
-    const third = tools.ensureInitialGameConfig();
 
     expect(first).toBe(second);
-    expect(second).toBe(third);
     await expect(first).resolves.toBe(true);
-    expect(loadConfig).toHaveBeenCalledTimes(1);
+    expect(loadInitialConfig).toHaveBeenCalledTimes(1);
   });
 
   test("queues deferred audio preload only once until it runs", () => {
@@ -40,7 +62,8 @@ describe("VibeClientConfigBootstrap", () => {
     const scheduledTasks = [];
     const preloadAudio = jest.fn();
     const tools = globalThis.VibeClientConfigBootstrap.createConfigBootstrapTools({
-      loadConfig: async () => true,
+      loadJoinConfig: async () => true,
+      loadInitialConfig: async () => true,
       scheduleTask: (task) => {
         scheduledTasks.push(task);
       }
