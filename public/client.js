@@ -2456,6 +2456,32 @@ function preloadAllAbilityAudio() {
   }
 }
 
+function scheduleDeferredClientTask(task) {
+  if (typeof task !== "function") {
+    return;
+  }
+  if (typeof window !== "undefined" && typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(() => task());
+    return;
+  }
+  window.setTimeout(() => task(), 0);
+}
+
+const sharedClientConfigBootstrap = globalThis.VibeClientConfigBootstrap || null;
+const sharedCreateConfigBootstrapTools =
+  sharedClientConfigBootstrap && typeof sharedClientConfigBootstrap.createConfigBootstrapTools === "function"
+    ? sharedClientConfigBootstrap.createConfigBootstrapTools
+    : null;
+let clientConfigBootstrapTools = null;
+
+function scheduleAbilityAudioPreload() {
+  if (clientConfigBootstrapTools && typeof clientConfigBootstrapTools.scheduleAbilityAudioPreload === "function") {
+    clientConfigBootstrapTools.scheduleAbilityAudioPreload(preloadAllAbilityAudio);
+    return;
+  }
+  scheduleDeferredClientTask(preloadAllAbilityAudio);
+}
+
 function getMobEventAudioUrlCandidates(mobType, eventType) {
   const mobId = normalizeMobAudioId(mobType);
   const eventId = normalizeMobAudioId(eventType);
@@ -10411,12 +10437,12 @@ function applyClassAndAbilityDefs(classes, abilities) {
   if (selfStatic && selfStatic.classType) {
     ensureActionBindingsForClass(selfStatic.classType);
   }
-  preloadAllAbilityAudio();
+  scheduleAbilityAudioPreload();
   spellbookState.signature = "";
   updateActionBarUI(getCurrentSelf());
 }
 
-async function loadInitialGameConfig() {
+async function fetchAndApplyInitialGameConfig() {
   try {
     const response = await fetch("/api/game-config", {
       cache: "no-store"
@@ -10444,6 +10470,20 @@ async function loadInitialGameConfig() {
   } catch (_error) {
     return false;
   }
+}
+
+clientConfigBootstrapTools = sharedCreateConfigBootstrapTools
+  ? sharedCreateConfigBootstrapTools({
+      loadConfig: fetchAndApplyInitialGameConfig,
+      scheduleTask: scheduleDeferredClientTask
+    })
+  : null;
+
+function loadInitialGameConfig() {
+  if (clientConfigBootstrapTools && typeof clientConfigBootstrapTools.ensureInitialGameConfig === "function") {
+    return clientConfigBootstrapTools.ensureInitialGameConfig();
+  }
+  return fetchAndApplyInitialGameConfig();
 }
 
 function parseItemStateEntry(raw) {
@@ -17602,6 +17642,8 @@ const appBootstrapTools = sharedCreateAppBootstrapTools
   : null;
 const rendererBootstrap = appBootstrapTools ? appBootstrapTools.rendererBootstrap : null;
 const inputBootstrapTools = appBootstrapTools ? appBootstrapTools.inputBootstrapTools : null;
+
+loadInitialGameConfig();
 
 function render() {
   if (appBootstrapTools) {

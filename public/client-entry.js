@@ -28,6 +28,7 @@ async function bootstrapClient() {
 
   const clientModuleLoaders = [
     () => import("./client/canvas-coordinates.js"),
+    () => import("./client/config-bootstrap.js"),
     () => import("./client/network-packets.js"),
     () => import("./client/network-session.js"),
     () => import("./client/render-state.js"),
