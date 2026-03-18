@@ -24,6 +24,17 @@ function createResourceGenerationTools(options = {}) {
     options.familyLimits && typeof options.familyLimits === "object"
       ? { ...options.familyLimits }
       : { tree: 130, ore_vein: 90 };
+  const familyMinSpacing =
+    options.familyMinSpacing && typeof options.familyMinSpacing === "object"
+      ? { ...options.familyMinSpacing }
+      : {
+          tree: Math.max(8, Math.round(cellSize * 0.55)),
+          ore_vein: Math.max(10, Math.round(cellSize * 0.72))
+        };
+  const placementAttemptsPerTarget = Math.max(
+    3,
+    Math.floor(Number(options.placementAttemptsPerTarget) || 8)
+  );
 
   if (!(resourceNodes instanceof Map)) {
     throw new Error("createResourceGenerationTools requires resourceNodes map");
@@ -44,6 +55,17 @@ function createResourceGenerationTools(options = {}) {
 
   function normalizeId(value) {
     return String(value || "").trim().toLowerCase();
+  }
+
+  function normalizeAngleDeg(angleDeg) {
+    let angle = Number(angleDeg) || 0;
+    while (angle < 0) {
+      angle += 360;
+    }
+    while (angle >= 360) {
+      angle -= 360;
+    }
+    return angle;
   }
 
   function hashUnit(seedText) {
@@ -69,6 +91,47 @@ function createResourceGenerationTools(options = {}) {
       py >= Number(townLayout.minTileY) - padding &&
       py < Number(townLayout.maxTileY) + 1 + padding
     );
+  }
+
+  function isPointWithinMap(x, y) {
+    const px = Number(x);
+    const py = Number(y);
+    return Number.isFinite(px) && Number.isFinite(py) && px >= 0 && px < mapWidth && py >= 0 && py < mapHeight;
+  }
+
+  function getMapRadiusLimit(origin) {
+    const corners = [
+      { x: 0, y: 0 },
+      { x: mapWidth - 1, y: 0 },
+      { x: 0, y: mapHeight - 1 },
+      { x: mapWidth - 1, y: mapHeight - 1 }
+    ];
+    let maxDistance = 0;
+    for (const corner of corners) {
+      maxDistance = Math.max(
+        maxDistance,
+        Math.hypot((Number(corner.x) || 0) - Number(origin && origin.x), (Number(corner.y) || 0) - Number(origin && origin.y))
+      );
+    }
+    return Math.max(1, maxDistance);
+  }
+
+  function getSectorSpanDeg(sector) {
+    const min = normalizeAngleDeg(Number(sector && sector.angleMinDeg) || 0);
+    const max = normalizeAngleDeg(Number(sector && sector.angleMaxDeg) || 0);
+    const span = (max - min + 360) % 360;
+    return {
+      min,
+      span: span <= 0 ? 360 : span
+    };
+  }
+
+  function pointFromPolar(origin, radius, angleDeg) {
+    const radians = ((Number(angleDeg) || 0) - 90) * (Math.PI / 180);
+    return {
+      x: Number(origin && origin.x) + Math.cos(radians) * Number(radius || 0),
+      y: Number(origin && origin.y) + Math.sin(radians) * Number(radius || 0)
+    };
   }
 
   function rollQuantity(yieldDef, seedText) {
@@ -105,7 +168,11 @@ function createResourceGenerationTools(options = {}) {
     let totalWeight = 0;
     for (const candidate of candidates) {
       const familyWeight = Math.max(0.05, Number(biomeInfo && biomeInfo.resourceWeights && biomeInfo.resourceWeights[familyId]) || 0);
-      const weight = Math.max(0.01, Number(candidate.spawnWeight) || 1) * Math.max(0.05, familyWeight);
+      const densityWeight = Math.max(0.05, Number(candidate.density) || 0);
+      const weight =
+        Math.max(0.01, Number(candidate.spawnWeight) || 1) *
+        Math.max(0.05, familyWeight) *
+        densityWeight;
       weighted.push({ candidate, weight });
       totalWeight += weight;
     }
@@ -120,39 +187,6 @@ function createResourceGenerationTools(options = {}) {
       }
     }
     return weighted[weighted.length - 1].candidate;
-  }
-
-  function createNodeFromCell(cellX, cellY, familyId, familyIndex) {
-    const baseX = cellX * cellSize;
-    const baseY = cellY * cellSize;
-    const jitterSeed = `${cellX}:${cellY}:${familyId}:${familyIndex}`;
-    const centerX = clamp(baseX + cellSize * (0.2 + hashUnit(`${jitterSeed}:x`) * 0.6), 0, mapWidth - 1);
-    const centerY = clamp(baseY + cellSize * (0.2 + hashUnit(`${jitterSeed}:y`) * 0.6), 0, mapHeight - 1);
-    if (isPointExcludedByTown(centerX, centerY)) {
-      return null;
-    }
-    const biomeInfo = biomeResolver.resolveBiomeAt(centerX, centerY);
-    const familyWeight = Math.max(
-      0,
-      Math.min(1, Number(biomeInfo && biomeInfo.resourceWeights && biomeInfo.resourceWeights[familyId]) || 0)
-    );
-    if (familyWeight <= 0) {
-      return null;
-    }
-    const candidate = pickCandidateForFamily(biomeInfo, familyId, `${jitterSeed}:candidate`);
-    if (!candidate) {
-      return null;
-    }
-    const density = clamp(Number(candidate.density) || 0, 0, 1);
-    const presenceChance = density * clamp(0.45 + familyWeight * 0.7, 0, 1);
-    if (hashUnit(`${jitterSeed}:presence`) > presenceChance) {
-      return null;
-    }
-    const items = rollNodeItems(candidate, `${jitterSeed}:items`);
-    if (!items.length) {
-      return null;
-    }
-    return buildNodeFromCandidate(candidate, centerX, centerY, biomeInfo, items);
   }
 
   function buildNodeFromCandidate(candidate, x, y, biomeInfo, items) {
@@ -235,6 +269,170 @@ function createResourceGenerationTools(options = {}) {
     return false;
   }
 
+  function getGenerationRegions() {
+    const origin =
+      biomeResolver && typeof biomeResolver.getOrigin === "function"
+        ? biomeResolver.getOrigin()
+        : { x: mapWidth * 0.5, y: mapHeight * 0.5 };
+    const bands =
+      biomeResolver && typeof biomeResolver.getBands === "function" ? biomeResolver.getBands() : [];
+    const sectors =
+      biomeResolver && typeof biomeResolver.getSectors === "function" ? biomeResolver.getSectors() : [];
+    const effectiveBands = bands.length
+      ? bands
+      : [{ id: "all", distanceMin: 0, distanceMax: getMapRadiusLimit(origin), tags: [], biomeWeights: {} }];
+    const effectiveSectors = sectors.length
+      ? sectors
+      : [{ id: "all", angleMinDeg: 0, angleMaxDeg: 0, tags: [], biomeWeights: {} }];
+    const mapRadiusLimit = getMapRadiusLimit(origin);
+    const regions = [];
+    for (const band of effectiveBands) {
+      const radiusMin = Math.max(0, Number(band && band.distanceMin) || 0);
+      const radiusMax = Math.min(mapRadiusLimit, Math.max(radiusMin + 1, Number(band && band.distanceMax) || mapRadiusLimit));
+      if (radiusMax <= radiusMin) {
+        continue;
+      }
+      for (const sector of effectiveSectors) {
+        const sectorWindow = getSectorSpanDeg(sector);
+        const sampleRadius = radiusMin + (radiusMax - radiusMin) * 0.58;
+        const sampleAngle = normalizeAngleDeg(sectorWindow.min + sectorWindow.span * 0.5);
+        const samplePoint = pointFromPolar(origin, sampleRadius, sampleAngle);
+        const sampleBiome = biomeResolver.resolveBiomeAt(samplePoint.x, samplePoint.y);
+        const area = (sectorWindow.span / 360) * Math.PI * (radiusMax * radiusMax - radiusMin * radiusMin);
+        regions.push({
+          bandId: normalizeId(sampleBiome && sampleBiome.bandId) || normalizeId(band && band.id),
+          sectorId: normalizeId(sampleBiome && sampleBiome.sectorId) || normalizeId(sector && sector.id),
+          radiusMin,
+          radiusMax,
+          angleMinDeg: sectorWindow.min,
+          angleSpanDeg: sectorWindow.span,
+          area,
+          origin,
+          sampleBiome
+        });
+      }
+    }
+    return regions.filter((region) => region.area > 0);
+  }
+
+  function getFamilyPlacementScore(region, familyId) {
+    const biomeInfo = region && region.sampleBiome;
+    const familyWeight = clamp(
+      Number(biomeInfo && biomeInfo.resourceWeights && biomeInfo.resourceWeights[familyId]) || 0,
+      0,
+      1
+    );
+    if (familyWeight <= 0) {
+      return 0;
+    }
+    const candidates = resourceRegistry.getCandidatesForBiome(biomeInfo, familyId);
+    if (!candidates.length) {
+      return 0;
+    }
+    let weightedDensity = 0;
+    let totalCandidateWeight = 0;
+    for (const candidate of candidates) {
+      const candidateWeight = Math.max(0.01, Number(candidate.spawnWeight) || 1);
+      weightedDensity += candidateWeight * clamp(Number(candidate.density) || 0, 0.05, 1);
+      totalCandidateWeight += candidateWeight;
+    }
+    const averageDensity = totalCandidateWeight > 0 ? weightedDensity / totalCandidateWeight : 0.1;
+    return Math.max(0, Number(region.area) || 0) * familyWeight * Math.max(0.1, averageDensity);
+  }
+
+  function allocateFamilyTargets(limit, regions, familyId) {
+    const familyLimit = Math.max(0, Math.floor(Number(limit) || 0));
+    if (familyLimit <= 0) {
+      return [];
+    }
+    const scoredRegions = regions
+      .map((region) => ({
+        region,
+        score: getFamilyPlacementScore(region, familyId)
+      }))
+      .filter((entry) => entry.score > 0);
+    if (!scoredRegions.length) {
+      return [];
+    }
+    const totalScore = scoredRegions.reduce((sum, entry) => sum + entry.score, 0);
+    let assigned = 0;
+    const targets = scoredRegions.map((entry) => {
+      const raw = totalScore > 0 ? (entry.score / totalScore) * familyLimit : 0;
+      const count = Math.floor(raw);
+      assigned += count;
+      return {
+        ...entry,
+        raw,
+        count,
+        remainder: raw - count
+      };
+    });
+    const sortedRemainders = [...targets].sort((left, right) => right.remainder - left.remainder);
+    for (let index = 0; index < sortedRemainders.length && assigned < familyLimit; index += 1) {
+      sortedRemainders[index].count += 1;
+      assigned += 1;
+    }
+    return targets.filter((entry) => entry.count > 0);
+  }
+
+  function samplePointInRegion(region, seedText) {
+    const radiusMinSq = region.radiusMin * region.radiusMin;
+    const radiusMaxSq = region.radiusMax * region.radiusMax;
+    const radius = Math.sqrt(radiusMinSq + (radiusMaxSq - radiusMinSq) * hashUnit(`${seedText}:radius`));
+    const angleDeg = normalizeAngleDeg(region.angleMinDeg + region.angleSpanDeg * hashUnit(`${seedText}:angle`));
+    return pointFromPolar(region.origin, radius, angleDeg);
+  }
+
+  function placeNodesForRegion(region, familyId, targetCount, phase = "primary") {
+    const familySpacing = Math.max(2, Number(familyMinSpacing[familyId]) || Math.round(cellSize * 0.6));
+    const maxAttempts = Math.max(targetCount * placementAttemptsPerTarget, targetCount);
+    let placed = 0;
+    for (let attemptIndex = 0; attemptIndex < maxAttempts && placed < targetCount; attemptIndex += 1) {
+      const seedText = `${phase}:${familyId}:${region.bandId}:${region.sectorId}:${targetCount}:${attemptIndex}`;
+      const point = samplePointInRegion(region, seedText);
+      if (!isPointWithinMap(point.x, point.y) || isPointExcludedByTown(point.x, point.y)) {
+        continue;
+      }
+      if (hasNearbyFamilyNode(point.x, point.y, familyId, familySpacing)) {
+        continue;
+      }
+      const node = createNodeAtPoint(point.x, point.y, familyId, seedText);
+      if (!node) {
+        continue;
+      }
+      if (
+        normalizeId(node.biome && node.biome.bandId) !== normalizeId(region.bandId) ||
+        normalizeId(node.biome && node.biome.sectorId) !== normalizeId(region.sectorId)
+      ) {
+        continue;
+      }
+      resourceNodes.set(node.id, node);
+      placed += 1;
+    }
+    return placed;
+  }
+
+  function getFamilyIds() {
+    const familyIds = [];
+    const familyDefs =
+      resourceRegistry && typeof resourceRegistry.getFamilyDefs === "function"
+        ? resourceRegistry.getFamilyDefs()
+        : [];
+    for (const entry of familyDefs) {
+      const familyId = normalizeId(entry && entry.id);
+      if (familyId && !familyIds.includes(familyId)) {
+        familyIds.push(familyId);
+      }
+    }
+    for (const familyId of Object.keys(familyLimits)) {
+      const normalizedFamilyId = normalizeId(familyId);
+      if (normalizedFamilyId && !familyIds.includes(normalizedFamilyId)) {
+        familyIds.push(normalizedFamilyId);
+      }
+    }
+    return familyIds;
+  }
+
   function ensureStarterOutskirtsResources() {
     if (!townLayout) {
       return;
@@ -271,21 +469,32 @@ function createResourceGenerationTools(options = {}) {
 
   function initializeResourceNodes() {
     resourceNodes.clear();
+    const regions = getGenerationRegions();
     const familyCounts = {};
-    for (let cellY = 0; cellY * cellSize < mapHeight; cellY += 1) {
-      for (let cellX = 0; cellX * cellSize < mapWidth; cellX += 1) {
-        for (const familyId of ["tree", "ore_vein"]) {
-          familyCounts[familyId] = Math.max(0, Math.floor(Number(familyCounts[familyId]) || 0));
-          if (familyCounts[familyId] >= Math.max(0, Math.floor(Number(familyLimits[familyId]) || 0))) {
-            continue;
-          }
-          const node = createNodeFromCell(cellX, cellY, familyId, familyCounts[familyId]);
-          if (!node) {
-            continue;
-          }
-          resourceNodes.set(node.id, node);
-          familyCounts[familyId] += 1;
+    for (const familyId of getFamilyIds()) {
+      const familyLimit = Math.max(0, Math.floor(Number(familyLimits[familyId]) || 0));
+      if (familyLimit <= 0) {
+        continue;
+      }
+      const regionTargets = allocateFamilyTargets(familyLimit, regions, familyId);
+      for (const entry of regionTargets) {
+        familyCounts[familyId] = (Number(familyCounts[familyId]) || 0) + placeNodesForRegion(
+          entry.region,
+          familyId,
+          entry.count,
+          "band-sector"
+        );
+      }
+      if ((Number(familyCounts[familyId]) || 0) >= familyLimit) {
+        continue;
+      }
+      const fallbackRegions = [...regionTargets].sort((left, right) => right.score - left.score);
+      for (const entry of fallbackRegions) {
+        const remaining = familyLimit - (Number(familyCounts[familyId]) || 0);
+        if (remaining <= 0) {
+          break;
         }
+        familyCounts[familyId] += placeNodesForRegion(entry.region, familyId, remaining, "band-sector-fill");
       }
     }
     ensureStarterOutskirtsResources();
