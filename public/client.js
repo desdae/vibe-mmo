@@ -9453,6 +9453,25 @@ function clientPointToCanvasPoint(clientX, clientY) {
   };
 }
 
+function getCanvasClientCenterPoint() {
+  const sharedCanvasCoordinates = globalThis.VibeClientCanvasCoordinates || null;
+  if (sharedCanvasCoordinates && typeof sharedCanvasCoordinates.getCanvasClientCenter === "function") {
+    return sharedCanvasCoordinates.getCanvasClientCenter(canvas);
+  }
+  const rect = canvas && typeof canvas.getBoundingClientRect === "function" ? canvas.getBoundingClientRect() : null;
+  const left = Number(rect && rect.left) || 0;
+  const top = Number(rect && rect.top) || 0;
+  const width = Math.max(1, Number(rect && rect.width) || Number(canvas && canvas.clientWidth) || Number(window.innerWidth) || 1);
+  const height = Math.max(
+    1,
+    Number(rect && rect.height) || Number(canvas && canvas.clientHeight) || Number(window.innerHeight) || 1
+  );
+  return {
+    x: left + width * 0.5,
+    y: top + height * 0.5
+  };
+}
+
 function getMobileAbilityAimFallbackDirection(self) {
   const touchMoveDir = normalizeDirection(touchJoystickState.vectorDx, touchJoystickState.vectorDy);
   if (touchMoveDir) {
@@ -9673,22 +9692,19 @@ function beginMobileAbilityAim(slotId, touchId, clientX, clientY) {
 
   const radiusPx = getMobileAbilityAimRadiusPx();
   const aimOriginClient = getActionSlotClientCenter(slotId, clientX, clientY);
-  const aimOrigin = clientPointToCanvasPoint(aimOriginClient.x, aimOriginClient.y);
-  const startPoint = clientPointToCanvasPoint(clientX, clientY);
-  const characterScreenX = canvas.width / 2;
-  const characterScreenY = canvas.height / 2;
-  const pivotX = (characterScreenX + aimOrigin.x) / 2;
-  const pivotY = (characterScreenY + aimOrigin.y) / 2;
+  const canvasCenterClient = getCanvasClientCenterPoint();
+  const pivotX = (Number(canvasCenterClient.x) + Number(aimOriginClient.x)) / 2;
+  const pivotY = (Number(canvasCenterClient.y) + Number(aimOriginClient.y)) / 2;
   mobileAbilityAimState.active = true;
   mobileAbilityAimState.touchId = touchId;
   mobileAbilityAimState.slotId = String(slotId || "");
   mobileAbilityAimState.abilityId = actionId;
-  mobileAbilityAimState.aimOriginClientX = Number(aimOrigin.x) || 0;
-  mobileAbilityAimState.aimOriginClientY = Number(aimOrigin.y) || 0;
+  mobileAbilityAimState.aimOriginClientX = Number(aimOriginClient.x) || 0;
+  mobileAbilityAimState.aimOriginClientY = Number(aimOriginClient.y) || 0;
   mobileAbilityAimState.pivotClientX = pivotX;
   mobileAbilityAimState.pivotClientY = pivotY;
-  mobileAbilityAimState.startClientX = Number(startPoint.x) || 0;
-  mobileAbilityAimState.startClientY = Number(startPoint.y) || 0;
+  mobileAbilityAimState.startClientX = Number(clientX) || 0;
+  mobileAbilityAimState.startClientY = Number(clientY) || 0;
   mobileAbilityAimState.currentClientX = mobileAbilityAimState.startClientX;
   mobileAbilityAimState.currentClientY = mobileAbilityAimState.startClientY;
   mobileAbilityAimState.radiusPx = radiusPx;
@@ -9703,9 +9719,8 @@ function updateMobileAbilityAim(clientX, clientY) {
   if (!mobileAbilityAimState.active) {
     return false;
   }
-  const point = clientPointToCanvasPoint(clientX, clientY);
-  mobileAbilityAimState.currentClientX = Number(point.x) || 0;
-  mobileAbilityAimState.currentClientY = Number(point.y) || 0;
+  mobileAbilityAimState.currentClientX = Number(clientX) || 0;
+  mobileAbilityAimState.currentClientY = Number(clientY) || 0;
   return updateMobileAbilityAimTarget();
 }
 
@@ -12016,6 +12031,8 @@ function resizeCanvas() {
   const viewportScale = usePortraitMobileZoom ? Math.max(1, targetWidthPx / viewportWidth) : 1;
   canvas.width = Math.max(1, Math.round(viewportWidth * viewportScale));
   canvas.height = Math.max(1, Math.round(viewportHeight * viewportScale));
+  canvas.style.width = `${viewportWidth}px`;
+  canvas.style.height = `${viewportHeight}px`;
   if (rendererBootstrap && typeof rendererBootstrap.resize === "function") {
     rendererBootstrap.resize(canvas.width, canvas.height);
   }

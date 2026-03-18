@@ -44,4 +44,25 @@ describe("VibeClientCanvasCoordinates", () => {
 
     expect(point).toEqual({ x: 123, y: 456 });
   });
+
+  test("reports the visible canvas center in client coordinates for scaled mobile layouts", () => {
+    require(modulePath);
+
+    const tools = globalThis.VibeClientCanvasCoordinates;
+    const canvas = {
+      width: 1080,
+      height: 2400,
+      getBoundingClientRect: () => ({
+        left: 12,
+        top: 24,
+        width: 360,
+        height: 800
+      })
+    };
+
+    expect(tools.getCanvasClientCenter(canvas)).toEqual({
+      x: 192,
+      y: 424
+    });
+  });
 });
