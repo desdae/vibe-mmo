@@ -27,6 +27,7 @@ async function bootstrapClient() {
   await loadSharedGlobal("./shared/mob-render-style.js", "VibeMobRenderStyle");
 
   const clientModuleLoaders = [
+    () => import("./client/canvas-coordinates.js"),
     () => import("./client/network-packets.js"),
     () => import("./client/network-session.js"),
     () => import("./client/render-state.js"),

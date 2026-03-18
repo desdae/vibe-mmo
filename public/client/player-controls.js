@@ -3,6 +3,14 @@
 
   function createPlayerControlTools(rawDeps) {
     const deps = rawDeps && typeof rawDeps === "object" ? rawDeps : {};
+    const sharedCanvasCoordinates = globalScope.VibeClientCanvasCoordinates || null;
+    const clientPointToCanvasPoint =
+      sharedCanvasCoordinates && typeof sharedCanvasCoordinates.clientPointToCanvasPoint === "function"
+        ? sharedCanvasCoordinates.clientPointToCanvasPoint
+        : (_canvas, clientX, clientY) => ({
+            x: Number(clientX) || 0,
+            y: Number(clientY) || 0
+          });
     const keys = deps.keys || {};
     const movementSync = deps.movementSync || { lastDx: 0, lastDy: 0, lastSentAt: 0 };
     const mouseState = deps.mouseState || { sx: 0, sy: 0 };
@@ -114,11 +122,9 @@
       if (!canvas || !event) {
         return;
       }
-      const rect = canvas.getBoundingClientRect();
-      const scaleX = rect.width > 0 ? canvas.width / rect.width : 1;
-      const scaleY = rect.height > 0 ? canvas.height / rect.height : 1;
-      mouseState.sx = (event.clientX - rect.left) * scaleX;
-      mouseState.sy = (event.clientY - rect.top) * scaleY;
+      const point = clientPointToCanvasPoint(canvas, event.clientX, event.clientY);
+      mouseState.sx = Number(point.x) || 0;
+      mouseState.sy = Number(point.y) || 0;
     }
 
     function screenToWorld(sx, sy, self) {
