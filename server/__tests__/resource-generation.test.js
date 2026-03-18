@@ -61,9 +61,9 @@ describe("resource-generation", () => {
       }
     }
 
-    expect(result.total).toBeGreaterThan(120);
-    expect(result.families.tree).toBeGreaterThan(80);
-    expect(result.families.ore_vein).toBeGreaterThan(50);
+    expect(result.total).toBeGreaterThan(450);
+    expect(result.families.tree).toBeGreaterThan(250);
+    expect(result.families.ore_vein).toBeGreaterThan(180);
     expect(bandIds.size).toBeGreaterThanOrEqual(4);
     expect(sectorIds.size).toBeGreaterThanOrEqual(6);
     expect(resourceIds.has("pine_tree")).toBe(true);

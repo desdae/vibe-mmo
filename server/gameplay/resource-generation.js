@@ -20,20 +20,25 @@ function createResourceGenerationTools(options = {}) {
   const mapHeight = Math.max(64, Math.floor(Number(options.mapHeight) || 1000));
   const townLayout = options.townLayout || null;
   const cellSize = Math.max(8, Math.floor(Number(options.cellSize) || 22));
+  const mapArea = mapWidth * mapHeight;
+  const defaultFamilyLimits = {
+    tree: Math.max(220, Math.round(mapArea / 2400)),
+    ore_vein: Math.max(150, Math.round(mapArea / 3400))
+  };
   const familyLimits =
     options.familyLimits && typeof options.familyLimits === "object"
       ? { ...options.familyLimits }
-      : { tree: 130, ore_vein: 90 };
+      : defaultFamilyLimits;
   const familyMinSpacing =
     options.familyMinSpacing && typeof options.familyMinSpacing === "object"
       ? { ...options.familyMinSpacing }
       : {
-          tree: Math.max(8, Math.round(cellSize * 0.55)),
-          ore_vein: Math.max(10, Math.round(cellSize * 0.72))
+          tree: Math.max(6, Math.round(cellSize * 0.42)),
+          ore_vein: Math.max(8, Math.round(cellSize * 0.5))
         };
   const placementAttemptsPerTarget = Math.max(
     3,
-    Math.floor(Number(options.placementAttemptsPerTarget) || 8)
+    Math.floor(Number(options.placementAttemptsPerTarget) || 12)
   );
 
   if (!(resourceNodes instanceof Map)) {
